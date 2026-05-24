@@ -19,7 +19,9 @@ namespace Pulse
 
 		public static string GetConfigPath()
 		{
-			return Path.Combine(System.AppContext.BaseDirectory, "pulse.config.json");
+			string exePath = System.Environment.ProcessPath;
+			string exeDir = Path.GetDirectoryName(exePath);
+			return Path.Combine(exeDir, "pulse.config.json");
 		}
 
 		public List<string> Validate()
