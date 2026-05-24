@@ -439,7 +439,8 @@
 				let html = '<div class="bar-list">';
 				for (let i = 0; i < items.length; i++) {
 					let item = items[i];
-					let widthPct = maxVal > 0 ? (item.Value / maxVal) * 100 : 0;
+					let widthPct = 0;
+					if (maxVal > 0) { widthPct = (item.Value / maxVal) * 100; }
 					let nameHtml;
 					if (isTrack) {
 						nameHtml = '<div class="bar-track">' +
@@ -466,7 +467,8 @@
 					'<th class="r">%</th></tr></thead><tbody>';
 				for (let i = 0; i < items.length; i++) {
 					let item = items[i];
-					let barPct = maxVal > 0 ? (item.count / maxVal) * 100 : 0;
+					let barPct = 0;
+					if (maxVal > 0) { barPct = (item.count / maxVal) * 100; }
 					html += '<tr>' +
 						'<td>' + esc(item.name) + '</td>' +
 						'<td class="bar-cell"><div class="mini-bar-wrap"><div class="mini-bar" style="width:' + barPct + '%;background:' + barColor + '"></div></div></td>' +
@@ -479,8 +481,12 @@
 
 			function card(span, title, body, scrollable)
 			{
-				return '<div class="card span-' + span + (scrollable ? ' scrollable' : '') + '">' +
-					(title ? '<div class="section-title">' + esc(title) + '</div>' : '') +
+				let scrollClass = '';
+				if (scrollable) { scrollClass = ' scrollable'; }
+				let titleHtml = '';
+				if (title) { titleHtml = '<div class="section-title">' + esc(title) + '</div>'; }
+				return '<div class="card span-' + span + scrollClass + '">' +
+					titleHtml +
 					body + '</div>';
 			}
 
@@ -514,7 +520,8 @@
 				legendHtml += '</div>';
 				html += card(2, 'Play Coverage', '<div class="donut-inner">' + buildDonut(donutSegs, stats.TotalTracks) + legendHtml + '</div>');
 
-				let starredPct = stats.TotalTracks > 0 ? (stats.StarredTracks / stats.TotalTracks) * 100 : 0;
+				let starredPct = 0;
+				if (stats.TotalTracks > 0) { starredPct = (stats.StarredTracks / stats.TotalTracks) * 100; }
 				html += card(2, 'Session Health', '<div class="rings-inner">' +
 					'<div>' + buildRing(stats.UnplayedPercent, 'var(--amber)') + '<div class="pct-label">Unplayed</div></div>' +
 					'<div>' + buildRing(stats.SkipPercent, 'var(--red)') + '<div class="pct-label">Skip Rate</div></div>' +
