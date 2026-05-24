@@ -36,10 +36,6 @@ namespace Pulse
 		string m_spotifyRedirectURI = "https://pulse.mccoder.com:32458/spotify/callback";
 
 		public bool IsRunning { get; private set; }
-		public void Initialize()
-		{
-			//stuff and things
-		}
 
 		public void Run(IPulseRouteHost webServer, PulseConfig config)
 		{
