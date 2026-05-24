@@ -31,11 +31,10 @@ namespace Pulse.Data
 
 		public List<GenreStat> GenreBreakdown { get; set; } = new List<GenreStat>();
 		public List<DecadeStat> DecadeBreakdown { get; set; } = new List<DecadeStat>();
-		public List<ArtistStat> TopArtistsByPlays { get; set; } = new List<ArtistStat>();
+		public List<ArtistStat> TopArtistsByScore { get; set; } = new List<ArtistStat>();
 		public List<ArtistStat> TopArtistsByTracks { get; set; } = new List<ArtistStat>();
-		public List<TrackStat> MostPlayed { get; set; } = new List<TrackStat>();
-		public List<TrackStat> MostSkipped { get; set; } = new List<TrackStat>();
 		public List<TrackStat> HighestScored { get; set; } = new List<TrackStat>();
+		public List<TrackStat> MostSkipped { get; set; } = new List<TrackStat>();
 		public List<FormatStat> FormatBreakdown { get; set; } = new List<FormatStat>();
 	}
 
@@ -79,7 +78,8 @@ namespace Pulse.Data
 			List<TrackInfo> allTracks,
 			List<AlbumInfo> allAlbums,
 			List<ArtistInfo> allArtists,
-			List<PlaylistInfo> allPlaylists)
+			List<PlaylistInfo> allPlaylists,
+			string userName)
 		{
 			PulseStatsResponse stats = new PulseStatsResponse();
 
@@ -107,7 +107,6 @@ namespace Pulse.Data
 			Dictionary<string, int> genreCounts = new Dictionary<string, int>();
 			Dictionary<string, int> decadeCounts = new Dictionary<string, int>();
 			Dictionary<string, int> formatCounts = new Dictionary<string, int>();
-			Dictionary<string, int> artistPlayCounts = new Dictionary<string, int>();
 			Dictionary<string, int> artistTrackCounts = new Dictionary<string, int>();
 
 			for (int i = 0; i < allTracks.Count; i++)
@@ -213,15 +212,6 @@ namespace Pulse.Data
 				{
 					artistName = track.Artist;
 				}
-				if (artistPlayCounts.ContainsKey(artistName))
-				{
-					artistPlayCounts[artistName] += playCount;
-				}
-				else
-				{
-					artistPlayCounts[artistName] = playCount;
-				}
-
 				if (artistTrackCounts.ContainsKey(artistName))
 				{
 					artistTrackCounts[artistName]++;
@@ -283,18 +273,23 @@ namespace Pulse.Data
 				});
 			}
 
-			// Top 200 artists by play count
+			// Top 200 artists by per-user WeightedScore (falls back to global), scaled to 0..100
 			int artistLimit = 200;
-			List<KeyValuePair<string, int>> sortedArtistPlays = new List<KeyValuePair<string, int>>(artistPlayCounts);
-			sortedArtistPlays.Sort(CompareCountDescending);
-			for (int artistIndex = 0; artistIndex < sortedArtistPlays.Count; artistIndex++)
+			List<KeyValuePair<ArtistInfo, float>> artistScored = new List<KeyValuePair<ArtistInfo, float>>();
+			for (int idx = 0; idx < allArtists.Count; idx++)
 			{
-				KeyValuePair<string, int> pair = sortedArtistPlays[artistIndex];
-				if (artistIndex >= artistLimit || pair.Value == 0)
+				ArtistInfo artist = allArtists[idx];
+				artistScored.Add(new KeyValuePair<ArtistInfo, float>(artist, artist.GetScore(userName)));
+			}
+			artistScored.Sort(CompareArtistScoredDescending);
+			for (int artistIndex = 0; artistIndex < artistScored.Count; artistIndex++)
+			{
+				KeyValuePair<ArtistInfo, float> pair = artistScored[artistIndex];
+				if (artistIndex >= artistLimit || pair.Value <= 0)
 				{
 					break;
 				}
-				stats.TopArtistsByPlays.Add(new ArtistStat { Name = pair.Key, Value = pair.Value });
+				stats.TopArtistsByScore.Add(new ArtistStat { Name = pair.Key.Name, Value = (int)Math.Round(pair.Value * 100f) });
 			}
 
 			// Top artists by track count
@@ -310,22 +305,27 @@ namespace Pulse.Data
 				stats.TopArtistsByTracks.Add(new ArtistStat { Name = pair.Key, Value = pair.Value });
 			}
 
-			// Most played tracks
+			// Highest scored tracks (per-user score if available, falls back to global), scaled to 0..100
 			int trackLimit = 200;
-			List<TrackInfo> sortedByPlayCount = new List<TrackInfo>(allTracks);
-			sortedByPlayCount.Sort(CompareTrackByPlayCountDescending);
-			for (int trackIndex = 0; trackIndex < sortedByPlayCount.Count; trackIndex++)
+			List<KeyValuePair<TrackInfo, float>> trackScored = new List<KeyValuePair<TrackInfo, float>>();
+			for (int idx = 0; idx < allTracks.Count; idx++)
 			{
-				TrackInfo track = sortedByPlayCount[trackIndex];
-				if (trackIndex >= trackLimit || track.Score.PlayCount == 0)
+				TrackInfo track = allTracks[idx];
+				trackScored.Add(new KeyValuePair<TrackInfo, float>(track, track.GetScore(userName)));
+			}
+			trackScored.Sort(CompareTrackScoredDescending);
+			for (int trackIndex = 0; trackIndex < trackScored.Count; trackIndex++)
+			{
+				KeyValuePair<TrackInfo, float> pair = trackScored[trackIndex];
+				if (trackIndex >= trackLimit || pair.Value <= 0f)
 				{
 					break;
 				}
-				stats.MostPlayed.Add(new TrackStat
+				stats.HighestScored.Add(new TrackStat
 				{
-					Title = track.Title,
-					Artist = track.Artist,
-					Value = track.Score.PlayCount
+					Title = pair.Key.Title,
+					Artist = pair.Key.Artist,
+					Value = (int)Math.Round(pair.Value * 100f)
 				});
 			}
 
@@ -344,25 +344,6 @@ namespace Pulse.Data
 					Title = track.Title,
 					Artist = track.Artist,
 					Value = track.Score.SkipCount
-				});
-			}
-
-			// Highest scored tracks
-			List<TrackInfo> sortedByScore = new List<TrackInfo>(allTracks);
-			sortedByScore.Sort(CompareTrackByScoreDescending);
-			for (int trackIndex = 0; trackIndex < sortedByScore.Count; trackIndex++)
-			{
-				TrackInfo track = sortedByScore[trackIndex];
-				float score = track.GetScore(null);
-				if (trackIndex >= trackLimit || score <= 0f)
-				{
-					break;
-				}
-				stats.HighestScored.Add(new TrackStat
-				{
-					Title = track.Title,
-					Artist = track.Artist,
-					Value = (int)(score * 100f)
 				});
 			}
 
@@ -389,9 +370,14 @@ namespace Pulse.Data
 			return string.Compare(leftKey, rightKey, StringComparison.Ordinal);
 		}
 
-		private static int CompareTrackByPlayCountDescending(TrackInfo left, TrackInfo right)
+		private static int CompareArtistScoredDescending(KeyValuePair<ArtistInfo, float> left, KeyValuePair<ArtistInfo, float> right)
 		{
-			return right.Score.PlayCount.CompareTo(left.Score.PlayCount);
+			return right.Value.CompareTo(left.Value);
+		}
+
+		private static int CompareTrackScoredDescending(KeyValuePair<TrackInfo, float> left, KeyValuePair<TrackInfo, float> right)
+		{
+			return right.Value.CompareTo(left.Value);
 		}
 
 		private static int CompareTrackBySkipCountDescending(TrackInfo left, TrackInfo right)
@@ -399,9 +385,5 @@ namespace Pulse.Data
 			return right.Score.SkipCount.CompareTo(left.Score.SkipCount);
 		}
 
-		private static int CompareTrackByScoreDescending(TrackInfo left, TrackInfo right)
-		{
-			return right.GetScore(null).CompareTo(left.GetScore(null));
-		}
 	}
 }
