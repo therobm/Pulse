@@ -190,7 +190,7 @@ namespace Pulse
 
 		private void HandleStatsPage(HttpContext context)
 		{
-			string htmlPath = Path.Combine(AppContext.BaseDirectory, "www", "pulse-stats.html");
+			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "stats.html");
 			if (!File.Exists(htmlPath))
 			{
 				context.Response.StatusCode = 404;
