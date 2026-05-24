@@ -1,0 +1,28 @@
+# Build output
+bin/
+obj/
+
+# IDE / editor state
+.vs/
+.idea/
+*.user
+*.suo
+
+# Publish profiles are per-machine
+Pulse/Properties/PublishProfiles/*.pubxml
+Pulse/Properties/PublishProfiles/*.pubxml.user
+
+# Runtime data
+*.db
+*.sqlite
+*.sqlite3
+*.log
+logs/
+missingSongs.json
+
+# Local credentials / overrides
+FLATLINE_API.local.md
+*.local.md
+*.local.json
+appsettings.*.json
+secrets.json

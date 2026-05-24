@@ -1,0 +1,592 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Pulse — Library Stats</title>
+	<style>
+		:root {
+			--bg: #0e0e12;
+			--surface: #17171e;
+			--border: #2a2a38;
+			--text-primary: #e8e6f0;
+			--text-secondary: #8a88a0;
+			--text-dim: #5c5a70;
+			--accent: #6c5ce7;
+			--green: #00cec9;
+			--amber: #fdcb6e;
+			--red: #e17055;
+			--bar-bg: #252535;
+		}
+
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+
+		body {
+			background: var(--bg);
+			color: var(--text-primary);
+			font-family: 'Segoe UI', system-ui, sans-serif;
+			padding: 24px 32px;
+			min-height: 100vh;
+		}
+
+		.page {
+			max-width: 1400px;
+			margin: 0 auto;
+		}
+
+		.header {
+			display: grid;
+			grid-template-columns: auto 1fr;
+			align-items: baseline;
+			gap: 16px;
+			margin-bottom: 24px;
+			border-bottom: 1px solid var(--border);
+			padding-bottom: 12px;
+		}
+
+			.header h1 {
+				font-size: 24px;
+				font-weight: 300;
+				letter-spacing: 2px;
+				text-transform: uppercase;
+			}
+
+				.header h1 span {
+					color: var(--accent);
+					font-weight: 600;
+				}
+
+			.header .subtitle {
+				font-size: 12px;
+				color: var(--text-dim);
+			}
+
+		/* === THE grid === */
+		.dashboard {
+			display: grid;
+			grid-template-columns: repeat(4, 1fr);
+			gap: 16px;
+		}
+
+		.span-1 {
+			grid-column: span 1;
+		}
+
+		.span-2 {
+			grid-column: span 2;
+		}
+
+		.span-3 {
+			grid-column: span 3;
+		}
+
+		.span-4 {
+			grid-column: span 4;
+		}
+
+		/* === Card === */
+		.card {
+			background: var(--surface);
+			border: 1px solid var(--border);
+			border-radius: 8px;
+			padding: 16px 18px;
+			min-width: 0;
+			overflow: hidden;
+		}
+
+		.card.scrollable {
+			max-height: 600px;
+			overflow-y: auto;
+		}
+		.scrollable::-webkit-scrollbar {
+			width: 6px;
+		}
+
+		.scrollable::-webkit-scrollbar-track {
+			background: transparent;
+		}
+
+		.scrollable::-webkit-scrollbar-thumb {
+			background: var(--border);
+			border-radius: 3px;
+		}
+
+		.scrollable::-webkit-scrollbar-thumb:hover {
+			background: var(--text-dim);
+		}
+		.section-title {
+			font-size: 12px;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+			color: var(--text-secondary);
+			margin-bottom: 12px;
+		}
+
+		/* === Stat card (top row) === */
+		.stat-label {
+			font-size: 10px;
+			text-transform: uppercase;
+			letter-spacing: 1.5px;
+			color: var(--text-dim);
+			margin-bottom: 4px;
+		}
+
+		.stat-value {
+			font-size: 28px;
+			font-weight: 200;
+			line-height: 1.1;
+		}
+
+		.stat-sub {
+			font-size: 11px;
+			color: var(--text-secondary);
+			margin-top: 4px;
+		}
+
+		/* === Donut === */
+		.donut-inner {
+			display: grid;
+			grid-template-columns: 90px 1fr;
+			gap: 14px;
+			align-items: center;
+		}
+
+		.donut-svg {
+			width: 90px;
+			height: 90px;
+			display: block;
+		}
+
+		.donut-legend {
+			display: grid;
+			gap: 4px;
+		}
+
+		.legend-item {
+			display: grid;
+			grid-template-columns: 8px 1fr auto;
+			gap: 6px;
+			align-items: center;
+			font-size: 12px;
+			color: var(--text-secondary);
+		}
+
+		.legend-dot {
+			width: 8px;
+			height: 8px;
+			border-radius: 50%;
+		}
+
+		.legend-item .count {
+			color: var(--text-primary);
+			font-weight: 500;
+		}
+
+		/* === Rings === */
+		.rings-inner {
+			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+			gap: 8px;
+			text-align: center;
+		}
+
+		.pct-ring-svg {
+			width: 68px;
+			height: 68px;
+			display: block;
+			margin: 0 auto 4px;
+		}
+
+		.pct-label {
+			font-size: 10px;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+			color: var(--text-dim);
+		}
+
+		/* === Bar list === */
+		.bar-list {
+			display: grid;
+			gap: 6px;
+		}
+
+		.bar-row {
+			display: grid;
+			grid-template-columns: 16px 1fr 80px 36px;
+			gap: 8px;
+			align-items: center;
+			font-size: 12px;
+		}
+
+		.bar-row-track {
+			display: grid;
+			grid-template-columns: 16px 1fr 80px 36px;
+			gap: 8px;
+			align-items: center;
+			font-size: 12px;
+		}
+
+		.bar-rank {
+			color: var(--text-dim);
+			text-align: right;
+			font-size: 10px;
+		}
+
+		.bar-name {
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			color: var(--text-secondary);
+		}
+
+		.bar-track {
+			overflow: hidden;
+		}
+
+		.bar-track-title {
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			color: var(--text-secondary);
+			font-size: 12px;
+		}
+
+		.bar-track-artist {
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			color: var(--text-dim);
+			font-size: 10px;
+		}
+
+		.bar-fill-wrap {
+			width: 100%;
+			height: 4px;
+			background: var(--bar-bg);
+			border-radius: 2px;
+			overflow: hidden;
+		}
+
+		.bar-fill {
+			height: 100%;
+			border-radius: 2px;
+		}
+
+		.bar-val {
+			text-align: right;
+			color: var(--text-primary);
+			font-weight: 500;
+			font-size: 11px;
+		}
+
+		/* === Data table === */
+		.data-table {
+			width: 100%;
+			border-collapse: collapse;
+			font-size: 12px;
+		}
+
+			.data-table th {
+				text-align: left;
+				font-size: 10px;
+				font-weight: 600;
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				color: var(--text-dim);
+				padding: 0 8px 8px 0;
+				border-bottom: 1px solid var(--border);
+			}
+
+				.data-table th.r,
+				.data-table td.r {
+					text-align: right;
+					padding-right: 0;
+				}
+
+			.data-table td {
+				padding: 5px 8px 5px 0;
+				border-bottom: 1px solid rgba(42, 42, 56, 0.4);
+				color: var(--text-secondary);
+			}
+
+				.data-table td.r {
+					color: var(--text-primary);
+					font-weight: 500;
+					font-variant-numeric: tabular-nums;
+				}
+
+			.data-table tr:last-child td {
+				border-bottom: none;
+			}
+
+			.data-table .bar-cell {
+				width: 60px;
+				padding: 5px 8px 5px 0;
+			}
+
+		.mini-bar-wrap {
+			width: 100%;
+			height: 3px;
+			background: var(--bar-bg);
+			border-radius: 2px;
+			overflow: hidden;
+		}
+
+		.mini-bar {
+			height: 100%;
+			border-radius: 2px;
+		}
+
+		.loading {
+			grid-column: span 4;
+			text-align: center;
+			padding: 80px;
+			font-size: 14px;
+			color: var(--text-dim);
+		}
+
+		.error-msg {
+			grid-column: span 4;
+			color: var(--red);
+			padding: 40px;
+			text-align: center;
+		}
+	</style>
+</head>
+<body>
+	<div class="page">
+
+		<div class="header">
+			<h1><span>Pulse</span> Stats</h1>
+			<div class="subtitle" id="timestamp"></div>
+		</div>
+
+		<div class="dashboard" id="content">
+			<div class="loading">Loading stats…</div>
+		</div>
+
+	</div>
+	<script>
+		(function () {
+			var STATS_ENDPOINT = '/pulse/stats';
+			var contentEl = document.getElementById('content');
+			var timestampEl = document.getElementById('timestamp');
+
+			function esc(str) {
+				if (!str) return '';
+				return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+			}
+
+			function formatBytes(bytes) {
+				if (bytes < 1024) return bytes + ' B';
+				if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+				if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+				return (bytes / 1073741824).toFixed(2) + ' GB';
+			}
+
+			function formatDuration(totalSeconds) {
+				var days = Math.floor(totalSeconds / 86400);
+				var hours = Math.floor((totalSeconds % 86400) / 3600);
+				var mins = Math.floor((totalSeconds % 3600) / 60);
+				if (days > 0) return days + 'd ' + hours + 'h';
+				if (hours > 0) return hours + 'h ' + mins + 'm';
+				return mins + 'm';
+			}
+
+			function pct(val) { return val.toFixed(1) + '%'; }
+			function commas(num) { return num.toLocaleString(); }
+
+			// ── SVG builders ──
+
+			function buildDonut(segments, total) {
+				var radius = 36, cx = 45, cy = 45;
+				var circ = 2 * Math.PI * radius;
+				var offset = 0;
+				var paths = '';
+				for (var i = 0; i < segments.length; i++) {
+					var segLen = (segments[i].value / total) * circ;
+					paths += '<circle cx="' + cx + '" cy="' + cy + '" r="' + radius + '" ' +
+						'fill="none" stroke="' + segments[i].color + '" stroke-width="10" ' +
+						'stroke-dasharray="' + segLen + ' ' + (circ - segLen) + '" ' +
+						'stroke-dashoffset="-' + offset + '" />';
+					offset += segLen;
+				}
+				return '<svg class="donut-svg" viewBox="0 0 90 90">' +
+					'<circle cx="' + cx + '" cy="' + cy + '" r="' + radius + '" fill="none" stroke="var(--bar-bg)" stroke-width="10" />' +
+					paths + '</svg>';
+			}
+
+			function buildRing(percent, color) {
+				var radius = 26, circ = 2 * Math.PI * radius;
+				var filled = (percent / 100) * circ;
+				return '<svg class="pct-ring-svg" viewBox="0 0 68 68">' +
+					'<circle cx="34" cy="34" r="' + radius + '" fill="none" stroke="var(--bar-bg)" stroke-width="5" />' +
+					'<circle cx="34" cy="34" r="' + radius + '" fill="none" stroke="' + color + '" stroke-width="5" ' +
+					'stroke-dasharray="' + filled + ' ' + (circ - filled) + '" ' +
+					'stroke-dashoffset="' + (circ * 0.25) + '" stroke-linecap="round" />' +
+					'<text x="34" y="38" text-anchor="middle" fill="var(--text-primary)" font-size="12" font-weight="500">' +
+					pct(percent) + '</text></svg>';
+			}
+
+			// ── Component builders ──
+
+			function buildBarList(items, maxVal, isTrack, fillColor) {
+				var html = '<div class="bar-list">';
+				for (var i = 0; i < items.length; i++) {
+					var item = items[i];
+					var widthPct = maxVal > 0 ? (item.Value / maxVal) * 100 : 0;
+					var nameHtml;
+					if (isTrack) {
+						nameHtml = '<div class="bar-track">' +
+							'<div class="bar-track-title">' + esc(item.Title) + '</div>' +
+							'<div class="bar-track-artist">' + esc(item.Artist) + '</div></div>';
+					} else {
+						nameHtml = '<div class="bar-name">' + esc(item.Name) + '</div>';
+					}
+					html += '<div class="bar-row">' +
+						'<div class="bar-rank">' + (i + 1) + '</div>' +
+						nameHtml +
+						'<div class="bar-fill-wrap"><div class="bar-fill" style="width:' + widthPct + '%;background:' + fillColor + '"></div></div>' +
+						'<div class="bar-val">' + commas(item.Value) + '</div></div>';
+				}
+				html += '</div>';
+				return html;
+			}
+
+			function buildTable(items, nameHeader, barColor, maxVal) {
+				var html = '<table class="data-table"><thead><tr>' +
+					'<th>' + esc(nameHeader) + '</th>' +
+					'<th class="bar-cell"></th>' +
+					'<th class="r">Tracks</th>' +
+					'<th class="r">%</th></tr></thead><tbody>';
+				for (var i = 0; i < items.length; i++) {
+					var item = items[i];
+					var barPct = maxVal > 0 ? (item.count / maxVal) * 100 : 0;
+					html += '<tr>' +
+						'<td>' + esc(item.name) + '</td>' +
+						'<td class="bar-cell"><div class="mini-bar-wrap"><div class="mini-bar" style="width:' + barPct + '%;background:' + barColor + '"></div></div></td>' +
+						'<td class="r">' + commas(item.count) + '</td>' +
+						'<td class="r">' + pct(item.percent) + '</td></tr>';
+				}
+				html += '</tbody></table>';
+				return html;
+			}
+
+			function card(span, title, body, scrollable)
+			{
+				return '<div class="card span-' + span + (scrollable ? ' scrollable' : '') + '">' +
+					(title ? '<div class="section-title">' + esc(title) + '</div>' : '') +
+					body + '</div>';
+			}
+
+			// ── Render ──
+
+			function render(stats)
+			{
+				timestampEl.textContent = new Date().toLocaleString();
+				var html = '';
+
+				// Row 1: four stat cards (1 col each)
+				html += card(1, '', '<div class="stat-label">Tracks</div><div class="stat-value">' + commas(stats.TotalTracks) + '</div>' +
+					'<div class="stat-sub">' + formatDuration(stats.TotalDurationSeconds) + ' · ' + formatBytes(stats.TotalFileSizeBytes) + '</div>');
+				html += card(1, '', '<div class="stat-label">Albums</div><div class="stat-value">' + commas(stats.TotalAlbums) + '</div>');
+				html += card(1, '', '<div class="stat-label">Artists</div><div class="stat-value">' + commas(stats.TotalArtists) + '</div>');
+				html += card(1, '', '<div class="stat-label">Playlists</div><div class="stat-value">' + commas(stats.TotalPlaylists) + '</div>');
+
+				// Row 2: donut (2 cols) + rings (2 cols)
+				var donutSegs = [
+					{ value: stats.PlayedMultiple, color: 'var(--green)', label: 'Played 2+' },
+					{ value: stats.PlayedOnce, color: 'var(--accent)', label: 'Played once' },
+					{ value: stats.UnplayedTracks, color: 'var(--bar-bg)', label: 'Unplayed' }
+				];
+				var legendHtml = '<div class="donut-legend">';
+				for (var i = 0; i < donutSegs.length; i++) {
+					legendHtml += '<div class="legend-item">' +
+						'<div class="legend-dot" style="background:' + donutSegs[i].color + '"></div>' +
+						'<div>' + donutSegs[i].label + '</div>' +
+						'<div class="count">' + commas(donutSegs[i].value) + '</div></div>';
+				}
+				legendHtml += '</div>';
+				html += card(2, 'Play Coverage', '<div class="donut-inner">' + buildDonut(donutSegs, stats.TotalTracks) + legendHtml + '</div>');
+
+				var starredPct = stats.TotalTracks > 0 ? (stats.StarredTracks / stats.TotalTracks) * 100 : 0;
+				html += card(2, 'Session Health', '<div class="rings-inner">' +
+					'<div>' + buildRing(stats.UnplayedPercent, 'var(--amber)') + '<div class="pct-label">Unplayed</div></div>' +
+					'<div>' + buildRing(stats.SkipPercent, 'var(--red)') + '<div class="pct-label">Skip Rate</div></div>' +
+					'<div>' + buildRing(starredPct, 'var(--green)') + '<div class="pct-label">Starred</div></div>' +
+					'</div>');
+
+				// Row 3: top artists (2 cols) + most played (2 cols)
+				if (stats.TopArtistsByPlays.length > 0) {
+					html += card(2, 'Top Artists by Plays',
+						buildBarList(stats.TopArtistsByPlays, stats.TopArtistsByPlays[0].Value, false, 'var(--accent)'), true);
+				}
+				if (stats.MostPlayed.length > 0) {
+					html += card(2, 'Most Played Tracks',
+						buildBarList(stats.MostPlayed, stats.MostPlayed[0].Value, true, 'var(--green)'), true);
+				}
+
+				// Row 4: skipped (1 col) + scored (1 col) + largest artists (1 col) + formats table (1 col)
+				if (stats.MostSkipped.length > 0) {
+					html += card(1, 'Most Skipped',
+						buildBarList(stats.MostSkipped, stats.MostSkipped[0].Value, true, 'var(--red)'), true);
+				}
+				if (stats.HighestScored.length > 0) {
+					html += card(1, 'Highest Scored',
+						buildBarList(stats.HighestScored, stats.HighestScored[0].Value, true, 'var(--amber)'), true);
+				}
+				if (stats.TopArtistsByTracks.length > 0) {
+					html += card(1, 'Largest Artists',
+						buildBarList(stats.TopArtistsByTracks, stats.TopArtistsByTracks[0].Value, false, 'var(--accent)'), true);
+				}
+
+				// Formats table in 4th column
+				if (stats.FormatBreakdown.length > 0) {
+					var formatRows = [];
+					var maxFormat = stats.FormatBreakdown[0].Count;
+					for (var i = 0; i < stats.FormatBreakdown.length; i++) {
+						formatRows.push({ name: stats.FormatBreakdown[i].Format, count: stats.FormatBreakdown[i].Count, percent: stats.FormatBreakdown[i].Percent });
+					}
+					html += card(1, 'Formats', buildTable(formatRows, 'Format', 'var(--amber)', maxFormat));
+				}
+
+				// Row 5: genres (2 cols) + decades (2 cols)
+				if (stats.GenreBreakdown.length > 0) {
+					var genreRows = [];
+					var maxGenre = stats.GenreBreakdown[0].Count;
+					for (var i = 0; i < stats.GenreBreakdown.length; i++) {
+						genreRows.push({ name: stats.GenreBreakdown[i].Genre, count: stats.GenreBreakdown[i].Count, percent: stats.GenreBreakdown[i].Percent });
+					}
+					html += card(2, 'Genres', buildTable(genreRows, 'Genre', 'var(--accent)', maxGenre));
+				}
+				if (stats.DecadeBreakdown.length > 0) {
+					var decadeRows = [];
+					var maxDecade = 0;
+					for (var i = 0; i < stats.DecadeBreakdown.length; i++) {
+						if (stats.DecadeBreakdown[i].Count > maxDecade) maxDecade = stats.DecadeBreakdown[i].Count;
+						decadeRows.push({ name: stats.DecadeBreakdown[i].Decade, count: stats.DecadeBreakdown[i].Count, percent: stats.DecadeBreakdown[i].Percent });
+					}
+					html += card(2, 'Decades', buildTable(decadeRows, 'Decade', 'var(--green)', maxDecade));
+				}
+
+				contentEl.innerHTML = html;
+			}
+
+			fetch(STATS_ENDPOINT)
+				.then(function (resp) {
+					if (!resp.ok) throw new Error('HTTP ' + resp.status);
+					return resp.json();
+				})
+				.then(function (data) { render(data); })
+				.catch(function (err) {
+					contentEl.innerHTML = '<div class="error-msg">Failed to load stats: ' + esc(err.message) + '</div>';
+				});
+		})();
+	</script>
+</body>
+</html>
