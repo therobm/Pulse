@@ -36,12 +36,6 @@ Stats — `{server}:{port}/web/stats.html`
 
 ![Stats Dashboard](Docs/stats.png)
 
-**Desktop Client**
-
-- Avalonia with SkiaSharp rendering
-- NAudio for playback
-- UserControl-based navigation, no MVVM framework
-
 ## Requirements
 
 - Windows (runs as a service or standalone)
