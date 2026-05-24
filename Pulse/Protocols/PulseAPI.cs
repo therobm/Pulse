@@ -3,7 +3,11 @@
 using Microsoft.AspNetCore.Http;
 using Pulse.MusicLibrary;
 using Pulse.SubsonicService;
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
 namespace Pulse.Protocols
 {

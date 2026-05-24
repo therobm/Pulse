@@ -1,7 +1,13 @@
-﻿using Pulse.Data;
+﻿using Pulse;
+using Pulse.Data;
 using Pulse.Lidarr;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics.Contracts;
+using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.Threading;
 
 namespace Pulse.MusicLibrary
 {

@@ -8,9 +8,14 @@ using Pulse.MusicLibrary;
 using Pulse.Protocols;
 using Pulse.Spotify;
 using Pulse.SubsonicService;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Threading;
 
 
 namespace Pulse
@@ -190,7 +195,7 @@ namespace Pulse
 
 		private void HandleStatsPage(HttpContext context)
 		{
-			string htmlPath = Path.Combine(AppContext.BaseDirectory, "www", "pulse-stats.html");
+			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "stats.html");
 			if (!File.Exists(htmlPath))
 			{
 				context.Response.StatusCode = 404;

@@ -1,4 +1,6 @@
 ﻿using Pulse.MusicLibrary;
+using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Pulse.Data
