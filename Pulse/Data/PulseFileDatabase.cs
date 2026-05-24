@@ -156,7 +156,6 @@ namespace Pulse.Data
 			}
 			m_analytics = new PulseAnalyticsInfo();
 		}
-		[Obsolete]
 		private void LoadTracks()
 		{
 			string[] files = Directory.GetFiles(m_tracksPath, "*.json"); 
@@ -176,7 +175,6 @@ namespace Pulse.Data
 			});
 		}
 
-		[Obsolete]
 		private void LoadAlbums()
 		{
 			string[] files = Directory.GetFiles(m_albumsPath, "*.json");
