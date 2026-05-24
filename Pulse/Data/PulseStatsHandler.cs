@@ -213,13 +213,16 @@ namespace Pulse.Data
 				{
 					artistName = track.Artist;
 				}
+				// Net plays (PlayCount - SkipCount) so a track that's mostly skipped
+				// doesn't outrank a track that's actually listened through.
+				int netPlays = playCount - skipCount;
 				if (artistPlayCounts.ContainsKey(artistName))
 				{
-					artistPlayCounts[artistName] += playCount;
+					artistPlayCounts[artistName] += netPlays;
 				}
 				else
 				{
-					artistPlayCounts[artistName] = playCount;
+					artistPlayCounts[artistName] = netPlays;
 				}
 
 				if (artistTrackCounts.ContainsKey(artistName))
@@ -290,7 +293,7 @@ namespace Pulse.Data
 			for (int artistIndex = 0; artistIndex < sortedArtistPlays.Count; artistIndex++)
 			{
 				KeyValuePair<string, int> pair = sortedArtistPlays[artistIndex];
-				if (artistIndex >= artistLimit || pair.Value == 0)
+				if (artistIndex >= artistLimit || pair.Value <= 0)
 				{
 					break;
 				}
@@ -310,14 +313,15 @@ namespace Pulse.Data
 				stats.TopArtistsByTracks.Add(new ArtistStat { Name = pair.Key, Value = pair.Value });
 			}
 
-			// Most played tracks
+			// Most played tracks (ranked by net plays = PlayCount - SkipCount)
 			int trackLimit = 200;
 			List<TrackInfo> sortedByPlayCount = new List<TrackInfo>(allTracks);
-			sortedByPlayCount.Sort(CompareTrackByPlayCountDescending);
+			sortedByPlayCount.Sort(CompareTrackByNetPlaysDescending);
 			for (int trackIndex = 0; trackIndex < sortedByPlayCount.Count; trackIndex++)
 			{
 				TrackInfo track = sortedByPlayCount[trackIndex];
-				if (trackIndex >= trackLimit || track.Score.PlayCount == 0)
+				int netPlays = track.Score.PlayCount - track.Score.SkipCount;
+				if (trackIndex >= trackLimit || netPlays <= 0)
 				{
 					break;
 				}
@@ -325,7 +329,7 @@ namespace Pulse.Data
 				{
 					Title = track.Title,
 					Artist = track.Artist,
-					Value = track.Score.PlayCount
+					Value = netPlays
 				});
 			}
 
@@ -389,9 +393,11 @@ namespace Pulse.Data
 			return string.Compare(leftKey, rightKey, StringComparison.Ordinal);
 		}
 
-		private static int CompareTrackByPlayCountDescending(TrackInfo left, TrackInfo right)
+		private static int CompareTrackByNetPlaysDescending(TrackInfo left, TrackInfo right)
 		{
-			return right.Score.PlayCount.CompareTo(left.Score.PlayCount);
+			int leftNet = left.Score.PlayCount - left.Score.SkipCount;
+			int rightNet = right.Score.PlayCount - right.Score.SkipCount;
+			return rightNet.CompareTo(leftNet);
 		}
 
 		private static int CompareTrackBySkipCountDescending(TrackInfo left, TrackInfo right)
