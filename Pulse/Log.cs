@@ -24,7 +24,9 @@ public class Log
 	static void OpenNewLogFile()
 	{
 		if (s_fileWriter != null)
+		{
 			s_fileWriter.Close();
+		}
 
 		string filename = Path.Combine(s_logDirectory, "log_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt");
 		s_fileWriter = new StreamWriter(filename, false);
@@ -38,7 +40,9 @@ public class Log
 	{
 		string[] files = Directory.GetFiles(s_logDirectory, "log_*.txt");
 		if (files.Length <= s_maxFiles)
+		{
 			return;
+		}
 
 		Array.Sort(files);
 		for (int i = 0; i < files.Length - s_maxFiles; i++)
@@ -50,7 +54,9 @@ public class Log
 		s_fileWriter.WriteLine(line);
 		s_currentSize += line.Length + 2;
 		if (s_currentSize >= s_maxFileSize)
+		{
 			OpenNewLogFile();
+		}
 	}
 
 	static void LogInternal(int device, string message, LogType logType, string filePath, string memberName)
@@ -72,13 +78,19 @@ public class Log
 
 			string deviceID = "[dID" + device.ToString() + "]";
 			if (device < 0)
+			{
 				deviceID = "[HOST]";
+			}
 			string line = deviceID + "[" + logType.ToString() + "][" + timestamp + "][" + caller + "." + memberName + "] " + message;
 			if (useColor)
+			{
 				Console.ForegroundColor = color;
+			}
 			Console.WriteLine(line);
 			if (useColor)
+			{
 				Console.ResetColor();
+			}
 			WriteToFile(line);
 		}
 	}

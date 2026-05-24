@@ -350,7 +350,9 @@ namespace Pulse.Spotify
 		{
 			string credentialRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Pulse/Spotify");
 			if (!Directory.Exists(credentialRoot))
+			{
 				Directory.CreateDirectory(credentialRoot);
+			}
 			return credentialRoot;
 
 		}

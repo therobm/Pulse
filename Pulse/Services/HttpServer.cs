@@ -47,7 +47,9 @@ namespace Assistant.Services
 						Log.Info(-1, "HTTPS is enabled");
 					}
 					else
+					{
 						Log.Warning(-1, "HTTPS is disabled");
+					}
 				});
 				options.AllowSynchronousIO = true;
 			});
@@ -95,7 +97,9 @@ namespace Assistant.Services
 						string pulseDir = Path.Combine(AppContext.BaseDirectory, "Content", "web");
 						string fileName = Path.GetFileName(path);
 						if (string.IsNullOrEmpty(fileName))
+						{
 							fileName = "pulse.html";
+						}
 
 						string filePath = Path.Combine(pulseDir, fileName);
 						if (File.Exists(filePath))
@@ -154,15 +158,42 @@ namespace Assistant.Services
 		private string GetContentTypeForFile(string filePath)
 		{
 			string extension = Path.GetExtension(filePath).ToLower();
-			if (extension == ".html") return "text/html; charset=utf-8";
-			if (extension == ".css") return "text/css";
-			if (extension == ".js") return "application/javascript";
-			if (extension == ".png") return "image/png";
-			if (extension == ".jpg" || extension == ".jpeg") return "image/jpeg";
-			if (extension == ".svg") return "image/svg+xml";
-			if (extension == ".ico") return "image/x-icon";
-			if (extension == ".woff2") return "font/woff2";
-			if (extension == ".json") return "application/json";
+			if (extension == ".html")
+			{
+				return "text/html; charset=utf-8";
+			}
+			if (extension == ".css")
+			{
+				return "text/css";
+			}
+			if (extension == ".js")
+			{
+				return "application/javascript";
+			}
+			if (extension == ".png")
+			{
+				return "image/png";
+			}
+			if (extension == ".jpg" || extension == ".jpeg")
+			{
+				return "image/jpeg";
+			}
+			if (extension == ".svg")
+			{
+				return "image/svg+xml";
+			}
+			if (extension == ".ico")
+			{
+				return "image/x-icon";
+			}
+			if (extension == ".woff2")
+			{
+				return "font/woff2";
+			}
+			if (extension == ".json")
+			{
+				return "application/json";
+			}
 			return "application/octet-stream";
 		}
 

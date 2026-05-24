@@ -66,12 +66,16 @@ namespace Pulse.MusicLibrary
 				if (!string.IsNullOrEmpty(userName) && ParentArtist.UserWeightedScore.TryGetValue(userName, out float artistScore))
 				{
 					if (artistScore > 0)
+					{
 						score = score * 0.75f + artistScore * 0.25f;
+					}
 				}
 				else
 				{
 					if (ParentArtist.WeightedScore > 0)
+					{
 						score = score * 0.75f + ParentArtist.WeightedScore * 0.25f;
+					}
 				}
 			}
 			return score;

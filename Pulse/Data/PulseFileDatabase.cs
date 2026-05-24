@@ -104,7 +104,9 @@ namespace Pulse.Data
 						if (track.Score.PlayCount > 0)
 						{
 							if (track.Score.WeightedScore > 1)
+							{
 								track.Score.WeightedScore = 1;
+							}
 
 							totalScore += track.Score.WeightedScore;
 							scoredCount++;
@@ -121,7 +123,9 @@ namespace Pulse.Data
 									userCounts[userName] = 0;
 								}
 								if (userData.WeightedScore > 1)
+								{
 									userData.WeightedScore = 1;
+								}
 
 								userTotals[userName] += userData.WeightedScore;
 								userCounts[userName]++;
@@ -269,7 +273,9 @@ namespace Pulse.Data
 				}
 			}
 			if (needSave)
+			{
 				SaveRecord(m_artistsPath, record.Id, record);
+			}
 		}
 
 		private void LoadPlaylists()
@@ -325,21 +331,29 @@ namespace Pulse.Data
 		{
 			TrackInfo track;
 			if (!m_tracks.TryGetValue(trackId, out track))
+			{
 				return false;
+			}
 
 			if (!base.RemoveTrack(trackId))
+			{
 				return false;
+			}
 
 			string trackFile = Path.Combine(m_tracksPath, trackId + ".json");
 			if (File.Exists(trackFile))
+			{
 				File.Delete(trackFile);
+			}
 
 			// if album was removed, delete its file too
 			if (!m_albums.ContainsKey(track.AlbumId))
 			{
 				string albumFile = Path.Combine(m_albumsPath, track.AlbumId + ".json");
 				if (File.Exists(albumFile))
+				{
 					File.Delete(albumFile);
+				}
 			}
 
 			// if artist was removed, delete its file too
@@ -347,7 +361,9 @@ namespace Pulse.Data
 			{
 				string artistFile = Path.Combine(m_artistsPath, track.ArtistId + ".json");
 				if (File.Exists(artistFile))
+				{
 					File.Delete(artistFile);
+				}
 			}
 			return true;
 		}
@@ -356,7 +372,9 @@ namespace Pulse.Data
 			base.DeletePlaylist(playlistId);
 			string playlistFile = Path.Combine(m_playlistsPath, playlistId + ".json");
 			if (File.Exists(playlistFile))
+			{
 				File.Delete(playlistFile);
+			}
 		}
 
 		public void SaveAnalytics()

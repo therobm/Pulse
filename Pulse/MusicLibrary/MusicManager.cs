@@ -71,7 +71,9 @@ namespace Pulse.MusicLibrary
 		public void OnTrackStreamed(string userName, string trackId)
 		{
 			if (m_nowPlayingTrackId == trackId)
+			{
 				return;
+			}
 
 			if (m_nowPlayingTrackId != null && m_nowPlayingTrackId != trackId)
 			{
@@ -144,7 +146,9 @@ namespace Pulse.MusicLibrary
 			{
 				string user = "na";
 				if (!string.IsNullOrEmpty(userName))
+				{
 					user = userName;
+				}
 				Log.Info(-1, "[" + user + "] Streaming: " + newTrack.Artist + ":" + newTrack.Title);
 			}
 		}
@@ -334,10 +338,14 @@ namespace Pulse.MusicLibrary
 		{
 			string dbPath = Path.Combine(m_config.MusicPath, "PulseData/Staging");
 			if (!System.Diagnostics.Debugger.IsAttached)
+			{
 				dbPath = Path.Combine(m_config.MusicPath, "PulseData/Production");
+			}
 
 			if (!Directory.Exists(dbPath))
+			{
 				Directory.CreateDirectory(dbPath);
+			}
 
 			PulseFileDatabase fileDB = new PulseFileDatabase(dbPath, this);
 			m_db = fileDB;
@@ -546,14 +554,18 @@ namespace Pulse.MusicLibrary
 		{
 			float trackDuration = track.DurationSeconds;
 			if (trackDuration == 0)
+			{
 				trackDuration = 5 * 60; ///use a 5 minute track as a best guess
+			}
 			if (track.Score.PlayCount > 0 && track.DurationSeconds > 0)
 			{
 				float averageListenRatio = (float)(track.Score.TotalListenSeconds / (track.Score.PlayCount * trackDuration));
 				float confidence = (float)track.Score.PlayCount / (track.Score.PlayCount + 5);
 				track.Score.WeightedScore = (averageListenRatio * confidence) + (0.5f * (1f - confidence));
 				if (track.Score.WeightedScore > 1)
+				{
 					track.Score.WeightedScore = 1;
+				}
 			}
 
 			foreach (string user in track.UserScore.Keys)
@@ -567,7 +579,9 @@ namespace Pulse.MusicLibrary
 				float userConfidence = (float)track.UserScore[user].PlayCount / (track.UserScore[user].PlayCount + 5);
 				track.UserScore[user].WeightedScore = (userListenRatio * userConfidence) + (0.5f * (1f - userConfidence));
 				if (track.UserScore[user].WeightedScore > 1)
+				{
 					track.UserScore[user].WeightedScore = 1;
+				}
 			}
 			track.m_bIsDirty = true;
 		}
@@ -588,8 +602,14 @@ namespace Pulse.MusicLibrary
 
 		private int LevenshteinDistance(string source, string target)
 		{
-			if (source.Length == 0) return target.Length;
-			if (target.Length == 0) return source.Length;
+			if (source.Length == 0)
+			{
+				return target.Length;
+			}
+			if (target.Length == 0)
+			{
+				return source.Length;
+			}
 
 			int sourceLength = source.Length;
 			int targetLength = target.Length;
@@ -614,8 +634,14 @@ namespace Pulse.MusicLibrary
 					int replaceCost = matrix[row - 1, col - 1] + cost;
 
 					int minimum = deleteCost;
-					if (insertCost < minimum) minimum = insertCost;
-					if (replaceCost < minimum) minimum = replaceCost;
+					if (insertCost < minimum)
+					{
+						minimum = insertCost;
+					}
+					if (replaceCost < minimum)
+					{
+						minimum = replaceCost;
+					}
 
 					matrix[row, col] = minimum;
 				}

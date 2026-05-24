@@ -255,7 +255,10 @@ namespace Pulse.Data
 			int artistIndex = 0;
 			foreach (KeyValuePair<string, int> pair in artistPlayCounts.OrderByDescending(p => p.Value))
 			{
-				if (artistIndex >= artistLimit || pair.Value == 0) break;
+				if (artistIndex >= artistLimit || pair.Value == 0)
+				{
+					break;
+				}
 				stats.TopArtistsByPlays.Add(new ArtistStat { Name = pair.Key, Value = pair.Value });
 				artistIndex++;
 			}
@@ -264,7 +267,10 @@ namespace Pulse.Data
 			artistIndex = 0;
 			foreach (KeyValuePair<string, int> pair in artistTrackCounts.OrderByDescending(p => p.Value))
 			{
-				if (artistIndex >= artistLimit) break;
+				if (artistIndex >= artistLimit)
+				{
+					break;
+				}
 				stats.TopArtistsByTracks.Add(new ArtistStat { Name = pair.Key, Value = pair.Value });
 				artistIndex++;
 			}
@@ -274,7 +280,10 @@ namespace Pulse.Data
 			int trackIndex = 0;
 			foreach (TrackInfo track in allTracks.OrderByDescending(t => t.Score.PlayCount))
 			{
-				if (trackIndex >= trackLimit || track.Score.PlayCount == 0) break;
+				if (trackIndex >= trackLimit || track.Score.PlayCount == 0)
+				{
+					break;
+				}
 				stats.MostPlayed.Add(new TrackStat
 				{
 					Title = track.Title,
@@ -288,7 +297,10 @@ namespace Pulse.Data
 			trackIndex = 0;
 			foreach (TrackInfo track in allTracks.OrderByDescending(t => t.Score.SkipCount))
 			{
-				if (trackIndex >= trackLimit || track.Score.SkipCount == 0) break;
+				if (trackIndex >= trackLimit || track.Score.SkipCount == 0)
+				{
+					break;
+				}
 				stats.MostSkipped.Add(new TrackStat
 				{
 					Title = track.Title,
@@ -305,7 +317,10 @@ namespace Pulse.Data
 
 				float score = track.GetScore(null);
 
-				if (trackIndex >= trackLimit || score <= 0f) break;
+				if (trackIndex >= trackLimit || score <= 0f)
+				{
+					break;
+				}
 				stats.HighestScored.Add(new TrackStat
 				{
 					Title = track.Title,

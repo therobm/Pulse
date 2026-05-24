@@ -266,7 +266,9 @@ namespace Pulse.Data
 		{
 			TrackInfo track;
 			if (!m_tracks.TryRemove(trackId, out track))
+			{
 				return false;
+			}
 
 			AlbumInfo album;
 			if (m_albums.TryGetValue(track.AlbumId, out album))
@@ -298,7 +300,9 @@ namespace Pulse.Data
 		{
 			RebuildSmartPlaylist("Shared", null);
 			if (!string.IsNullOrEmpty(userName)) 
+			{
 				RebuildSmartPlaylist(userName, userName);
+			}
 		}
 
 		private void RebuildSmartPlaylist(string playlistName, string userName)
@@ -312,7 +316,9 @@ namespace Pulse.Data
 			foreach (ArtistInfo artistInfo in m_artists.Values)
 			{
 				if (artistInfo.WeightedScore > 0)
+				{
 					scoredArtists.Add(artistInfo);
+				}
 			}
 
 			SmartPlaylist.CategorizeTracks(m_tracks.Values, userName, scoredTracks, unplayedTracks);

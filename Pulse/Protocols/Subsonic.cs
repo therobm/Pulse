@@ -103,7 +103,9 @@ namespace Pulse.SubsonicService
 			{
 				AlbumInfo album = m_musicManager.Db.GetAlbum(albumId);
 				if (album != null)
+				{
 					candidates.AddRange(album.Tracks);
+				}
 			}
 			else if (!string.IsNullOrEmpty(artistId))
 			{
@@ -393,7 +395,9 @@ namespace Pulse.SubsonicService
 				{
 					TrackInfo track = tracks[trackIndex];
 					if (track == null)
+					{
 						continue;
+					}
 
 					if (track.Title.ToLowerInvariant().Contains(lowerQuery) ||
 						track.Artist.ToLowerInvariant().Contains(lowerQuery))
@@ -825,7 +829,9 @@ namespace Pulse.SubsonicService
 			{
 				TrackInfo track = m_musicManager.Db.GetTrack(songIds[index]);
 				if (track == null)
+				{
 					continue;
+				}
 				playlist.TrackIds.Add(track.Id);
 				totalDuration = totalDuration + track.DurationSeconds;
 			}
@@ -870,10 +876,14 @@ namespace Pulse.SubsonicService
 			}
 
 			if (!string.IsNullOrEmpty(name))
+			{
 				playlist.Name = name;
+			}
 
 			if (!string.IsNullOrEmpty(comment))
+			{
 				playlist.Comment = comment;
+			}
 
 			// Remove by index descending so indices don't shift
 			List<int> parsedIndices = new List<int>();
@@ -881,21 +891,27 @@ namespace Pulse.SubsonicService
 			{
 				int parsed;
 				if (int.TryParse(indicesToRemove[index], out parsed))
+				{
 					parsedIndices.Add(parsed);
+				}
 			}
 			parsedIndices.Sort((left, right) => right.CompareTo(left));
 			for (int index = 0; index < parsedIndices.Count; index++)
 			{
 				int removeIndex = parsedIndices[index];
 				if (removeIndex >= 0 && removeIndex < playlist.TrackIds.Count)
+				{
 					playlist.TrackIds.RemoveAt(removeIndex);
+				}
 			}
 
 			for (int index = 0; index < songIdsToAdd.Count; index++)
 			{
 				TrackInfo track = m_musicManager.Db.GetTrack(songIdsToAdd[index]);
 				if (track == null)
+				{
 					continue;
+				}
 				playlist.TrackIds.Add(track.Id);
 			}
 
@@ -905,7 +921,9 @@ namespace Pulse.SubsonicService
 			{
 				TrackInfo track = m_musicManager.Db.GetTrack(playlist.TrackIds[index]);
 				if (track != null)
+				{
 					totalDuration = totalDuration + track.DurationSeconds;
+				}
 			}
 			playlist.DurationSeconds = totalDuration;
 

@@ -69,7 +69,9 @@ namespace Pulse.MusicLibrary
 			for (int i = 0; i < scoredArtists.Count; i++)
 			{
 				if (artistScores.ContainsKey(scoredArtists[i].Id))
+				{
 					artistScores.Add(scoredArtists[i].Id, 0);
+				}
 				float score;
 				if (!string.IsNullOrEmpty(userName) && scoredArtists[i].UserWeightedScore != null && scoredArtists[i].UserWeightedScore.TryGetValue(userName, out score))
 				{
