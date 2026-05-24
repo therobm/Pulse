@@ -53,7 +53,17 @@ public class Log
 			OpenNewLogFile();
 	}
 
-	static void LogInternal(int device, string message, LogType logType, string filePath, string memberName, ConsoleColor? color = null)
+	static void LogInternal(int device, string message, LogType logType, string filePath, string memberName)
+	{
+		LogInternalWithColor(device, message, logType, filePath, memberName, ConsoleColor.Gray, false);
+	}
+
+	static void LogInternal(int device, string message, LogType logType, string filePath, string memberName, ConsoleColor color)
+	{
+		LogInternalWithColor(device, message, logType, filePath, memberName, color, true);
+	}
+
+	static void LogInternalWithColor(int device, string message, LogType logType, string filePath, string memberName, ConsoleColor color, bool useColor)
 	{
 		lock (s_consoleLock)
 		{
@@ -64,10 +74,10 @@ public class Log
 			if (device < 0)
 				deviceID = "[HOST]";
 			string line = deviceID + "[" + logType.ToString() + "][" + timestamp + "][" + caller + "." + memberName + "] " + message;
-			if (color != null)
-				Console.ForegroundColor = color.Value;
+			if (useColor)
+				Console.ForegroundColor = color;
 			Console.WriteLine(line);
-			if (color != null)
+			if (useColor)
 				Console.ResetColor();
 			WriteToFile(line);
 		}

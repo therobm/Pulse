@@ -47,7 +47,7 @@ namespace Pulse.MusicLibrary
 			}
 		}
 
-		public void Run(string musicPath, string cachePath = null)
+		public void Run(string musicPath)
 		{
 			if (m_scanning)
 			{
