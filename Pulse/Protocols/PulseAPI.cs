@@ -14,7 +14,6 @@ namespace Pulse.Protocols
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 		private object m_recentLock = new object();
-		private int m_maxRecent = 50;
 
 		public PulseAPI(PulseService pulse, MusicManager musicManager)
 		{
@@ -24,44 +23,6 @@ namespace Pulse.Protocols
 		}
 
 	
-
-		public void OnTrackPlayedA(string user, string trackId)
-		{
-			TrackInfo track = m_musicManager.GetTrack(trackId);
-			if (track == null) 
-			{ 
-				return; 
-			}
-
-			track.Score.PlayCount = track.Score.PlayCount + 1;
-			track.LastPlayed = DateTime.UtcNow;
-
-			if (user != null)
-			{
-				if (!track.UserScore.ContainsKey(user))
-				{
-					track.UserScore[user] = new ScoreData();
-				}
-				track.UserScore[user].PlayCount = track.UserScore[user].PlayCount + 1;
-			}
-
-			int artistCount = 0;
-			PulseAnalyticsInfo analytics = m_musicManager.GetAnalytics();
-
-			analytics.ArtistPlayCounts.TryGetValue(track.ArtistId, out artistCount);
-			analytics.ArtistPlayCounts[track.ArtistId] = artistCount + 1;
-
-			lock (m_recentLock)
-			{
-				analytics.RecentlyPlayed.Remove(trackId);
-				analytics.RecentlyPlayed.Insert(0, trackId);
-				if (analytics.RecentlyPlayed.Count > m_maxRecent)
-				{
-					analytics.RecentlyPlayed.RemoveAt(analytics.RecentlyPlayed.Count - 1);
-				}
-			}
-			analytics.m_bIsDirty = true;
-		}
 
 		public IResult HandleRecentlyPlayed(HttpContext context)
 		{
@@ -103,7 +64,7 @@ namespace Pulse.Protocols
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 
 			List<KeyValuePair<string, int>> sorted = new List<KeyValuePair<string, int>>(analytics.ArtistPlayCounts);
-			sorted.Sort((left, right) => right.Value.CompareTo(left.Value));
+			sorted.Sort(CompareArtistPlayCountDescending);
 
 			List<object> artists = new List<object>();
 			int limit = Math.Min(count, sorted.Count);
@@ -112,13 +73,18 @@ namespace Pulse.Protocols
 				ArtistInfo artist = m_musicManager.GetArtist(sorted[idx].Key);
 				if (artist != null)
 				{
+					string coverArt = null;
+					if (artist.Albums.Count > 0)
+					{
+						coverArt = artist.Albums[0].CoverArtId;
+					}
 					artists.Add(new
 					{
 						id = artist.Id,
 						name = artist.Name,
 						albumCount = artist.Albums.Count,
 						playCount = sorted[idx].Value,
-						coverArt = artist.Albums.Count > 0 ? artist.Albums[0].CoverArtId : null
+						coverArt = coverArt
 					});
 				}
 			}
@@ -132,7 +98,7 @@ namespace Pulse.Protocols
 			string user = context.Request.Query["u"].FirstOrDefault();
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
-			all.Sort((left, right) => right.SongCount.CompareTo(left.SongCount));
+			all.Sort(ComparePlaylistSongCountDescending);
 
 			List<object> playlists = new List<object>();
 			int limit = Math.Min(count, all.Count);
@@ -143,12 +109,22 @@ namespace Pulse.Protocols
 				{
 					id = playlist.Id,
 					name = playlist.Name,
-					songCount = playlist.SongCount,
+					songCount = playlist.GetSongCount(),
 					duration = playlist.DurationSeconds
 				});
 			}
 
 			return Results.Json(new { playlists = playlists });
+		}
+
+		private static int CompareArtistPlayCountDescending(KeyValuePair<string, int> left, KeyValuePair<string, int> right)
+		{
+			return right.Value.CompareTo(left.Value);
+		}
+
+		private static int ComparePlaylistSongCountDescending(PlaylistInfo left, PlaylistInfo right)
+		{
+			return right.GetSongCount().CompareTo(left.GetSongCount());
 		}
 	}
 }

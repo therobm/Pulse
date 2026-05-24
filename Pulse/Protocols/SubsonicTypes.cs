@@ -293,9 +293,9 @@ namespace Pulse.SubsonicService
 			contentType = trackInfo.ContentType;
 			coverArt = trackInfo.CoverArtId;
 			userRating = trackInfo.Rating;
-			if (user != null && trackInfo.Starred.ContainsKey(user))
+			if (user != null && trackInfo.Starred.ContainsKey(user) && trackInfo.Starred[user])
 			{
-				starred = trackInfo.Starred[user] ? DateTime.UtcNow.ToString("o") : null;
+				starred = DateTime.UtcNow.ToString("o");
 			}
 			else
 			{

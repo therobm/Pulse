@@ -6,10 +6,10 @@ namespace Pulse.Data
 {
 	public interface IPulseDatabase
 	{
-		int TrackCount { get; }
-		int AlbumCount { get; }
-		int ArtistCount { get; }
-		PulseAnalyticsInfo Analytics { get; }
+		int GetTrackCount();
+		int GetAlbumCount();
+		int GetArtistCount();
+		PulseAnalyticsInfo GetAnalytics();
 
 		TrackInfo GetTrack(string id);
 		AlbumInfo GetAlbum(string id);
@@ -40,10 +40,22 @@ namespace Pulse.Data
 
 	public abstract class PulseDatabaseBase : IPulseDatabase
 	{
-		public int TrackCount { get { return m_tracks.Count; } }
-		public int AlbumCount { get { return m_albums.Count; } }
-		public int ArtistCount { get { return m_artists.Count; } }
-		public PulseAnalyticsInfo Analytics { get { return m_analytics; } }
+		public int GetTrackCount()
+		{
+			return m_tracks.Count;
+		}
+		public int GetAlbumCount()
+		{
+			return m_albums.Count;
+		}
+		public int GetArtistCount()
+		{
+			return m_artists.Count;
+		}
+		public PulseAnalyticsInfo GetAnalytics()
+		{
+			return m_analytics;
+		}
 
 		protected ConcurrentDictionary<string, TrackInfo> m_tracks = new ConcurrentDictionary<string, TrackInfo>();
 		protected ConcurrentDictionary<string, AlbumInfo> m_albums = new ConcurrentDictionary<string, AlbumInfo>();
@@ -86,10 +98,15 @@ namespace Pulse.Data
 			return new List<AlbumInfo>(m_albums.Values);
 		}
 
+		private static int CompareArtistByName(ArtistInfo left, ArtistInfo right)
+		{
+			return string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+		}
+
 		public List<ArtistInfo> GetAllArtists()
 		{
 			List<ArtistInfo> list = new List<ArtistInfo>(m_artists.Values);
-			list.Sort((left, right) => string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase));
+			list.Sort(CompareArtistByName);
 			return list;
 		}
 
@@ -266,12 +283,20 @@ namespace Pulse.Data
 		{
 			TrackInfo track;
 			if (!m_tracks.TryRemove(trackId, out track))
+			{
 				return false;
+			}
 
 			AlbumInfo album;
 			if (m_albums.TryGetValue(track.AlbumId, out album))
 			{
-				album.Tracks.RemoveAll(t => t.Id == trackId);
+				for (int trackIndex = album.Tracks.Count - 1; trackIndex >= 0; trackIndex--)
+				{
+					if (album.Tracks[trackIndex].Id == trackId)
+					{
+						album.Tracks.RemoveAt(trackIndex);
+					}
+				}
 
 				if (album.Tracks.Count == 0)
 				{
@@ -280,7 +305,13 @@ namespace Pulse.Data
 					ArtistInfo artist;
 					if (m_artists.TryGetValue(track.ArtistId, out artist))
 					{
-						artist.Albums.RemoveAll(a => a.Id == track.AlbumId);
+						for (int albumIndex = artist.Albums.Count - 1; albumIndex >= 0; albumIndex--)
+						{
+							if (artist.Albums[albumIndex].Id == track.AlbumId)
+							{
+								artist.Albums.RemoveAt(albumIndex);
+							}
+						}
 
 						if (artist.Albums.Count == 0)
 						{
@@ -298,12 +329,14 @@ namespace Pulse.Data
 		{
 			RebuildSmartPlaylist("Shared", null);
 			if (!string.IsNullOrEmpty(userName)) 
+			{
 				RebuildSmartPlaylist(userName, userName);
+			}
 		}
 
 		private void RebuildSmartPlaylist(string playlistName, string userName)
 		{
-			string playlistId = PulseUtility.GenerateID("smart/" + playlistName);
+			string playlistId = MusicManager.GenerateID("smart/" + playlistName);
 
 			List<TrackInfo> scoredTracks = new List<TrackInfo>();
 			List<ArtistInfo> scoredArtists = new List<ArtistInfo>();
@@ -312,7 +345,9 @@ namespace Pulse.Data
 			foreach (ArtistInfo artistInfo in m_artists.Values)
 			{
 				if (artistInfo.WeightedScore > 0)
+				{
 					scoredArtists.Add(artistInfo);
+				}
 			}
 
 			SmartPlaylist.CategorizeTracks(m_tracks.Values, userName, scoredTracks, unplayedTracks);

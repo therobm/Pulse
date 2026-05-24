@@ -23,9 +23,15 @@ namespace Pulse
 
 	public class PulseService
 	{
-		public MusicManager MusicManager { get { return m_musicManager; } }
+		public MusicManager GetMusicManager()
+		{
+			return m_musicManager;
+		}
 
-		public static PulseConfig Config { get { return m_config; } }
+		public static PulseConfig GetConfig()
+		{
+			return m_config;
+		}
 		
 		static PulseConfig m_config;
 		private Subsonic m_subsonic;
@@ -36,10 +42,6 @@ namespace Pulse
 		string m_spotifyRedirectURI = "https://pulse.mccoder.com:32458/spotify/callback";
 
 		public bool IsRunning { get; private set; }
-		public void Initialize()
-		{
-			//stuff and things
-		}
 
 		public void Run(IPulseRouteHost webServer, PulseConfig config)
 		{
@@ -133,42 +135,45 @@ namespace Pulse
 			host.RegisterRoute("pulse/stats.html", HandleStatsPage);
 
 
-			host.RegisterRoute("spotify/callback", (HttpContext context) =>
+			host.RegisterRoute("spotify/callback", HandleSpotifyCallback);
+			host.RegisterRoute("spotify/authorize", HandleSpotifyAuthorize);
+		}
+
+		private void HandleSpotifyCallback(HttpContext context)
+		{
+			string code = context.Request.Query["code"].FirstOrDefault();
+			string userName = context.Request.Query["state"].FirstOrDefault();
+
+			if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(userName))
 			{
-				string code = context.Request.Query["code"].FirstOrDefault();
-				string userName = context.Request.Query["state"].FirstOrDefault();
+				context.Response.StatusCode = 400;
+				byte[] errorBytes = System.Text.Encoding.UTF8.GetBytes("Missing code or state parameter");
+				context.Response.Body.Write(errorBytes, 0, errorBytes.Length);
+				return;
+			}
 
-				if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(userName))
-				{
-					context.Response.StatusCode = 400;
-					byte[] errorBytes = System.Text.Encoding.UTF8.GetBytes("Missing code or state parameter");
-					context.Response.Body.Write(errorBytes, 0, errorBytes.Length);
-					return;
-				}
-
-				SpotifySync sync = GetOrCreateSpotifySync(userName);
-				bool success = sync.HandleCallback(code);
-				if (success)
-				{
-					sync.Start();
-					byte[] successBytes = System.Text.Encoding.UTF8.GetBytes("Spotify authorized for " + userName + "! You can close this window.");
-					context.Response.Body.Write(successBytes, 0, successBytes.Length);
-				}
-				else
-				{
-					context.Response.StatusCode = 500;
-					byte[] failBytes = System.Text.Encoding.UTF8.GetBytes("Authorization failed. Check server logs.");
-					context.Response.Body.Write(failBytes, 0, failBytes.Length);
-				}
-			});
-
-			host.RegisterRoute("spotify/authorize", (HttpContext context) =>
+			SpotifySync sync = GetOrCreateSpotifySync(userName);
+			bool success = sync.HandleCallback(code);
+			if (success)
 			{
-				string userName = context.Request.Path.Value.Split('/').Last();
-				SpotifySync sync = GetOrCreateSpotifySync(userName);
-				string url = sync.GetAuthorizationUrl(userName);
-				context.Response.Redirect(url);
-			});
+				sync.Start();
+				byte[] successBytes = System.Text.Encoding.UTF8.GetBytes("Spotify authorized for " + userName + "! You can close this window.");
+				context.Response.Body.Write(successBytes, 0, successBytes.Length);
+			}
+			else
+			{
+				context.Response.StatusCode = 500;
+				byte[] failBytes = System.Text.Encoding.UTF8.GetBytes("Authorization failed. Check server logs.");
+				context.Response.Body.Write(failBytes, 0, failBytes.Length);
+			}
+		}
+
+		private void HandleSpotifyAuthorize(HttpContext context)
+		{
+			string userName = context.Request.Path.Value.Split('/').Last();
+			SpotifySync sync = GetOrCreateSpotifySync(userName);
+			string url = sync.GetAuthorizationUrl(userName);
+			context.Response.Redirect(url);
 		}
 
 		private IResult HandleStats(HttpContext context)
@@ -211,7 +216,7 @@ namespace Pulse
 					string fileName = Path.GetFileNameWithoutExtension(credFiles[index]);
 					string userName = fileName.Substring("spotify_".Length);
 					SpotifySync sync = GetOrCreateSpotifySync(userName);
-					if (sync.IsAuthorized)
+					if (sync.IsAuthorized())
 					{
 						sync.Start();
 						Console.WriteLine("Pulse: Started Spotify sync for " + userName);
@@ -278,35 +283,35 @@ namespace Pulse
 
 			for (int i = 0; i < interfaces.Length; i++)
 			{
-				NetworkInterface nic = interfaces[i];
+				NetworkInterface networkInterface = interfaces[i];
 
-				if (nic.OperationalStatus != OperationalStatus.Up)
+				if (networkInterface.OperationalStatus != OperationalStatus.Up)
 				{
 					continue;
 				}
 
-				if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+				if (networkInterface.NetworkInterfaceType == NetworkInterfaceType.Loopback)
 				{
 					continue;
 				}
 
 				// Skip vEthernet, Docker, WSL, etc.
-				string nicName = nic.Name.ToLowerInvariant();
-				if (nicName.Contains("virtual") || nicName.Contains("vethernet") || nicName.Contains("docker"))
+				string networkInterfaceName = networkInterface.Name.ToLowerInvariant();
+				if (networkInterfaceName.Contains("virtual") || networkInterfaceName.Contains("vethernet") || networkInterfaceName.Contains("docker"))
 				{
 					continue;
 				}
 
-				IPInterfaceProperties properties = nic.GetIPProperties();
+				IPInterfaceProperties properties = networkInterface.GetIPProperties();
 				UnicastIPAddressInformationCollection unicast = properties.UnicastAddresses;
 
 				for (int j = 0; j < unicast.Count; j++)
 				{
-					UnicastIPAddressInformation addr = unicast[j];
+					UnicastIPAddressInformation address = unicast[j];
 
-					if (addr.Address.AddressFamily == AddressFamily.InterNetwork)
+					if (address.Address.AddressFamily == AddressFamily.InterNetwork)
 					{
-						return addr.Address;
+						return address.Address;
 					}
 				}
 			}

@@ -13,18 +13,89 @@ namespace Pulse.MusicLibrary
 
 	public class MusicManager
 	{
-		public int TrackCount { get { return m_db.TrackCount; } }
-		public int AlbumCount { get { return m_db.AlbumCount; } }
-		public int ArtistCount { get { return m_db.ArtistCount; } }
-		
-		public bool IsScanning { get { return m_scanning; } }
+		public int GetTrackCount()
+		{
+			return m_database.GetTrackCount();
+		}
+		public int GetAlbumCount()
+		{
+			return m_database.GetAlbumCount();
+		}
+		public int GetArtistCount()
+		{
+			return m_database.GetArtistCount();
+		}
 
-		private IPulseDatabase m_db;
+		public bool GetIsScanning()
+		{
+			return m_scanning;
+		}
+
+		public List<ArtistInfo> GetAllArtists()
+		{
+			return m_database.GetAllArtists();
+		}
+
+		public List<TrackInfo> GetAllTracks()
+		{
+			return m_database.GetAllTracks();
+		}
+		public List<AlbumInfo> GetAllAlbums()
+		{
+			return m_database.GetAllAlbums();
+		}
+
+		public PlaylistInfo GetPlaylist(string id)
+		{
+			return m_database.GetPlaylist(id);
+		}
+
+		public List<PlaylistInfo> GetAllPlaylists(string userName)
+		{
+			return m_database.GetAllPlaylists(userName);
+		}
+
+		public List<TrackInfo> GetPlaylistTracks(string playlistId)
+		{
+			return m_database.GetPlaylistTracks(playlistId);
+		}
+
+		public void SetRating(string trackId, int rating)
+		{
+			m_database.SetRating(trackId, rating);
+		}
+
+		public void UpdateStar(string userName, string trackId, string albumId, string artistId, bool isStarred)
+		{
+			m_database.UpdateStar(userName, trackId, albumId, artistId, isStarred);
+		}
+
+		public PulseAnalyticsInfo GetAnalytics()
+		{
+			return m_database.GetAnalytics();
+		}
+
+		public TrackInfo GetTrack(string id)
+		{
+			return m_database.GetTrack(id);
+		}
+
+		public AlbumInfo GetAlbum(string id)
+		{
+			return m_database.GetAlbum(id);
+		}
+
+		public ArtistInfo GetArtist(string id)
+		{
+			return m_database.GetArtist(id);
+		}
+
+
+		private IPulseDatabase m_database;
 		private object m_missingLock = new object();
 		private LidarrSync m_lidarrSync;
 		private Thread m_scanThread;
 		private bool m_scanning;
-		private string m_cachePath;
 		private object m_scanLock = new object();
 		private int m_processedSinceLastSave = 0;
 		private string m_nowPlayingTrackId;
@@ -37,70 +108,38 @@ namespace Pulse.MusicLibrary
 			m_lidarrSync = new LidarrSync(config.LidarrURL, config.LidarrApiKey);
 		}
 
-		public TrackInfo GetTrack(string id)
+		public static string GenerateID(string input)
 		{
-			return m_db.GetTrack(id);
+			using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
+			{
+				byte[] inputBytes = System.Text.Encoding.UTF8.GetBytes(input);
+				byte[] hashBytes = md5.ComputeHash(inputBytes);
+				return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+			}
 		}
 
-		public List<ArtistInfo> GetAllArtists()
-		{
-			return m_db.GetAllArtists();
-		}
-
-		public List<TrackInfo> GetAllTracks()
-		{
-			return m_db.GetAllTracks();
-		}
-		public List<AlbumInfo> GetAllAlbums()
-		{
-			return m_db.GetAllAlbums();
-		}
-
-		public PlaylistInfo GetPlaylist(string id)
-		{
-			return m_db.GetPlaylist(id);
-		}
-
-		public List<PlaylistInfo> GetAllPlaylists(string userName)
-		{
-			return m_db.GetAllPlaylists(userName);
-		}
-
-		public List<TrackInfo> GetPlaylistTracks(string playlistId)
-		{
-			return m_db.GetPlaylistTracks(playlistId);
-		}
-
-		public void SetRating(string trackId, int rating)
-		{
-			m_db.SetRating(trackId, rating);
-		}
-
-		public void Star(string userName, string trackId, string albumId, string artistId)
-		{
-			m_db.UpdateStar(userName, trackId, albumId, artistId, true);
-		}
-
-		public void Unstar(string userName, string trackId, string albumId, string artistId)
-		{
-			m_db.UpdateStar(userName, trackId, albumId, artistId, false);
-		}
-
-		public void Run(string musicPath, string cachePath = null)
+		public void Run(string musicPath)
 		{
 			if (m_scanning)
 			{
 				return;
 			}
 
-			m_cachePath = cachePath ?? Path.Combine(musicPath, "pulse_cache.json");
 			LoadDB();
 			DebugDuplicates();
-			m_scanThread = new Thread(() => RunScan(musicPath));
+			m_pendingScanPath = musicPath;
+			m_scanThread = new Thread(RunScanThread);
 			m_scanThread.IsBackground = true;
 			m_scanThread.Name = "Pulse.MusicScan";
 			m_scanning = true;
 			m_scanThread.Start();
+		}
+
+		private string m_pendingScanPath;
+
+		private void RunScanThread()
+		{
+			RunScan(m_pendingScanPath);
 		}
 
 		public void OnPlaylistSyncComplete()
@@ -111,11 +150,13 @@ namespace Pulse.MusicLibrary
 		public void OnTrackStreamed(string userName, string trackId)
 		{
 			if (m_nowPlayingTrackId == trackId)
+			{
 				return;
+			}
 
 			if (m_nowPlayingTrackId != null && m_nowPlayingTrackId != trackId)
 			{
-				TrackInfo previousTrack = m_db.GetTrack(m_nowPlayingTrackId);
+				TrackInfo previousTrack = m_database.GetTrack(m_nowPlayingTrackId);
 				if (previousTrack != null)
 				{
 					double elapsedSeconds = (DateTime.UtcNow - m_nowPlayingStartTime).TotalSeconds;
@@ -148,7 +189,7 @@ namespace Pulse.MusicLibrary
 						}
 					}
 
-					PulseAnalyticsInfo analytics = m_db.Analytics;
+					PulseAnalyticsInfo analytics = m_database.GetAnalytics();
 					int artistCount = 0;
 					analytics.ArtistPlayCounts.TryGetValue(previousTrack.ArtistId, out artistCount);
 					analytics.ArtistPlayCounts[previousTrack.ArtistId] = artistCount + 1;
@@ -163,6 +204,11 @@ namespace Pulse.MusicLibrary
 					RecalculateScore(previousTrack);
 
 					bool skipped = elapsedSeconds < threshold;
+					string skipSuffix = "";
+					if (skipped)
+					{
+						skipSuffix = " SKIPPED";
+					}
 					Log.Info(-1, "Finalized: " + previousTrack.Artist + ":" + previousTrack.Title
 						+ " elapsed=" + elapsedSeconds.ToString("F1") + "s"
 						+ " duration=" + previousTrack.DurationSeconds + "s"
@@ -170,7 +216,7 @@ namespace Pulse.MusicLibrary
 						+ " plays=" + previousTrack.Score.PlayCount
 						+ " skips=" + previousTrack.Score.SkipCount
 						+ " score=" + previousTrack.Score.WeightedScore.ToString("F3")
-						+ (skipped ? " SKIPPED" : ""));
+						+ skipSuffix);
 
 					SaveDB();
 				}
@@ -179,32 +225,30 @@ namespace Pulse.MusicLibrary
 			m_nowPlayingTrackId = trackId;
 			m_nowPlayingStartTime = DateTime.UtcNow;
 
-			TrackInfo newTrack = m_db.GetTrack(m_nowPlayingTrackId);
+			TrackInfo newTrack = m_database.GetTrack(m_nowPlayingTrackId);
 			if (newTrack != null)
 			{
 				string user = "na";
 				if (!string.IsNullOrEmpty(userName))
+				{
 					user = userName;
+				}
 				Log.Info(-1, "[" + user + "] Streaming: " + newTrack.Artist + ":" + newTrack.Title);
 			}
 		}
 
-		public PulseAnalyticsInfo GetAnalytics() 
-		{
-			return m_db.Analytics;
-		}
 		public PlaylistInfo ImportPlaylist(string name, List<PlaylistImportEntry> entries)
 		{
 			//Console.WriteLine("Importing playlist: " + name);
 			PlaylistInfo playlist = new PlaylistInfo();
-			playlist.Id = PulseUtility.GenerateID("playlist/" + name);
+			playlist.Id = MusicManager.GenerateID("playlist/" + name);
 			playlist.Name = name;
 
 			int matched = 0;
 			int missed = 0;
 			long totalDuration = 0;
 
-			List<TrackInfo> tracks = m_db.GetAllTracks();
+			List<TrackInfo> tracks = m_database.GetAllTracks();
 			string[] normalizedTrackArtists = new string[tracks.Count];
 			string[] normalizedTrackTitles = new string[tracks.Count];
 			List<string>[] splitTrackArtists = new List<string>[tracks.Count];
@@ -259,7 +303,7 @@ namespace Pulse.MusicLibrary
 			}
 
 			playlist.DurationSeconds = totalDuration;
-			m_db.CreateOrUpdate(playlist);
+			m_database.CreateOrUpdate(playlist);
 			SaveDB();
 
 			//Console.WriteLine("Pulse: Imported playlist \"" + name + "\": " + matched + " matched, " + missed + " missed, " + entries.Count + " total");
@@ -362,13 +406,13 @@ namespace Pulse.MusicLibrary
 
 		public void CreateOrUpdatePlaylist(PlaylistInfo playlist)
 		{
-			m_db.CreateOrUpdate(playlist);
+			m_database.CreateOrUpdate(playlist);
 			SaveDB();
 		}
 
 		public void DeletePlaylist(string playlistId)
 		{
-			m_db.DeletePlaylist(playlistId);
+			m_database.DeletePlaylist(playlistId);
 			SaveDB();
 		}
 
@@ -378,19 +422,23 @@ namespace Pulse.MusicLibrary
 		{
 			string dbPath = Path.Combine(m_config.MusicPath, "PulseData/Staging");
 			if (!System.Diagnostics.Debugger.IsAttached)
+			{
 				dbPath = Path.Combine(m_config.MusicPath, "PulseData/Production");
+			}
 
 			if (!Directory.Exists(dbPath))
+			{
 				Directory.CreateDirectory(dbPath);
+			}
 
 			PulseFileDatabase fileDB = new PulseFileDatabase(dbPath, this);
-			m_db = fileDB;
+			m_database = fileDB;
 			fileDB.Load();
 		}
 
 		private void SaveDB()
 		{
-			m_db.Save();
+			m_database.Save();
 
 			JsonSerializerOptions options = new JsonSerializerOptions
 			{
@@ -416,20 +464,20 @@ namespace Pulse.MusicLibrary
 			foreach (string filePath in Directory.EnumerateFiles(musicPath, "*.*", SearchOption.AllDirectories))
 			{
 				fileCount++;
-				string libraryID = PulseUtility.GenerateID(filePath);
+				string libraryID = MusicManager.GenerateID(filePath);
 
-				if (m_db.TrackExists(libraryID))
+				if (m_database.TrackExists(libraryID))
 				{
 					skippedCount++;
 					continue;
 				}
 
-				string ext = Path.GetExtension(filePath).ToLowerInvariant();
+				string extension = Path.GetExtension(filePath).ToLowerInvariant();
 
 				bool supported = false;
 				for (int extIndex = 0; extIndex < extensions.Length; extIndex++)
 				{
-					if (ext == extensions[extIndex])
+					if (extension == extensions[extIndex])
 					{
 						supported = true;
 						break;
@@ -454,14 +502,14 @@ namespace Pulse.MusicLibrary
 
 			//remove missing files
 			Console.WriteLine("Scanning for deleted tracks...");
-			List<TrackInfo> allTracks = m_db.GetAllTracks();
+			List<TrackInfo> allTracks = m_database.GetAllTracks();
 			for (int index = 0; index < allTracks.Count; index++)
 			{
 				if (!File.Exists(allTracks[index].FilePath))
 				{
 					string artistId = allTracks[index].ArtistId;
-					m_db.RemoveTrack(allTracks[index].Id);
-					ArtistInfo artist = m_db.GetArtist(artistId);
+					m_database.RemoveTrack(allTracks[index].Id);
+					ArtistInfo artist = m_database.GetArtist(artistId);
 					if (artist != null)
 					{
 						artist.m_bIsDirty = true;
@@ -472,7 +520,7 @@ namespace Pulse.MusicLibrary
 
 
 
-			Console.WriteLine("Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_db.TrackCount);
+			Console.WriteLine("Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_database.GetTrackCount());
 			m_scanning = false;
 			SaveDB();
 		}
@@ -490,7 +538,14 @@ namespace Pulse.MusicLibrary
 			{
 				string relativePath = Path.GetRelativePath(musicRoot, filePath);
 				string[] parts = relativePath.Split(Path.DirectorySeparatorChar);
-				artist = parts.Length > 1 ? parts[0] : "Unknown Artist";
+				if (parts.Length > 1)
+				{
+					artist = parts[0];
+				}
+				else
+				{
+					artist = "Unknown Artist";
+				}
 			}
 
 			string album = tagFile.Tag.Album;
@@ -498,7 +553,14 @@ namespace Pulse.MusicLibrary
 			{
 				string relativePath = Path.GetRelativePath(musicRoot, filePath);
 				string[] parts = relativePath.Split(Path.DirectorySeparatorChar);
-				album = parts.Length > 2 ? parts[1] : "Unknown Album";
+				if (parts.Length > 2)
+				{
+					album = parts[1];
+				}
+				else
+				{
+					album = "Unknown Album";
+				}
 			}
 
 			string title = tagFile.Tag.Title;
@@ -507,17 +569,17 @@ namespace Pulse.MusicLibrary
 				title = Path.GetFileNameWithoutExtension(filePath);
 			}
 
-			string artistId = PulseUtility.GenerateID(artist);
-			ArtistInfo artistInfo = m_db.GetOrCreateArtist(artistId, artist);
+			string artistId = MusicManager.GenerateID(artist);
+			ArtistInfo artistInfo = m_database.GetOrCreateArtist(artistId, artist);
 
-			string albumId = PulseUtility.GenerateID(artist + "/" + album);
-			AlbumInfo albumInfo = m_db.GetOrCreateAlbum(albumId, album, artistId, artist, (int)tagFile.Tag.Year, tagFile.Tag.FirstGenre ?? "");
+			string albumId = MusicManager.GenerateID(artist + "/" + album);
+			AlbumInfo albumInfo = m_database.GetOrCreateAlbum(albumId, album, artistId, artist, (int)tagFile.Tag.Year, tagFile.Tag.FirstGenre ?? "");
 
-			string ext = Path.GetExtension(filePath).ToLowerInvariant();
+			string extension = Path.GetExtension(filePath).ToLowerInvariant();
 			FileInfo fileInfo = new FileInfo(filePath);
 
 			TrackInfo track = new TrackInfo();
-			track.Id = PulseUtility.GenerateID(filePath);
+			track.Id = MusicManager.GenerateID(filePath);
 			track.Title = title;
 			track.Artist = artist;
 			track.ArtistId = artistId;
@@ -531,10 +593,10 @@ namespace Pulse.MusicLibrary
 			track.Year = (int)tagFile.Tag.Year;
 			track.DurationSeconds = (int)tagFile.Properties.Duration.TotalSeconds;
 			track.FileSizeBytes = fileInfo.Length;
-			track.Suffix = ext.TrimStart('.');
-			track.ContentType = GetContentType(ext);
+			track.Suffix = extension.TrimStart('.');
+			track.ContentType = GetContentType(extension);
 
-			m_db.AddTrack(track, albumId);
+			m_database.AddTrack(track, albumId);
 			tagFile.Dispose();
 
 			int count = Interlocked.Increment(ref m_processedSinceLastSave);
@@ -549,7 +611,7 @@ namespace Pulse.MusicLibrary
 			int duplicateAlbumTracks = 0;
 			int duplicateArtistAlbums = 0;
 
-			List<AlbumInfo> albums = m_db.GetAllAlbums();
+			List<AlbumInfo> albums = m_database.GetAllAlbums();
 			foreach (AlbumInfo album in albums)
 			{
 				HashSet<string> seenTrackIds = new HashSet<string>();
@@ -563,7 +625,7 @@ namespace Pulse.MusicLibrary
 				}
 			}
 
-			List<ArtistInfo> artists = m_db.GetAllArtists();
+			List<ArtistInfo> artists = m_database.GetAllArtists();
 			foreach (ArtistInfo artist in artists)
 			{
 				HashSet<string> seenAlbumIds = new HashSet<string>();
@@ -583,21 +645,25 @@ namespace Pulse.MusicLibrary
 				totalTracksInAlbums = totalTracksInAlbums + album.Tracks.Count;
 			}
 
-			Console.WriteLine("Pulse: Tracks in dictionary: " + m_db.TrackCount + ", tracks across albums: " + totalTracksInAlbums + ", duplicate tracks: " + duplicateAlbumTracks + ", duplicate albums: " + duplicateArtistAlbums);
+			Console.WriteLine("Pulse: Tracks in dictionary: " + m_database.GetTrackCount() + ", tracks across albums: " + totalTracksInAlbums + ", duplicate tracks: " + duplicateAlbumTracks + ", duplicate albums: " + duplicateArtistAlbums);
 		}
 
 		public void RecalculateScore(TrackInfo track)
 		{
 			float trackDuration = track.DurationSeconds;
 			if (trackDuration == 0)
+			{
 				trackDuration = 5 * 60; ///use a 5 minute track as a best guess
+			}
 			if (track.Score.PlayCount > 0 && track.DurationSeconds > 0)
 			{
 				float averageListenRatio = (float)(track.Score.TotalListenSeconds / (track.Score.PlayCount * trackDuration));
 				float confidence = (float)track.Score.PlayCount / (track.Score.PlayCount + 5);
 				track.Score.WeightedScore = (averageListenRatio * confidence) + (0.5f * (1f - confidence));
 				if (track.Score.WeightedScore > 1)
+				{
 					track.Score.WeightedScore = 1;
+				}
 			}
 
 			foreach (string user in track.UserScore.Keys)
@@ -611,19 +677,11 @@ namespace Pulse.MusicLibrary
 				float userConfidence = (float)track.UserScore[user].PlayCount / (track.UserScore[user].PlayCount + 5);
 				track.UserScore[user].WeightedScore = (userListenRatio * userConfidence) + (0.5f * (1f - userConfidence));
 				if (track.UserScore[user].WeightedScore > 1)
+				{
 					track.UserScore[user].WeightedScore = 1;
+				}
 			}
 			track.m_bIsDirty = true;
-		}
-
-		public AlbumInfo GetAlbum(string id)
-		{
-			return m_db.GetAlbum(id);
-		}
-
-		public ArtistInfo GetArtist(string id)
-		{
-			return m_db.GetArtist(id);
 		}
 
 		private string GetContentType(string extension)
@@ -642,8 +700,14 @@ namespace Pulse.MusicLibrary
 
 		private int LevenshteinDistance(string source, string target)
 		{
-			if (source.Length == 0) return target.Length;
-			if (target.Length == 0) return source.Length;
+			if (source.Length == 0)
+			{
+				return target.Length;
+			}
+			if (target.Length == 0)
+			{
+				return source.Length;
+			}
 
 			int sourceLength = source.Length;
 			int targetLength = target.Length;
@@ -662,14 +726,28 @@ namespace Pulse.MusicLibrary
 			{
 				for (int col = 1; col <= targetLength; col++)
 				{
-					int cost = source[row - 1] == target[col - 1] ? 0 : 1;
+					int cost;
+					if (source[row - 1] == target[col - 1])
+					{
+						cost = 0;
+					}
+					else
+					{
+						cost = 1;
+					}
 					int deleteCost = matrix[row - 1, col] + 1;
 					int insertCost = matrix[row, col - 1] + 1;
 					int replaceCost = matrix[row - 1, col - 1] + cost;
 
 					int minimum = deleteCost;
-					if (insertCost < minimum) minimum = insertCost;
-					if (replaceCost < minimum) minimum = replaceCost;
+					if (insertCost < minimum)
+					{
+						minimum = insertCost;
+					}
+					if (replaceCost < minimum)
+					{
+						minimum = replaceCost;
+					}
 
 					matrix[row, col] = minimum;
 				}

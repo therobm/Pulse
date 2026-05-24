@@ -103,7 +103,9 @@ namespace Pulse.SubsonicService
 			{
 				AlbumInfo album = m_musicManager.GetAlbum(albumId);
 				if (album != null)
+				{
 					candidates.AddRange(album.Tracks);
+				}
 			}
 			else if (!string.IsNullOrEmpty(artistId))
 			{
@@ -227,7 +229,7 @@ namespace Pulse.SubsonicService
 				}
 				catch(Exception ex)
 				{
-					Console.WriteLine(ex.Message);
+					Log.Error(-1, "HandleGetCoverArt: failed to read embedded art - " + ex.Message);
 				}
 			}
 
@@ -240,7 +242,15 @@ namespace Pulse.SubsonicService
 				{
 					byte[] imageData = File.ReadAllBytes(artPath);
 					m_coverArtCache[id] = imageData;
-					string contentType = artPath.EndsWith(".png") ? "image/png" : "image/jpeg";
+					string contentType;
+					if (artPath.EndsWith(".png"))
+					{
+						contentType = "image/png";
+					}
+					else
+					{
+						contentType = "image/jpeg";
+					}
 					return Results.Bytes(imageData, contentType);
 				}
 			}
@@ -393,7 +403,9 @@ namespace Pulse.SubsonicService
 				{
 					TrackInfo track = tracks[trackIndex];
 					if (track == null)
+					{
 						continue;
+					}
 
 					if (track.Title.ToLowerInvariant().Contains(lowerQuery) ||
 						track.Artist.ToLowerInvariant().Contains(lowerQuery))
@@ -517,7 +529,7 @@ namespace Pulse.SubsonicService
 			string artistId = context.Request.Query["artistId"].FirstOrDefault();
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			m_musicManager.Star(user, id, albumId, artistId);
+			m_musicManager.UpdateStar(user, id, albumId, artistId, true);
 
 			SubsonicResponseBody body = CreateResponse();
 			return Respond(context, body);
@@ -531,7 +543,7 @@ namespace Pulse.SubsonicService
 			string artistId = context.Request.Query["artistId"].FirstOrDefault();
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			m_musicManager.Unstar(user, id, albumId, artistId);
+			m_musicManager.UpdateStar(user, id, albumId, artistId, false);
 
 			SubsonicResponseBody body = CreateResponse();
 			return Respond(context, body);
@@ -669,7 +681,7 @@ namespace Pulse.SubsonicService
 
 			if (type == "newest")
 			{
-				allAlbums.Sort((left, right) => right.Year.CompareTo(left.Year));
+				allAlbums.Sort(CompareAlbumYearDescending);
 			}
 			else if (type == "random")
 			{
@@ -752,7 +764,7 @@ namespace Pulse.SubsonicService
 				entry.id = playlist.Id;
 				entry.name = playlist.Name;
 				entry.comment = playlist.Comment;
-				entry.songCount = playlist.SongCount;
+				entry.songCount = playlist.GetSongCount();
 				entry.duration = playlist.DurationSeconds;
 				body.playlists.playlist.Add(entry);
 			}
@@ -781,7 +793,7 @@ namespace Pulse.SubsonicService
 			body.playlist.id = playlist.Id;
 			body.playlist.name = playlist.Name;
 			body.playlist.comment = playlist.Comment;
-			body.playlist.songCount = playlist.SongCount;
+			body.playlist.songCount = playlist.GetSongCount();
 			body.playlist.duration = playlist.DurationSeconds;
 
 			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
@@ -816,7 +828,7 @@ namespace Pulse.SubsonicService
 			if (playlist == null)
 			{
 				playlist = new PlaylistInfo();
-				playlist.Id = PulseUtility.GenerateID("playlist/" + user + "/" + name + "/" + DateTime.UtcNow.Ticks);
+				playlist.Id = MusicManager.GenerateID("playlist/" + user + "/" + name + "/" + DateTime.UtcNow.Ticks);
 				playlist.Name = name;
 			}
 
@@ -825,7 +837,9 @@ namespace Pulse.SubsonicService
 			{
 				TrackInfo track = m_musicManager.GetTrack(songIds[index]);
 				if (track == null)
+				{
 					continue;
+				}
 				playlist.TrackIds.Add(track.Id);
 				totalDuration = totalDuration + track.DurationSeconds;
 			}
@@ -851,7 +865,6 @@ namespace Pulse.SubsonicService
 
 		public IResult HandleUpdatePlaylist(HttpContext context)
 		{
-			Console.WriteLine("HandleUpdatePlaylist: " + context.Request.QueryString);
 			string playlistId = context.Request.Query["playlistId"].FirstOrDefault();
 			string name = context.Request.Query["name"].FirstOrDefault();
 			string comment = context.Request.Query["comment"].FirstOrDefault();
@@ -870,10 +883,14 @@ namespace Pulse.SubsonicService
 			}
 
 			if (!string.IsNullOrEmpty(name))
+			{
 				playlist.Name = name;
+			}
 
 			if (!string.IsNullOrEmpty(comment))
+			{
 				playlist.Comment = comment;
+			}
 
 			// Remove by index descending so indices don't shift
 			List<int> parsedIndices = new List<int>();
@@ -881,21 +898,27 @@ namespace Pulse.SubsonicService
 			{
 				int parsed;
 				if (int.TryParse(indicesToRemove[index], out parsed))
+				{
 					parsedIndices.Add(parsed);
+				}
 			}
-			parsedIndices.Sort((left, right) => right.CompareTo(left));
+			parsedIndices.Sort(CompareIntDescending);
 			for (int index = 0; index < parsedIndices.Count; index++)
 			{
 				int removeIndex = parsedIndices[index];
 				if (removeIndex >= 0 && removeIndex < playlist.TrackIds.Count)
+				{
 					playlist.TrackIds.RemoveAt(removeIndex);
+				}
 			}
 
 			for (int index = 0; index < songIdsToAdd.Count; index++)
 			{
 				TrackInfo track = m_musicManager.GetTrack(songIdsToAdd[index]);
 				if (track == null)
+				{
 					continue;
+				}
 				playlist.TrackIds.Add(track.Id);
 			}
 
@@ -905,15 +928,15 @@ namespace Pulse.SubsonicService
 			{
 				TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[index]);
 				if (track != null)
+				{
 					totalDuration = totalDuration + track.DurationSeconds;
+				}
 			}
 			playlist.DurationSeconds = totalDuration;
 
 			m_musicManager.CreateOrUpdatePlaylist(playlist);
 
 			IResult result = Respond(context, CreateResponse());
-
-			Console.WriteLine("HandleUpdatePlaylist: " + result.ToString());
 			return result;
 		}
 
@@ -1016,6 +1039,16 @@ namespace Pulse.SubsonicService
 			}
 
 			return Respond(context, CreateErrorResponse(70, "Directory not found"));
+		}
+
+		private static int CompareAlbumYearDescending(AlbumInfo left, AlbumInfo right)
+		{
+			return right.Year.CompareTo(left.Year);
+		}
+
+		private static int CompareIntDescending(int left, int right)
+		{
+			return right.CompareTo(left);
 		}
 	}
 }
