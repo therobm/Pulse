@@ -24,7 +24,6 @@ namespace Pulse.MusicLibrary
 		private LidarrSync m_lidarrSync;
 		private Thread m_scanThread;
 		private bool m_scanning;
-		private string m_cachePath;
 		private object m_scanLock = new object();
 		private int m_processedSinceLastSave = 0;
 		private string m_nowPlayingTrackId;
@@ -93,7 +92,6 @@ namespace Pulse.MusicLibrary
 				return;
 			}
 
-			m_cachePath = cachePath ?? Path.Combine(musicPath, "pulse_cache.json");
 			LoadDB();
 			DebugDuplicates();
 			m_scanThread = new Thread(() => RunScan(musicPath));

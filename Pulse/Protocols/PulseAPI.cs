@@ -14,7 +14,6 @@ namespace Pulse.Protocols
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 		private object m_recentLock = new object();
-		private int m_maxRecent = 50;
 
 		public PulseAPI(PulseService pulse, MusicManager musicManager)
 		{
@@ -24,44 +23,6 @@ namespace Pulse.Protocols
 		}
 
 	
-
-		public void OnTrackPlayedA(string user, string trackId)
-		{
-			TrackInfo track = m_musicManager.GetTrack(trackId);
-			if (track == null) 
-			{ 
-				return; 
-			}
-
-			track.Score.PlayCount = track.Score.PlayCount + 1;
-			track.LastPlayed = DateTime.UtcNow;
-
-			if (user != null)
-			{
-				if (!track.UserScore.ContainsKey(user))
-				{
-					track.UserScore[user] = new ScoreData();
-				}
-				track.UserScore[user].PlayCount = track.UserScore[user].PlayCount + 1;
-			}
-
-			int artistCount = 0;
-			PulseAnalyticsInfo analytics = m_musicManager.GetAnalytics();
-
-			analytics.ArtistPlayCounts.TryGetValue(track.ArtistId, out artistCount);
-			analytics.ArtistPlayCounts[track.ArtistId] = artistCount + 1;
-
-			lock (m_recentLock)
-			{
-				analytics.RecentlyPlayed.Remove(trackId);
-				analytics.RecentlyPlayed.Insert(0, trackId);
-				if (analytics.RecentlyPlayed.Count > m_maxRecent)
-				{
-					analytics.RecentlyPlayed.RemoveAt(analytics.RecentlyPlayed.Count - 1);
-				}
-			}
-			analytics.m_bIsDirty = true;
-		}
 
 		public IResult HandleRecentlyPlayed(HttpContext context)
 		{

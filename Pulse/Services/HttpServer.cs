@@ -13,7 +13,6 @@ namespace Assistant.Services
 		private WebApplication m_app;
 
 		private Dictionary<string, Action<HttpContext>> m_routes = new Dictionary<string, Action<HttpContext>>();
-		private Dictionary<string, string> m_files = new Dictionary<string, string>();
 
 
 		public void RegisterResultRoute(string path, Func<HttpContext, IResult> handler)
@@ -28,13 +27,6 @@ namespace Assistant.Services
 		public void RegisterRoute(string path, Action<HttpContext> handler)
 		{
 			m_routes[path] = handler;
-		}
-		public void RegisterFile(string filePath, string contentType)
-		{
-			if (m_files.ContainsKey(filePath))
-				return;
-
-			m_files.Add(filePath, contentType);
 		}
 
 		public void Run()
