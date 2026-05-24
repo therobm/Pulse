@@ -20,7 +20,7 @@ namespace Pulse.Protocols
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
-			m_defaultCoverArt = File.ReadAllBytes("./Content/Media/pulseLogo.png");
+			m_defaultCoverArt = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png"));
 		}
 
 	
