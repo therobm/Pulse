@@ -10,11 +10,23 @@ namespace Pulse
         {
             Console.WriteLine("Hello, World!");
 
+			PulseConfig config = PulseConfig.Load();
+			List<string> configErrors = config.Validate();
+			if (configErrors.Count > 0)
+			{
+				Console.WriteLine("Pulse: invalid configuration in " + PulseConfig.GetConfigPath());
+				for (int idx = 0; idx < configErrors.Count; idx++)
+				{
+					Console.WriteLine("  - " + configErrors[idx]);
+				}
+				Console.WriteLine("Fix the config and restart.");
+				return;
+			}
 
 			m_pulse = new PulseService();
 			m_webServer = new HttpServer();
 
-			m_pulse.Run(m_webServer, PulseConfig.Load());
+			m_pulse.Run(m_webServer, config);
 
 			m_webServer.Run();
 
