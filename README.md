@@ -65,6 +65,8 @@ This is not a framework project. There are no dependency injection containers, n
 
 If you're looking for a project that follows conventional .NET patterns, this isn't it. If you're looking for a music server where you can read any file and understand exactly what it does without chasing through six layers of abstraction, you're in the right place.
 
+That all being said - I am a game developer not a web developer, the stuff in html/js is pure slop so don't pickup any habits from it.
+
 ## License
 
 MIT
