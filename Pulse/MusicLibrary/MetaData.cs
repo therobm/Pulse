@@ -5,6 +5,16 @@ using System.Text.Json.Serialization;
 
 namespace Pulse.MusicLibrary
 {
+	// *Info types in this file are the runtime in-memory shape. They carry
+	// parent references (TrackInfo.ParentArtist), dirty flags via PulseInfo,
+	// transient scoring/analytics state, and are wired together at startup
+	// by PulseFileDatabase.WireUpReferences. They are intentionally distinct
+	// from the *Record types in Data/PulseFileDataTypes.cs (the on-disk
+	// shape) and must stay that way: in-memory shape is independent of
+	// persistence shape. Cross the boundary via TrackRecord.ToTrackInfo() /
+	// TrackRecord.FromTrackInfo() and the equivalents. Do not unify the
+	// pairs into single classes.
+
 	public abstract class PulseInfo
 	{
 		[JsonIgnore]
