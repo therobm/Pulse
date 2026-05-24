@@ -178,10 +178,10 @@ namespace Pulse
 
 		private IResult HandleStats(HttpContext context)
 		{
-			List<TrackInfo> allTracks = m_musicManager.GetDb().GetAllTracks();
-			List<AlbumInfo> allAlbums = m_musicManager.GetDb().GetAllAlbums();
-			List<ArtistInfo> allArtists = m_musicManager.GetDb().GetAllArtists();
-			List<PlaylistInfo> allPlaylists = m_musicManager.GetDb().GetAllPlaylists(null);
+			List<TrackInfo> allTracks = m_musicManager.GetAllTracks();
+			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+			List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(null);
 
 			PulseStatsResponse stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists);
 			string json = System.Text.Json.JsonSerializer.Serialize(stats);

@@ -30,10 +30,66 @@ namespace Pulse.MusicLibrary
 		{
 			return m_scanning;
 		}
-		public IPulseDatabase GetDb()
+
+		public List<ArtistInfo> GetAllArtists()
 		{
-			return m_database;
+			return m_database.GetAllArtists();
 		}
+
+		public List<TrackInfo> GetAllTracks()
+		{
+			return m_database.GetAllTracks();
+		}
+		public List<AlbumInfo> GetAllAlbums()
+		{
+			return m_database.GetAllAlbums();
+		}
+
+		public PlaylistInfo GetPlaylist(string id)
+		{
+			return m_database.GetPlaylist(id);
+		}
+
+		public List<PlaylistInfo> GetAllPlaylists(string userName)
+		{
+			return m_database.GetAllPlaylists(userName);
+		}
+
+		public List<TrackInfo> GetPlaylistTracks(string playlistId)
+		{
+			return m_database.GetPlaylistTracks(playlistId);
+		}
+
+		public void SetRating(string trackId, int rating)
+		{
+			m_database.SetRating(trackId, rating);
+		}
+
+		public void UpdateStar(string userName, string trackId, string albumId, string artistId, bool isStarred)
+		{
+			m_database.UpdateStar(userName, trackId, albumId, artistId, isStarred);
+		}
+
+		public PulseAnalyticsInfo GetAnalytics()
+		{
+			return m_database.GetAnalytics();
+		}
+
+		public TrackInfo GetTrack(string id)
+		{
+			return m_database.GetTrack(id);
+		}
+
+		public AlbumInfo GetAlbum(string id)
+		{
+			return m_database.GetAlbum(id);
+		}
+
+		public ArtistInfo GetArtist(string id)
+		{
+			return m_database.GetArtist(id);
+		}
+
 
 		private IPulseDatabase m_database;
 		private object m_missingLock = new object();
