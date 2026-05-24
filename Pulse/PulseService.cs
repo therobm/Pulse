@@ -37,11 +37,22 @@ namespace Pulse
 		{
 			return m_config;
 		}
-		
+
+		// Returns false until the initial music library scan has finished.
+		// HttpServer.HandleRequest uses this to short-circuit incoming requests
+		// with a loading page while the database is still being populated --
+		// otherwise concurrent reads against the in-flight scan race against
+		// the dictionaries it's mutating.
+		public static bool IsReady()
+		{
+			return s_musicManager != null && !s_musicManager.GetIsScanning();
+		}
+
 		static PulseConfig m_config;
+		static MusicManager s_musicManager;
 		private Subsonic m_subsonic;
 		private PulseAPI m_pulseAPI;
-		private MusicManager m_musicManager; 
+		private MusicManager m_musicManager;
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 
 
@@ -52,6 +63,7 @@ namespace Pulse
 			m_config = config;
 
 			m_musicManager = new MusicManager(config);
+			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
 
 			m_subsonic = new Subsonic(this, m_musicManager);
