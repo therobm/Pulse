@@ -229,7 +229,7 @@ namespace Pulse.SubsonicService
 				}
 				catch(Exception ex)
 				{
-					Console.WriteLine(ex.Message);
+					Log.Error(-1, "HandleGetCoverArt: failed to read embedded art - " + ex.Message);
 				}
 			}
 
@@ -865,7 +865,6 @@ namespace Pulse.SubsonicService
 
 		public IResult HandleUpdatePlaylist(HttpContext context)
 		{
-			Console.WriteLine("HandleUpdatePlaylist: " + context.Request.QueryString);
 			string playlistId = context.Request.Query["playlistId"].FirstOrDefault();
 			string name = context.Request.Query["name"].FirstOrDefault();
 			string comment = context.Request.Query["comment"].FirstOrDefault();
@@ -938,8 +937,6 @@ namespace Pulse.SubsonicService
 			m_musicManager.CreateOrUpdatePlaylist(playlist);
 
 			IResult result = Respond(context, CreateResponse());
-
-			Console.WriteLine("HandleUpdatePlaylist: " + result.ToString());
 			return result;
 		}
 
