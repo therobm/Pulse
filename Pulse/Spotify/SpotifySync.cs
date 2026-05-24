@@ -15,7 +15,7 @@ namespace Pulse.Spotify
 		private DateTime m_tokenExpiry;
 		private string m_credentialPath;
 		private MusicManager m_musicManager;
-		private HttpClient m_http;
+		private HttpClient m_httpClient;
 		private Thread m_syncThread;
 		private bool m_running;
 		private int m_syncIntervalHours;
@@ -41,7 +41,7 @@ namespace Pulse.Spotify
 			m_refreshToken = "";
 			m_tokenExpiry = DateTime.MinValue;
 			m_syncIntervalHours = 12;
-			m_http = new HttpClient();
+			m_httpClient = new HttpClient();
 
 			LoadCredentials();
 		}
@@ -76,7 +76,7 @@ namespace Pulse.Spotify
 			string authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes(m_clientId + ":" + m_clientSecret));
 			request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authHeader);
 
-			HttpResponseMessage response = m_http.Send(request);
+			HttpResponseMessage response = m_httpClient.Send(request);
 			if (!response.IsSuccessStatusCode)
 			{
 				string errorBody = ReadResponseBody(response);
@@ -305,7 +305,7 @@ namespace Pulse.Spotify
 			HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url);
 			request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", m_accessToken);
 
-			HttpResponseMessage response = m_http.Send(request);
+			HttpResponseMessage response = m_httpClient.Send(request);
 			if (!response.IsSuccessStatusCode)
 			{
 				string errorBody = ReadResponseBody(response);
@@ -337,7 +337,7 @@ namespace Pulse.Spotify
 			string authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes(m_clientId + ":" + m_clientSecret));
 			request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authHeader);
 
-			HttpResponseMessage response = m_http.Send(request);
+			HttpResponseMessage response = m_httpClient.Send(request);
 			if (!response.IsSuccessStatusCode)
 			{
 				string errorBody = ReadResponseBody(response);

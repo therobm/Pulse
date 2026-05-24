@@ -10,7 +10,7 @@ namespace Pulse.Lidarr
 
 		private string m_lidarrUrl = "";
 		private string m_apiKey = "";
-		private HttpClient m_http;
+		private HttpClient m_httpClient;
 
 		// Cached from Lidarr on each sync pass
 		private HashSet<string> m_lidarrArtistNames;
@@ -26,7 +26,7 @@ namespace Pulse.Lidarr
 		{
 			m_lidarrUrl = lidarrUrl.TrimEnd('/');
 			m_apiKey = apiKey;
-			m_http = new HttpClient();
+			m_httpClient = new HttpClient();
 			m_lidarrArtistNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 			m_lidarrArtistMBIDs = new HashSet<string>();
 			m_lastAdded = new List<string>();
@@ -284,7 +284,7 @@ namespace Pulse.Lidarr
 
 			try
 			{
-				HttpResponseMessage response = m_http.Send(request);
+				HttpResponseMessage response = m_httpClient.Send(request);
 				if (!response.IsSuccessStatusCode)
 				{
 					string errorBody = ReadResponseBody(response);
@@ -308,7 +308,7 @@ namespace Pulse.Lidarr
 
 			try
 			{
-				HttpResponseMessage response = m_http.Send(request);
+				HttpResponseMessage response = m_httpClient.Send(request);
 				if (!response.IsSuccessStatusCode)
 				{
 					string errorBody = ReadResponseBody(response);

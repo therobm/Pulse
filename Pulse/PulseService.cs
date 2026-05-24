@@ -280,35 +280,35 @@ namespace Pulse
 
 			for (int i = 0; i < interfaces.Length; i++)
 			{
-				NetworkInterface nic = interfaces[i];
+				NetworkInterface networkInterface = interfaces[i];
 
-				if (nic.OperationalStatus != OperationalStatus.Up)
+				if (networkInterface.OperationalStatus != OperationalStatus.Up)
 				{
 					continue;
 				}
 
-				if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+				if (networkInterface.NetworkInterfaceType == NetworkInterfaceType.Loopback)
 				{
 					continue;
 				}
 
 				// Skip vEthernet, Docker, WSL, etc.
-				string nicName = nic.Name.ToLowerInvariant();
-				if (nicName.Contains("virtual") || nicName.Contains("vethernet") || nicName.Contains("docker"))
+				string networkInterfaceName = networkInterface.Name.ToLowerInvariant();
+				if (networkInterfaceName.Contains("virtual") || networkInterfaceName.Contains("vethernet") || networkInterfaceName.Contains("docker"))
 				{
 					continue;
 				}
 
-				IPInterfaceProperties properties = nic.GetIPProperties();
+				IPInterfaceProperties properties = networkInterface.GetIPProperties();
 				UnicastIPAddressInformationCollection unicast = properties.UnicastAddresses;
 
 				for (int j = 0; j < unicast.Count; j++)
 				{
-					UnicastIPAddressInformation addr = unicast[j];
+					UnicastIPAddressInformation address = unicast[j];
 
-					if (addr.Address.AddressFamily == AddressFamily.InterNetwork)
+					if (address.Address.AddressFamily == AddressFamily.InterNetwork)
 					{
-						return addr.Address;
+						return address.Address;
 					}
 				}
 			}

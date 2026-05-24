@@ -104,8 +104,8 @@ namespace Assistant.Services
 						string filePath = Path.Combine(pulseDir, fileName);
 						if (File.Exists(filePath))
 						{
-							string ctype = GetContentTypeForFile(filePath);
-							ServeFile(context, filePath, ctype);
+							string contentType = GetContentTypeForFile(filePath);
+							ServeFile(context, filePath, contentType);
 							return Task.CompletedTask;
 						}
 					}
