@@ -2,7 +2,11 @@
 using Microsoft.AspNetCore.Http;
 using Pulse.Data;
 using Pulse.MusicLibrary;
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
