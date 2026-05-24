@@ -104,7 +104,9 @@ namespace Pulse.Data
 						if (track.Score.PlayCount > 0)
 						{
 							if (track.Score.WeightedScore > 1)
+							{
 								track.Score.WeightedScore = 1;
+							}
 
 							totalScore += track.Score.WeightedScore;
 							scoredCount++;
@@ -121,7 +123,9 @@ namespace Pulse.Data
 									userCounts[userName] = 0;
 								}
 								if (userData.WeightedScore > 1)
+								{
 									userData.WeightedScore = 1;
+								}
 
 								userTotals[userName] += userData.WeightedScore;
 								userCounts[userName]++;
@@ -156,13 +160,13 @@ namespace Pulse.Data
 			}
 			m_analytics = new PulseAnalyticsInfo();
 		}
-		[Obsolete]
 		private void LoadTracks()
 		{
-			string[] files = Directory.GetFiles(m_tracksPath, "*.json"); 
+			string[] files = Directory.GetFiles(m_tracksPath, "*.json");
 			Console.WriteLine("Loading TrackInfo: " + files.Length);
 			ParallelOptions options = new ParallelOptions();
 			options.MaxDegreeOfParallelism = 8;
+			// Parallel.For (and its lambda) is intentional here. Library loads are I/O-bound and the parallel fan-out is massively faster than a sequential for. Exempt from the "no lambdas" rule on purpose. Do not convert to a sequential for.
 			Parallel.For(0, files.Length, options, (int index) =>
 			{
 				string json = File.ReadAllText(files[index]);
@@ -176,13 +180,13 @@ namespace Pulse.Data
 			});
 		}
 
-		[Obsolete]
 		private void LoadAlbums()
 		{
 			string[] files = Directory.GetFiles(m_albumsPath, "*.json");
 			Console.WriteLine("Loading AlbumInfo: " + files.Length);
 			ParallelOptions options = new ParallelOptions();
 			options.MaxDegreeOfParallelism = 8;
+			// Parallel.For (and its lambda) is intentional here. See LoadTracks for the rationale.
 			Parallel.For(0, files.Length, options, (int index) =>
 			{
 				string json = File.ReadAllText(files[index]);
@@ -202,6 +206,7 @@ namespace Pulse.Data
 			Console.WriteLine("Loading ArtistInfo: " + files.Length);
 			ParallelOptions options = new ParallelOptions();
 			options.MaxDegreeOfParallelism = 8;
+			// Parallel.For (and its lambda) is intentional here. See LoadTracks for the rationale.
 			Parallel.For(0, files.Length, options, (int index) =>
 			{
 				string json = File.ReadAllText(files[index]);
@@ -212,7 +217,6 @@ namespace Pulse.Data
 				}
 
 				Migrate(record);
-			
 
 				ArtistInfo artist = record.ToArtistInfo();
 				m_artists[artist.Id] = artist;
@@ -271,7 +275,9 @@ namespace Pulse.Data
 				}
 			}
 			if (needSave)
+			{
 				SaveRecord(m_artistsPath, record.Id, record);
+			}
 		}
 
 		private void LoadPlaylists()
@@ -280,6 +286,7 @@ namespace Pulse.Data
 			Console.WriteLine("Loading PlaylistInfo: " + files.Length);
 			ParallelOptions options = new ParallelOptions();
 			options.MaxDegreeOfParallelism = 8;
+			// Parallel.For (and its lambda) is intentional here. See LoadTracks for the rationale.
 			Parallel.For(0, files.Length, options, (int index) =>
 			{
 				string json = File.ReadAllText(files[index]);
@@ -327,21 +334,29 @@ namespace Pulse.Data
 		{
 			TrackInfo track;
 			if (!m_tracks.TryGetValue(trackId, out track))
+			{
 				return false;
+			}
 
 			if (!base.RemoveTrack(trackId))
+			{
 				return false;
+			}
 
 			string trackFile = Path.Combine(m_tracksPath, trackId + ".json");
 			if (File.Exists(trackFile))
+			{
 				File.Delete(trackFile);
+			}
 
 			// if album was removed, delete its file too
 			if (!m_albums.ContainsKey(track.AlbumId))
 			{
 				string albumFile = Path.Combine(m_albumsPath, track.AlbumId + ".json");
 				if (File.Exists(albumFile))
+				{
 					File.Delete(albumFile);
+				}
 			}
 
 			// if artist was removed, delete its file too
@@ -349,7 +364,9 @@ namespace Pulse.Data
 			{
 				string artistFile = Path.Combine(m_artistsPath, track.ArtistId + ".json");
 				if (File.Exists(artistFile))
+				{
 					File.Delete(artistFile);
+				}
 			}
 			return true;
 		}
@@ -358,7 +375,9 @@ namespace Pulse.Data
 			base.DeletePlaylist(playlistId);
 			string playlistFile = Path.Combine(m_playlistsPath, playlistId + ".json");
 			if (File.Exists(playlistFile))
+			{
 				File.Delete(playlistFile);
+			}
 		}
 
 		public void SaveAnalytics()

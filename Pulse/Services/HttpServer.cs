@@ -13,120 +13,138 @@ namespace Assistant.Services
 		private WebApplication m_app;
 
 		private Dictionary<string, Action<HttpContext>> m_routes = new Dictionary<string, Action<HttpContext>>();
-		private Dictionary<string, string> m_files = new Dictionary<string, string>();
 
+		private class ResultRouteAdapter
+		{
+			private Func<HttpContext, IResult> m_handler;
+			public ResultRouteAdapter(Func<HttpContext, IResult> handler)
+			{
+				m_handler = handler;
+			}
+			public void Invoke(HttpContext context)
+			{
+				IResult result = m_handler(context);
+				result.ExecuteAsync(context).Wait();
+			}
+		}
 
 		public void RegisterResultRoute(string path, Func<HttpContext, IResult> handler)
 		{
-			m_routes[path] = (HttpContext context) =>
-			{
-				IResult result = handler(context);
-				result.ExecuteAsync(context).Wait();
-			};
+			ResultRouteAdapter adapter = new ResultRouteAdapter(handler);
+			m_routes[path] = adapter.Invoke;
 		}
 
 		public void RegisterRoute(string path, Action<HttpContext> handler)
 		{
 			m_routes[path] = handler;
 		}
-		public void RegisterFile(string filePath, string contentType)
-		{
-			if (m_files.ContainsKey(filePath))
-				return;
-
-			m_files.Add(filePath, contentType);
-		}
 
 		public void Run()
 		{
-			PulseConfig config = PulseService.Config;
-
+			PulseConfig config = PulseService.GetConfig();
 
 			WebApplicationBuilder builder = WebApplication.CreateBuilder();
-			builder.WebHost.ConfigureKestrel(options =>
-			{
-				options.ListenAnyIP(config.HttpPort);
-				options.ListenAnyIP(config.HttpsPort, listenOptions => //https subsonic
-				{
-					if (File.Exists("pulse.mccoder.com.pfx"))
-					{
-						listenOptions.UseHttps("pulse.mccoder.com.pfx");
-
-						Log.Info(-1, "HTTPS is enabled");
-					}
-					else
-						Log.Warning(-1, "HTTPS is disabled");
-				});
-				options.AllowSynchronousIO = true;
-			});
+			builder.WebHost.ConfigureKestrel(ConfigureKestrelOptions);
 			builder.Logging.ClearProviders();
 			builder.Services.AddCors();
 
 			m_app = builder.Build();
 			m_app.UseWebSockets();
-			m_app.UseCors(policy =>
-			{
-				policy.AllowAnyOrigin();
-				policy.AllowAnyMethod();
-				policy.AllowAnyHeader();
-			});
+			m_app.UseCors(ConfigureCors);
 
-			m_app.Use((HttpContext context, RequestDelegate next) =>
+			m_app.Use(HandleRequest);
+
+			Thread runThread = new Thread(RunApp);
+			runThread.IsBackground = true;
+			runThread.Start();
+		}
+
+		private void RunApp()
+		{
+			m_app.Run();
+		}
+
+		private void ConfigureKestrelOptions(Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions options)
+		{
+			PulseConfig config = PulseService.GetConfig();
+			options.ListenAnyIP(config.HttpPort);
+			options.ListenAnyIP(config.HttpsPort, ConfigureHttpsListener);
+			options.AllowSynchronousIO = true;
+		}
+
+		private void ConfigureHttpsListener(Microsoft.AspNetCore.Server.Kestrel.Core.ListenOptions listenOptions)
+		{
+			if (File.Exists("pulse.mccoder.com.pfx"))
 			{
-				try
+				listenOptions.UseHttps("pulse.mccoder.com.pfx");
+				Log.Info(-1, "HTTPS is enabled");
+			}
+			else
+			{
+				Log.Warning(-1, "HTTPS is disabled");
+			}
+		}
+
+		private void ConfigureCors(Microsoft.AspNetCore.Cors.Infrastructure.CorsPolicyBuilder policy)
+		{
+			policy.AllowAnyOrigin();
+			policy.AllowAnyMethod();
+			policy.AllowAnyHeader();
+		}
+
+		private Task HandleRequest(HttpContext context, RequestDelegate next)
+		{
+			try
+			{
+				string path = context.Request.Path.Value.TrimStart('/');
+
+				Action<HttpContext> handler = null;
+				int bestLength = 0;
+				for (int idx = 0; idx < m_routes.Count; idx++)
 				{
-					string path = context.Request.Path.Value.TrimStart('/');
-
-					
-					Action<HttpContext> handler = null;
-					int bestLength = 0;
-					for (int idx = 0; idx < m_routes.Count; idx++)
+					string routePath = m_routes.Keys.ElementAt(idx);
+					if (path == routePath || path.StartsWith(routePath + "/"))
 					{
-						string routePath = m_routes.Keys.ElementAt(idx);
-						if (path == routePath || path.StartsWith(routePath + "/"))
+						if (routePath.Length > bestLength)
 						{
-							if (routePath.Length > bestLength)
-							{
-								bestLength = routePath.Length;
-								handler = m_routes[routePath];
-							}
+							bestLength = routePath.Length;
+							handler = m_routes[routePath];
 						}
 					}
-					if (handler != null)
+				}
+				if (handler != null)
+				{
+					handler(context);
+					return Task.CompletedTask;
+				}
+
+				if (path.ToLower().Contains("web"))
+				{
+					string pulseDir = Path.Combine(AppContext.BaseDirectory, "Content", "web");
+					string fileName = Path.GetFileName(path);
+					if (string.IsNullOrEmpty(fileName))
 					{
-						handler(context);
+						fileName = "pulse.html";
+					}
+
+					string filePath = Path.Combine(pulseDir, fileName);
+					if (File.Exists(filePath))
+					{
+						string contentType = GetContentTypeForFile(filePath);
+						ServeFile(context, filePath, contentType);
 						return Task.CompletedTask;
 					}
-
-					if (path.ToLower().Contains("web"))
-					{
-						string pulseDir = Path.Combine(AppContext.BaseDirectory, "Content", "web");
-						string fileName = Path.GetFileName(path);
-						if (string.IsNullOrEmpty(fileName))
-							fileName = "pulse.html";
-
-						string filePath = Path.Combine(pulseDir, fileName);
-						if (File.Exists(filePath))
-						{
-							string ctype = GetContentTypeForFile(filePath);
-							ServeFile(context, filePath, ctype);
-							return Task.CompletedTask;
-						}
-					}
-
-					context.Response.StatusCode = 404;
-					return Task.CompletedTask;
 				}
-				catch (Exception ex)
-				{
-					Log.Error(-1, "Request failed: " + context.Request.Path + " - " + ex.Message + "\n" + ex.StackTrace);
-					context.Response.StatusCode = 500;
-					return Task.CompletedTask;
-				}
-				
-			});
 
-			Task.Run(() => m_app.Run());
+				context.Response.StatusCode = 404;
+				return Task.CompletedTask;
+			}
+			catch (Exception ex)
+			{
+				Log.Error(-1, "Request failed: " + context.Request.Path + " - " + ex.Message + "\n" + ex.StackTrace);
+				context.Response.StatusCode = 500;
+				return Task.CompletedTask;
+			}
 		}
 
 
@@ -162,15 +180,42 @@ namespace Assistant.Services
 		private string GetContentTypeForFile(string filePath)
 		{
 			string extension = Path.GetExtension(filePath).ToLower();
-			if (extension == ".html") return "text/html; charset=utf-8";
-			if (extension == ".css") return "text/css";
-			if (extension == ".js") return "application/javascript";
-			if (extension == ".png") return "image/png";
-			if (extension == ".jpg" || extension == ".jpeg") return "image/jpeg";
-			if (extension == ".svg") return "image/svg+xml";
-			if (extension == ".ico") return "image/x-icon";
-			if (extension == ".woff2") return "font/woff2";
-			if (extension == ".json") return "application/json";
+			if (extension == ".html")
+			{
+				return "text/html; charset=utf-8";
+			}
+			if (extension == ".css")
+			{
+				return "text/css";
+			}
+			if (extension == ".js")
+			{
+				return "application/javascript";
+			}
+			if (extension == ".png")
+			{
+				return "image/png";
+			}
+			if (extension == ".jpg" || extension == ".jpeg")
+			{
+				return "image/jpeg";
+			}
+			if (extension == ".svg")
+			{
+				return "image/svg+xml";
+			}
+			if (extension == ".ico")
+			{
+				return "image/x-icon";
+			}
+			if (extension == ".woff2")
+			{
+				return "font/woff2";
+			}
+			if (extension == ".json")
+			{
+				return "application/json";
+			}
 			return "application/octet-stream";
 		}
 

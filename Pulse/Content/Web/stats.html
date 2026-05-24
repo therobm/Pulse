@@ -373,9 +373,9 @@
 	</div>
 	<script>
 		(function () {
-			var STATS_ENDPOINT = '/pulse/stats';
-			var contentEl = document.getElementById('content');
-			var timestampEl = document.getElementById('timestamp');
+			let STATS_ENDPOINT = '/pulse/stats';
+			let contentEl = document.getElementById('content');
+			let timestampEl = document.getElementById('timestamp');
 
 			function esc(str) {
 				if (!str) return '';
@@ -390,9 +390,9 @@
 			}
 
 			function formatDuration(totalSeconds) {
-				var days = Math.floor(totalSeconds / 86400);
-				var hours = Math.floor((totalSeconds % 86400) / 3600);
-				var mins = Math.floor((totalSeconds % 3600) / 60);
+				let days = Math.floor(totalSeconds / 86400);
+				let hours = Math.floor((totalSeconds % 86400) / 3600);
+				let mins = Math.floor((totalSeconds % 3600) / 60);
 				if (days > 0) return days + 'd ' + hours + 'h';
 				if (hours > 0) return hours + 'h ' + mins + 'm';
 				return mins + 'm';
@@ -404,12 +404,12 @@
 			// ── SVG builders ──
 
 			function buildDonut(segments, total) {
-				var radius = 36, cx = 45, cy = 45;
-				var circ = 2 * Math.PI * radius;
-				var offset = 0;
-				var paths = '';
-				for (var i = 0; i < segments.length; i++) {
-					var segLen = (segments[i].value / total) * circ;
+				let radius = 36, cx = 45, cy = 45;
+				let circ = 2 * Math.PI * radius;
+				let offset = 0;
+				let paths = '';
+				for (let i = 0; i < segments.length; i++) {
+					let segLen = (segments[i].value / total) * circ;
 					paths += '<circle cx="' + cx + '" cy="' + cy + '" r="' + radius + '" ' +
 						'fill="none" stroke="' + segments[i].color + '" stroke-width="10" ' +
 						'stroke-dasharray="' + segLen + ' ' + (circ - segLen) + '" ' +
@@ -422,8 +422,8 @@
 			}
 
 			function buildRing(percent, color) {
-				var radius = 26, circ = 2 * Math.PI * radius;
-				var filled = (percent / 100) * circ;
+				let radius = 26, circ = 2 * Math.PI * radius;
+				let filled = (percent / 100) * circ;
 				return '<svg class="pct-ring-svg" viewBox="0 0 68 68">' +
 					'<circle cx="34" cy="34" r="' + radius + '" fill="none" stroke="var(--bar-bg)" stroke-width="5" />' +
 					'<circle cx="34" cy="34" r="' + radius + '" fill="none" stroke="' + color + '" stroke-width="5" ' +
@@ -436,11 +436,12 @@
 			// ── Component builders ──
 
 			function buildBarList(items, maxVal, isTrack, fillColor) {
-				var html = '<div class="bar-list">';
-				for (var i = 0; i < items.length; i++) {
-					var item = items[i];
-					var widthPct = maxVal > 0 ? (item.Value / maxVal) * 100 : 0;
-					var nameHtml;
+				let html = '<div class="bar-list">';
+				for (let i = 0; i < items.length; i++) {
+					let item = items[i];
+					let widthPct = 0;
+					if (maxVal > 0) { widthPct = (item.Value / maxVal) * 100; }
+					let nameHtml;
 					if (isTrack) {
 						nameHtml = '<div class="bar-track">' +
 							'<div class="bar-track-title">' + esc(item.Title) + '</div>' +
@@ -459,14 +460,15 @@
 			}
 
 			function buildTable(items, nameHeader, barColor, maxVal) {
-				var html = '<table class="data-table"><thead><tr>' +
+				let html = '<table class="data-table"><thead><tr>' +
 					'<th>' + esc(nameHeader) + '</th>' +
 					'<th class="bar-cell"></th>' +
 					'<th class="r">Tracks</th>' +
 					'<th class="r">%</th></tr></thead><tbody>';
-				for (var i = 0; i < items.length; i++) {
-					var item = items[i];
-					var barPct = maxVal > 0 ? (item.count / maxVal) * 100 : 0;
+				for (let i = 0; i < items.length; i++) {
+					let item = items[i];
+					let barPct = 0;
+					if (maxVal > 0) { barPct = (item.count / maxVal) * 100; }
 					html += '<tr>' +
 						'<td>' + esc(item.name) + '</td>' +
 						'<td class="bar-cell"><div class="mini-bar-wrap"><div class="mini-bar" style="width:' + barPct + '%;background:' + barColor + '"></div></div></td>' +
@@ -479,8 +481,12 @@
 
 			function card(span, title, body, scrollable)
 			{
-				return '<div class="card span-' + span + (scrollable ? ' scrollable' : '') + '">' +
-					(title ? '<div class="section-title">' + esc(title) + '</div>' : '') +
+				let scrollClass = '';
+				if (scrollable) { scrollClass = ' scrollable'; }
+				let titleHtml = '';
+				if (title) { titleHtml = '<div class="section-title">' + esc(title) + '</div>'; }
+				return '<div class="card span-' + span + scrollClass + '">' +
+					titleHtml +
 					body + '</div>';
 			}
 
@@ -489,7 +495,7 @@
 			function render(stats)
 			{
 				timestampEl.textContent = new Date().toLocaleString();
-				var html = '';
+				let html = '';
 
 				// Row 1: four stat cards (1 col each)
 				html += card(1, '', '<div class="stat-label">Tracks</div><div class="stat-value">' + commas(stats.TotalTracks) + '</div>' +
@@ -499,13 +505,13 @@
 				html += card(1, '', '<div class="stat-label">Playlists</div><div class="stat-value">' + commas(stats.TotalPlaylists) + '</div>');
 
 				// Row 2: donut (2 cols) + rings (2 cols)
-				var donutSegs = [
+				let donutSegs = [
 					{ value: stats.PlayedMultiple, color: 'var(--green)', label: 'Played 2+' },
 					{ value: stats.PlayedOnce, color: 'var(--accent)', label: 'Played once' },
 					{ value: stats.UnplayedTracks, color: 'var(--bar-bg)', label: 'Unplayed' }
 				];
-				var legendHtml = '<div class="donut-legend">';
-				for (var i = 0; i < donutSegs.length; i++) {
+				let legendHtml = '<div class="donut-legend">';
+				for (let i = 0; i < donutSegs.length; i++) {
 					legendHtml += '<div class="legend-item">' +
 						'<div class="legend-dot" style="background:' + donutSegs[i].color + '"></div>' +
 						'<div>' + donutSegs[i].label + '</div>' +
@@ -514,7 +520,8 @@
 				legendHtml += '</div>';
 				html += card(2, 'Play Coverage', '<div class="donut-inner">' + buildDonut(donutSegs, stats.TotalTracks) + legendHtml + '</div>');
 
-				var starredPct = stats.TotalTracks > 0 ? (stats.StarredTracks / stats.TotalTracks) * 100 : 0;
+				let starredPct = 0;
+				if (stats.TotalTracks > 0) { starredPct = (stats.StarredTracks / stats.TotalTracks) * 100; }
 				html += card(2, 'Session Health', '<div class="rings-inner">' +
 					'<div>' + buildRing(stats.UnplayedPercent, 'var(--amber)') + '<div class="pct-label">Unplayed</div></div>' +
 					'<div>' + buildRing(stats.SkipPercent, 'var(--red)') + '<div class="pct-label">Skip Rate</div></div>' +
@@ -547,9 +554,9 @@
 
 				// Formats table in 4th column
 				if (stats.FormatBreakdown.length > 0) {
-					var formatRows = [];
-					var maxFormat = stats.FormatBreakdown[0].Count;
-					for (var i = 0; i < stats.FormatBreakdown.length; i++) {
+					let formatRows = [];
+					let maxFormat = stats.FormatBreakdown[0].Count;
+					for (let i = 0; i < stats.FormatBreakdown.length; i++) {
 						formatRows.push({ name: stats.FormatBreakdown[i].Format, count: stats.FormatBreakdown[i].Count, percent: stats.FormatBreakdown[i].Percent });
 					}
 					html += card(1, 'Formats', buildTable(formatRows, 'Format', 'var(--amber)', maxFormat));
@@ -557,17 +564,17 @@
 
 				// Row 5: genres (2 cols) + decades (2 cols)
 				if (stats.GenreBreakdown.length > 0) {
-					var genreRows = [];
-					var maxGenre = stats.GenreBreakdown[0].Count;
-					for (var i = 0; i < stats.GenreBreakdown.length; i++) {
+					let genreRows = [];
+					let maxGenre = stats.GenreBreakdown[0].Count;
+					for (let i = 0; i < stats.GenreBreakdown.length; i++) {
 						genreRows.push({ name: stats.GenreBreakdown[i].Genre, count: stats.GenreBreakdown[i].Count, percent: stats.GenreBreakdown[i].Percent });
 					}
 					html += card(2, 'Genres', buildTable(genreRows, 'Genre', 'var(--accent)', maxGenre));
 				}
 				if (stats.DecadeBreakdown.length > 0) {
-					var decadeRows = [];
-					var maxDecade = 0;
-					for (var i = 0; i < stats.DecadeBreakdown.length; i++) {
+					let decadeRows = [];
+					let maxDecade = 0;
+					for (let i = 0; i < stats.DecadeBreakdown.length; i++) {
 						if (stats.DecadeBreakdown[i].Count > maxDecade) maxDecade = stats.DecadeBreakdown[i].Count;
 						decadeRows.push({ name: stats.DecadeBreakdown[i].Decade, count: stats.DecadeBreakdown[i].Count, percent: stats.DecadeBreakdown[i].Percent });
 					}

@@ -8,8 +8,6 @@ namespace Pulse
 		static PulseService m_pulse;
 		static void Main(string[] args)
         {
-            Console.WriteLine("Hello, World!");
-
 			PulseConfig config = PulseConfig.Load();
 			List<string> configErrors = config.Validate();
 			if (configErrors.Count > 0)
