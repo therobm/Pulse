@@ -164,50 +164,56 @@ namespace Pulse.Data
 		{
 			string[] files = Directory.GetFiles(m_tracksPath, "*.json");
 			Console.WriteLine("Loading TrackInfo: " + files.Length);
-			int fileCount = files.Length;
-			for (int index = 0; index < fileCount; index++)
+			ParallelOptions options = new ParallelOptions();
+			options.MaxDegreeOfParallelism = 8;
+			// Parallel.For (and its lambda) is intentional here. Library loads are I/O-bound and the parallel fan-out is massively faster than a sequential for. Exempt from the "no lambdas" rule on purpose. Do not convert to a sequential for.
+			Parallel.For(0, files.Length, options, (int index) =>
 			{
 				string json = File.ReadAllText(files[index]);
 				TrackRecord record = JsonSerializer.Deserialize<TrackRecord>(json, m_jsonOptions);
 				if (record == null)
 				{
-					continue;
+					return;
 				}
 				TrackInfo track = record.ToTrackInfo();
 				m_tracks[track.Id] = track;
-			}
+			});
 		}
 
 		private void LoadAlbums()
 		{
 			string[] files = Directory.GetFiles(m_albumsPath, "*.json");
 			Console.WriteLine("Loading AlbumInfo: " + files.Length);
-			int fileCount = files.Length;
-			for (int index = 0; index < fileCount; index++)
+			ParallelOptions options = new ParallelOptions();
+			options.MaxDegreeOfParallelism = 8;
+			// Parallel.For (and its lambda) is intentional here. See LoadTracks for the rationale.
+			Parallel.For(0, files.Length, options, (int index) =>
 			{
 				string json = File.ReadAllText(files[index]);
 				AlbumRecord record = JsonSerializer.Deserialize<AlbumRecord>(json, m_jsonOptions);
 				if (record == null)
 				{
-					continue;
+					return;
 				}
 				AlbumInfo album = record.ToAlbumInfo();
 				m_albums[album.Id] = album;
-			}
+			});
 		}
 
 		private void LoadArtists()
 		{
 			string[] files = Directory.GetFiles(m_artistsPath, "*.json");
 			Console.WriteLine("Loading ArtistInfo: " + files.Length);
-			int fileCount = files.Length;
-			for (int index = 0; index < fileCount; index++)
+			ParallelOptions options = new ParallelOptions();
+			options.MaxDegreeOfParallelism = 8;
+			// Parallel.For (and its lambda) is intentional here. See LoadTracks for the rationale.
+			Parallel.For(0, files.Length, options, (int index) =>
 			{
 				string json = File.ReadAllText(files[index]);
 				ArtistRecord record = JsonSerializer.Deserialize<ArtistRecord>(json, m_jsonOptions);
 				if (record == null)
 				{
-					continue;
+					return;
 				}
 
 				Migrate(record);
@@ -226,7 +232,7 @@ namespace Pulse.Data
 						m_tracks[album.Tracks[trackIndex].Id] = album.Tracks[trackIndex];
 					}
 				}
-			}
+			});
 		}
 
 		private void Migrate(ArtistRecord record)
@@ -278,18 +284,20 @@ namespace Pulse.Data
 		{
 			string[] files = Directory.GetFiles(m_playlistsPath, "*.json");
 			Console.WriteLine("Loading PlaylistInfo: " + files.Length);
-			int fileCount = files.Length;
-			for (int index = 0; index < fileCount; index++)
+			ParallelOptions options = new ParallelOptions();
+			options.MaxDegreeOfParallelism = 8;
+			// Parallel.For (and its lambda) is intentional here. See LoadTracks for the rationale.
+			Parallel.For(0, files.Length, options, (int index) =>
 			{
 				string json = File.ReadAllText(files[index]);
 				PlaylistRecord record = JsonSerializer.Deserialize<PlaylistRecord>(json, m_jsonOptions);
 				if (record == null)
 				{
-					continue;
+					return;
 				}
 				PlaylistInfo playlist = record.ToPlaylistInfo();
 				m_playlists[playlist.Id] = playlist;
-			}
+			});
 		}
 
 		private void WireUpReferences()
