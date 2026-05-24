@@ -21,23 +21,16 @@
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
-	
+
 	<ItemGroup>
-	<None Include="Runtimes\**">
-		<Link>Runtimes\%(RecursiveDir)%(Filename)%(Extension)</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	</None>
+		<PackageReference Include="TagLibSharp" Version="2.3.0" />
 	</ItemGroup>
+
 	<ItemGroup>
 		<None Include="Content\**">
 			<Link>Content\%(RecursiveDir)%(Filename)%(Extension)</Link>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
-	</ItemGroup>
-	<ItemGroup>
-	  <Reference Include="TagLibSharp">
-	    <HintPath>Runtimes\TagLibSharp.dll</HintPath>
-	  </Reference>
 	</ItemGroup>
 	<ItemGroup>
 	  <Folder Include="Content\Media\" />
