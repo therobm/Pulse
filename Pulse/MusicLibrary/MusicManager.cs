@@ -37,6 +37,16 @@ namespace Pulse.MusicLibrary
 			m_lidarrSync = new LidarrSync(config.LidarrURL, config.LidarrApiKey);
 		}
 
+		public static string GenerateID(string input)
+		{
+			using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
+			{
+				byte[] inputBytes = System.Text.Encoding.UTF8.GetBytes(input);
+				byte[] hashBytes = md5.ComputeHash(inputBytes);
+				return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+			}
+		}
+
 		public void Run(string musicPath, string cachePath = null)
 		{
 			if (m_scanning)
@@ -143,7 +153,7 @@ namespace Pulse.MusicLibrary
 		{
 			//Console.WriteLine("Importing playlist: " + name);
 			PlaylistInfo playlist = new PlaylistInfo();
-			playlist.Id = PulseUtility.GenerateID("playlist/" + name);
+			playlist.Id = MusicManager.GenerateID("playlist/" + name);
 			playlist.Name = name;
 
 			int matched = 0;
@@ -362,7 +372,7 @@ namespace Pulse.MusicLibrary
 			foreach (string filePath in Directory.EnumerateFiles(musicPath, "*.*", SearchOption.AllDirectories))
 			{
 				fileCount++;
-				string libraryID = PulseUtility.GenerateID(filePath);
+				string libraryID = MusicManager.GenerateID(filePath);
 
 				if (m_db.TrackExists(libraryID))
 				{
@@ -453,17 +463,17 @@ namespace Pulse.MusicLibrary
 				title = Path.GetFileNameWithoutExtension(filePath);
 			}
 
-			string artistId = PulseUtility.GenerateID(artist);
+			string artistId = MusicManager.GenerateID(artist);
 			ArtistInfo artistInfo = m_db.GetOrCreateArtist(artistId, artist);
 
-			string albumId = PulseUtility.GenerateID(artist + "/" + album);
+			string albumId = MusicManager.GenerateID(artist + "/" + album);
 			AlbumInfo albumInfo = m_db.GetOrCreateAlbum(albumId, album, artistId, artist, (int)tagFile.Tag.Year, tagFile.Tag.FirstGenre ?? "");
 
 			string ext = Path.GetExtension(filePath).ToLowerInvariant();
 			FileInfo fileInfo = new FileInfo(filePath);
 
 			TrackInfo track = new TrackInfo();
-			track.Id = PulseUtility.GenerateID(filePath);
+			track.Id = MusicManager.GenerateID(filePath);
 			track.Title = title;
 			track.Artist = artist;
 			track.ArtistId = artistId;

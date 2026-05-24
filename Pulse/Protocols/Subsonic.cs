@@ -816,7 +816,7 @@ namespace Pulse.SubsonicService
 			if (playlist == null)
 			{
 				playlist = new PlaylistInfo();
-				playlist.Id = PulseUtility.GenerateID("playlist/" + user + "/" + name + "/" + DateTime.UtcNow.Ticks);
+				playlist.Id = MusicManager.GenerateID("playlist/" + user + "/" + name + "/" + DateTime.UtcNow.Ticks);
 				playlist.Name = name;
 			}
 

@@ -303,7 +303,7 @@ namespace Pulse.Data
 
 		private void RebuildSmartPlaylist(string playlistName, string userName)
 		{
-			string playlistId = PulseUtility.GenerateID("smart/" + playlistName);
+			string playlistId = MusicManager.GenerateID("smart/" + playlistName);
 
 			List<TrackInfo> scoredTracks = new List<TrackInfo>();
 			List<ArtistInfo> scoredArtists = new List<ArtistInfo>();
