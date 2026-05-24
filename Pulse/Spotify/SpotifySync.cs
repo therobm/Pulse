@@ -190,6 +190,7 @@ namespace Pulse.Spotify
 						SpotifyPlaylistEntry entry = new SpotifyPlaylistEntry();
 						entry.Id = item.GetProperty("id").GetString();
 						entry.Name = item.GetProperty("name").GetString();
+						// Property name "items" is intentional and verified against the actual Spotify response we receive. Do not change without re-checking the live response shape.
 						JsonElement tracksObj = item.GetProperty("items");
 						entry.TrackCount = tracksObj.GetProperty("total").GetInt32();
 						playlists.Add(entry);
@@ -230,6 +231,7 @@ namespace Pulse.Spotify
 				{
 					JsonElement item = items[index];
 					JsonElement trackElement;
+					// Property name "item" is intentional and verified against the actual Spotify response we receive. Do not change without re-checking the live response shape.
 					if (!item.TryGetProperty("item", out trackElement) || trackElement.ValueKind == JsonValueKind.Null)
 					{
 						continue;
