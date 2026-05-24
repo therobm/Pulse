@@ -24,8 +24,9 @@ namespace Pulse.SubsonicService
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
-			m_defaultCoverArt = File.ReadAllBytes("./Content/Media/pulseLogo.png");
-			m_placeholder = File.ReadAllBytes("./Content/Media/pulseLogo.png");
+			string pulseLogoPath = Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png");
+			m_defaultCoverArt = File.ReadAllBytes(pulseLogoPath);
+			m_placeholder = File.ReadAllBytes(pulseLogoPath);
 		}
 
 		// ========================================
