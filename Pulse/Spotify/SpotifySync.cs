@@ -20,8 +20,14 @@ namespace Pulse.Spotify
 		private bool m_running;
 		private int m_syncIntervalHours;
 		private string m_userName;
-		public bool IsAuthorized { get { return !string.IsNullOrEmpty(m_refreshToken); } }
-		public bool IsRunning { get { return m_running; } }
+		public bool IsAuthorized()
+		{
+			return !string.IsNullOrEmpty(m_refreshToken);
+		}
+		public bool IsRunning()
+		{
+			return m_running;
+		}
 
 		public SpotifySync(string userName, MusicManager musicManager, string clientId, string clientSecret, string redirectUri, string credentialPath)
 		{
@@ -101,7 +107,7 @@ namespace Pulse.Spotify
 			{
 				return;
 			}
-			if (!IsAuthorized)
+			if (!IsAuthorized())
 			{
 				//https://pulse.mccoder.com:32458/spotify/authorize/yourNameHere
 				Console.WriteLine("Spotify: Not authorized. Visit: " + GetAuthorizationUrl("yourNameHere"));

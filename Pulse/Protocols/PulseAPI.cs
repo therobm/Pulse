@@ -26,7 +26,7 @@ namespace Pulse.Protocols
 
 		public IResult HandleRecentlyPlayed(HttpContext context)
 		{
-			PulseAnalyticsInfo analytics = m_musicManager.Db.Analytics;
+			PulseAnalyticsInfo analytics = m_musicManager.GetDb().GetAnalytics();
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 			string user = context.Request.Query["u"].FirstOrDefault();
 
@@ -36,7 +36,7 @@ namespace Pulse.Protocols
 				int limit = Math.Min(count, analytics.RecentlyPlayed.Count);
 				for (int idx = 0; idx < limit; idx++)
 				{
-					TrackInfo track = m_musicManager.Db.GetTrack(analytics.RecentlyPlayed[idx]);
+					TrackInfo track = m_musicManager.GetDb().GetTrack(analytics.RecentlyPlayed[idx]);
 					if (track != null)
 					{
 						tracks.Add(new
@@ -59,7 +59,7 @@ namespace Pulse.Protocols
 
 		public IResult HandlePopularArtists(HttpContext context)
 		{
-			PulseAnalyticsInfo analytics = m_musicManager.Db.Analytics;
+			PulseAnalyticsInfo analytics = m_musicManager.GetDb().GetAnalytics();
 
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 
@@ -70,7 +70,7 @@ namespace Pulse.Protocols
 			int limit = Math.Min(count, sorted.Count);
 			for (int idx = 0; idx < limit; idx++)
 			{
-				ArtistInfo artist = m_musicManager.Db.GetArtist(sorted[idx].Key);
+				ArtistInfo artist = m_musicManager.GetDb().GetArtist(sorted[idx].Key);
 				if (artist != null)
 				{
 					string coverArt = null;
@@ -97,8 +97,8 @@ namespace Pulse.Protocols
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			List<PlaylistInfo> all = m_musicManager.Db.GetAllPlaylists(user);
-			all.Sort((left, right) => right.SongCount.CompareTo(left.SongCount));
+			List<PlaylistInfo> all = m_musicManager.GetDb().GetAllPlaylists(user);
+			all.Sort((left, right) => right.GetSongCount().CompareTo(left.GetSongCount()));
 
 			List<object> playlists = new List<object>();
 			int limit = Math.Min(count, all.Count);
@@ -109,7 +109,7 @@ namespace Pulse.Protocols
 				{
 					id = playlist.Id,
 					name = playlist.Name,
-					songCount = playlist.SongCount,
+					songCount = playlist.GetSongCount(),
 					duration = playlist.DurationSeconds
 				});
 			}

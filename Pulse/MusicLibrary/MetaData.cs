@@ -140,7 +140,10 @@ namespace Pulse.MusicLibrary
 		public string Name { get; set; }
 		public string Comment { get; set; }
 		public List<string> TrackIds { get; set; }
-		public int SongCount { get { return TrackIds.Count; } }
+		public int GetSongCount()
+		{
+			return TrackIds.Count;
+		}
 		public long DurationSeconds { get; set; }
 
 		public PlaylistInfo()

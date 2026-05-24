@@ -23,9 +23,15 @@ namespace Pulse
 
 	public class PulseService
 	{
-		public MusicManager MusicManager { get { return m_musicManager; } }
+		public MusicManager GetMusicManager()
+		{
+			return m_musicManager;
+		}
 
-		public static PulseConfig Config { get { return m_config; } }
+		public static PulseConfig GetConfig()
+		{
+			return m_config;
+		}
 		
 		static PulseConfig m_config;
 		private Subsonic m_subsonic;
@@ -169,10 +175,10 @@ namespace Pulse
 
 		private IResult HandleStats(HttpContext context)
 		{
-			List<TrackInfo> allTracks = m_musicManager.Db.GetAllTracks();
-			List<AlbumInfo> allAlbums = m_musicManager.Db.GetAllAlbums();
-			List<ArtistInfo> allArtists = m_musicManager.Db.GetAllArtists();
-			List<PlaylistInfo> allPlaylists = m_musicManager.Db.GetAllPlaylists(null);
+			List<TrackInfo> allTracks = m_musicManager.GetDb().GetAllTracks();
+			List<AlbumInfo> allAlbums = m_musicManager.GetDb().GetAllAlbums();
+			List<ArtistInfo> allArtists = m_musicManager.GetDb().GetAllArtists();
+			List<PlaylistInfo> allPlaylists = m_musicManager.GetDb().GetAllPlaylists(null);
 
 			PulseStatsResponse stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists);
 			string json = System.Text.Json.JsonSerializer.Serialize(stats);
@@ -207,7 +213,7 @@ namespace Pulse
 					string fileName = Path.GetFileNameWithoutExtension(credFiles[index]);
 					string userName = fileName.Substring("spotify_".Length);
 					SpotifySync sync = GetOrCreateSpotifySync(userName);
-					if (sync.IsAuthorized)
+					if (sync.IsAuthorized())
 					{
 						sync.Start();
 						Console.WriteLine("Pulse: Started Spotify sync for " + userName);

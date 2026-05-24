@@ -31,7 +31,7 @@ namespace Assistant.Services
 
 		public void Run()
 		{
-			PulseConfig config = PulseService.Config;
+			PulseConfig config = PulseService.GetConfig();
 
 
 			WebApplicationBuilder builder = WebApplication.CreateBuilder();

@@ -13,12 +13,27 @@ namespace Pulse.MusicLibrary
 
 	public class MusicManager
 	{
-		public int TrackCount { get { return m_db.TrackCount; } }
-		public int AlbumCount { get { return m_db.AlbumCount; } }
-		public int ArtistCount { get { return m_db.ArtistCount; } }
-		
-		public bool IsScanning { get { return m_scanning; } }
-		public IPulseDatabase Db { get { return m_db; } }
+		public int GetTrackCount()
+		{
+			return m_db.GetTrackCount();
+		}
+		public int GetAlbumCount()
+		{
+			return m_db.GetAlbumCount();
+		}
+		public int GetArtistCount()
+		{
+			return m_db.GetArtistCount();
+		}
+
+		public bool GetIsScanning()
+		{
+			return m_scanning;
+		}
+		public IPulseDatabase GetDb()
+		{
+			return m_db;
+		}
 
 		private IPulseDatabase m_db;
 		private object m_missingLock = new object();
@@ -110,7 +125,7 @@ namespace Pulse.MusicLibrary
 						}
 					}
 
-					PulseAnalyticsInfo analytics = m_db.Analytics;
+					PulseAnalyticsInfo analytics = m_db.GetAnalytics();
 					int artistCount = 0;
 					analytics.ArtistPlayCounts.TryGetValue(previousTrack.ArtistId, out artistCount);
 					analytics.ArtistPlayCounts[previousTrack.ArtistId] = artistCount + 1;
@@ -441,7 +456,7 @@ namespace Pulse.MusicLibrary
 
 
 
-			Console.WriteLine("Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_db.TrackCount);
+			Console.WriteLine("Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_db.GetTrackCount());
 			m_scanning = false;
 			SaveDB();
 		}
@@ -566,7 +581,7 @@ namespace Pulse.MusicLibrary
 				totalTracksInAlbums = totalTracksInAlbums + album.Tracks.Count;
 			}
 
-			Console.WriteLine("Pulse: Tracks in dictionary: " + m_db.TrackCount + ", tracks across albums: " + totalTracksInAlbums + ", duplicate tracks: " + duplicateAlbumTracks + ", duplicate albums: " + duplicateArtistAlbums);
+			Console.WriteLine("Pulse: Tracks in dictionary: " + m_db.GetTrackCount() + ", tracks across albums: " + totalTracksInAlbums + ", duplicate tracks: " + duplicateAlbumTracks + ", duplicate albums: " + duplicateArtistAlbums);
 		}
 
 		public void RecalculateScore(TrackInfo track)

@@ -6,10 +6,10 @@ namespace Pulse.Data
 {
 	public interface IPulseDatabase
 	{
-		int TrackCount { get; }
-		int AlbumCount { get; }
-		int ArtistCount { get; }
-		PulseAnalyticsInfo Analytics { get; }
+		int GetTrackCount();
+		int GetAlbumCount();
+		int GetArtistCount();
+		PulseAnalyticsInfo GetAnalytics();
 
 		TrackInfo GetTrack(string id);
 		AlbumInfo GetAlbum(string id);
@@ -40,10 +40,22 @@ namespace Pulse.Data
 
 	public abstract class PulseDatabaseBase : IPulseDatabase
 	{
-		public int TrackCount { get { return m_tracks.Count; } }
-		public int AlbumCount { get { return m_albums.Count; } }
-		public int ArtistCount { get { return m_artists.Count; } }
-		public PulseAnalyticsInfo Analytics { get { return m_analytics; } }
+		public int GetTrackCount()
+		{
+			return m_tracks.Count;
+		}
+		public int GetAlbumCount()
+		{
+			return m_albums.Count;
+		}
+		public int GetArtistCount()
+		{
+			return m_artists.Count;
+		}
+		public PulseAnalyticsInfo GetAnalytics()
+		{
+			return m_analytics;
+		}
 
 		protected ConcurrentDictionary<string, TrackInfo> m_tracks = new ConcurrentDictionary<string, TrackInfo>();
 		protected ConcurrentDictionary<string, AlbumInfo> m_albums = new ConcurrentDictionary<string, AlbumInfo>();
