@@ -18,6 +18,7 @@ namespace Pulse.MusicLibrary
 		public int ArtistCount { get { return m_db.ArtistCount; } }
 		
 		public bool IsScanning { get { return m_scanning; } }
+		public IPulseDatabase Db { get { return m_db; } }
 
 		private IPulseDatabase m_db;
 		private object m_missingLock = new object();
@@ -34,55 +35,6 @@ namespace Pulse.MusicLibrary
 		{
 			m_config = config;
 			m_lidarrSync = new LidarrSync(config.LidarrURL, config.LidarrApiKey);
-		}
-
-		public TrackInfo GetTrack(string id)
-		{
-			return m_db.GetTrack(id);
-		}
-
-		public List<ArtistInfo> GetAllArtists()
-		{
-			return m_db.GetAllArtists();
-		}
-
-		public List<TrackInfo> GetAllTracks()
-		{
-			return m_db.GetAllTracks();
-		}
-		public List<AlbumInfo> GetAllAlbums()
-		{
-			return m_db.GetAllAlbums();
-		}
-
-		public PlaylistInfo GetPlaylist(string id)
-		{
-			return m_db.GetPlaylist(id);
-		}
-
-		public List<PlaylistInfo> GetAllPlaylists(string userName)
-		{
-			return m_db.GetAllPlaylists(userName);
-		}
-
-		public List<TrackInfo> GetPlaylistTracks(string playlistId)
-		{
-			return m_db.GetPlaylistTracks(playlistId);
-		}
-
-		public void SetRating(string trackId, int rating)
-		{
-			m_db.SetRating(trackId, rating);
-		}
-
-		public void Star(string userName, string trackId, string albumId, string artistId)
-		{
-			m_db.UpdateStar(userName, trackId, albumId, artistId, true);
-		}
-
-		public void Unstar(string userName, string trackId, string albumId, string artistId)
-		{
-			m_db.UpdateStar(userName, trackId, albumId, artistId, false);
 		}
 
 		public void Run(string musicPath, string cachePath = null)
@@ -187,10 +139,6 @@ namespace Pulse.MusicLibrary
 			}
 		}
 
-		public PulseAnalyticsInfo GetAnalytics() 
-		{
-			return m_db.Analytics;
-		}
 		public PlaylistInfo ImportPlaylist(string name, List<PlaylistImportEntry> entries)
 		{
 			//Console.WriteLine("Importing playlist: " + name);
@@ -612,16 +560,6 @@ namespace Pulse.MusicLibrary
 					track.UserScore[user].WeightedScore = 1;
 			}
 			track.m_bIsDirty = true;
-		}
-
-		public AlbumInfo GetAlbum(string id)
-		{
-			return m_db.GetAlbum(id);
-		}
-
-		public ArtistInfo GetArtist(string id)
-		{
-			return m_db.GetArtist(id);
 		}
 
 		private string GetContentType(string extension)

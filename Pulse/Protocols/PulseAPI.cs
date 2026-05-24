@@ -26,7 +26,7 @@ namespace Pulse.Protocols
 
 		public IResult HandleRecentlyPlayed(HttpContext context)
 		{
-			PulseAnalyticsInfo analytics = m_musicManager.GetAnalytics();
+			PulseAnalyticsInfo analytics = m_musicManager.Db.Analytics;
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 			string user = context.Request.Query["u"].FirstOrDefault();
 
@@ -36,7 +36,7 @@ namespace Pulse.Protocols
 				int limit = Math.Min(count, analytics.RecentlyPlayed.Count);
 				for (int idx = 0; idx < limit; idx++)
 				{
-					TrackInfo track = m_musicManager.GetTrack(analytics.RecentlyPlayed[idx]);
+					TrackInfo track = m_musicManager.Db.GetTrack(analytics.RecentlyPlayed[idx]);
 					if (track != null)
 					{
 						tracks.Add(new
@@ -59,7 +59,7 @@ namespace Pulse.Protocols
 
 		public IResult HandlePopularArtists(HttpContext context)
 		{
-			PulseAnalyticsInfo analytics = m_musicManager.GetAnalytics();
+			PulseAnalyticsInfo analytics = m_musicManager.Db.Analytics;
 
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 
@@ -70,7 +70,7 @@ namespace Pulse.Protocols
 			int limit = Math.Min(count, sorted.Count);
 			for (int idx = 0; idx < limit; idx++)
 			{
-				ArtistInfo artist = m_musicManager.GetArtist(sorted[idx].Key);
+				ArtistInfo artist = m_musicManager.Db.GetArtist(sorted[idx].Key);
 				if (artist != null)
 				{
 					artists.Add(new
@@ -92,7 +92,7 @@ namespace Pulse.Protocols
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
+			List<PlaylistInfo> all = m_musicManager.Db.GetAllPlaylists(user);
 			all.Sort((left, right) => right.SongCount.CompareTo(left.SongCount));
 
 			List<object> playlists = new List<object>();

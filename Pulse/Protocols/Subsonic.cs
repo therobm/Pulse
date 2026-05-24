@@ -101,13 +101,13 @@ namespace Pulse.SubsonicService
 
 			if (!string.IsNullOrEmpty(albumId))
 			{
-				AlbumInfo album = m_musicManager.GetAlbum(albumId);
+				AlbumInfo album = m_musicManager.Db.GetAlbum(albumId);
 				if (album != null)
 					candidates.AddRange(album.Tracks);
 			}
 			else if (!string.IsNullOrEmpty(artistId))
 			{
-				ArtistInfo artist = m_musicManager.GetArtist(artistId);
+				ArtistInfo artist = m_musicManager.Db.GetArtist(artistId);
 				if (artist != null)
 				{
 					for (int index = 0; index < artist.Albums.Count; index++)
@@ -119,7 +119,7 @@ namespace Pulse.SubsonicService
 			else if (!string.IsNullOrEmpty(genre))
 			{
 				string lowerGenre = genre.ToLowerInvariant();
-				List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+				List<AlbumInfo> allAlbums = m_musicManager.Db.GetAllAlbums();
 				for (int index = 0; index < allAlbums.Count; index++)
 				{
 					if (allAlbums[index].Genre.ToLowerInvariant().Contains(lowerGenre))
@@ -130,7 +130,7 @@ namespace Pulse.SubsonicService
 			}
 			else
 			{
-				List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+				List<AlbumInfo> allAlbums = m_musicManager.Db.GetAllAlbums();
 				for (int index = 0; index < allAlbums.Count; index++)
 				{
 					candidates.AddRange(allAlbums[index].Tracks);
@@ -155,7 +155,7 @@ namespace Pulse.SubsonicService
 			string id = context.Request.Query["id"].FirstOrDefault();
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			TrackInfo track = m_musicManager.GetTrack(id);
+			TrackInfo track = m_musicManager.Db.GetTrack(id);
 
 			if (track == null)
 			{
@@ -176,7 +176,7 @@ namespace Pulse.SubsonicService
 		{
 			string id = context.Request.Query["id"].FirstOrDefault();
 			string user = context.Request.Query["u"].FirstOrDefault();
-			TrackInfo track = m_musicManager.GetTrack(id);
+			TrackInfo track = m_musicManager.Db.GetTrack(id);
 
 			if (track == null)
 			{
@@ -204,7 +204,7 @@ namespace Pulse.SubsonicService
 				return Results.Bytes(cached, "image/jpeg");
 			}
 
-			AlbumInfo album = m_musicManager.GetAlbum(id);
+			AlbumInfo album = m_musicManager.Db.GetAlbum(id);
 			if (album == null || album.Tracks.Count == 0)
 			{
 				m_coverArtCache[id] = m_defaultCoverArt;
@@ -251,7 +251,7 @@ namespace Pulse.SubsonicService
 
 		public IResult HandleGetIndexes(HttpContext context)
 		{
-			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+			List<ArtistInfo> allArtists = m_musicManager.Db.GetAllArtists();
 			Dictionary<string, List<ArtistID3>> grouped = new Dictionary<string, List<ArtistID3>>();
 
 			for (int i = 0; i < allArtists.Count; i++)
@@ -317,8 +317,8 @@ namespace Pulse.SubsonicService
 			SubsonicResponseBody body = CreateResponse();
 			body.searchResult3 = new SearchResult3();
 
-			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
-			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+			List<ArtistInfo> allArtists = m_musicManager.Db.GetAllArtists();
+			List<AlbumInfo> allAlbums = m_musicManager.Db.GetAllAlbums();
 
 			if (string.IsNullOrEmpty(query))
 			{
@@ -415,7 +415,7 @@ namespace Pulse.SubsonicService
 			SubsonicResponseBody body = CreateResponse();
 			body.starred = new StarredContainer();
 
-			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+			List<AlbumInfo> allAlbums = m_musicManager.Db.GetAllAlbums();
 			for (int albumIndex = 0; albumIndex < allAlbums.Count; albumIndex++)
 			{
 				AlbumInfo album = allAlbums[albumIndex];
@@ -440,7 +440,7 @@ namespace Pulse.SubsonicService
 			SubsonicResponseBody body = CreateResponse();
 			body.starred2 = new StarredContainer();
 
-			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+			List<ArtistInfo> allArtists = m_musicManager.Db.GetAllArtists();
 			for (int index = 0; index < allArtists.Count; index++)
 			{
 				ArtistInfo artist = allArtists[index];
@@ -451,7 +451,7 @@ namespace Pulse.SubsonicService
 				}
 			}
 
-			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+			List<AlbumInfo> allAlbums = m_musicManager.Db.GetAllAlbums();
 			for (int albumIndex = 0; albumIndex < allAlbums.Count; albumIndex++)
 			{
 				AlbumInfo album = allAlbums[albumIndex];
@@ -504,7 +504,7 @@ namespace Pulse.SubsonicService
 				return Respond(context, CreateErrorResponse(10, "Rating must be between 0 and 5"));
 			}
 
-			m_musicManager.SetRating(id, rating);
+			m_musicManager.Db.SetRating(id, rating);
 
 			SubsonicResponseBody body = CreateResponse();
 			return Respond(context, body);
@@ -517,7 +517,7 @@ namespace Pulse.SubsonicService
 			string artistId = context.Request.Query["artistId"].FirstOrDefault();
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			m_musicManager.Star(user, id, albumId, artistId);
+			m_musicManager.Db.UpdateStar(user, id, albumId, artistId, true);
 
 			SubsonicResponseBody body = CreateResponse();
 			return Respond(context, body);
@@ -531,7 +531,7 @@ namespace Pulse.SubsonicService
 			string artistId = context.Request.Query["artistId"].FirstOrDefault();
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			m_musicManager.Unstar(user, id, albumId, artistId);
+			m_musicManager.Db.UpdateStar(user, id, albumId, artistId, false);
 
 			SubsonicResponseBody body = CreateResponse();
 			return Respond(context, body);
@@ -566,7 +566,7 @@ namespace Pulse.SubsonicService
 		}
 		public IResult HandleGetArtists(HttpContext context)
 		{
-			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+			List<ArtistInfo> allArtists = m_musicManager.Db.GetAllArtists();
 
 			SubsonicResponseBody body = CreateResponse();
 			body.artists = new ArtistsContainer();
@@ -601,7 +601,7 @@ namespace Pulse.SubsonicService
 		public IResult HandleGetArtist(HttpContext context)
 		{
 			string id = context.Request.Query["id"].FirstOrDefault();
-			ArtistInfo source = m_musicManager.GetArtist(id);
+			ArtistInfo source = m_musicManager.Db.GetArtist(id);
 
 			if (source == null)
 			{
@@ -628,7 +628,7 @@ namespace Pulse.SubsonicService
 		public IResult HandleGetAlbum(HttpContext context)
 		{
 			string id = context.Request.Query["id"].FirstOrDefault();
-			AlbumInfo source = m_musicManager.GetAlbum(id);
+			AlbumInfo source = m_musicManager.Db.GetAlbum(id);
 
 			if (source == null)
 			{
@@ -665,7 +665,7 @@ namespace Pulse.SubsonicService
 			int size = int.Parse(context.Request.Query["size"].FirstOrDefault() ?? "20");
 			int offset = int.Parse(context.Request.Query["offset"].FirstOrDefault() ?? "0");
 
-			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+			List<AlbumInfo> allAlbums = m_musicManager.Db.GetAllAlbums();
 
 			if (type == "newest")
 			{
@@ -703,7 +703,7 @@ namespace Pulse.SubsonicService
 		{
 			Dictionary<string, GenreEntry> genreMap = new Dictionary<string, GenreEntry>();
 
-			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+			List<AlbumInfo> allAlbums = m_musicManager.Db.GetAllAlbums();
 			for (int index = 0; index < allAlbums.Count; index++)
 			{
 				AlbumInfo album = allAlbums[index];
@@ -744,7 +744,7 @@ namespace Pulse.SubsonicService
 
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(user);
+			List<PlaylistInfo> allPlaylists = m_musicManager.Db.GetAllPlaylists(user);
 			for (int index = 0; index < allPlaylists.Count; index++)
 			{
 				PlaylistInfo playlist = allPlaylists[index];
@@ -768,7 +768,7 @@ namespace Pulse.SubsonicService
 				return Results.BadRequest();
 			}
 
-			PlaylistInfo playlist = m_musicManager.GetPlaylist(id);
+			PlaylistInfo playlist = m_musicManager.Db.GetPlaylist(id);
 			if (playlist == null)
 			{
 				return Results.NotFound();
@@ -784,7 +784,7 @@ namespace Pulse.SubsonicService
 			body.playlist.songCount = playlist.SongCount;
 			body.playlist.duration = playlist.DurationSeconds;
 
-			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
+			List<TrackInfo> tracks = m_musicManager.Db.GetPlaylistTracks(playlist.Id);
 			for (int index = 0; index < tracks.Count; index++)
 			{
 				TrackInfo track = tracks[index];
@@ -806,7 +806,7 @@ namespace Pulse.SubsonicService
 			PlaylistInfo playlist = null;
 			if (!string.IsNullOrEmpty(playlistId))
 			{
-				playlist = m_musicManager.GetPlaylist(playlistId);
+				playlist = m_musicManager.Db.GetPlaylist(playlistId);
 				if (playlist != null)
 				{
 					playlist.TrackIds.Clear();
@@ -823,7 +823,7 @@ namespace Pulse.SubsonicService
 			long totalDuration = 0;
 			for (int index = 0; index < songIds.Count; index++)
 			{
-				TrackInfo track = m_musicManager.GetTrack(songIds[index]);
+				TrackInfo track = m_musicManager.Db.GetTrack(songIds[index]);
 				if (track == null)
 					continue;
 				playlist.TrackIds.Add(track.Id);
@@ -840,7 +840,7 @@ namespace Pulse.SubsonicService
 			body.playlist.songCount = playlist.TrackIds.Count;
 			body.playlist.duration = playlist.DurationSeconds;
 
-			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
+			List<TrackInfo> tracks = m_musicManager.Db.GetPlaylistTracks(playlist.Id);
 			for (int index = 0; index < tracks.Count; index++)
 			{
 				body.playlist.entry.Add(new SongID3(user, tracks[index]));
@@ -863,7 +863,7 @@ namespace Pulse.SubsonicService
 				return Respond(context, CreateErrorResponse(10, "Missing playlistId"));
 			}
 
-			PlaylistInfo playlist = m_musicManager.GetPlaylist(playlistId);
+			PlaylistInfo playlist = m_musicManager.Db.GetPlaylist(playlistId);
 			if (playlist == null)
 			{
 				return Respond(context, CreateErrorResponse(70, "Playlist not found"));
@@ -893,7 +893,7 @@ namespace Pulse.SubsonicService
 
 			for (int index = 0; index < songIdsToAdd.Count; index++)
 			{
-				TrackInfo track = m_musicManager.GetTrack(songIdsToAdd[index]);
+				TrackInfo track = m_musicManager.Db.GetTrack(songIdsToAdd[index]);
 				if (track == null)
 					continue;
 				playlist.TrackIds.Add(track.Id);
@@ -903,7 +903,7 @@ namespace Pulse.SubsonicService
 			long totalDuration = 0;
 			for (int index = 0; index < playlist.TrackIds.Count; index++)
 			{
-				TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[index]);
+				TrackInfo track = m_musicManager.Db.GetTrack(playlist.TrackIds[index]);
 				if (track != null)
 					totalDuration = totalDuration + track.DurationSeconds;
 			}
@@ -926,7 +926,7 @@ namespace Pulse.SubsonicService
 				return Respond(context, CreateErrorResponse(10, "Missing id"));
 			}
 
-			PlaylistInfo playlist = m_musicManager.GetPlaylist(playlistId);
+			PlaylistInfo playlist = m_musicManager.Db.GetPlaylist(playlistId);
 			if (playlist == null)
 			{
 				return Respond(context, CreateErrorResponse(70, "Playlist not found"));
@@ -960,7 +960,7 @@ namespace Pulse.SubsonicService
 				return Respond(context, CreateErrorResponse(70, "Missing id"));
 			}
 
-			ArtistInfo artist = m_musicManager.GetArtist(id);
+			ArtistInfo artist = m_musicManager.Db.GetArtist(id);
 			if (artist != null)
 			{
 				SubsonicResponseBody body = CreateResponse();
@@ -984,7 +984,7 @@ namespace Pulse.SubsonicService
 				return Respond(context, body);
 			}
 
-			AlbumInfo albumMatch = m_musicManager.GetAlbum(id);
+			AlbumInfo albumMatch = m_musicManager.Db.GetAlbum(id);
 			if (albumMatch != null)
 			{
 				SubsonicResponseBody body = CreateResponse();
