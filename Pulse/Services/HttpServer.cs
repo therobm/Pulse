@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -113,17 +112,23 @@ namespace Assistant.Services
 			{
 				string path = context.Request.Path.Value.TrimStart('/');
 
+				if (path.Length == 0)
+				{
+					context.Response.Redirect("/web/pulse.html");
+					return Task.CompletedTask;
+				}
+
 				Action<HttpContext> handler = null;
 				int bestLength = 0;
-				for (int idx = 0; idx < m_routes.Count; idx++)
+				foreach (KeyValuePair<string, Action<HttpContext>> route in m_routes)
 				{
-					string routePath = m_routes.Keys.ElementAt(idx);
+					string routePath = route.Key;
 					if (path == routePath || path.StartsWith(routePath + "/"))
 					{
 						if (routePath.Length > bestLength)
 						{
 							bestLength = routePath.Length;
-							handler = m_routes[routePath];
+							handler = route.Value;
 						}
 					}
 				}
