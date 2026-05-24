@@ -114,6 +114,12 @@ namespace Assistant.Services
 			{
 				string path = context.Request.Path.Value.TrimStart('/');
 
+				if (!PulseService.IsReady())
+				{
+					ServeLoadingPage(context);
+					return Task.CompletedTask;
+				}
+
 				if (path.Length == 0)
 				{
 					context.Response.Redirect("/web/pulse.html");
@@ -176,6 +182,19 @@ namespace Assistant.Services
 			{
 				m_app.StopAsync().Wait();
 			}
+		}
+
+		private void ServeLoadingPage(HttpContext context)
+		{
+			string html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"2\"><title>Pulse - Loading</title><style>body{margin:0;background:#0e0e12;color:#e8e6f0;font-family:'Segoe UI',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;}main{text-align:center;}h1{font-size:32px;font-weight:300;letter-spacing:3px;text-transform:uppercase;margin:0 0 12px;}h1 span{color:#6c5ce7;font-weight:600;}p{color:#8a88a0;font-size:14px;margin:0;}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#6c5ce7;margin:0 3px;animation:pulse 1.2s infinite ease-in-out;}.dot:nth-child(2){animation-delay:0.2s;}.dot:nth-child(3){animation-delay:0.4s;}@keyframes pulse{0%,80%,100%{opacity:0.2;}40%{opacity:1;}}</style></head><body><main><h1><span>Pulse</span> is loading</h1><p>Scanning the music library &mdash; this page will refresh.</p><div style=\"margin-top:24px\"><span class=\"dot\"></span><span class=\"dot\"></span><span class=\"dot\"></span></div></main></body></html>";
+			byte[] data = System.Text.Encoding.UTF8.GetBytes(html);
+			context.Response.StatusCode = 503;
+			context.Response.Headers["Retry-After"] = "2";
+			context.Response.ContentType = "text/html; charset=utf-8";
+			context.Response.ContentLength = data.Length;
+			context.Response.Body.Write(data, 0, data.Length);
+			context.Response.Body.Flush();
+			context.Response.CompleteAsync().Wait();
 		}
 
 		private void ServeFile(HttpContext context, string filePath, string contentType)
