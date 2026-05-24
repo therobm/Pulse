@@ -242,7 +242,15 @@ namespace Pulse.SubsonicService
 				{
 					byte[] imageData = File.ReadAllBytes(artPath);
 					m_coverArtCache[id] = imageData;
-					string contentType = artPath.EndsWith(".png") ? "image/png" : "image/jpeg";
+					string contentType;
+					if (artPath.EndsWith(".png"))
+					{
+						contentType = "image/png";
+					}
+					else
+					{
+						contentType = "image/jpeg";
+					}
 					return Results.Bytes(imageData, contentType);
 				}
 			}

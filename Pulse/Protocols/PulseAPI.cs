@@ -73,13 +73,18 @@ namespace Pulse.Protocols
 				ArtistInfo artist = m_musicManager.Db.GetArtist(sorted[idx].Key);
 				if (artist != null)
 				{
+					string coverArt = null;
+					if (artist.Albums.Count > 0)
+					{
+						coverArt = artist.Albums[0].CoverArtId;
+					}
 					artists.Add(new
 					{
 						id = artist.Id,
 						name = artist.Name,
 						albumCount = artist.Albums.Count,
 						playCount = sorted[idx].Value,
-						coverArt = artist.Albums.Count > 0 ? artist.Albums[0].CoverArtId : null
+						coverArt = coverArt
 					});
 				}
 			}

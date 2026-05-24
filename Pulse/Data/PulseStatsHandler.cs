@@ -146,7 +146,15 @@ namespace Pulse.Data
 				}
 
 				// Genre
-				string genre = string.IsNullOrEmpty(track.Genre) ? "Unknown" : track.Genre;
+				string genre;
+				if (string.IsNullOrEmpty(track.Genre))
+				{
+					genre = "Unknown";
+				}
+				else
+				{
+					genre = track.Genre;
+				}
 				if (genreCounts.ContainsKey(genre))
 				{
 					genreCounts[genre]++;
@@ -177,7 +185,15 @@ namespace Pulse.Data
 				}
 
 				// Format
-				string format = string.IsNullOrEmpty(track.Suffix) ? "Unknown" : track.Suffix.ToUpperInvariant();
+				string format;
+				if (string.IsNullOrEmpty(track.Suffix))
+				{
+					format = "Unknown";
+				}
+				else
+				{
+					format = track.Suffix.ToUpperInvariant();
+				}
 				if (formatCounts.ContainsKey(format))
 				{
 					formatCounts[format]++;
@@ -188,7 +204,15 @@ namespace Pulse.Data
 				}
 
 				// Artist play counts
-				string artistName = string.IsNullOrEmpty(track.Artist) ? "Unknown" : track.Artist;
+				string artistName;
+				if (string.IsNullOrEmpty(track.Artist))
+				{
+					artistName = "Unknown";
+				}
+				else
+				{
+					artistName = track.Artist;
+				}
 				if (artistPlayCounts.ContainsKey(artistName))
 				{
 					artistPlayCounts[artistName] += playCount;

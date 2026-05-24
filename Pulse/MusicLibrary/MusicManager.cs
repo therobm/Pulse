@@ -125,6 +125,11 @@ namespace Pulse.MusicLibrary
 					RecalculateScore(previousTrack);
 
 					bool skipped = elapsedSeconds < threshold;
+					string skipSuffix = "";
+					if (skipped)
+					{
+						skipSuffix = " SKIPPED";
+					}
 					Log.Info(-1, "Finalized: " + previousTrack.Artist + ":" + previousTrack.Title
 						+ " elapsed=" + elapsedSeconds.ToString("F1") + "s"
 						+ " duration=" + previousTrack.DurationSeconds + "s"
@@ -132,7 +137,7 @@ namespace Pulse.MusicLibrary
 						+ " plays=" + previousTrack.Score.PlayCount
 						+ " skips=" + previousTrack.Score.SkipCount
 						+ " score=" + previousTrack.Score.WeightedScore.ToString("F3")
-						+ (skipped ? " SKIPPED" : ""));
+						+ skipSuffix);
 
 					SaveDB();
 				}
@@ -454,7 +459,14 @@ namespace Pulse.MusicLibrary
 			{
 				string relativePath = Path.GetRelativePath(musicRoot, filePath);
 				string[] parts = relativePath.Split(Path.DirectorySeparatorChar);
-				artist = parts.Length > 1 ? parts[0] : "Unknown Artist";
+				if (parts.Length > 1)
+				{
+					artist = parts[0];
+				}
+				else
+				{
+					artist = "Unknown Artist";
+				}
 			}
 
 			string album = tagFile.Tag.Album;
@@ -462,7 +474,14 @@ namespace Pulse.MusicLibrary
 			{
 				string relativePath = Path.GetRelativePath(musicRoot, filePath);
 				string[] parts = relativePath.Split(Path.DirectorySeparatorChar);
-				album = parts.Length > 2 ? parts[1] : "Unknown Album";
+				if (parts.Length > 2)
+				{
+					album = parts[1];
+				}
+				else
+				{
+					album = "Unknown Album";
+				}
 			}
 
 			string title = tagFile.Tag.Title;
@@ -628,7 +647,15 @@ namespace Pulse.MusicLibrary
 			{
 				for (int col = 1; col <= targetLength; col++)
 				{
-					int cost = source[row - 1] == target[col - 1] ? 0 : 1;
+					int cost;
+					if (source[row - 1] == target[col - 1])
+					{
+						cost = 0;
+					}
+					else
+					{
+						cost = 1;
+					}
 					int deleteCost = matrix[row - 1, col] + 1;
 					int insertCost = matrix[row, col - 1] + 1;
 					int replaceCost = matrix[row - 1, col - 1] + cost;
