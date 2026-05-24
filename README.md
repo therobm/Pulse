@@ -2,7 +2,7 @@
 
 A self-hosted music server built in C#. Implements the OpenSubsonic API so any compatible client can connect to it. Runs as a single executable with no external service dependencies.
 
-I built this because Spotify kept changing how playlists worked without asking, and I wanted a music server I actually controlled. Every line of this was written by hand — no generated code, no scaffolding tools, no "vibe coding."
+I built this because Spotify kept changing how playlists worked without asking, and I wanted a music server I actually controlled.
 
 ## What It Does
 
