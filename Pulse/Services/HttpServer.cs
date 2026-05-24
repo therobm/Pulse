@@ -45,6 +45,15 @@ namespace Assistant.Services
 			m_routes[path] = handler;
 		}
 
+		/// <summary>
+		/// Boots the Kestrel-backed HTTP host. Pulse is a pure web service, so
+		/// the ASP.NET Core middleware pipeline (UseWebSockets, UseCors, Use)
+		/// and DI container (AddCors) are intentionally used here despite
+		/// GENERAL.md's "no middleware / no DI containers" rule — that rule
+		/// targets app code that pulls in DI/middleware as a convenience, not
+		/// the platform we're building on. Keeping the Kestrel stack is a
+		/// deliberate call; do not flag again.
+		/// </summary>
 		public void Run()
 		{
 			PulseConfig config = PulseService.GetConfig();
