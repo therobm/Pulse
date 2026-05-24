@@ -67,14 +67,17 @@ namespace Pulse.Protocols
 
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 
-			List<KeyValuePair<string, int>> sorted = new List<KeyValuePair<string, int>>(analytics.ArtistPlayCounts);
-			sorted.Sort(CompareArtistPlayCountDescending);
+			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+
+
+			List<ArtistInfo> sorted = new List<ArtistInfo>(allArtists);
+			sorted.Sort(CompareArtistScoreDescending);
 
 			List<object> artists = new List<object>();
 			int limit = Math.Min(count, sorted.Count);
 			for (int idx = 0; idx < limit; idx++)
 			{
-				ArtistInfo artist = m_musicManager.GetArtist(sorted[idx].Key);
+				ArtistInfo artist = sorted[idx];
 				if (artist != null)
 				{
 					string coverArt = null;
@@ -87,7 +90,7 @@ namespace Pulse.Protocols
 						id = artist.Id,
 						name = artist.Name,
 						albumCount = artist.Albums.Count,
-						playCount = sorted[idx].Value,
+						score = sorted[idx].WeightedScore,
 						coverArt = coverArt
 					});
 				}
@@ -121,9 +124,9 @@ namespace Pulse.Protocols
 			return Results.Json(new { playlists = playlists });
 		}
 
-		private static int CompareArtistPlayCountDescending(KeyValuePair<string, int> left, KeyValuePair<string, int> right)
+		private static int CompareArtistScoreDescending(ArtistInfo left, ArtistInfo right)
 		{
-			return right.Value.CompareTo(left.Value);
+			return right.WeightedScore.CompareTo(left.WeightedScore);
 		}
 
 		private static int ComparePlaylistSongCountDescending(PlaylistInfo left, PlaylistInfo right)

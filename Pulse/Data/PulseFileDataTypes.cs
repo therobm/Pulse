@@ -211,13 +211,11 @@ namespace Pulse.Data
 	public class PulseAnalyticsRecord
 	{
 		public List<string> RecentlyPlayed { get; set; } = new List<string>();
-		public Dictionary<string, int> ArtistPlayCounts { get; set; } = new Dictionary<string, int>();
 
 		public static PulseAnalyticsRecord FromInfo(PulseAnalyticsInfo info)
 		{
 			PulseAnalyticsRecord record = new PulseAnalyticsRecord();
 			record.RecentlyPlayed = info.RecentlyPlayed;
-			record.ArtistPlayCounts = info.ArtistPlayCounts;
 			return record;
 		}
 
@@ -225,7 +223,6 @@ namespace Pulse.Data
 		{
 			PulseAnalyticsInfo info = new PulseAnalyticsInfo();
 			info.RecentlyPlayed = RecentlyPlayed;
-			info.ArtistPlayCounts = ArtistPlayCounts;
 			return info;
 		}
 	}

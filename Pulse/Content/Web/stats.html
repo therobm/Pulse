@@ -529,9 +529,9 @@
 					'</div>');
 
 				// Row 3: top artists (2 cols) + most played (2 cols)
-				if (stats.TopArtistsByPlays.length > 0) {
-					html += card(2, 'Top Artists by Plays',
-						buildBarList(stats.TopArtistsByPlays, stats.TopArtistsByPlays[0].Value, false, 'var(--accent)'), true);
+				if (stats.TopArtistsByScore.length > 0) {
+					html += card(2, 'Top Artists by Score',
+						buildBarList(stats.TopArtistsByScore, stats.TopArtistsByScore[0].Value, false, 'var(--accent)'), true);
 				}
 				if (stats.MostPlayed.length > 0) {
 					html += card(2, 'Most Played Tracks',

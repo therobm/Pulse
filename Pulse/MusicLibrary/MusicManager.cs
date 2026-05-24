@@ -196,9 +196,6 @@ namespace Pulse.MusicLibrary
 					}
 
 					PulseAnalyticsInfo analytics = m_database.GetAnalytics();
-					int artistCount = 0;
-					analytics.ArtistPlayCounts.TryGetValue(previousTrack.ArtistId, out artistCount);
-					analytics.ArtistPlayCounts[previousTrack.ArtistId] = artistCount + 1;
 					analytics.RecentlyPlayed.Remove(m_nowPlayingTrackId);
 					analytics.RecentlyPlayed.Insert(0, m_nowPlayingTrackId);
 					if (analytics.RecentlyPlayed.Count > 50)

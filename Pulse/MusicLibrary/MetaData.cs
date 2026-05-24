@@ -173,6 +173,5 @@ namespace Pulse.MusicLibrary
 	public class PulseAnalyticsInfo : PulseInfo
 	{
 		public List<string> RecentlyPlayed { get; set; } = new List<string>();
-		public Dictionary<string, int> ArtistPlayCounts { get; set; } = new Dictionary<string, int>();
 	}
 }
