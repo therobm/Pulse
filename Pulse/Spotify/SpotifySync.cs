@@ -129,8 +129,12 @@ namespace Pulse.Spotify
 		private void SyncLoop()
 		{
 			Console.WriteLine("Spotify: Sync loop started, interval " + m_syncIntervalHours + " hours");
-			while (m_running)
+			for (;;)
 			{
+				if (!m_running)
+				{
+					break;
+				}
 				try
 				{
 					SyncAllPlaylists();
@@ -180,8 +184,12 @@ namespace Pulse.Spotify
 			{
 				List<SpotifyPlaylistEntry> playlists = new List<SpotifyPlaylistEntry>();
 				string url = "https://api.spotify.com/v1/me/playlists?limit=50&offset=0";
-				while (!string.IsNullOrEmpty(url))
+				for (;;)
 				{
+					if (string.IsNullOrEmpty(url))
+					{
+						break;
+					}
 					string json = SpotifyGet(url);
 					if (json == null)
 					{
@@ -223,8 +231,12 @@ namespace Pulse.Spotify
 		{			
 			List<PlaylistImportEntry> tracks = new List<PlaylistImportEntry>();
 			string url = "https://api.spotify.com/v1/playlists/" + playlistId + "/items?limit=50&offset=0";
-			while (!string.IsNullOrEmpty(url))
+			for (;;)
 			{
+				if (string.IsNullOrEmpty(url))
+				{
+					break;
+				}
 				string json = SpotifyGet(url);
 				if (json == null)
 				{
