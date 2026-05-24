@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
@@ -19,6 +20,32 @@ namespace Pulse
 		public static string GetConfigPath()
 		{
 			return Path.Combine(System.AppContext.BaseDirectory, "pulse.config.json");
+		}
+
+		public List<string> Validate()
+		{
+			List<string> errors = new List<string>();
+
+			if (string.IsNullOrWhiteSpace(MusicPath))
+			{
+				errors.Add("MusicPath is required");
+			}
+			else if (!Directory.Exists(MusicPath))
+			{
+				errors.Add("MusicPath '" + MusicPath + "' does not exist");
+			}
+
+			if (HttpPort <= 0 || HttpPort > 65535)
+			{
+				errors.Add("HttpPort " + HttpPort.ToString() + " is not a valid port (1-65535)");
+			}
+
+			if (HttpsPort <= 0 || HttpsPort > 65535)
+			{
+				errors.Add("HttpsPort " + HttpsPort.ToString() + " is not a valid port (1-65535)");
+			}
+
+			return errors;
 		}
 
 		public static PulseConfig Load()
