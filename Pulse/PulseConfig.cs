@@ -12,9 +12,12 @@ namespace Pulse
 		public string MusicPath { get; set; } = "";
 		public string SpotifyClient = "";
 		public string SpotifySecret = "";
+		public string SpotifyRedirectURI = "";
 
 		public string LidarrURL { get; set; } = "";
 		public string LidarrApiKey { get; set; } = "";
+
+		public string HttpsCertPath { get; set; } = "";
 
 
 		public static string GetConfigPath()

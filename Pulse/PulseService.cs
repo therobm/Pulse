@@ -44,7 +44,6 @@ namespace Pulse
 		private MusicManager m_musicManager; 
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 
-		string m_spotifyRedirectURI = "https://pulse.mccoder.com:32458/spotify/callback";
 
 		public bool IsRunning { get; private set; }
 
@@ -248,7 +247,7 @@ namespace Pulse
 		
 			string credentialPath = Path.Combine(SpotifySync.GetCredentialBasePath(), "spotify_" + userName + ".json");
 			
-			sync = new SpotifySync(userName, m_musicManager, m_config.SpotifyClient, m_config.SpotifySecret, m_spotifyRedirectURI, credentialPath);
+			sync = new SpotifySync(userName, m_musicManager, m_config.SpotifyClient, m_config.SpotifySecret, m_config.SpotifyRedirectURI, credentialPath);
 			m_spotifySyncs.Add(userName, sync);
 			return sync;
 		}
