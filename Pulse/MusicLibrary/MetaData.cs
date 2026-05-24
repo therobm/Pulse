@@ -1,8 +1,23 @@
 ﻿
+using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Pulse.MusicLibrary
 {
+	/// <summary>
+	/// Runtime in-memory shape. Subtypes carry parent references
+	/// (e.g. <c>TrackInfo.ParentArtist</c>), the
+	/// <see cref="m_bIsDirty"/> flag, transient scoring/analytics state,
+	/// and are wired together at startup by
+	/// <c>PulseFileDatabase.WireUpReferences</c>. Intentionally distinct
+	/// from the <c>*Record</c> types in
+	/// <c>Data/PulseFileDataTypes.cs</c> (the on-disk shape) and must
+	/// stay that way: in-memory shape is independent of persistence
+	/// shape. Cross the boundary via <c>TrackRecord.ToTrackInfo()</c> /
+	/// <c>TrackRecord.FromTrackInfo()</c> and the equivalents. Do not
+	/// unify the pairs into single classes.
+	/// </summary>
 	public abstract class PulseInfo
 	{
 		[JsonIgnore]
@@ -11,6 +26,9 @@ namespace Pulse.MusicLibrary
 
 	public class ScoreData
 	{
+		// PlayCount = times the track was served to the user.
+		// SkipCount = times the user rejected the track after it was served.
+		// A skip cannot exist without a play; the two are intentionally related, not independent counters.
 		public int PlayCount { get; set; }
 		public int SkipCount { get; set; }
 		public double TotalListenSeconds { get; set; }
@@ -132,6 +150,19 @@ namespace Pulse.MusicLibrary
 		// Dynamic data populated at runtime
 		public float WeightedScore { get; set; }
 		public Dictionary<string, float> UserWeightedScore { get; set; } = new Dictionary<string, float>();
+
+		public float GetScore(string userName)
+		{
+			if (!string.IsNullOrEmpty(userName))
+			{
+				float userScore;
+				if (UserWeightedScore.TryGetValue(userName, out userScore))
+				{
+					return userScore;
+				}
+			}
+			return WeightedScore;
+		}
 	}
 
 	public class PlaylistInfo : PulseInfo
@@ -155,6 +186,5 @@ namespace Pulse.MusicLibrary
 	public class PulseAnalyticsInfo : PulseInfo
 	{
 		public List<string> RecentlyPlayed { get; set; } = new List<string>();
-		public Dictionary<string, int> ArtistPlayCounts { get; set; } = new Dictionary<string, int>();
 	}
 }

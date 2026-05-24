@@ -1,4 +1,9 @@
-﻿using System.Net.WebSockets;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net.WebSockets;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
@@ -39,6 +44,15 @@ namespace Assistant.Services
 			m_routes[path] = handler;
 		}
 
+		/// <summary>
+		/// Boots the Kestrel-backed HTTP host. Pulse is a pure web service, so
+		/// the ASP.NET Core middleware pipeline (UseWebSockets, UseCors, Use)
+		/// and DI container (AddCors) are intentionally used here despite
+		/// GENERAL.md's "no middleware / no DI containers" rule — that rule
+		/// targets app code that pulls in DI/middleware as a convenience, not
+		/// the platform we're building on. Keeping the Kestrel stack is a
+		/// deliberate call; do not flag again.
+		/// </summary>
 		public void Run()
 		{
 			PulseConfig config = PulseService.GetConfig();
@@ -74,9 +88,11 @@ namespace Assistant.Services
 
 		private void ConfigureHttpsListener(Microsoft.AspNetCore.Server.Kestrel.Core.ListenOptions listenOptions)
 		{
-			if (File.Exists("pulse.mccoder.com.pfx"))
+			PulseConfig config = PulseService.GetConfig();
+			string certPath = config.HttpsCertPath;
+			if (!string.IsNullOrEmpty(certPath) && File.Exists(certPath))
 			{
-				listenOptions.UseHttps("pulse.mccoder.com.pfx");
+				listenOptions.UseHttps(certPath);
 				Log.Info(-1, "HTTPS is enabled");
 			}
 			else
@@ -98,17 +114,23 @@ namespace Assistant.Services
 			{
 				string path = context.Request.Path.Value.TrimStart('/');
 
+				if (path.Length == 0)
+				{
+					context.Response.Redirect("/web/pulse.html");
+					return Task.CompletedTask;
+				}
+
 				Action<HttpContext> handler = null;
 				int bestLength = 0;
-				for (int idx = 0; idx < m_routes.Count; idx++)
+				foreach (KeyValuePair<string, Action<HttpContext>> route in m_routes)
 				{
-					string routePath = m_routes.Keys.ElementAt(idx);
+					string routePath = route.Key;
 					if (path == routePath || path.StartsWith(routePath + "/"))
 					{
 						if (routePath.Length > bestLength)
 						{
 							bestLength = routePath.Length;
-							handler = m_routes[routePath];
+							handler = route.Value;
 						}
 					}
 				}

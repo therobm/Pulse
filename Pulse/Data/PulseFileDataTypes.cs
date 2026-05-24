@@ -1,8 +1,20 @@
 ﻿using Pulse.MusicLibrary;
+using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Pulse.Data
 {
+	/// <summary>
+	/// On-disk database shape — what the JSON files in
+	/// <c>PulseData/{Production,Staging}/</c> deserialize into. Intentionally
+	/// distinct from the runtime <c>*Info</c> types in
+	/// <c>MusicLibrary/MetaData.cs</c> (which carry references, dirty flags,
+	/// transient scoring state, etc.) and must stay that way: persistence
+	/// shape is independent of in-memory shape. Cross the boundary via
+	/// <c>ToTrackInfo()</c> / <c>FromTrackInfo()</c> and the equivalents on the
+	/// other Record types. Do not unify these into single classes.
+	/// </summary>
 	public class TrackRecord
 	{
 		public string Id { get; set; }
@@ -199,13 +211,11 @@ namespace Pulse.Data
 	public class PulseAnalyticsRecord
 	{
 		public List<string> RecentlyPlayed { get; set; } = new List<string>();
-		public Dictionary<string, int> ArtistPlayCounts { get; set; } = new Dictionary<string, int>();
 
 		public static PulseAnalyticsRecord FromInfo(PulseAnalyticsInfo info)
 		{
 			PulseAnalyticsRecord record = new PulseAnalyticsRecord();
 			record.RecentlyPlayed = info.RecentlyPlayed;
-			record.ArtistPlayCounts = info.ArtistPlayCounts;
 			return record;
 		}
 
@@ -213,7 +223,6 @@ namespace Pulse.Data
 		{
 			PulseAnalyticsInfo info = new PulseAnalyticsInfo();
 			info.RecentlyPlayed = RecentlyPlayed;
-			info.ArtistPlayCounts = ArtistPlayCounts;
 			return info;
 		}
 	}

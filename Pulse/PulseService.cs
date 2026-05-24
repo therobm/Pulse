@@ -8,9 +8,14 @@ using Pulse.MusicLibrary;
 using Pulse.Protocols;
 using Pulse.Spotify;
 using Pulse.SubsonicService;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Threading;
 
 
 namespace Pulse
@@ -39,7 +44,6 @@ namespace Pulse
 		private MusicManager m_musicManager; 
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 
-		string m_spotifyRedirectURI = "https://pulse.mccoder.com:32458/spotify/callback";
 
 		public bool IsRunning { get; private set; }
 
@@ -178,19 +182,21 @@ namespace Pulse
 
 		private IResult HandleStats(HttpContext context)
 		{
+			string userName = context.Request.Query["u"].FirstOrDefault();
+
 			List<TrackInfo> allTracks = m_musicManager.GetAllTracks();
 			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
 			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
-			List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(null);
+			List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(userName);
 
-			PulseStatsResponse stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists);
+			PulseStatsResponse stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userName);
 			string json = System.Text.Json.JsonSerializer.Serialize(stats);
 			return Results.Content(json, "application/json");
 		}
 
 		private void HandleStatsPage(HttpContext context)
 		{
-			string htmlPath = Path.Combine(AppContext.BaseDirectory, "www", "pulse-stats.html");
+			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "stats.html");
 			if (!File.Exists(htmlPath))
 			{
 				context.Response.StatusCode = 404;
@@ -243,7 +249,7 @@ namespace Pulse
 		
 			string credentialPath = Path.Combine(SpotifySync.GetCredentialBasePath(), "spotify_" + userName + ".json");
 			
-			sync = new SpotifySync(userName, m_musicManager, m_config.SpotifyClient, m_config.SpotifySecret, m_spotifyRedirectURI, credentialPath);
+			sync = new SpotifySync(userName, m_musicManager, m_config.SpotifyClient, m_config.SpotifySecret, m_config.SpotifyRedirectURI, credentialPath);
 			m_spotifySyncs.Add(userName, sync);
 			return sync;
 		}

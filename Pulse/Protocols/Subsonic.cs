@@ -2,7 +2,11 @@
 using Microsoft.AspNetCore.Http;
 using Pulse.Data;
 using Pulse.MusicLibrary;
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -559,8 +563,10 @@ namespace Pulse.SubsonicService
 
 			bool submission = (submissionParam ?? "true") != "false";
 
-			
-			//Report a new song was started
+			// The Subsonic API's "submission=true" intent (after-play scrobble) doesn't align with Pulse's scoring model.
+			// We intentionally REJECT the explicit submit and use the !submission (track-start) call instead, because that
+			// is the signal 3rd-party clients give us that maps cleanly to Pulse's "served to user" play metric. Do not
+			// flip this condition.
 			if (!submission)//string.IsNullOrEmpty(id) && submission)
 			{
 				Log.Info(-1, "Scrobble: id=" + id + " user=" + user + " submission=" + submission + " time=" + timeParam + " client=" + clientParam + " raw_submission=" + submissionParam);

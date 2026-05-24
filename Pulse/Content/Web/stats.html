@@ -373,7 +373,8 @@
 	</div>
 	<script>
 		(function () {
-			let STATS_ENDPOINT = '/pulse/stats';
+			let STATS_USER = new URLSearchParams(window.location.search).get('u') || '';
+			let STATS_ENDPOINT = '/pulse/stats' + (STATS_USER ? ('?u=' + encodeURIComponent(STATS_USER)) : '');
 			let contentEl = document.getElementById('content');
 			let timestampEl = document.getElementById('timestamp');
 
@@ -529,23 +530,19 @@
 					'</div>');
 
 				// Row 3: top artists (2 cols) + most played (2 cols)
-				if (stats.TopArtistsByPlays.length > 0) {
-					html += card(2, 'Top Artists by Plays',
-						buildBarList(stats.TopArtistsByPlays, stats.TopArtistsByPlays[0].Value, false, 'var(--accent)'), true);
+				if (stats.TopArtistsByScore.length > 0) {
+					html += card(2, 'Top Artists by Score',
+						buildBarList(stats.TopArtistsByScore, stats.TopArtistsByScore[0].Value, false, 'var(--accent)'), true);
 				}
-				if (stats.MostPlayed.length > 0) {
-					html += card(2, 'Most Played Tracks',
-						buildBarList(stats.MostPlayed, stats.MostPlayed[0].Value, true, 'var(--green)'), true);
+				if (stats.HighestScored.length > 0) {
+					html += card(2, 'Highest Scored Tracks',
+						buildBarList(stats.HighestScored, stats.HighestScored[0].Value, true, 'var(--green)'), true);
 				}
 
-				// Row 4: skipped (1 col) + scored (1 col) + largest artists (1 col) + formats table (1 col)
+				// Row 4: skipped (1 col) + largest artists (1 col) + formats table (remaining)
 				if (stats.MostSkipped.length > 0) {
 					html += card(1, 'Most Skipped',
 						buildBarList(stats.MostSkipped, stats.MostSkipped[0].Value, true, 'var(--red)'), true);
-				}
-				if (stats.HighestScored.length > 0) {
-					html += card(1, 'Highest Scored',
-						buildBarList(stats.HighestScored, stats.HighestScored[0].Value, true, 'var(--amber)'), true);
 				}
 				if (stats.TopArtistsByTracks.length > 0) {
 					html += card(1, 'Largest Artists',

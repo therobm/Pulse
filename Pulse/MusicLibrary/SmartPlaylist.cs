@@ -1,4 +1,7 @@
 ﻿
+using System;
+using System.Collections.Generic;
+
 namespace Pulse.MusicLibrary
 {
 	public class SmartPlaylist
@@ -68,10 +71,6 @@ namespace Pulse.MusicLibrary
 			Dictionary<string, float> artistScores = new Dictionary<string, float>();
 			for (int i = 0; i < scoredArtists.Count; i++)
 			{
-				if (artistScores.ContainsKey(scoredArtists[i].Id))
-				{
-					artistScores.Add(scoredArtists[i].Id, 0);
-				}
 				float score;
 				if (!string.IsNullOrEmpty(userName) && scoredArtists[i].UserWeightedScore != null && scoredArtists[i].UserWeightedScore.TryGetValue(userName, out score))
 				{
@@ -79,7 +78,6 @@ namespace Pulse.MusicLibrary
 				}
 				else
 				{
-					
 					artistScores[scoredArtists[i].Id] = scoredArtists[i].WeightedScore;
 				}
 			}

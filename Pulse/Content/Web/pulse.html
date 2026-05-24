@@ -85,10 +85,10 @@
 			width: auto;
 		}
 
-		#home-btn, #back-btn {
+		#back-btn {
 			width: 48px;
 			height: 48px;
-			display: flex;
+			display: none;
 			align-items: center;
 			justify-content: center;
 			cursor: pointer;
@@ -99,11 +99,7 @@
 			border: none;
 		}
 
-		#back-btn {
-			display: none;
-		}
-
-			#home-btn:hover, #home-btn:active, #back-btn:hover, #back-btn:active {
+			#back-btn:hover, #back-btn:active {
 				background: var(--bg-hover);
 				color: var(--text-primary);
 			}
@@ -1126,7 +1122,6 @@
 	<div id="header">
 		<div id="header-left">
 			<img id="logo" src="pulseWebLogo.png" alt="Pulse" />
-			<a id="home-btn" href="/" title="Back to Kiosk"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg></a>
 			<button id="back-btn"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg></button>
 		</div>
 		<div id="header-center">
@@ -1347,7 +1342,7 @@
 		function setLeftSort(sort) { leftSort = sort; let btns = document.querySelectorAll('.sort-btn'); for (let idx = 0; idx < btns.length; idx++) { btns[idx].classList.remove('active'); if (btns[idx].getAttribute('data-sort') === sort) { btns[idx].classList.add('active'); } } renderLeftList(); }
 		function renderLeftList() { let container = document.getElementById('left-list'); container.innerHTML = ''; if (leftTab === 'playlists') { renderLeftPlaylists(container); } else { renderLeftArtists(container); } }
 		function renderLeftPlaylists(container) { if (!cachedPlaylists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; apiGet('getPlaylists', null, function (resp) { cachedPlaylists = resp.playlists.playlist || []; renderLeftPlaylists(container); }); return; } let sorted = cachedPlaylists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return right.songCount - left.songCount; }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let playlist = sorted[idx]; let item = document.createElement('div'); item.className = 'left-item'; item.onclick = (function (pid) { return function () { navStack = []; openPlaylist(pid); }; })(playlist.id); item.innerHTML = '<div class="left-item-art">&#9835;</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(playlist.name) + '</div><div class="left-item-sub">' + playlist.songCount + ' tracks</div></div>'; container.appendChild(item); } }
-		function renderLeftArtists(container) { if (!cachedArtists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; apiGet('getArtists', null, function (resp) { cachedArtists = []; let indexes = resp.artists.index; for (let idx = 0; idx < indexes.length; idx++) { let list = indexes[idx].artist; for (let aidx = 0; aidx < list.length; aidx++) { cachedArtists.push(list[aidx]); } } renderLeftArtists(container); }); return; } let sorted = cachedArtists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return (right.albumCount || 0) - (left.albumCount || 0); }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let artist = sorted[idx]; let avatarHtml;
+		function renderLeftArtists(container) { if (!cachedArtists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; apiGet('getArtists', null, function (resp) { cachedArtists = []; let indexes = resp.artists.index; for (let idx = 0; idx < indexes.length; idx++) { let list = indexes[idx].artist; for (let aidx = 0; aidx < list.length; aidx++) { cachedArtists.push(list[aidx]); } } pulseGet('popularArtists?count=100000&u=' + API_USER, function (sd) { let scoreMap = {}; let scoredList = sd.artists || []; for (let sidx = 0; sidx < scoredList.length; sidx++) { scoreMap[scoredList[sidx].id] = scoredList[sidx].score; } for (let aidx = 0; aidx < cachedArtists.length; aidx++) { cachedArtists[aidx].score = scoreMap[cachedArtists[aidx].id] || 0; } renderLeftArtists(container); }); }); return; } let sorted = cachedArtists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let artist = sorted[idx]; let avatarHtml;
 				if (artist.coverArt) { avatarHtml = '<img src="' + coverArtUrl(artist.coverArt, 80) + '" style="border-radius:50%;" />'; }
 				else { avatarHtml = makeArtistInitials(artist.name); } let item = document.createElement('div'); item.className = 'left-item'; item.onclick = (function (aid) { return function () { navStack = []; openArtist(aid); }; })(artist.id); item.innerHTML = '<div class="left-item-art round">' + avatarHtml + '</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(artist.name) + '</div><div class="left-item-sub">' + artist.albumCount + ' albums</div></div>'; container.appendChild(item); } }
 
@@ -1388,8 +1383,8 @@
 			});
 		}
 		function loadRecentCarousel() { let scroll = document.getElementById('home-recent-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulseGet('recentlyPlayed?count=10&u=' + API_USER, function (data) { let tracks = data.tracks || []; scroll.innerHTML = ''; if (tracks.length === 0) { scroll.innerHTML = '<div class="loading-text">No recent plays yet</div>'; return; } for (let idx = 0; idx < tracks.length; idx++) { let song = tracks[idx]; let card = buildCarouselCard(song.coverArt, song.title, song.artist, (function (tl, ti) { return function () { playTrackList(tl, ti); }; })(tracks, idx), false); scroll.appendChild(card); } }); }
-		function loadPlaylistCarousel() { let scroll = document.getElementById('home-playlists-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; apiGet('getPlaylists', null, function (resp) { let playlists = resp.playlists.playlist || []; scroll.innerHTML = ''; let limit = Math.min(10, playlists.length); for (let idx = 0; idx < limit; idx++) { (function (playlist) { let card = buildCarouselCard(null, playlist.name, playlist.songCount + ' tracks', function () { navStack = []; openPlaylist(playlist.id); }, false); scroll.appendChild(card); apiGet('getPlaylist', 'id=' + encodeURIComponent(playlist.id), function (r) { let songs = r.playlist.entry || []; card.querySelector('.carousel-card-art').innerHTML = buildCompositeArt(songs, 300); }); })(playlists[idx]); } }); }
-		function loadPopularArtistsCarousel() { let scroll = document.getElementById('home-artists-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulseGet('popularArtists?count=10', function (data) { let artists = data.artists || []; scroll.innerHTML = ''; if (artists.length === 0) { scroll.innerHTML = '<div class="loading-text">Play some music first</div>'; return; } for (let idx = 0; idx < artists.length; idx++) { let artist = artists[idx]; let card = buildCarouselCard(artist.coverArt || null, artist.name, artist.playCount + ' plays', (function (aid) { return function () { navStack = []; openArtist(aid); }; })(artist.id), true); scroll.appendChild(card); } }); }
+		function loadPlaylistCarousel() { let scroll = document.getElementById('home-playlists-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulseGet('topPlaylists?count=10&u=' + API_USER, function (data) { let playlists = data.playlists || []; scroll.innerHTML = ''; if (playlists.length === 0) { scroll.innerHTML = '<div class="loading-text">No playlists yet</div>'; return; } for (let idx = 0; idx < playlists.length; idx++) { (function (playlist) { let card = buildCarouselCard(null, playlist.name, 'score ' + playlist.score, function () { navStack = []; openPlaylist(playlist.id); }, false); scroll.appendChild(card); apiGet('getPlaylist', 'id=' + encodeURIComponent(playlist.id), function (r) { let songs = r.playlist.entry || []; card.querySelector('.carousel-card-art').innerHTML = buildCompositeArt(songs, 300); }); })(playlists[idx]); } }); }
+		function loadPopularArtistsCarousel() { let scroll = document.getElementById('home-artists-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulseGet('popularArtists?count=10&u=' + API_USER, function (data) { let artists = data.artists || []; scroll.innerHTML = ''; if (artists.length === 0) { scroll.innerHTML = '<div class="loading-text">Play some music first</div>'; return; } for (let idx = 0; idx < artists.length; idx++) { let artist = artists[idx]; let card = buildCarouselCard(artist.coverArt || null, artist.name, 'score ' + artist.score, (function (aid) { return function () { navStack = []; openArtist(aid); }; })(artist.id), true); scroll.appendChild(card); } }); }
 
 		/* Artist Detail */
 		function openArtist(artistId) { apiGet('getArtist', 'id=' + encodeURIComponent(artistId), function (resp) { let artist = resp.artist; document.getElementById('artist-detail-name').textContent = artist.name; document.getElementById('artist-detail-count').textContent = artist.albumCount + ' albums'; let grid = document.getElementById('artist-album-grid'); grid.innerHTML = ''; let albums = artist.album || []; for (let idx = 0; idx < albums.length; idx++) { let album = albums[idx]; let card = document.createElement('div'); card.className = 'carousel-card'; card.onclick = (function (aid) { return function () { openAlbum(aid); }; })(album.id); card.innerHTML = '<div class="carousel-card-art">' + artHtml(album.coverArt, 300) + '</div><div class="carousel-card-name">' + escapeHtml(album.name) + '</div><div class="carousel-card-sub">' + (album.year || '') + '</div>'; grid.appendChild(card); } navigateWithHistory('artist-detail'); }); }
