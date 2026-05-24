@@ -88,9 +88,11 @@ namespace Assistant.Services
 
 		private void ConfigureHttpsListener(Microsoft.AspNetCore.Server.Kestrel.Core.ListenOptions listenOptions)
 		{
-			if (File.Exists("pulse.mccoder.com.pfx"))
+			PulseConfig config = PulseService.GetConfig();
+			string certPath = config.HttpsCertPath;
+			if (!string.IsNullOrEmpty(certPath) && File.Exists(certPath))
 			{
-				listenOptions.UseHttps("pulse.mccoder.com.pfx");
+				listenOptions.UseHttps(certPath);
 				Log.Info(-1, "HTTPS is enabled");
 			}
 			else
