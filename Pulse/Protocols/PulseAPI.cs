@@ -63,37 +63,40 @@ namespace Pulse.Protocols
 
 		public IResult HandlePopularArtists(HttpContext context)
 		{
-			PulseAnalyticsInfo analytics = m_musicManager.GetAnalytics();
-
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
+			string user = context.Request.Query["u"].FirstOrDefault();
 
 			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
 
-
-			List<ArtistInfo> sorted = new List<ArtistInfo>(allArtists);
-			sorted.Sort(CompareArtistScoreDescending);
+			List<KeyValuePair<ArtistInfo, float>> scored = new List<KeyValuePair<ArtistInfo, float>>();
+			for (int idx = 0; idx < allArtists.Count; idx++)
+			{
+				scored.Add(new KeyValuePair<ArtistInfo, float>(allArtists[idx], allArtists[idx].GetScore(user)));
+			}
+			scored.Sort(CompareArtistScoredDescending);
 
 			List<object> artists = new List<object>();
-			int limit = Math.Min(count, sorted.Count);
+			int limit = Math.Min(count, scored.Count);
 			for (int idx = 0; idx < limit; idx++)
 			{
-				ArtistInfo artist = sorted[idx];
-				if (artist != null)
+				ArtistInfo artist = scored[idx].Key;
+				if (scored[idx].Value <= 0f)
 				{
-					string coverArt = null;
-					if (artist.Albums.Count > 0)
-					{
-						coverArt = artist.Albums[0].CoverArtId;
-					}
-					artists.Add(new
-					{
-						id = artist.Id,
-						name = artist.Name,
-						albumCount = artist.Albums.Count,
-						score = sorted[idx].WeightedScore,
-						coverArt = coverArt
-					});
+					break;
 				}
+				string coverArt = null;
+				if (artist.Albums.Count > 0)
+				{
+					coverArt = artist.Albums[0].CoverArtId;
+				}
+				artists.Add(new
+				{
+					id = artist.Id,
+					name = artist.Name,
+					albumCount = artist.Albums.Count,
+					score = scored[idx].Value,
+					coverArt = coverArt
+				});
 			}
 
 			return Results.Json(new { artists = artists });
@@ -105,33 +108,62 @@ namespace Pulse.Protocols
 			string user = context.Request.Query["u"].FirstOrDefault();
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
-			all.Sort(ComparePlaylistSongCountDescending);
+
+			// Playlists don't have their own score; rank by the sum of the scores of
+			// the distinct artists whose tracks appear in the playlist.
+			List<KeyValuePair<PlaylistInfo, float>> scored = new List<KeyValuePair<PlaylistInfo, float>>();
+			for (int playlistIndex = 0; playlistIndex < all.Count; playlistIndex++)
+			{
+				PlaylistInfo playlist = all[playlistIndex];
+				HashSet<string> seenArtistIds = new HashSet<string>();
+				float total = 0f;
+				for (int trackIndex = 0; trackIndex < playlist.TrackIds.Count; trackIndex++)
+				{
+					TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[trackIndex]);
+					if (track == null || string.IsNullOrEmpty(track.ArtistId))
+					{
+						continue;
+					}
+					if (!seenArtistIds.Add(track.ArtistId))
+					{
+						continue;
+					}
+					ArtistInfo artist = m_musicManager.GetArtist(track.ArtistId);
+					if (artist != null)
+					{
+						total += artist.GetScore(user);
+					}
+				}
+				scored.Add(new KeyValuePair<PlaylistInfo, float>(playlist, total));
+			}
+			scored.Sort(ComparePlaylistScoredDescending);
 
 			List<object> playlists = new List<object>();
-			int limit = Math.Min(count, all.Count);
+			int limit = Math.Min(count, scored.Count);
 			for (int idx = 0; idx < limit; idx++)
 			{
-				PlaylistInfo playlist = all[idx];
+				PlaylistInfo playlist = scored[idx].Key;
 				playlists.Add(new
 				{
 					id = playlist.Id,
 					name = playlist.Name,
 					songCount = playlist.GetSongCount(),
-					duration = playlist.DurationSeconds
+					duration = playlist.DurationSeconds,
+					score = scored[idx].Value
 				});
 			}
 
 			return Results.Json(new { playlists = playlists });
 		}
 
-		private static int CompareArtistScoreDescending(ArtistInfo left, ArtistInfo right)
+		private static int CompareArtistScoredDescending(KeyValuePair<ArtistInfo, float> left, KeyValuePair<ArtistInfo, float> right)
 		{
-			return right.WeightedScore.CompareTo(left.WeightedScore);
+			return right.Value.CompareTo(left.Value);
 		}
 
-		private static int ComparePlaylistSongCountDescending(PlaylistInfo left, PlaylistInfo right)
+		private static int ComparePlaylistScoredDescending(KeyValuePair<PlaylistInfo, float> left, KeyValuePair<PlaylistInfo, float> right)
 		{
-			return right.GetSongCount().CompareTo(left.GetSongCount());
+			return right.Value.CompareTo(left.Value);
 		}
 	}
 }

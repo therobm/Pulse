@@ -150,6 +150,19 @@ namespace Pulse.MusicLibrary
 		// Dynamic data populated at runtime
 		public float WeightedScore { get; set; }
 		public Dictionary<string, float> UserWeightedScore { get; set; } = new Dictionary<string, float>();
+
+		public float GetScore(string userName)
+		{
+			if (!string.IsNullOrEmpty(userName))
+			{
+				float userScore;
+				if (UserWeightedScore.TryGetValue(userName, out userScore))
+				{
+					return userScore;
+				}
+			}
+			return WeightedScore;
+		}
 	}
 
 	public class PlaylistInfo : PulseInfo
