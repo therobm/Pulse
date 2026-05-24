@@ -5,15 +5,16 @@ using System.Text.Json.Serialization;
 
 namespace Pulse.Data
 {
-	// Record types in this file are the on-disk database shape — what the
-	// JSON files in PulseData/{Production,Staging}/ deserialize into. They
-	// are intentionally distinct from the runtime *Info types in
-	// MusicLibrary/MetaData.cs (which carry references, dirty flags,
-	// transient scoring state, etc.) and must stay that way: persistence
-	// shape is independent of in-memory shape. Use ToTrackInfo() /
-	// FromTrackInfo() and the equivalents to cross the boundary. Do not
-	// unify these into single classes.
-
+	/// <summary>
+	/// On-disk database shape — what the JSON files in
+	/// <c>PulseData/{Production,Staging}/</c> deserialize into. Intentionally
+	/// distinct from the runtime <c>*Info</c> types in
+	/// <c>MusicLibrary/MetaData.cs</c> (which carry references, dirty flags,
+	/// transient scoring state, etc.) and must stay that way: persistence
+	/// shape is independent of in-memory shape. Cross the boundary via
+	/// <c>ToTrackInfo()</c> / <c>FromTrackInfo()</c> and the equivalents on the
+	/// other Record types. Do not unify these into single classes.
+	/// </summary>
 	public class TrackRecord
 	{
 		public string Id { get; set; }
