@@ -99,8 +99,9 @@ namespace Pulse.Lidarr
 				}
 
 				// Lookup artist in Lidarr (which searches MusicBrainz)
-				JsonElement? lookupResult = LookupArtist(artistName);
-				if (lookupResult == null)
+				JsonElement lookupResult;
+				bool found = TryLookupArtist(artistName, out lookupResult);
+				if (!found)
 				{
 					Console.WriteLine("LidarrSync: FAIL lookup - " + artistName);
 					m_lastFailed.Add(artistName);
@@ -110,7 +111,7 @@ namespace Pulse.Lidarr
 
 				// --- MBID check goes here ---
 				JsonElement mbidElement;
-				if (lookupResult.Value.TryGetProperty("foreignArtistId", out mbidElement))
+				if (lookupResult.TryGetProperty("foreignArtistId", out mbidElement))
 				{
 					string mbid = mbidElement.GetString();
 					if (mbid != null && m_lidarrArtistMBIDs.Contains(mbid))
@@ -123,7 +124,7 @@ namespace Pulse.Lidarr
 
 
 				// Add artist to Lidarr
-				bool added = AddArtist(lookupResult.Value, rootFolderPath, qualityProfileId, metadataProfileId);
+				bool added = AddArtist(lookupResult, rootFolderPath, qualityProfileId, metadataProfileId);
 				if (added)
 				{
 					Console.WriteLine("LidarrSync: ADDED - " + artistName);
@@ -184,13 +185,14 @@ namespace Pulse.Lidarr
 			return true;
 		}
 
-		private JsonElement? LookupArtist(string artistName)
+		private bool TryLookupArtist(string artistName, out JsonElement result)
 		{
+			result = default(JsonElement);
 			string encoded = Uri.EscapeDataString(artistName);
 			string json = LidarrGet("artist/lookup?term=" + encoded);
 			if (json == null)
 			{
-				return null;
+				return false;
 			}
 
 			JsonDocument doc = JsonDocument.Parse(json);
@@ -199,13 +201,13 @@ namespace Pulse.Lidarr
 			if (root.GetArrayLength() == 0)
 			{
 				doc.Dispose();
-				return null;
+				return false;
 			}
 
 			// Clone so we can dispose the document
-			JsonElement first = root[0].Clone();
+			result = root[0].Clone();
 			doc.Dispose();
-			return first;
+			return true;
 		}
 
 		private bool AddArtist(JsonElement lookupResult, string rootFolderPath, int qualityProfileId, int metadataProfileId)
