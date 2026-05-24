@@ -11,6 +11,9 @@ namespace Pulse.MusicLibrary
 
 	public class ScoreData
 	{
+		// PlayCount = times the track was served to the user.
+		// SkipCount = times the user rejected the track after it was served.
+		// A skip cannot exist without a play; the two are intentionally related, not independent counters.
 		public int PlayCount { get; set; }
 		public int SkipCount { get; set; }
 		public double TotalListenSeconds { get; set; }
