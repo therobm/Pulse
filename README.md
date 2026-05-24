@@ -2,7 +2,7 @@
 
 A self-hosted music server built in C#. Implements the OpenSubsonic API so any compatible client can connect to it. Runs as a single executable with no external service dependencies.
 
-I built this because Spotify kept changing how playlists worked without asking, and I wanted a music server I actually controlled.
+I built this because Spotify kept changing how playlists worked without asking, and I wanted a music server I actually controlled. Every line of this was written by hand — no generated code, no scaffolding tools, no "vibe coding."
 
 ## What It Does
 
@@ -28,12 +28,19 @@ Pulse scans a local music library, serves it over the OpenSubsonic API, and laye
 - Vanilla HTML/JS/CSS, no frameworks, no build tools
 - Designed for tablets — large touch targets, 16:9 landscape layout
 
-Player:
-{server-ip}/web/pulse.html
+Player — `{server}:{port}/web/pulse.html`
 
-Stats:
-{server-ip}/web/stats.html
+![Player](Docs/player.png)
 
+Stats — `{server}:{port}/web/stats.html`
+
+![Stats Dashboard](Docs/stats.png)
+
+**Desktop Client**
+
+- Avalonia with SkiaSharp rendering
+- NAudio for playback
+- UserControl-based navigation, no MVVM framework
 
 ## Requirements
 
@@ -63,8 +70,6 @@ Single project, no solution file gymnastics. The output is one executable.
 This is not a framework project. There are no dependency injection containers, no middleware pipelines, no abstract factory patterns. Objects are created explicitly and dependencies are passed through constructors. Every SQL query is hand-written. Every type is explicit. The code reads top to bottom without requiring a mental model of hidden infrastructure.
 
 If you're looking for a project that follows conventional .NET patterns, this isn't it. If you're looking for a music server where you can read any file and understand exactly what it does without chasing through six layers of abstraction, you're in the right place.
-
-I use AI to mangage the repo because otherwise I wouldn't bother with all the boilerplate that comes with releasing
 
 ## License
 
