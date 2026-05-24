@@ -162,59 +162,55 @@ namespace Pulse.Data
 		}
 		private void LoadTracks()
 		{
-			string[] files = Directory.GetFiles(m_tracksPath, "*.json"); 
+			string[] files = Directory.GetFiles(m_tracksPath, "*.json");
 			Console.WriteLine("Loading TrackInfo: " + files.Length);
-			ParallelOptions options = new ParallelOptions();
-			options.MaxDegreeOfParallelism = 8;
-			Parallel.For(0, files.Length, options, (int index) =>
+			int fileCount = files.Length;
+			for (int index = 0; index < fileCount; index++)
 			{
 				string json = File.ReadAllText(files[index]);
 				TrackRecord record = JsonSerializer.Deserialize<TrackRecord>(json, m_jsonOptions);
 				if (record == null)
 				{
-					return;
+					continue;
 				}
 				TrackInfo track = record.ToTrackInfo();
 				m_tracks[track.Id] = track;
-			});
+			}
 		}
 
 		private void LoadAlbums()
 		{
 			string[] files = Directory.GetFiles(m_albumsPath, "*.json");
 			Console.WriteLine("Loading AlbumInfo: " + files.Length);
-			ParallelOptions options = new ParallelOptions();
-			options.MaxDegreeOfParallelism = 8;
-			Parallel.For(0, files.Length, options, (int index) =>
+			int fileCount = files.Length;
+			for (int index = 0; index < fileCount; index++)
 			{
 				string json = File.ReadAllText(files[index]);
 				AlbumRecord record = JsonSerializer.Deserialize<AlbumRecord>(json, m_jsonOptions);
 				if (record == null)
 				{
-					return;
+					continue;
 				}
 				AlbumInfo album = record.ToAlbumInfo();
 				m_albums[album.Id] = album;
-			});
+			}
 		}
 
 		private void LoadArtists()
 		{
 			string[] files = Directory.GetFiles(m_artistsPath, "*.json");
 			Console.WriteLine("Loading ArtistInfo: " + files.Length);
-			ParallelOptions options = new ParallelOptions();
-			options.MaxDegreeOfParallelism = 8;
-			Parallel.For(0, files.Length, options, (int index) =>
+			int fileCount = files.Length;
+			for (int index = 0; index < fileCount; index++)
 			{
 				string json = File.ReadAllText(files[index]);
 				ArtistRecord record = JsonSerializer.Deserialize<ArtistRecord>(json, m_jsonOptions);
 				if (record == null)
 				{
-					return;
+					continue;
 				}
 
 				Migrate(record);
-			
 
 				ArtistInfo artist = record.ToArtistInfo();
 				m_artists[artist.Id] = artist;
@@ -230,7 +226,7 @@ namespace Pulse.Data
 						m_tracks[album.Tracks[trackIndex].Id] = album.Tracks[trackIndex];
 					}
 				}
-			});
+			}
 		}
 
 		private void Migrate(ArtistRecord record)
@@ -282,19 +278,18 @@ namespace Pulse.Data
 		{
 			string[] files = Directory.GetFiles(m_playlistsPath, "*.json");
 			Console.WriteLine("Loading PlaylistInfo: " + files.Length);
-			ParallelOptions options = new ParallelOptions();
-			options.MaxDegreeOfParallelism = 8;
-			Parallel.For(0, files.Length, options, (int index) =>
+			int fileCount = files.Length;
+			for (int index = 0; index < fileCount; index++)
 			{
 				string json = File.ReadAllText(files[index]);
 				PlaylistRecord record = JsonSerializer.Deserialize<PlaylistRecord>(json, m_jsonOptions);
 				if (record == null)
 				{
-					return;
+					continue;
 				}
 				PlaylistInfo playlist = record.ToPlaylistInfo();
 				m_playlists[playlist.Id] = playlist;
-			});
+			}
 		}
 
 		private void WireUpReferences()

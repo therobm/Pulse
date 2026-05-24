@@ -64,7 +64,7 @@ namespace Pulse.Protocols
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 
 			List<KeyValuePair<string, int>> sorted = new List<KeyValuePair<string, int>>(analytics.ArtistPlayCounts);
-			sorted.Sort((left, right) => right.Value.CompareTo(left.Value));
+			sorted.Sort(CompareArtistPlayCountDescending);
 
 			List<object> artists = new List<object>();
 			int limit = Math.Min(count, sorted.Count);
@@ -98,7 +98,7 @@ namespace Pulse.Protocols
 			string user = context.Request.Query["u"].FirstOrDefault();
 
 			List<PlaylistInfo> all = m_musicManager.GetDb().GetAllPlaylists(user);
-			all.Sort((left, right) => right.GetSongCount().CompareTo(left.GetSongCount()));
+			all.Sort(ComparePlaylistSongCountDescending);
 
 			List<object> playlists = new List<object>();
 			int limit = Math.Min(count, all.Count);
@@ -115,6 +115,16 @@ namespace Pulse.Protocols
 			}
 
 			return Results.Json(new { playlists = playlists });
+		}
+
+		private static int CompareArtistPlayCountDescending(KeyValuePair<string, int> left, KeyValuePair<string, int> right)
+		{
+			return right.Value.CompareTo(left.Value);
+		}
+
+		private static int ComparePlaylistSongCountDescending(PlaylistInfo left, PlaylistInfo right)
+		{
+			return right.GetSongCount().CompareTo(left.GetSongCount());
 		}
 	}
 }

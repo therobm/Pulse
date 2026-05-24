@@ -71,11 +71,19 @@ namespace Pulse.MusicLibrary
 
 			LoadDB();
 			DebugDuplicates();
-			m_scanThread = new Thread(() => RunScan(musicPath));
+			m_pendingScanPath = musicPath;
+			m_scanThread = new Thread(RunScanThread);
 			m_scanThread.IsBackground = true;
 			m_scanThread.Name = "Pulse.MusicScan";
 			m_scanning = true;
 			m_scanThread.Start();
+		}
+
+		private string m_pendingScanPath;
+
+		private void RunScanThread()
+		{
+			RunScan(m_pendingScanPath);
 		}
 
 		public void OnPlaylistSyncComplete()

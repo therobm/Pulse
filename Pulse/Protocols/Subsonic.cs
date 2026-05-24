@@ -681,7 +681,7 @@ namespace Pulse.SubsonicService
 
 			if (type == "newest")
 			{
-				allAlbums.Sort((left, right) => right.Year.CompareTo(left.Year));
+				allAlbums.Sort(CompareAlbumYearDescending);
 			}
 			else if (type == "random")
 			{
@@ -902,7 +902,7 @@ namespace Pulse.SubsonicService
 					parsedIndices.Add(parsed);
 				}
 			}
-			parsedIndices.Sort((left, right) => right.CompareTo(left));
+			parsedIndices.Sort(CompareIntDescending);
 			for (int index = 0; index < parsedIndices.Count; index++)
 			{
 				int removeIndex = parsedIndices[index];
@@ -1039,6 +1039,16 @@ namespace Pulse.SubsonicService
 			}
 
 			return Respond(context, CreateErrorResponse(70, "Directory not found"));
+		}
+
+		private static int CompareAlbumYearDescending(AlbumInfo left, AlbumInfo right)
+		{
+			return right.Year.CompareTo(left.Year);
+		}
+
+		private static int CompareIntDescending(int left, int right)
+		{
+			return right.CompareTo(left);
 		}
 	}
 }

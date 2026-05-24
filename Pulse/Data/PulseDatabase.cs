@@ -98,10 +98,15 @@ namespace Pulse.Data
 			return new List<AlbumInfo>(m_albums.Values);
 		}
 
+		private static int CompareArtistByName(ArtistInfo left, ArtistInfo right)
+		{
+			return string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+		}
+
 		public List<ArtistInfo> GetAllArtists()
 		{
 			List<ArtistInfo> list = new List<ArtistInfo>(m_artists.Values);
-			list.Sort((left, right) => string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase));
+			list.Sort(CompareArtistByName);
 			return list;
 		}
 
@@ -285,7 +290,13 @@ namespace Pulse.Data
 			AlbumInfo album;
 			if (m_albums.TryGetValue(track.AlbumId, out album))
 			{
-				album.Tracks.RemoveAll(t => t.Id == trackId);
+				for (int trackIndex = album.Tracks.Count - 1; trackIndex >= 0; trackIndex--)
+				{
+					if (album.Tracks[trackIndex].Id == trackId)
+					{
+						album.Tracks.RemoveAt(trackIndex);
+					}
+				}
 
 				if (album.Tracks.Count == 0)
 				{
@@ -294,7 +305,13 @@ namespace Pulse.Data
 					ArtistInfo artist;
 					if (m_artists.TryGetValue(track.ArtistId, out artist))
 					{
-						artist.Albums.RemoveAll(a => a.Id == track.AlbumId);
+						for (int albumIndex = artist.Albums.Count - 1; albumIndex >= 0; albumIndex--)
+						{
+							if (artist.Albums[albumIndex].Id == track.AlbumId)
+							{
+								artist.Albums.RemoveAt(albumIndex);
+							}
+						}
 
 						if (artist.Albums.Count == 0)
 						{

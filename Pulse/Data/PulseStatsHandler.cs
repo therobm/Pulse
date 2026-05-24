@@ -242,8 +242,11 @@ namespace Pulse.Data
 			}
 
 			// Genre breakdown — sorted by count descending
-			foreach (KeyValuePair<string, int> pair in genreCounts.OrderByDescending(p => p.Value))
+			List<KeyValuePair<string, int>> sortedGenres = new List<KeyValuePair<string, int>>(genreCounts);
+			sortedGenres.Sort(CompareCountDescending);
+			for (int genreIndex = 0; genreIndex < sortedGenres.Count; genreIndex++)
 			{
+				KeyValuePair<string, int> pair = sortedGenres[genreIndex];
 				stats.GenreBreakdown.Add(new GenreStat
 				{
 					Genre = pair.Key,
@@ -253,8 +256,11 @@ namespace Pulse.Data
 			}
 
 			// Decade breakdown — sorted by decade label ascending, Unknown last
-			foreach (KeyValuePair<string, int> pair in decadeCounts.OrderBy(p => p.Key == "Unknown" ? "zzzz" : p.Key))
+			List<KeyValuePair<string, int>> sortedDecades = new List<KeyValuePair<string, int>>(decadeCounts);
+			sortedDecades.Sort(CompareDecadeKeyAscending);
+			for (int decadeIndex = 0; decadeIndex < sortedDecades.Count; decadeIndex++)
 			{
+				KeyValuePair<string, int> pair = sortedDecades[decadeIndex];
 				stats.DecadeBreakdown.Add(new DecadeStat
 				{
 					Decade = pair.Key,
@@ -264,8 +270,11 @@ namespace Pulse.Data
 			}
 
 			// Format breakdown
-			foreach (KeyValuePair<string, int> pair in formatCounts.OrderByDescending(p => p.Value))
+			List<KeyValuePair<string, int>> sortedFormats = new List<KeyValuePair<string, int>>(formatCounts);
+			sortedFormats.Sort(CompareCountDescending);
+			for (int formatIndex = 0; formatIndex < sortedFormats.Count; formatIndex++)
 			{
+				KeyValuePair<string, int> pair = sortedFormats[formatIndex];
 				stats.FormatBreakdown.Add(new FormatStat
 				{
 					Format = pair.Key,
@@ -276,34 +285,38 @@ namespace Pulse.Data
 
 			// Top 200 artists by play count
 			int artistLimit = 200;
-			int artistIndex = 0;
-			foreach (KeyValuePair<string, int> pair in artistPlayCounts.OrderByDescending(p => p.Value))
+			List<KeyValuePair<string, int>> sortedArtistPlays = new List<KeyValuePair<string, int>>(artistPlayCounts);
+			sortedArtistPlays.Sort(CompareCountDescending);
+			for (int artistIndex = 0; artistIndex < sortedArtistPlays.Count; artistIndex++)
 			{
+				KeyValuePair<string, int> pair = sortedArtistPlays[artistIndex];
 				if (artistIndex >= artistLimit || pair.Value == 0)
 				{
 					break;
 				}
 				stats.TopArtistsByPlays.Add(new ArtistStat { Name = pair.Key, Value = pair.Value });
-				artistIndex++;
 			}
 
 			// Top artists by track count
-			artistIndex = 0;
-			foreach (KeyValuePair<string, int> pair in artistTrackCounts.OrderByDescending(p => p.Value))
+			List<KeyValuePair<string, int>> sortedArtistTracks = new List<KeyValuePair<string, int>>(artistTrackCounts);
+			sortedArtistTracks.Sort(CompareCountDescending);
+			for (int artistIndex = 0; artistIndex < sortedArtistTracks.Count; artistIndex++)
 			{
+				KeyValuePair<string, int> pair = sortedArtistTracks[artistIndex];
 				if (artistIndex >= artistLimit)
 				{
 					break;
 				}
 				stats.TopArtistsByTracks.Add(new ArtistStat { Name = pair.Key, Value = pair.Value });
-				artistIndex++;
 			}
 
-			// Most played tracks 
+			// Most played tracks
 			int trackLimit = 200;
-			int trackIndex = 0;
-			foreach (TrackInfo track in allTracks.OrderByDescending(t => t.Score.PlayCount))
+			List<TrackInfo> sortedByPlayCount = new List<TrackInfo>(allTracks);
+			sortedByPlayCount.Sort(CompareTrackByPlayCountDescending);
+			for (int trackIndex = 0; trackIndex < sortedByPlayCount.Count; trackIndex++)
 			{
+				TrackInfo track = sortedByPlayCount[trackIndex];
 				if (trackIndex >= trackLimit || track.Score.PlayCount == 0)
 				{
 					break;
@@ -314,13 +327,14 @@ namespace Pulse.Data
 					Artist = track.Artist,
 					Value = track.Score.PlayCount
 				});
-				trackIndex++;
 			}
 
-			// Most skipped tracks 
-			trackIndex = 0;
-			foreach (TrackInfo track in allTracks.OrderByDescending(t => t.Score.SkipCount))
+			// Most skipped tracks
+			List<TrackInfo> sortedBySkipCount = new List<TrackInfo>(allTracks);
+			sortedBySkipCount.Sort(CompareTrackBySkipCountDescending);
+			for (int trackIndex = 0; trackIndex < sortedBySkipCount.Count; trackIndex++)
 			{
+				TrackInfo track = sortedBySkipCount[trackIndex];
 				if (trackIndex >= trackLimit || track.Score.SkipCount == 0)
 				{
 					break;
@@ -331,16 +345,15 @@ namespace Pulse.Data
 					Artist = track.Artist,
 					Value = track.Score.SkipCount
 				});
-				trackIndex++;
 			}
 
-			// Highest scored tracks 
-			trackIndex = 0;
-			foreach (TrackInfo track in allTracks.OrderByDescending(t => t.GetScore(null)))
+			// Highest scored tracks
+			List<TrackInfo> sortedByScore = new List<TrackInfo>(allTracks);
+			sortedByScore.Sort(CompareTrackByScoreDescending);
+			for (int trackIndex = 0; trackIndex < sortedByScore.Count; trackIndex++)
 			{
-
+				TrackInfo track = sortedByScore[trackIndex];
 				float score = track.GetScore(null);
-
 				if (trackIndex >= trackLimit || score <= 0f)
 				{
 					break;
@@ -351,10 +364,44 @@ namespace Pulse.Data
 					Artist = track.Artist,
 					Value = (int)(score * 100f)
 				});
-				trackIndex++;
 			}
 
 			return stats;
+		}
+
+		private static int CompareCountDescending(KeyValuePair<string, int> left, KeyValuePair<string, int> right)
+		{
+			return right.Value.CompareTo(left.Value);
+		}
+
+		private static int CompareDecadeKeyAscending(KeyValuePair<string, int> left, KeyValuePair<string, int> right)
+		{
+			string leftKey = left.Key;
+			string rightKey = right.Key;
+			if (leftKey == "Unknown")
+			{
+				leftKey = "zzzz";
+			}
+			if (rightKey == "Unknown")
+			{
+				rightKey = "zzzz";
+			}
+			return string.Compare(leftKey, rightKey, StringComparison.Ordinal);
+		}
+
+		private static int CompareTrackByPlayCountDescending(TrackInfo left, TrackInfo right)
+		{
+			return right.Score.PlayCount.CompareTo(left.Score.PlayCount);
+		}
+
+		private static int CompareTrackBySkipCountDescending(TrackInfo left, TrackInfo right)
+		{
+			return right.Score.SkipCount.CompareTo(left.Score.SkipCount);
+		}
+
+		private static int CompareTrackByScoreDescending(TrackInfo left, TrackInfo right)
+		{
+			return right.GetScore(null).CompareTo(left.GetScore(null));
 		}
 	}
 }

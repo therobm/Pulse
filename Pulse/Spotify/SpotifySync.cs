@@ -161,70 +161,63 @@ namespace Pulse.Spotify
 				return;
 			}
 
-			FetchUserPlaylists((playlists)=>
+			List<SpotifyPlaylistEntry> playlists = FetchUserPlaylists();
+			Console.WriteLine("Spotify: Found " + playlists.Count + " playlists");
+			foreach (SpotifyPlaylistEntry entry in playlists)
 			{
-				Console.WriteLine("Spotify: Found " + playlists.Count + " playlists");
-				foreach (SpotifyPlaylistEntry entry in playlists)
+				List<PlaylistImportEntry> tracks = FetchPlaylistTracks(entry.Id);
+				if (tracks.Count == 0)
 				{
-					List<PlaylistImportEntry> tracks = FetchPlaylistTracks(entry.Id);
-					if (tracks.Count == 0)
-					{
-						Console.WriteLine("Importing playlist: No Tracks found in list!");
-						continue;
-					}
-					m_musicManager.ImportPlaylist(entry.Name, tracks);
+					Console.WriteLine("Importing playlist: No Tracks found in list!");
+					continue;
 				}
-				m_musicManager.OnPlaylistSyncComplete();
-			});
+				m_musicManager.ImportPlaylist(entry.Name, tracks);
+			}
+			m_musicManager.OnPlaylistSyncComplete();
 		}
 
-		private void FetchUserPlaylists(Action<List<SpotifyPlaylistEntry>> onComplete)
+		private List<SpotifyPlaylistEntry> FetchUserPlaylists()
 		{
-			Thread fetchThread = new Thread(() =>
+			List<SpotifyPlaylistEntry> playlists = new List<SpotifyPlaylistEntry>();
+			string url = "https://api.spotify.com/v1/me/playlists?limit=50&offset=0";
+			for (;;)
 			{
-				List<SpotifyPlaylistEntry> playlists = new List<SpotifyPlaylistEntry>();
-				string url = "https://api.spotify.com/v1/me/playlists?limit=50&offset=0";
-				for (;;)
+				if (string.IsNullOrEmpty(url))
 				{
-					if (string.IsNullOrEmpty(url))
-					{
-						break;
-					}
-					string json = SpotifyGet(url);
-					if (json == null)
-					{
-						break;
-					}
-					JsonDocument doc = JsonDocument.Parse(json);
-					JsonElement root = doc.RootElement;
-					JsonElement items = root.GetProperty("items");
-					for (int index = 0; index < items.GetArrayLength(); index++)
-					{
-						JsonElement item = items[index];
-						SpotifyPlaylistEntry entry = new SpotifyPlaylistEntry();
-						entry.Id = item.GetProperty("id").GetString();
-						entry.Name = item.GetProperty("name").GetString();
-						// Property name "items" is intentional and verified against the actual Spotify response we receive. Do not change without re-checking the live response shape.
-						JsonElement tracksObj = item.GetProperty("items");
-						entry.TrackCount = tracksObj.GetProperty("total").GetInt32();
-						playlists.Add(entry);
-					}
-					JsonElement nextElement;
-					if (root.TryGetProperty("next", out nextElement) && nextElement.ValueKind != JsonValueKind.Null)
-					{
-						url = nextElement.GetString();
-					}
-					else
-					{
-						url = null;
-					}
-					doc.Dispose();
-					Thread.Sleep(200);
+					break;
 				}
-				onComplete(playlists);
-			});
-			fetchThread.IsBackground = true;
-			fetchThread.Start();
+				string json = SpotifyGet(url);
+				if (json == null)
+				{
+					break;
+				}
+				JsonDocument doc = JsonDocument.Parse(json);
+				JsonElement root = doc.RootElement;
+				JsonElement items = root.GetProperty("items");
+				for (int index = 0; index < items.GetArrayLength(); index++)
+				{
+					JsonElement item = items[index];
+					SpotifyPlaylistEntry entry = new SpotifyPlaylistEntry();
+					entry.Id = item.GetProperty("id").GetString();
+					entry.Name = item.GetProperty("name").GetString();
+					// Property name "items" is intentional and verified against the actual Spotify response we receive. Do not change without re-checking the live response shape.
+					JsonElement tracksObj = item.GetProperty("items");
+					entry.TrackCount = tracksObj.GetProperty("total").GetInt32();
+					playlists.Add(entry);
+				}
+				JsonElement nextElement;
+				if (root.TryGetProperty("next", out nextElement) && nextElement.ValueKind != JsonValueKind.Null)
+				{
+					url = nextElement.GetString();
+				}
+				else
+				{
+					url = null;
+				}
+				doc.Dispose();
+				Thread.Sleep(200);
+			}
+			return playlists;
 		}
 
 		private List<PlaylistImportEntry> FetchPlaylistTracks(string playlistId)
