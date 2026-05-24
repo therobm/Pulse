@@ -1127,12 +1127,12 @@
 		<div id="header-left">
 			<img id="logo" src="pulseWebLogo.png" alt="Pulse" />
 			<a id="home-btn" href="/" title="Back to Kiosk"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg></a>
-			<button id="back-btn" onclick="goBack()"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg></button>
+			<button id="back-btn"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg></button>
 		</div>
 		<div id="header-center">
 			<div id="search-container">
 				<svg id="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-				<input id="search-input" type="text" placeholder="Search library..." oninput="onSearchInput(this.value)" />
+				<input id="search-input" type="text" placeholder="Search library..." />
 			</div>
 		</div>
 		<div id="header-right"><span id="clock"></span></div>
@@ -1140,13 +1140,13 @@
 	<div id="main-layout">
 		<div id="left-panel">
 			<div id="left-tabs">
-				<button class="left-tab active" onclick="switchLeftTab('playlists')">Playlists</button>
-				<button class="left-tab" onclick="switchLeftTab('artists')">Artists</button>
+				<button class="left-tab active" data-left-tab="playlists">Playlists</button>
+				<button class="left-tab" data-left-tab="artists">Artists</button>
 			</div>
 			<div id="left-sort">
-				<button class="sort-btn active" data-sort="alpha" onclick="setLeftSort('alpha')">A-Z</button>
-				<button class="sort-btn" data-sort="recent" onclick="setLeftSort('recent')">Recent</button>
-				<button class="sort-btn" data-sort="popular" onclick="setLeftSort('popular')">Popular</button>
+				<button class="sort-btn active" data-sort="alpha">A-Z</button>
+				<button class="sort-btn" data-sort="recent">Recent</button>
+				<button class="sort-btn" data-sort="popular">Popular</button>
 			</div>
 			<div id="left-list"></div>
 		</div>
@@ -1168,9 +1168,9 @@
 					<div class="detail-info">
 						<div class="detail-label">Album</div>
 						<div class="detail-name" id="album-detail-name"></div>
-						<div class="detail-sub" id="album-detail-artist" onclick="onAlbumArtistClick()"></div>
+						<div class="detail-sub" id="album-detail-artist"></div>
 						<div class="detail-meta" id="album-detail-meta"></div>
-						<div class="detail-actions"><button class="btn btn-primary" onclick="playAlbum()">Play</button><button class="btn btn-ghost" onclick="shuffleAlbum()">Shuffle</button></div>
+						<div class="detail-actions"><button class="btn btn-primary" id="album-play-btn">Play</button><button class="btn btn-ghost" id="album-shuffle-btn">Shuffle</button></div>
 					</div>
 				</div>
 				<div class="track-list-header"><span>#</span><span>Title</span><span>Album</span><span style="text-align:right">Time</span><span></span></div>
@@ -1183,7 +1183,7 @@
 						<div class="detail-label">Playlist</div>
 						<div class="detail-name" id="playlist-detail-name"></div>
 						<div class="detail-meta" id="playlist-detail-meta"></div>
-						<div class="detail-actions"><button class="btn btn-primary" onclick="playPlaylist()">Play</button><button class="btn btn-ghost" onclick="shufflePlaylist()">Shuffle</button></div>
+						<div class="detail-actions"><button class="btn btn-primary" id="playlist-play-btn">Play</button><button class="btn btn-ghost" id="playlist-shuffle-btn">Shuffle</button></div>
 					</div>
 				</div>
 				<div class="track-list-header"><span>#</span><span>Title</span><span>Album</span><span style="text-align:right">Time</span><span></span></div>
@@ -1204,7 +1204,7 @@
 				<div id="np-album"></div>
 				<div id="np-divider"></div>
 				<div id="np-next-label">Up Next</div>
-				<div id="np-next-item" onclick="playNext()">
+				<div id="np-next-item">
 					<div id="np-next-art">&#9835;</div>
 					<div id="np-next-text"><div id="np-next-title"></div><div id="np-next-artist"></div></div>
 				</div>
@@ -1218,29 +1218,29 @@
 		</div>
 		<div id="player-controls">
 			<div id="player-buttons">
-				<button class="player-btn" id="btn-shuffle" title="Shuffle" onclick="toggleShuffle()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" /><polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" /><line x1="4" y1="4" x2="9" y2="9" /></svg></button>
-				<button class="player-btn" title="Previous" onclick="playPrevious()"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg></button>
-				<button class="player-btn-play" id="btn-play" title="Play" onclick="togglePlayPause()">
+				<button class="player-btn" id="btn-shuffle" title="Shuffle"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" /><polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" /><line x1="4" y1="4" x2="9" y2="9" /></svg></button>
+				<button class="player-btn" id="btn-previous" title="Previous"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg></button>
+				<button class="player-btn-play" id="btn-play" title="Play">
 					<svg id="play-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
 					<svg id="pause-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
 				</button>
-				<button class="player-btn" title="Next" onclick="playNext()"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-10 6l8.5-6v12z" transform="scale(-1,1) translate(-24,0)" /></svg></button>
-				<button class="player-btn" id="btn-repeat" title="Repeat" onclick="toggleRepeat()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg></button>
+				<button class="player-btn" id="btn-next" title="Next"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-10 6l8.5-6v12z" transform="scale(-1,1) translate(-24,0)" /></svg></button>
+				<button class="player-btn" id="btn-repeat" title="Repeat"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg></button>
 			</div>
 			<div id="player-progress-row">
 				<span id="player-time-current">0:00</span>
-				<div id="player-progress-bar" onclick="seekTo(event)"><div id="player-progress-fill"></div></div>
+				<div id="player-progress-bar"><div id="player-progress-fill"></div></div>
 				<span id="player-time-total">0:00</span>
 			</div>
 		</div>
 		<div id="player-volume">
 			<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
-			<div id="volume-slider" onclick="setVolume(event)"><div id="volume-fill"></div></div>
+			<div id="volume-slider"><div id="volume-fill"></div></div>
 		</div>
 	</div>
 	<div id="track-menu">
-		<div class="menu-item" onclick="showPlaylistPicker()">Add to playlist</div>
-		<div class="menu-item menu-item-remove" onclick="removeFromPlaylist()" style="display:none; color:var(--danger);">Remove from playlist</div>
+		<div class="menu-item menu-item-add">Add to playlist</div>
+		<div class="menu-item menu-item-remove" style="display:none; color:var(--danger);">Remove from playlist</div>
 	</div>
 	<div id="playlist-picker">
 		<div class="picker-header">Choose playlist</div>
@@ -1328,7 +1328,7 @@
 			return '&#9835;';
 		}
 
-		function buildTrackRow(song, rowNumber, onClickFn) { let row = document.createElement('div'); row.className = 'track-row'; row.setAttribute('data-track-id', song.id); row.onclick = onClickFn; row.innerHTML = '<span class="track-num">' + rowNumber + '</span><div class="track-title-col"><span class="track-title">' + escapeHtml(song.title) + '</span><span class="track-artist-sub">' + escapeHtml(song.artist) + '</span></div><span class="track-album">' + escapeHtml(song.album || '') + '</span><span class="track-duration">' + formatDuration(song.duration) + '</span><button class="track-menu-btn" onclick="openTrackMenu(event, \'' + song.id + '\')"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>'; return row; }
+		function buildTrackRow(song, rowNumber, onClickFn) { let row = document.createElement('div'); row.className = 'track-row'; row.setAttribute('data-track-id', song.id); row.onclick = onClickFn; row.innerHTML = '<span class="track-num">' + rowNumber + '</span><div class="track-title-col"><span class="track-title">' + escapeHtml(song.title) + '</span><span class="track-artist-sub">' + escapeHtml(song.artist) + '</span></div><span class="track-album">' + escapeHtml(song.album || '') + '</span><span class="track-duration">' + formatDuration(song.duration) + '</span><button class="track-menu-btn" data-action="open-track-menu" data-track-id="' + song.id + '"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>'; return row; }
 		function buildCarouselCard(artId, name, sub, onClick, round) {
 			let card = document.createElement('div');
 			card.className = 'carousel-card';
@@ -1370,7 +1370,7 @@
 							{
 								navStack = []; openPlaylist(playlist.id);
 							};
-							let playBtn = '<button class="quick-item-play" onclick="event.stopPropagation(); quickPlayPlaylist(\'' + playlist.id + '\')" title="Play"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>';
+							let playBtn = '<button class="quick-item-play" data-action="quick-play-playlist" data-playlist-id="' + playlist.id + '" title="Play"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>';
 
 							item.innerHTML = '<div class="quick-item-art">&#9835;</div><div class="quick-item-name">' + escapeHtml(playlist.name) + '</div>' + playBtn;
 							grid.appendChild(item);
@@ -1454,8 +1454,53 @@
 		function setVolume(event) { let bar = document.getElementById('volume-slider'); let rect = bar.getBoundingClientRect(); let pct = (event.clientX - rect.left) / rect.width; if (pct < 0) { pct = 0; } if (pct > 1) { pct = 1; } audioElement.volume = pct; document.getElementById('volume-fill').style.width = (pct * 100) + '%'; }
 
 		/* Init */
-		showView('home');
-		renderLeftList();
+		function wireUpStaticHandlers() {
+			document.getElementById('back-btn').addEventListener('click', goBack);
+			document.getElementById('search-input').addEventListener('input', function (event) { onSearchInput(event.target.value); });
+			document.getElementById('album-detail-artist').addEventListener('click', onAlbumArtistClick);
+			document.getElementById('album-play-btn').addEventListener('click', playAlbum);
+			document.getElementById('album-shuffle-btn').addEventListener('click', shuffleAlbum);
+			document.getElementById('playlist-play-btn').addEventListener('click', playPlaylist);
+			document.getElementById('playlist-shuffle-btn').addEventListener('click', shufflePlaylist);
+			document.getElementById('np-next-item').addEventListener('click', playNext);
+			document.getElementById('btn-shuffle').addEventListener('click', toggleShuffle);
+			document.getElementById('btn-previous').addEventListener('click', playPrevious);
+			document.getElementById('btn-play').addEventListener('click', togglePlayPause);
+			document.getElementById('btn-next').addEventListener('click', playNext);
+			document.getElementById('btn-repeat').addEventListener('click', toggleRepeat);
+			document.getElementById('player-progress-bar').addEventListener('click', seekTo);
+			document.getElementById('volume-slider').addEventListener('click', setVolume);
+			document.querySelector('.menu-item-add').addEventListener('click', showPlaylistPicker);
+			document.querySelector('.menu-item-remove').addEventListener('click', removeFromPlaylist);
+			let leftTabButtons = document.querySelectorAll('.left-tab');
+			for (let idx = 0; idx < leftTabButtons.length; idx++) {
+				let button = leftTabButtons[idx];
+				button.addEventListener('click', function () { switchLeftTab(button.getAttribute('data-left-tab')); });
+			}
+			let sortButtons = document.querySelectorAll('.sort-btn');
+			for (let idx = 0; idx < sortButtons.length; idx++) {
+				let button = sortButtons[idx];
+				button.addEventListener('click', function () { setLeftSort(button.getAttribute('data-sort')); });
+			}
+		}
+		function handleDelegatedClick(event) {
+			let target = event.target.closest('[data-action]');
+			if (!target) { return; }
+			let action = target.getAttribute('data-action');
+			if (action === 'open-track-menu') {
+				openTrackMenu(event, target.getAttribute('data-track-id'));
+			}
+			else if (action === 'quick-play-playlist') {
+				event.stopPropagation();
+				quickPlayPlaylist(target.getAttribute('data-playlist-id'));
+			}
+		}
+		document.addEventListener('DOMContentLoaded', function () {
+			wireUpStaticHandlers();
+			document.body.addEventListener('click', handleDelegatedClick);
+			showView('home');
+			renderLeftList();
+		});
 	</script>
 </body>
 </html>
