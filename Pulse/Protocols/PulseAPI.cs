@@ -182,6 +182,20 @@ namespace Pulse.Protocols
 
 		public IResult HandleTopPlaylists(HttpContext context)
 		{
+			return RankAndEmitPlaylists(context, false);
+		}
+
+		// Same response shape as topPlaylists, sorted by per-user LastPlayed
+		// descending (never-played falls to the back). Separate route from
+		// topPlaylists so callers can pick the semantic they want without
+		// reading a query param that contradicts the route name (#151).
+		public IResult HandleRecentPlaylists(HttpContext context)
+		{
+			return RankAndEmitPlaylists(context, true);
+		}
+
+		private IResult RankAndEmitPlaylists(HttpContext context, bool sortByRecency)
+		{
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 			string user = context.Request.Query["u"].FirstOrDefault();
 
@@ -228,10 +242,18 @@ namespace Pulse.Protocols
 				row.LastPlayed = playlist.GetLastPlayed(user);
 				ranked.Add(row);
 			}
-			// Primary: per-user LastPlayed desc (never-played falls to the back).
-			// Tiebreaker: score desc, so first-time users still get something
-			// sensible on the home carousel before they've played anything.
-			ranked.Sort(ComparePlaylistRankRow);
+			// Sort key follows the route the caller chose:
+			//  - topPlaylists: score desc, lastPlayed tiebreaker
+			//  - recentPlaylists: lastPlayed desc (never-played to the back),
+			//    score tiebreaker so unplayed users still get something sensible.
+			if (sortByRecency)
+			{
+				ranked.Sort(ComparePlaylistRankRow);
+			}
+			else
+			{
+				ranked.Sort(ComparePlaylistRankRowByScore);
+			}
 
 			List<object> playlists = new List<object>();
 			int limit = Math.Min(count, ranked.Count);
@@ -245,7 +267,11 @@ namespace Pulse.Protocols
 					songCount = playlist.GetSongCount(),
 					duration = playlist.DurationSeconds,
 					score = ranked[idx].Score,
-					lastPlayed = FormatLastPlayedForJson(ranked[idx].LastPlayed)
+					lastPlayed = FormatLastPlayedForJson(ranked[idx].LastPlayed),
+					// Synthetic cover-art id (#143). Clients pass this to
+					// getCoverArt to fetch a 4-tile composite assembled from
+					// the playlist's first distinct album covers.
+					coverArt = "pl-" + playlist.Id
 				});
 			}
 
@@ -267,6 +293,16 @@ namespace Pulse.Protocols
 				return byLastPlayed;
 			}
 			return right.Score.CompareTo(left.Score);
+		}
+
+		private static int ComparePlaylistRankRowByScore(PlaylistRankRow left, PlaylistRankRow right)
+		{
+			int byScore = right.Score.CompareTo(left.Score);
+			if (byScore != 0)
+			{
+				return byScore;
+			}
+			return right.LastPlayed.CompareTo(left.LastPlayed);
 		}
 
 		// Round-trip ISO-8601 string for the JS side, empty for "never played"
