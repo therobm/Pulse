@@ -1127,7 +1127,7 @@
 
 		/* Left-rail new-playlist control */
 		#left-new-playlist-bar {
-			display: flex;
+			display: none;
 			justify-content: flex-end;
 			padding: 0 12px 4px 12px;
 		}
@@ -1137,18 +1137,24 @@
 			border: none;
 			color: var(--text-dim);
 			cursor: pointer;
-			width: 28px;
-			height: 28px;
+			height: 32px;
+			padding: 0 10px;
 			border-radius: 6px;
-			display: flex;
+			display: inline-flex;
 			align-items: center;
-			justify-content: center;
+			gap: 6px;
+			font-size: 12px;
+			font-weight: 500;
 			transition: background 0.15s, color 0.15s;
 		}
 
 			.left-icon-btn:hover, .left-icon-btn:active {
 				background: var(--bg-hover);
 				color: var(--accent);
+			}
+
+			.left-icon-btn svg {
+				flex-shrink: 0;
 			}
 
 		#left-new-playlist-form {
@@ -1430,7 +1436,7 @@
 				<button class="sort-btn" data-sort="popular">Popular</button>
 			</div>
 			<div id="left-new-playlist-bar">
-				<button class="left-icon-btn" data-action="show-new-playlist-form" title="New playlist"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+				<button class="left-icon-btn" data-action="show-new-playlist-form" title="New playlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New playlist</span></button>
 			</div>
 			<div id="left-new-playlist-form">
 				<input type="text" id="new-playlist-name" placeholder="New playlist name" maxlength="120" />
@@ -1676,7 +1682,7 @@
 		function buildCompositeArt(songs, size) { let uniqueArts = []; let seen = {}; for (let idx = 0; idx < songs.length; idx++) { let artId = songs[idx].coverArt; if (artId && !seen[artId]) { seen[artId] = true; uniqueArts.push(artId); if (uniqueArts.length >= 4) { break; } } } if (uniqueArts.length === 0) { return '&#9835;'; } if (uniqueArts.length === 1) { return '<img src="' + coverArtUrl(uniqueArts[0], size) + '" />'; } let html = '<div style="display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; width:100%; height:100%;">'; for (let idx = 0; idx < 4; idx++) { html = html + '<img src="' + coverArtUrl(uniqueArts[idx % uniqueArts.length], Math.floor(size / 2)) + '" style="width:100%; height:100%; object-fit:cover;" />'; } return html + '</div>'; }
 
 		/* Left Panel */
-		function switchLeftTab(tab) { leftTab = tab; let tabs = document.querySelectorAll('.left-tab'); for (let idx = 0; idx < tabs.length; idx++) { tabs[idx].classList.remove('active'); if ((tab === 'playlists' && idx === 0) || (tab === 'artists' && idx === 1)) { tabs[idx].classList.add('active'); } } renderLeftList(); }
+		function switchLeftTab(tab) { leftTab = tab; let tabs = document.querySelectorAll('.left-tab'); for (let idx = 0; idx < tabs.length; idx++) { tabs[idx].classList.remove('active'); if ((tab === 'playlists' && idx === 0) || (tab === 'artists' && idx === 1)) { tabs[idx].classList.add('active'); } } document.getElementById('left-new-playlist-bar').style.display = (tab === 'playlists') ? 'flex' : 'none'; if (tab !== 'playlists') { hideNewPlaylistForm(); } renderLeftList(); }
 		function setLeftSort(sort) { leftSort = sort; let btns = document.querySelectorAll('.sort-btn'); for (let idx = 0; idx < btns.length; idx++) { btns[idx].classList.remove('active'); if (btns[idx].getAttribute('data-sort') === sort) { btns[idx].classList.add('active'); } } renderLeftList(); }
 		function renderLeftList() { let container = document.getElementById('left-list'); container.innerHTML = ''; if (leftTab === 'playlists') { renderLeftPlaylists(container); } else { renderLeftArtists(container); } }
 		function renderLeftPlaylists(container) { if (!cachedPlaylists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; apiGet('getPlaylists', null, function (resp) { cachedPlaylists = resp.playlists.playlist || []; renderLeftPlaylists(container); }); return; } let sorted = cachedPlaylists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return right.songCount - left.songCount; }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let playlist = sorted[idx]; let item = document.createElement('div'); item.className = 'left-item'; item.onclick = (function (pid) { return function () { navStack = []; openPlaylist(pid); }; })(playlist.id); item.innerHTML = '<div class="left-item-art">&#9835;</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(playlist.name) + '</div><div class="left-item-sub">' + playlist.songCount + ' tracks</div></div>'; container.appendChild(item); } }
@@ -2017,6 +2023,7 @@
 				let button = leftTabButtons[idx];
 				button.addEventListener('click', function () { switchLeftTab(button.getAttribute('data-left-tab')); });
 			}
+			document.getElementById('left-new-playlist-bar').style.display = (leftTab === 'playlists') ? 'flex' : 'none';
 			let sortButtons = document.querySelectorAll('.sort-btn');
 			for (let idx = 0; idx < sortButtons.length; idx++) {
 				let button = sortButtons[idx];
