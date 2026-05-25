@@ -178,7 +178,22 @@ namespace Pulse.MusicLibrary
 			return TrackIds.Count;
 		}
 		public long DurationSeconds { get; set; }
-		public DateTime LastPlayed { get; set; }  // bumped when the user clicks Play / Shuffle on this playlist
+		public DateTime LastPlayed { get; set; }  // aggregate: bumped on every Play / Shuffle, any user
+		public Dictionary<string, DateTime> UserLastPlayed { get; set; } = new Dictionary<string, DateTime>();
+
+		public DateTime GetLastPlayed(string userName)
+		{
+			if (!string.IsNullOrEmpty(userName))
+			{
+				DateTime userValue;
+				if (UserLastPlayed.TryGetValue(userName, out userValue))
+				{
+					return userValue;
+				}
+				return default(DateTime);
+			}
+			return LastPlayed;
+		}
 
 		public PlaylistInfo()
 		{

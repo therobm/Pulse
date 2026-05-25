@@ -88,7 +88,7 @@ namespace Pulse.SubsonicService
 		public string name { get; set; }
 		public string comment { get; set; }
 		public int songCount { get; set; }
-		public long duration { get; set; }
+		public int duration { get; set; }
 		public List<SongID3> entry { get; set; }
 
 		public PlaylistWithSongs()
@@ -198,7 +198,7 @@ namespace Pulse.SubsonicService
 		public string name { get; set; }
 		public string comment { get; set; }
 		public int songCount { get; set; }
-		public long duration { get; set; }
+		public int duration { get; set; }
 	}
 
 	public class MusicFoldersContainer
