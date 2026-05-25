@@ -32,6 +32,7 @@ namespace Pulse.Data
 				LoadPlaylists(connection);
 				LoadAnalytics(connection);
 				WireUpReferences();
+				CalculateArtistScores();
 			}
 			finally
 			{
@@ -247,6 +248,71 @@ namespace Pulse.Data
 				if (m_artists.TryGetValue(album.ArtistId, out artist))
 				{
 					artist.Albums.Add(album);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Roll the per-track WeightedScore up into per-artist WeightedScore and
+		/// per-user UserWeightedScore -- ArtistInfo's score fields are runtime
+		/// derived state, not persisted, so they need to be recomputed at load.
+		/// Mirrors PulseFileDatabase.CalculateArtistScores; without this the
+		/// popular-artists sort and the popular carousel see all zeros.
+		/// </summary>
+		private void CalculateArtistScores()
+		{
+			foreach (ArtistInfo artist in m_artists.Values)
+			{
+				float totalScore = 0f;
+				int scoredCount = 0;
+				Dictionary<string, float> userTotals = new Dictionary<string, float>();
+				Dictionary<string, int> userCounts = new Dictionary<string, int>();
+
+				for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
+				{
+					AlbumInfo album = artist.Albums[albumIndex];
+					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+					{
+						TrackInfo track = album.Tracks[trackIndex];
+
+						if (track.Score.PlayCount > 0)
+						{
+							if (track.Score.WeightedScore > 1)
+							{
+								track.Score.WeightedScore = 1;
+							}
+							totalScore += track.Score.WeightedScore;
+							scoredCount++;
+						}
+
+						foreach (string userName in track.UserScore.Keys)
+						{
+							ScoreData userData = track.UserScore[userName];
+							if (userData.PlayCount > 0)
+							{
+								if (!userTotals.ContainsKey(userName))
+								{
+									userTotals[userName] = 0f;
+									userCounts[userName] = 0;
+								}
+								if (userData.WeightedScore > 1)
+								{
+									userData.WeightedScore = 1;
+								}
+								userTotals[userName] += userData.WeightedScore;
+								userCounts[userName]++;
+							}
+						}
+					}
+				}
+
+				if (scoredCount > 0)
+				{
+					artist.WeightedScore = totalScore / scoredCount;
+				}
+				foreach (string userName in userTotals.Keys)
+				{
+					artist.UserWeightedScore[userName] = userTotals[userName] / userCounts[userName];
 				}
 			}
 		}

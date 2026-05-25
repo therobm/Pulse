@@ -434,14 +434,14 @@ namespace Pulse.MusicLibrary
 			{
 				environmentName = "Production";
 			}
-			if (System.Diagnostics.Debugger.IsAttached)
+#if DEBUG
+			//Enforce debug builds never touch production
+			if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
 			{
-				if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
-				{
-					Log.Warning(-1, "Debugger attached: forcing Staging environment (config said '" + environmentName + "'). Debug sessions never touch production data.");
-				}
-				environmentName = "Staging";
+				Log.Warning(-1, "Debugger attached: forcing Staging environment (config said '" + environmentName + "'). Debug sessions never touch production data.");
 			}
+			environmentName = "Staging";
+#endif
 
 			string pulseDataRoot = Path.Combine(m_config.MusicPath, "PulseData");
 			if (!Directory.Exists(pulseDataRoot))
