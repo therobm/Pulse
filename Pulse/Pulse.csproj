@@ -27,6 +27,7 @@
 	<ItemGroup>
 		<PackageReference Include="TagLibSharp" Version="2.3.0" />
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+		<PackageReference Include="System.Drawing.Common" Version="8.0.10" />
 	</ItemGroup>
 
 	<ItemGroup>

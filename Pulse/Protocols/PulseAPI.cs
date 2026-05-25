@@ -184,6 +184,12 @@ namespace Pulse.Protocols
 		{
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 			string user = context.Request.Query["u"].FirstOrDefault();
+			// Optional sort override (Flatline #151). Default = lastPlayed desc
+			// then score desc (the user-tailored "Your Playlists" / recents
+			// blend). sort=score gives a pure relevance ranking that ignores
+			// recency, for clients that want a stable top-N regardless of when
+			// the user last played anything.
+			string sort = (context.Request.Query["sort"].FirstOrDefault() ?? "").ToLowerInvariant();
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
 
@@ -231,7 +237,14 @@ namespace Pulse.Protocols
 			// Primary: per-user LastPlayed desc (never-played falls to the back).
 			// Tiebreaker: score desc, so first-time users still get something
 			// sensible on the home carousel before they've played anything.
-			ranked.Sort(ComparePlaylistRankRow);
+			if (sort == "score")
+			{
+				ranked.Sort(ComparePlaylistRankRowByScore);
+			}
+			else
+			{
+				ranked.Sort(ComparePlaylistRankRow);
+			}
 
 			List<object> playlists = new List<object>();
 			int limit = Math.Min(count, ranked.Count);
@@ -245,7 +258,11 @@ namespace Pulse.Protocols
 					songCount = playlist.GetSongCount(),
 					duration = playlist.DurationSeconds,
 					score = ranked[idx].Score,
-					lastPlayed = FormatLastPlayedForJson(ranked[idx].LastPlayed)
+					lastPlayed = FormatLastPlayedForJson(ranked[idx].LastPlayed),
+					// Synthetic cover-art id (#143). Clients pass this to
+					// getCoverArt to fetch a 4-tile composite assembled from
+					// the playlist's first distinct album covers.
+					coverArt = "pl-" + playlist.Id
 				});
 			}
 
@@ -267,6 +284,16 @@ namespace Pulse.Protocols
 				return byLastPlayed;
 			}
 			return right.Score.CompareTo(left.Score);
+		}
+
+		private static int ComparePlaylistRankRowByScore(PlaylistRankRow left, PlaylistRankRow right)
+		{
+			int byScore = right.Score.CompareTo(left.Score);
+			if (byScore != 0)
+			{
+				return byScore;
+			}
+			return right.LastPlayed.CompareTo(left.LastPlayed);
 		}
 
 		// Round-trip ISO-8601 string for the JS side, empty for "never played"

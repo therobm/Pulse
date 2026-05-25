@@ -87,6 +87,8 @@ namespace Pulse
 			host.RegisterResultRoute("rest/getAlbumList2", m_subsonic.HandleGetAlbumList2);
 			host.RegisterResultRoute("rest/getGenres.view", m_subsonic.HandleGetGenres);
 			host.RegisterResultRoute("rest/getGenres", m_subsonic.HandleGetGenres);
+			host.RegisterResultRoute("rest/getSongsByGenre.view", m_subsonic.HandleGetSongsByGenre);
+			host.RegisterResultRoute("rest/getSongsByGenre", m_subsonic.HandleGetSongsByGenre);
 			host.RegisterResultRoute("rest/getOpenSubsonicExtensions.view", m_subsonic.HandleGetOpenSubsonicExtensions);
 			host.RegisterResultRoute("rest/getOpenSubsonicExtensions", m_subsonic.HandleGetOpenSubsonicExtensions);
 			host.RegisterResultRoute("rest/getPlaylists.view", m_subsonic.HandleGetPlaylists);
