@@ -1458,6 +1458,10 @@
 			<div id="view-artist-detail" class="center-view">
 				<div class="view-heading" id="artist-detail-name"></div>
 				<div class="view-subheading" id="artist-detail-count"></div>
+				<div class="detail-actions" style="margin: 8px 0 24px 0;">
+					<button class="btn btn-primary" id="artist-play-btn">Play</button>
+					<button class="btn btn-ghost" id="artist-shuffle-btn">Shuffle</button>
+				</div>
 				<div class="album-grid" id="artist-album-grid"></div>
 			</div>
 			<div id="view-album-detail" class="center-view">
@@ -1601,7 +1605,7 @@
 
 		let currentView = 'home'; let navStack = []; let searchTimeout = null;
 		let cachedArtists = null; let cachedPlaylists = null;
-		let currentAlbumDetail = null; let currentPlaylistDetail = null;
+		let currentAlbumDetail = null; let currentPlaylistDetail = null; let currentArtistId = null;
 		let leftTab = 'playlists'; let leftSort = 'alpha';
 		let audioElement = new Audio(); let playQueue = []; let playQueueIndex = -1;
 		let isShuffled = false; let repeatMode = 0; let progressInterval = null; let menuTrackId = null;
@@ -1731,7 +1735,9 @@
 		function loadPopularArtistsCarousel() { let scroll = document.getElementById('home-artists-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulseGet('popularArtists?count=10&u=' + API_USER, function (data) { let artists = data.artists || []; scroll.innerHTML = ''; if (artists.length === 0) { scroll.innerHTML = '<div class="loading-text">Play some music first</div>'; return; } for (let idx = 0; idx < artists.length; idx++) { let artist = artists[idx]; let card = buildCarouselCard(artist.coverArt || null, artist.name, 'score ' + artist.score, (function (aid) { return function () { navStack = []; openArtist(aid); }; })(artist.id), true); scroll.appendChild(card); } }); }
 
 		/* Artist Detail */
-		function openArtist(artistId) { apiGet('getArtist', 'id=' + encodeURIComponent(artistId), function (resp) { let artist = resp.artist; document.getElementById('artist-detail-name').textContent = artist.name; document.getElementById('artist-detail-count').textContent = artist.albumCount + ' albums'; let grid = document.getElementById('artist-album-grid'); grid.innerHTML = ''; let albums = artist.album || []; for (let idx = 0; idx < albums.length; idx++) { let album = albums[idx]; let card = document.createElement('div'); card.className = 'carousel-card'; card.onclick = (function (aid) { return function () { openAlbum(aid); }; })(album.id); card.innerHTML = '<div class="carousel-card-art">' + artHtml(album.coverArt, 300) + '</div><div class="carousel-card-name">' + escapeHtml(album.name) + '</div><div class="carousel-card-sub">' + (album.year || '') + '</div>'; grid.appendChild(card); } navigateWithHistory('artist-detail'); }); }
+		function openArtist(artistId) { currentArtistId = artistId; apiGet('getArtist', 'id=' + encodeURIComponent(artistId), function (resp) { let artist = resp.artist; document.getElementById('artist-detail-name').textContent = artist.name; document.getElementById('artist-detail-count').textContent = artist.albumCount + ' albums'; let grid = document.getElementById('artist-album-grid'); grid.innerHTML = ''; let albums = artist.album || []; for (let idx = 0; idx < albums.length; idx++) { let album = albums[idx]; let card = document.createElement('div'); card.className = 'carousel-card'; card.onclick = (function (aid) { return function () { openAlbum(aid); }; })(album.id); card.innerHTML = '<div class="carousel-card-art">' + artHtml(album.coverArt, 300) + '</div><div class="carousel-card-name">' + escapeHtml(album.name) + '</div><div class="carousel-card-sub">' + (album.year || '') + '</div>'; grid.appendChild(card); } navigateWithHistory('artist-detail'); }); }
+		function playArtist() { if (!currentArtistId) { return; } pulseGet('artistTracks?id=' + encodeURIComponent(currentArtistId), function (data) { let tracks = data.tracks || []; if (tracks.length === 0) { return; } playTrackList(tracks, 0); }); }
+		function shuffleArtist() { if (!currentArtistId) { return; } pulseGet('artistTracks?id=' + encodeURIComponent(currentArtistId), function (data) { let tracks = data.tracks || []; if (tracks.length === 0) { return; } let shuffled = tracks.slice(); shuffleArray(shuffled); playTrackList(shuffled, 0); }); }
 
 		/* Album Detail */
 		function openAlbum(albumId) { apiGet('getAlbum', 'id=' + encodeURIComponent(albumId), function (resp) { currentAlbumDetail = resp.album; let album = currentAlbumDetail; document.getElementById('album-detail-name').textContent = album.name; document.getElementById('album-detail-artist').textContent = album.artist; document.getElementById('album-detail-artist').setAttribute('data-artist-id', album.artistId); let songs = album.song || []; let totalDuration = 0; for (let idx = 0; idx < songs.length; idx++) { totalDuration = totalDuration + songs[idx].duration; } document.getElementById('album-detail-meta').textContent = songs.length + ' tracks \u00b7 ' + Math.floor(totalDuration / 60) + ' min'; document.getElementById('album-detail-art').innerHTML = artHtml(album.coverArt, 400); let tracksEl = document.getElementById('album-detail-tracks'); tracksEl.innerHTML = ''; for (let idx = 0; idx < songs.length; idx++) { let row = buildTrackRow(songs[idx], idx + 1, (function (sl, si) { return function () { playTrackList(sl, si); }; })(songs, idx)); tracksEl.appendChild(row); } navigateWithHistory('album-detail'); }); }
@@ -2002,6 +2008,8 @@
 			document.getElementById('album-detail-artist').addEventListener('click', onAlbumArtistClick);
 			document.getElementById('album-play-btn').addEventListener('click', playAlbum);
 			document.getElementById('album-shuffle-btn').addEventListener('click', shuffleAlbum);
+			document.getElementById('artist-play-btn').addEventListener('click', playArtist);
+			document.getElementById('artist-shuffle-btn').addEventListener('click', shuffleArtist);
 			document.getElementById('playlist-play-btn').addEventListener('click', playPlaylist);
 			document.getElementById('playlist-shuffle-btn').addEventListener('click', shufflePlaylist);
 			document.getElementById('np-next-item').addEventListener('click', playNext);

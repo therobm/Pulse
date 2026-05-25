@@ -61,6 +61,59 @@ namespace Pulse.Protocols
 			return Results.Json(new { tracks = tracks });
 		}
 
+		// Returns every track for a given artist in (album-index, track-number) order.
+		// Used by the artist detail Play / Shuffle buttons so the client can avoid
+		// firing one getAlbum call per album.
+		public IResult HandleArtistTracks(HttpContext context)
+		{
+			string artistId = context.Request.Query["id"].FirstOrDefault();
+			if (string.IsNullOrEmpty(artistId))
+			{
+				return Results.Json(new { tracks = new List<object>() });
+			}
+
+			ArtistInfo artist = m_musicManager.GetArtist(artistId);
+			if (artist == null)
+			{
+				return Results.Json(new { tracks = new List<object>() });
+			}
+
+			List<object> tracks = new List<object>();
+			for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
+			{
+				AlbumInfo album = artist.Albums[albumIndex];
+				List<TrackInfo> ordered = new List<TrackInfo>(album.Tracks);
+				ordered.Sort(CompareTrackByDiscThenNumber);
+				for (int trackIndex = 0; trackIndex < ordered.Count; trackIndex++)
+				{
+					TrackInfo track = ordered[trackIndex];
+					tracks.Add(new
+					{
+						id = track.Id,
+						title = track.Title,
+						artist = track.Artist,
+						artistId = track.ArtistId,
+						album = track.Album,
+						albumId = track.AlbumId,
+						coverArt = track.CoverArtId,
+						duration = track.DurationSeconds
+					});
+				}
+			}
+
+			return Results.Json(new { tracks = tracks });
+		}
+
+		private static int CompareTrackByDiscThenNumber(TrackInfo left, TrackInfo right)
+		{
+			int discCompare = left.DiscNumber.CompareTo(right.DiscNumber);
+			if (discCompare != 0)
+			{
+				return discCompare;
+			}
+			return left.TrackNumber.CompareTo(right.TrackNumber);
+		}
+
 		public IResult HandlePopularArtists(HttpContext context)
 		{
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
