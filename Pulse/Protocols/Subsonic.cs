@@ -666,10 +666,13 @@ namespace Pulse.SubsonicService
 			body.album.year = source.Year;
 			body.album.genre = source.Genre;
 
+			List<TrackInfo> orderedTracks = new List<TrackInfo>(source.Tracks);
+			orderedTracks.Sort(CompareTrackByDiscThenNumber);
+
 			long albumDuration = 0;
-			for (int index = 0; index < source.Tracks.Count; index++)
+			for (int index = 0; index < orderedTracks.Count; index++)
 			{
-				TrackInfo trackSource = source.Tracks[index];
+				TrackInfo trackSource = orderedTracks[index];
 
 				SongID3 song = new SongID3(user, trackSource);
 
@@ -1056,9 +1059,12 @@ namespace Pulse.SubsonicService
 				body.directory.id = albumMatch.Id;
 				body.directory.name = albumMatch.Name;
 
-				for (int i = 0; i < albumMatch.Tracks.Count; i++)
+				List<TrackInfo> orderedTracks = new List<TrackInfo>(albumMatch.Tracks);
+				orderedTracks.Sort(CompareTrackByDiscThenNumber);
+
+				for (int i = 0; i < orderedTracks.Count; i++)
 				{
-					TrackInfo track = albumMatch.Tracks[i];
+					TrackInfo track = orderedTracks[i];
 					DirectoryChild child = new DirectoryChild();
 					child.id = track.Id;
 					child.parent = albumMatch.Id;
@@ -1085,6 +1091,16 @@ namespace Pulse.SubsonicService
 		private static int CompareAlbumYearDescending(AlbumInfo left, AlbumInfo right)
 		{
 			return right.Year.CompareTo(left.Year);
+		}
+
+		private static int CompareTrackByDiscThenNumber(TrackInfo left, TrackInfo right)
+		{
+			int discCompare = left.DiscNumber.CompareTo(right.DiscNumber);
+			if (discCompare != 0)
+			{
+				return discCompare;
+			}
+			return left.TrackNumber.CompareTo(right.TrackNumber);
 		}
 
 		private static int CompareIntDescending(int left, int right)
