@@ -179,14 +179,17 @@ namespace Pulse.Protocols
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
 
-			// Playlists don't have their own score; rank by the sum of the scores of
-			// the distinct artists whose tracks appear in the playlist.
+			// Playlists don't have their own score; rank by the AVERAGE of the
+			// scores of the distinct artists whose tracks appear in the playlist.
+			// Average (not sum) so a long playlist of mediocre tracks doesn't
+			// outrank a tight playlist of favorites.
 			List<KeyValuePair<PlaylistInfo, float>> scored = new List<KeyValuePair<PlaylistInfo, float>>();
 			for (int playlistIndex = 0; playlistIndex < all.Count; playlistIndex++)
 			{
 				PlaylistInfo playlist = all[playlistIndex];
 				HashSet<string> seenArtistIds = new HashSet<string>();
 				float total = 0f;
+				int artistCount = 0;
 				for (int trackIndex = 0; trackIndex < playlist.TrackIds.Count; trackIndex++)
 				{
 					TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[trackIndex]);
@@ -202,9 +205,15 @@ namespace Pulse.Protocols
 					if (artist != null)
 					{
 						total += artist.GetScore(user);
+						artistCount++;
 					}
 				}
-				scored.Add(new KeyValuePair<PlaylistInfo, float>(playlist, total));
+				float average = 0f;
+				if (artistCount > 0)
+				{
+					average = total / artistCount;
+				}
+				scored.Add(new KeyValuePair<PlaylistInfo, float>(playlist, average));
 			}
 			scored.Sort(ComparePlaylistScoredDescending);
 
