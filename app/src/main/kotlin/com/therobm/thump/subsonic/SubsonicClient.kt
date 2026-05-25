@@ -190,6 +190,33 @@ class SubsonicClient(
     }
 
     /**
+     * Calls /rest/getSongsByGenre and returns up to `count` songs (after `offset`) tagged with
+     * the given genre. Used by the Genre detail screen and by the Library genre row's composite
+     * art (which only needs the first few cover IDs).
+     */
+    suspend fun getSongsByGenre(
+        genreName: String,
+        count: Int,
+        offset: Int,
+    ): SubsonicResult<List<StandardSongDetail>> {
+        return callAndDecodeEnvelope(
+            pathAfterBase = "rest/getSongsByGenre",
+            extraQueryParameters = mapOf(
+                "genre" to genreName,
+                "count" to count.toString(),
+                "offset" to offset.toString(),
+            ),
+        ) { envelope: SubsonicResponseEnvelope ->
+            val payload = envelope.songsByGenre
+            if (payload == null) {
+                emptyList<StandardSongDetail>()
+            } else {
+                payload.song
+            }
+        }
+    }
+
+    /**
      * Calls /rest/getGenres and returns the genre list with per-genre song/album counts.
      */
     suspend fun getGenres(): SubsonicResult<List<StandardGenre>> {

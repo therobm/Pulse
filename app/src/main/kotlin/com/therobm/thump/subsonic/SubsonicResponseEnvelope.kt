@@ -40,6 +40,7 @@ data class SubsonicResponseEnvelope(
     val artist: StandardArtistDetailPayload? = null,
     val artists: StandardArtistsPayload? = null,
     val genres: StandardGenresPayload? = null,
+    val songsByGenre: StandardSongsByGenrePayload? = null,
 )
 
 @Serializable

@@ -381,6 +381,9 @@ private fun buildSourceLine(source: PlaybackSource?): String {
         PlaybackSourceKind.Artist -> {
             kindLabel = "artist"
         }
+        PlaybackSourceKind.Genre -> {
+            kindLabel = "genre"
+        }
     }
     return kindLabel + ": " + source.name
 }

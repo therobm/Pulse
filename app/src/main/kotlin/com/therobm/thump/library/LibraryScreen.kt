@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +49,9 @@ private const val ALBUM_LIST_PAGE_SIZE: Int = 500
 private const val ROW_ART_REQUEST_SIZE_PX: Int = 150
 private const val PLAYLIST_ROW_ART_REQUEST_SIZE_PX: Int = 120
 private const val ROW_THUMB_SIZE_DP: Int = 56
+// Fetch just enough songs from a genre to find 4 unique cover-art IDs for the composite.
+// Using a small count keeps the per-row network cost low; the genre detail screen pages later.
+private const val GENRE_SAMPLE_FETCH_COUNT: Int = 8
 
 /**
  * The Library tab. Chip row at the top picks between Artists, Albums, Playlists, and Genres;
@@ -63,10 +67,14 @@ fun LibraryScreen(
     onArtistSelected: (String) -> Unit,
     onAlbumSelected: (String) -> Unit,
     onPlaylistSelected: (String) -> Unit,
+    onGenreSelected: (String) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier,
 ) {
-    var selectedChip by remember { mutableStateOf(LibraryChip.Artists) }
+    // Save the chip ordinal so navigating into a detail screen and back restores the user's
+    // last-selected chip. Storing the ordinal (Int) avoids needing a custom Saver for the enum.
+    var selectedChipOrdinal by rememberSaveable { mutableStateOf(0) }
+    val selectedChip: LibraryChip = LibraryChip.values()[selectedChipOrdinal]
 
     var artistsState: LibraryLoadState<StandardArtistsPayload> by remember(subsonicClient) {
         mutableStateOf(LibraryLoadState.Idle)
@@ -150,7 +158,7 @@ fun LibraryScreen(
     ) {
         LibraryChipRow(
             selectedChip = selectedChip,
-            onChipSelected = { newChip: LibraryChip -> selectedChip = newChip },
+            onChipSelected = { newChip: LibraryChip -> selectedChipOrdinal = newChip.ordinal },
         )
         when (selectedChip) {
             LibraryChip.Artists -> {
@@ -175,7 +183,11 @@ fun LibraryScreen(
                 )
             }
             LibraryChip.Genres -> {
-                GenresList(state = genresState)
+                GenresList(
+                    state = genresState,
+                    subsonicClient = subsonicClient,
+                    onGenreSelected = onGenreSelected,
+                )
             }
         }
     }
@@ -310,7 +322,11 @@ private fun PlaylistsList(
 }
 
 @Composable
-private fun GenresList(state: LibraryLoadState<List<StandardGenre>>) {
+private fun GenresList(
+    state: LibraryLoadState<List<StandardGenre>>,
+    subsonicClient: SubsonicClient,
+    onGenreSelected: (String) -> Unit,
+) {
     when (state) {
         is LibraryLoadState.Idle, LibraryLoadState.Loading -> {
             CenteredSpinner()
@@ -325,7 +341,11 @@ private fun GenresList(state: LibraryLoadState<List<StandardGenre>>) {
             }
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(items = state.value, key = { genre -> genre.value }) { genre ->
-                    LibraryGenreRow(genre = genre)
+                    LibraryGenreRow(
+                        genre = genre,
+                        subsonicClient = subsonicClient,
+                        onTapped = { onGenreSelected(genre.value) },
+                    )
                 }
             }
         }
@@ -414,6 +434,23 @@ private fun LibraryPlaylistRow(
     subsonicClient: SubsonicClient,
     onTapped: () -> Unit,
 ) {
+    var entryCoverArtIds: List<String> by remember(playlist.id) { mutableStateOf(emptyList()) }
+    LaunchedEffect(playlist.id, subsonicClient) {
+        val result = subsonicClient.getPlaylist(playlist.id)
+        if (result is SubsonicResult.Ok) {
+            val entries = result.value.entry
+            val ids = ArrayList<String>(entries.size)
+            val entryCount = entries.size
+            for (entryIndex in 0 until entryCount) {
+                val candidate = entries[entryIndex].coverArt
+                if (candidate != null) {
+                    ids.add(candidate)
+                }
+            }
+            entryCoverArtIds = ids
+        }
+    }
+
     LibraryListRow(
         title = playlist.name,
         subtitle = buildPlaylistSubtitle(playlist),
@@ -422,7 +459,7 @@ private fun LibraryPlaylistRow(
                 .size(ROW_THUMB_SIZE_DP.dp)
                 .clip(RoundedCornerShape(8.dp))
             CompositeArtTile(
-                coverArtIds = playlistCoverArtIds(playlist),
+                coverArtIds = entryCoverArtIds,
                 subsonicClient = subsonicClient,
                 requestSizePx = PLAYLIST_ROW_ART_REQUEST_SIZE_PX,
                 modifier = thumbModifier.size(ROW_THUMB_SIZE_DP.dp),
@@ -433,19 +470,47 @@ private fun LibraryPlaylistRow(
 }
 
 @Composable
-private fun LibraryGenreRow(genre: StandardGenre) {
+private fun LibraryGenreRow(
+    genre: StandardGenre,
+    subsonicClient: SubsonicClient,
+    onTapped: () -> Unit,
+) {
+    var sampleCoverArtIds: List<String> by remember(genre.value) { mutableStateOf(emptyList()) }
+    LaunchedEffect(genre.value, subsonicClient) {
+        val result = subsonicClient.getSongsByGenre(
+            genreName = genre.value,
+            count = GENRE_SAMPLE_FETCH_COUNT,
+            offset = 0,
+        )
+        if (result is SubsonicResult.Ok) {
+            val songs = result.value
+            val ids = ArrayList<String>(songs.size)
+            val songCount = songs.size
+            for (songIndex in 0 until songCount) {
+                val candidate = songs[songIndex].coverArt
+                if (candidate != null) {
+                    ids.add(candidate)
+                }
+            }
+            sampleCoverArtIds = ids
+        }
+    }
+
     LibraryListRow(
         title = genre.value,
         subtitle = buildGenreSubtitle(genre),
         leading = {
-            Box(
-                modifier = Modifier
-                    .size(ROW_THUMB_SIZE_DP.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(ThumpColors.Surface),
+            val thumbModifier = Modifier
+                .size(ROW_THUMB_SIZE_DP.dp)
+                .clip(RoundedCornerShape(8.dp))
+            CompositeArtTile(
+                coverArtIds = sampleCoverArtIds,
+                subsonicClient = subsonicClient,
+                requestSizePx = PLAYLIST_ROW_ART_REQUEST_SIZE_PX,
+                modifier = thumbModifier.size(ROW_THUMB_SIZE_DP.dp),
             )
         },
-        onTapped = { /* Genre detail screen is a follow-up PR. */ },
+        onTapped = onTapped,
     )
 }
 
@@ -562,20 +627,6 @@ private fun buildGenreSubtitle(genre: StandardGenre): String {
         parts.add(genre.albumCount.toString() + " albums")
     }
     return parts.joinToString(separator = " • ")
-}
-
-/**
- * The playlist summaries returned by getPlaylists don't include entry-level cover art IDs, so
- * the Library playlist row can't show the 2x2 composite without a per-row getPlaylist fetch.
- * For now the row renders the empty composite (music-note glyph). Follow-up: lazy-fetch entries
- * the same way QuickPlaylistsGrid does.
- */
-private fun playlistCoverArtIds(playlist: StandardPlaylistSummary): List<String> {
-    val singleCover = playlist.coverArt
-    if (singleCover == null) {
-        return emptyList()
-    }
-    return listOf(singleCover)
 }
 
 private sealed interface LibraryLoadState<out T> {

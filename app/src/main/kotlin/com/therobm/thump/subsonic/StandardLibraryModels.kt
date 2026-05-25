@@ -40,3 +40,8 @@ data class StandardGenre(
     val songCount: Int? = null,
     val albumCount: Int? = null,
 )
+
+@Serializable
+data class StandardSongsByGenrePayload(
+    val song: List<StandardSongDetail> = emptyList(),
+)
