@@ -181,6 +181,11 @@ namespace Pulse.MusicLibrary
 
 					previousTrack.Score.PlayCount = previousTrack.Score.PlayCount + 1;
 					previousTrack.LastPlayed = DateTime.UtcNow;
+					if (previousTrack.ParentArtist != null)
+					{
+						previousTrack.ParentArtist.LastPlayed = DateTime.UtcNow;
+						previousTrack.ParentArtist.m_bIsDirty = true;
+					}
 
 					if (userName != null)
 					{

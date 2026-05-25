@@ -147,6 +147,8 @@ namespace Pulse.MusicLibrary
 		public Dictionary<string, bool> Starred { get; set; } = new Dictionary<string, bool>();
 		public List<AlbumInfo> Albums { get; set; } = new List<AlbumInfo>();
 
+		public DateTime LastPlayed { get; set; }  // last time any of this artist's tracks was played
+
 		// Dynamic data populated at runtime
 		public float WeightedScore { get; set; }
 		public Dictionary<string, float> UserWeightedScore { get; set; } = new Dictionary<string, float>();
@@ -176,6 +178,7 @@ namespace Pulse.MusicLibrary
 			return TrackIds.Count;
 		}
 		public long DurationSeconds { get; set; }
+		public DateTime LastPlayed { get; set; }  // bumped when the user clicks Play / Shuffle on this playlist
 
 		public PlaylistInfo()
 		{

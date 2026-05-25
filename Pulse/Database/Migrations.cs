@@ -177,6 +177,17 @@ namespace Pulse.Database
 			";
 			steps.Add(v1);
 
+			// v2: track LastPlayed for artists and playlists so the left-rail
+			// "Recent" sort has something to rank by (Flatline #140). Empty
+			// string default = never played; treated as oldest by sort.
+			MigrationStep v2 = new MigrationStep();
+			v2.Version = 2;
+			v2.Sql = @"
+				ALTER TABLE artists ADD COLUMN last_played TEXT NOT NULL DEFAULT '';
+				ALTER TABLE playlists ADD COLUMN last_played TEXT NOT NULL DEFAULT '';
+			";
+			steps.Add(v2);
+
 			return steps;
 		}
 	}
