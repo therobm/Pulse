@@ -219,6 +219,28 @@ namespace Pulse.Data
 				}
 			}
 			tracksReader.Close();
+
+			SqliteCommand userLastPlayedCommand = connection.CreateCommand();
+			userLastPlayedCommand.CommandText = "SELECT playlist_id, user_name, last_played FROM playlist_user_last_played;";
+			SqliteDataReader userLastPlayedReader = userLastPlayedCommand.ExecuteReader();
+			while (userLastPlayedReader.Read())
+			{
+				string playlistId = userLastPlayedReader.GetString(0);
+				string userName = userLastPlayedReader.GetString(1);
+				string lastPlayedStr = userLastPlayedReader.GetString(2);
+				PlaylistInfo playlist;
+				if (!m_playlists.TryGetValue(playlistId, out playlist))
+				{
+					continue;
+				}
+				DateTime lastPlayed;
+				if (string.IsNullOrEmpty(lastPlayedStr) || !DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
+				{
+					continue;
+				}
+				playlist.UserLastPlayed[userName] = lastPlayed;
+			}
+			userLastPlayedReader.Close();
 		}
 
 		private void LoadAnalytics(SqliteConnection connection)
@@ -418,6 +440,7 @@ namespace Pulse.Data
 				if (!playlist.m_bIsDirty) { continue; }
 				UpsertPlaylist(connection, transaction, playlist);
 				WritePlaylistTracks(connection, transaction, playlist);
+				WritePlaylistUserLastPlayed(connection, transaction, playlist);
 				playlist.m_bIsDirty = false;
 				count++;
 			}
@@ -591,6 +614,31 @@ namespace Pulse.Data
 				insert.Parameters.AddWithValue("$id", entityId);
 				insert.Parameters.AddWithValue("$user_name", entry.Key);
 				insert.Parameters.AddWithValue("$starred", entry.Value ? 1 : 0);
+				insert.ExecuteNonQuery();
+			}
+		}
+
+		public static void WritePlaylistUserLastPlayed(SqliteConnection connection, SqliteTransaction transaction, PlaylistInfo playlist)
+		{
+			SqliteCommand delete = connection.CreateCommand();
+			delete.Transaction = transaction;
+			delete.CommandText = "DELETE FROM playlist_user_last_played WHERE playlist_id = $playlist_id;";
+			delete.Parameters.AddWithValue("$playlist_id", playlist.Id);
+			delete.ExecuteNonQuery();
+
+			foreach (KeyValuePair<string, DateTime> entry in playlist.UserLastPlayed)
+			{
+				if (entry.Value == default(DateTime))
+				{
+					continue;
+				}
+				SqliteCommand insert = connection.CreateCommand();
+				insert.Transaction = transaction;
+				insert.CommandText = @"INSERT INTO playlist_user_last_played (playlist_id, user_name, last_played)
+					VALUES ($playlist_id, $user_name, $last_played);";
+				insert.Parameters.AddWithValue("$playlist_id", playlist.Id);
+				insert.Parameters.AddWithValue("$user_name", entry.Key);
+				insert.Parameters.AddWithValue("$last_played", entry.Value.ToString("o"));
 				insert.ExecuteNonQuery();
 			}
 		}
