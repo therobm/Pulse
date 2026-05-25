@@ -666,6 +666,7 @@ namespace Pulse.SubsonicService
 			body.album.year = source.Year;
 			body.album.genre = source.Genre;
 
+			long albumDuration = 0;
 			for (int index = 0; index < source.Tracks.Count; index++)
 			{
 				TrackInfo trackSource = source.Tracks[index];
@@ -673,7 +674,9 @@ namespace Pulse.SubsonicService
 				SongID3 song = new SongID3(user, trackSource);
 
 				body.album.song.Add(song);
+				albumDuration = albumDuration + trackSource.DurationSeconds;
 			}
+			body.album.duration = (int)albumDuration;
 
 			return Respond(context, body);
 		}
@@ -771,7 +774,7 @@ namespace Pulse.SubsonicService
 				entry.name = playlist.Name;
 				entry.comment = playlist.Comment;
 				entry.songCount = playlist.GetSongCount();
-				entry.duration = playlist.DurationSeconds;
+				entry.duration = (int)playlist.DurationSeconds;
 				body.playlists.playlist.Add(entry);
 			}
 
@@ -800,7 +803,7 @@ namespace Pulse.SubsonicService
 			body.playlist.name = playlist.Name;
 			body.playlist.comment = playlist.Comment;
 			body.playlist.songCount = playlist.GetSongCount();
-			body.playlist.duration = playlist.DurationSeconds;
+			body.playlist.duration = (int)playlist.DurationSeconds;
 
 			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
 			for (int index = 0; index < tracks.Count; index++)
@@ -866,7 +869,7 @@ namespace Pulse.SubsonicService
 			body.playlist.id = playlist.Id;
 			body.playlist.name = playlist.Name;
 			body.playlist.songCount = playlist.TrackIds.Count;
-			body.playlist.duration = playlist.DurationSeconds;
+			body.playlist.duration = (int)playlist.DurationSeconds;
 
 			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
 			for (int index = 0; index < tracks.Count; index++)
