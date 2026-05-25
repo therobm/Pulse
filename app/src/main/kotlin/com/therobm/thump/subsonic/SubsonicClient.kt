@@ -190,6 +190,36 @@ class SubsonicClient(
     }
 
     /**
+     * Calls /rest/search3 and returns the merged artist/album/song result lists for a query.
+     *
+     * The three count parameters cap how many of each type the server returns; passing 0 for
+     * any category disables it. Empty lists come back when nothing matches in a given category.
+     */
+    suspend fun search3(
+        query: String,
+        artistCount: Int,
+        albumCount: Int,
+        songCount: Int,
+    ): SubsonicResult<StandardSearchResult3Payload> {
+        return callAndDecodeEnvelope(
+            pathAfterBase = "rest/search3",
+            extraQueryParameters = mapOf(
+                "query" to query,
+                "artistCount" to artistCount.toString(),
+                "albumCount" to albumCount.toString(),
+                "songCount" to songCount.toString(),
+            ),
+        ) { envelope: SubsonicResponseEnvelope ->
+            val payload = envelope.searchResult3
+            if (payload == null) {
+                StandardSearchResult3Payload()
+            } else {
+                payload
+            }
+        }
+    }
+
+    /**
      * Calls /rest/getSongsByGenre and returns up to `count` songs (after `offset`) tagged with
      * the given genre. Used by the Genre detail screen and by the Library genre row's composite
      * art (which only needs the first few cover IDs).
