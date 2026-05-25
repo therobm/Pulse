@@ -96,6 +96,44 @@ namespace Pulse.MusicLibrary
 			return m_database.GetArtist(id);
 		}
 
+		// Snapshot of the currently-playing track (Flatline #164). Single-slot
+		// today; multi-user concurrent play needs its own data structure first.
+		public string GetNowPlayingTrackId()
+		{
+			return m_nowPlayingTrackId;
+		}
+
+		public DateTime GetNowPlayingStartTime()
+		{
+			return m_nowPlayingStartTime;
+		}
+
+		// Pass-throughs for the persistent play queue + bookmarks (#168).
+		public PlayQueueInfo GetPlayQueue(string userName)
+		{
+			return m_database.GetPlayQueue(userName);
+		}
+
+		public void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy)
+		{
+			m_database.SavePlayQueue(userName, trackIds, currentTrackId, positionMs, changedBy);
+		}
+
+		public List<BookmarkInfo> GetBookmarks(string userName)
+		{
+			return m_database.GetBookmarks(userName);
+		}
+
+		public void SaveBookmark(string userName, string trackId, long positionMs, string comment)
+		{
+			m_database.SaveBookmark(userName, trackId, positionMs, comment);
+		}
+
+		public void DeleteBookmark(string userName, string trackId)
+		{
+			m_database.DeleteBookmark(userName, trackId);
+		}
+
 
 		private IPulseDatabase m_database;
 		private object m_missingLock = new object();

@@ -83,11 +83,144 @@ namespace Pulse.SubsonicService
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public SongsByGenreContainer songsByGenre { get; set; }
 
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public RandomSongsContainer randomSongs { get; set; }
+
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public NowPlayingContainer nowPlaying { get; set; }
+
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public AlbumInfoBody albumInfo { get; set; }
+
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public SimilarSongsContainer similarSongs { get; set; }
+
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public SimilarSongsContainer similarSongs2 { get; set; }
+
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public LyricsBody lyrics { get; set; }
+
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public LyricsListBody lyricsList { get; set; }
+
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public PlayQueueBody playQueue { get; set; }
+
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public BookmarksContainer bookmarks { get; set; }
+
 	}
 
 	public class SongsByGenreContainer
 	{
 		public List<SongID3> song { get; set; } = new List<SongID3>();
+	}
+
+	public class RandomSongsContainer
+	{
+		public List<SongID3> song { get; set; } = new List<SongID3>();
+	}
+
+	public class NowPlayingContainer
+	{
+		public List<NowPlayingEntry> entry { get; set; } = new List<NowPlayingEntry>();
+	}
+
+	// Spec NowPlayingEntry extends Child with playback context fields. Composition
+	// over inheritance so SongID3's shape stays untouched everywhere else.
+	public class NowPlayingEntry
+	{
+		public string id { get; set; }
+		public string title { get; set; }
+		public string album { get; set; }
+		public string albumId { get; set; }
+		public string artist { get; set; }
+		public string artistId { get; set; }
+		public int track { get; set; }
+		public int discNumber { get; set; }
+		public int year { get; set; }
+		public string genre { get; set; }
+		public int duration { get; set; }
+		public long size { get; set; }
+		public string suffix { get; set; }
+		public string contentType { get; set; }
+		public string coverArt { get; set; }
+		public string username { get; set; }
+		public int minutesAgo { get; set; }
+		public string playerId { get; set; }
+		public string playerName { get; set; }
+	}
+
+	public class AlbumInfoBody
+	{
+		public string notes { get; set; } = "";
+		public string musicBrainzId { get; set; } = "";
+		public string lastFmUrl { get; set; } = "";
+		public string smallImageUrl { get; set; } = "";
+		public string mediumImageUrl { get; set; } = "";
+		public string largeImageUrl { get; set; } = "";
+	}
+
+	public class SimilarSongsContainer
+	{
+		public List<SongID3> song { get; set; } = new List<SongID3>();
+	}
+
+	public class LyricsBody
+	{
+		public string artist { get; set; } = "";
+		public string title { get; set; } = "";
+		// Spec calls this "value" -- the raw lyrics text in the response body.
+		public string value { get; set; } = "";
+	}
+
+	public class LyricsListBody
+	{
+		public List<StructuredLyrics> structuredLyrics { get; set; } = new List<StructuredLyrics>();
+	}
+
+	public class StructuredLyrics
+	{
+		public string lang { get; set; } = "xxx";
+		public bool synced { get; set; } = false;
+		public string displayArtist { get; set; } = "";
+		public string displayTitle { get; set; } = "";
+		public int offset { get; set; } = 0;
+		public List<LyricLine> line { get; set; } = new List<LyricLine>();
+	}
+
+	public class LyricLine
+	{
+		public string value { get; set; } = "";
+		// Milliseconds offset from track start. Spec omits this for unsynced.
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public long start { get; set; }
+	}
+
+	public class PlayQueueBody
+	{
+		public string current { get; set; } = "";
+		public long position { get; set; } = 0;
+		public string username { get; set; } = "";
+		public string changed { get; set; } = "";
+		public string changedBy { get; set; } = "";
+		public List<SongID3> entry { get; set; } = new List<SongID3>();
+	}
+
+	public class BookmarksContainer
+	{
+		public List<BookmarkEntry> bookmark { get; set; } = new List<BookmarkEntry>();
+	}
+
+	public class BookmarkEntry
+	{
+		public string username { get; set; } = "";
+		public long position { get; set; } = 0;
+		public string comment { get; set; } = "";
+		public string created { get; set; } = "";
+		public string changed { get; set; } = "";
+		public SongID3 entry { get; set; }
 	}
 
 	public class PlaylistWithSongs

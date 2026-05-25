@@ -960,6 +960,449 @@ namespace Pulse.SubsonicService
 			return Respond(context, body);
 		}
 
+		// Standard /rest/getRandomSongs (Flatline #162). Filter by optional
+		// genre / fromYear / toYear, return up to `size` random tracks.
+		// musicFolderId is accepted but ignored -- Pulse exposes a single
+		// folder. Brand new endpoint; doesn't touch any existing read path.
+		public IResult HandleGetRandomSongs(HttpContext context)
+		{
+			int size = int.Parse(context.Request.Query["size"].FirstOrDefault() ?? "10");
+			if (size < 1) { size = 1; }
+			if (size > 500) { size = 500; }
+			string genre = context.Request.Query["genre"].FirstOrDefault();
+			string fromYearStr = context.Request.Query["fromYear"].FirstOrDefault();
+			string toYearStr = context.Request.Query["toYear"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+
+			int fromYear = int.MinValue;
+			int toYear = int.MaxValue;
+			int parsed;
+			if (int.TryParse(fromYearStr, out parsed)) { fromYear = parsed; }
+			if (int.TryParse(toYearStr, out parsed)) { toYear = parsed; }
+
+			List<TrackInfo> candidates = new List<TrackInfo>();
+			List<TrackInfo> allTracks = m_musicManager.GetAllTracks();
+			for (int index = 0; index < allTracks.Count; index++)
+			{
+				TrackInfo track = allTracks[index];
+				if (!string.IsNullOrEmpty(genre) && !string.Equals(track.Genre, genre, StringComparison.OrdinalIgnoreCase))
+				{
+					continue;
+				}
+				if (track.Year < fromYear || track.Year > toYear)
+				{
+					continue;
+				}
+				candidates.Add(track);
+			}
+
+			Random rng = new Random();
+			SubsonicResponseBody body = CreateResponse();
+			body.randomSongs = new RandomSongsContainer();
+			int take = Math.Min(size, candidates.Count);
+			for (int idx = 0; idx < take; idx++)
+			{
+				int pick = rng.Next(candidates.Count);
+				body.randomSongs.song.Add(new SongID3(user, candidates[pick]));
+				candidates[pick] = candidates[candidates.Count - 1];
+				candidates.RemoveAt(candidates.Count - 1);
+			}
+
+			return Respond(context, body);
+		}
+
+		// Standard /rest/download (Flatline #163). Same semantics as stream
+		// but with Content-Disposition: attachment so clients save rather than
+		// play inline. No transcoding -- original file.
+		public IResult HandleDownload(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			TrackInfo track = m_musicManager.GetTrack(id);
+			if (track == null)
+			{
+				return Respond(context, CreateErrorResponse(70, "Song not found"));
+			}
+
+			FileStream fileStream = new FileStream(track.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+			string downloadName = Path.GetFileName(track.FilePath);
+			return Results.File(fileStream, track.ContentType, downloadName, enableRangeProcessing: true);
+		}
+
+		// Standard /rest/getNowPlaying (Flatline #164). Single-slot today --
+		// Pulse only tracks one currently-playing track in MusicManager. When
+		// multi-user concurrent play is added this will return one entry per
+		// active user. Returns an empty list when nothing is playing.
+		public IResult HandleGetNowPlaying(HttpContext context)
+		{
+			string user = context.Request.Query["u"].FirstOrDefault();
+
+			SubsonicResponseBody body = CreateResponse();
+			body.nowPlaying = new NowPlayingContainer();
+
+			string trackId = m_musicManager.GetNowPlayingTrackId();
+			if (string.IsNullOrEmpty(trackId))
+			{
+				return Respond(context, body);
+			}
+
+			TrackInfo track = m_musicManager.GetTrack(trackId);
+			if (track == null)
+			{
+				return Respond(context, body);
+			}
+
+			DateTime startedAt = m_musicManager.GetNowPlayingStartTime();
+			int minutesAgo = 0;
+			if (startedAt != default(DateTime))
+			{
+				double minutes = (DateTime.UtcNow - startedAt).TotalMinutes;
+				if (minutes > 0) { minutesAgo = (int)minutes; }
+			}
+
+			NowPlayingEntry entry = new NowPlayingEntry();
+			entry.id = track.Id;
+			entry.title = track.Title;
+			entry.album = track.Album;
+			entry.albumId = track.AlbumId;
+			entry.artist = track.Artist;
+			entry.artistId = track.ArtistId;
+			entry.track = track.TrackNumber;
+			entry.discNumber = track.DiscNumber;
+			entry.year = track.Year;
+			entry.genre = track.Genre;
+			entry.duration = track.DurationSeconds;
+			entry.size = track.FileSizeBytes;
+			entry.suffix = track.Suffix;
+			entry.contentType = track.ContentType;
+			entry.coverArt = track.CoverArtId;
+			entry.username = user ?? "";
+			entry.minutesAgo = minutesAgo;
+			entry.playerId = "1";
+			entry.playerName = "Pulse";
+			body.nowPlaying.entry.Add(entry);
+
+			return Respond(context, body);
+		}
+
+		// Standard /rest/getAlbumInfo and /rest/getAlbumInfo2 (Flatline #165).
+		// Pulse has no external metadata provider, so notes / musicBrainzId /
+		// lastFmUrl are empty. Image URLs are intentionally blank too -- clients
+		// already use the album's coverArt id directly via getCoverArt, and
+		// embedding pre-built URLs here would need absolute auth-bearing URLs
+		// that go stale per session. Endpoint exists, response is spec-shaped.
+		public IResult HandleGetAlbumInfo(HttpContext context)
+		{
+			SubsonicResponseBody body = CreateResponse();
+			body.albumInfo = new AlbumInfoBody();
+			return Respond(context, body);
+		}
+
+		// Standard /rest/getSimilarSongs and /rest/getSimilarSongs2 (Flatline
+		// #166). Derives similarity from same-artist tracks first (by score
+		// desc) then same-genre tracks from other artists. No external lookup.
+		public IResult HandleGetSimilarSongs2(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "50");
+			if (count < 1) { count = 1; }
+			if (count > 500) { count = 500; }
+			string user = context.Request.Query["u"].FirstOrDefault();
+
+			SubsonicResponseBody body = CreateResponse();
+			SimilarSongsContainer container = new SimilarSongsContainer();
+			body.similarSongs = container;
+			body.similarSongs2 = container;
+
+			ArtistInfo artist = m_musicManager.GetArtist(id);
+			if (artist == null)
+			{
+				return Respond(context, body);
+			}
+
+			HashSet<string> seenTrackIds = new HashSet<string>();
+			List<TrackInfo> bucket = new List<TrackInfo>();
+
+			for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
+			{
+				AlbumInfo album = artist.Albums[albumIndex];
+				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+				{
+					bucket.Add(album.Tracks[trackIndex]);
+				}
+			}
+			bucket.Sort(CompareTrackByScoreDescending);
+			for (int idx = 0; idx < bucket.Count && container.song.Count < count; idx++)
+			{
+				TrackInfo track = bucket[idx];
+				if (seenTrackIds.Add(track.Id))
+				{
+					container.song.Add(new SongID3(user, track));
+				}
+			}
+
+			if (container.song.Count < count)
+			{
+				HashSet<string> targetGenres = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+				for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
+				{
+					string g = artist.Albums[albumIndex].Genre;
+					if (!string.IsNullOrEmpty(g)) { targetGenres.Add(g); }
+				}
+
+				List<TrackInfo> crossGenre = new List<TrackInfo>();
+				List<TrackInfo> allTracks = m_musicManager.GetAllTracks();
+				for (int idx = 0; idx < allTracks.Count; idx++)
+				{
+					TrackInfo track = allTracks[idx];
+					if (track.ArtistId == artist.Id) { continue; }
+					if (string.IsNullOrEmpty(track.Genre) || !targetGenres.Contains(track.Genre)) { continue; }
+					crossGenre.Add(track);
+				}
+				crossGenre.Sort(CompareTrackByScoreDescending);
+				for (int idx = 0; idx < crossGenre.Count && container.song.Count < count; idx++)
+				{
+					TrackInfo track = crossGenre[idx];
+					if (seenTrackIds.Add(track.Id))
+					{
+						container.song.Add(new SongID3(user, track));
+					}
+				}
+			}
+
+			return Respond(context, body);
+		}
+
+		private static int CompareTrackByScoreDescending(TrackInfo left, TrackInfo right)
+		{
+			return right.Score.WeightedScore.CompareTo(left.Score.WeightedScore);
+		}
+
+		// Standard /rest/getLyrics (Flatline #167) -- legacy lookup by
+		// artist + title. Reads the track's USLT frame via TagLib at request
+		// time so we always reflect whatever is currently embedded.
+		public IResult HandleGetLyrics(HttpContext context)
+		{
+			string artist = context.Request.Query["artist"].FirstOrDefault();
+			string title = context.Request.Query["title"].FirstOrDefault();
+
+			SubsonicResponseBody body = CreateResponse();
+			body.lyrics = new LyricsBody();
+			body.lyrics.artist = artist ?? "";
+			body.lyrics.title = title ?? "";
+
+			if (string.IsNullOrEmpty(artist) || string.IsNullOrEmpty(title))
+			{
+				return Respond(context, body);
+			}
+
+			TrackInfo match = FindTrackByArtistTitle(artist, title);
+			if (match != null)
+			{
+				body.lyrics.value = ReadLyricsFromFile(match.FilePath);
+			}
+			return Respond(context, body);
+		}
+
+		// OpenSubsonic /rest/getLyricsBySongId (Flatline #167). Same read path
+		// as getLyrics but addressed by track id and wrapped in the structured
+		// lyrics container (still emits unsynced -- synced SYLT lookup is a
+		// follow-up).
+		public IResult HandleGetLyricsBySongId(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			SubsonicResponseBody body = CreateResponse();
+			body.lyricsList = new LyricsListBody();
+
+			if (string.IsNullOrEmpty(id))
+			{
+				return Respond(context, body);
+			}
+
+			TrackInfo track = m_musicManager.GetTrack(id);
+			if (track == null)
+			{
+				return Respond(context, body);
+			}
+
+			string lyricsText = ReadLyricsFromFile(track.FilePath);
+			if (string.IsNullOrEmpty(lyricsText))
+			{
+				return Respond(context, body);
+			}
+
+			StructuredLyrics structured = new StructuredLyrics();
+			structured.synced = false;
+			structured.displayArtist = track.Artist ?? "";
+			structured.displayTitle = track.Title ?? "";
+			string[] lines = lyricsText.Replace("\r\n", "\n").Split('\n');
+			for (int idx = 0; idx < lines.Length; idx++)
+			{
+				LyricLine line = new LyricLine();
+				line.value = lines[idx];
+				structured.line.Add(line);
+			}
+			body.lyricsList.structuredLyrics.Add(structured);
+			return Respond(context, body);
+		}
+
+		private TrackInfo FindTrackByArtistTitle(string artist, string title)
+		{
+			List<TrackInfo> all = m_musicManager.GetAllTracks();
+			for (int idx = 0; idx < all.Count; idx++)
+			{
+				TrackInfo track = all[idx];
+				if (string.Equals(track.Artist, artist, StringComparison.OrdinalIgnoreCase)
+					&& string.Equals(track.Title, title, StringComparison.OrdinalIgnoreCase))
+				{
+					return track;
+				}
+			}
+			return null;
+		}
+
+		private static string ReadLyricsFromFile(string filePath)
+		{
+			try
+			{
+				TagLib.File tagFile = TagLib.File.Create(filePath);
+				string lyrics = tagFile.Tag.Lyrics;
+				tagFile.Dispose();
+				if (lyrics == null) { return ""; }
+				return lyrics;
+			}
+			catch (Exception ex)
+			{
+				Log.Error(-1, "ReadLyricsFromFile: " + filePath + " - " + ex.Message);
+				return "";
+			}
+		}
+
+		// Standard /rest/getPlayQueue (Flatline #168). Returns the persisted
+		// queue + position state for this user.
+		public IResult HandleGetPlayQueue(HttpContext context)
+		{
+			string user = context.Request.Query["u"].FirstOrDefault();
+			SubsonicResponseBody body = CreateResponse();
+			body.playQueue = new PlayQueueBody();
+			body.playQueue.username = user ?? "";
+
+			if (string.IsNullOrEmpty(user))
+			{
+				return Respond(context, body);
+			}
+
+			PlayQueueInfo info = m_musicManager.GetPlayQueue(user);
+			body.playQueue.current = info.CurrentTrackId ?? "";
+			body.playQueue.position = info.PositionMs;
+			if (info.Changed != default(DateTime))
+			{
+				body.playQueue.changed = info.Changed.ToString("o");
+			}
+			body.playQueue.changedBy = info.ChangedBy ?? "";
+
+			for (int idx = 0; idx < info.TrackIds.Count; idx++)
+			{
+				TrackInfo track = m_musicManager.GetTrack(info.TrackIds[idx]);
+				if (track != null)
+				{
+					body.playQueue.entry.Add(new SongID3(user, track));
+				}
+			}
+
+			return Respond(context, body);
+		}
+
+		// Standard /rest/savePlayQueue (Flatline #168). Writes through to
+		// SQLite. Empty `id` list clears the queue.
+		public IResult HandleSavePlayQueue(HttpContext context)
+		{
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (string.IsNullOrEmpty(user))
+			{
+				return Respond(context, CreateErrorResponse(10, "Missing required parameter: u"));
+			}
+
+			List<string> trackIds = new List<string>(context.Request.Query["id"].ToList());
+			string current = context.Request.Query["current"].FirstOrDefault() ?? "";
+			long position = 0;
+			long.TryParse(context.Request.Query["position"].FirstOrDefault() ?? "0", out position);
+			string changedBy = context.Request.Query["c"].FirstOrDefault() ?? "";
+
+			m_musicManager.SavePlayQueue(user, trackIds, current, position, changedBy);
+			return Respond(context, CreateResponse());
+		}
+
+		// Standard /rest/getBookmarks (Flatline #168). One per (user, track).
+		public IResult HandleGetBookmarks(HttpContext context)
+		{
+			string user = context.Request.Query["u"].FirstOrDefault();
+			SubsonicResponseBody body = CreateResponse();
+			body.bookmarks = new BookmarksContainer();
+
+			if (string.IsNullOrEmpty(user))
+			{
+				return Respond(context, body);
+			}
+
+			List<BookmarkInfo> bookmarks = m_musicManager.GetBookmarks(user);
+			for (int idx = 0; idx < bookmarks.Count; idx++)
+			{
+				BookmarkInfo bookmark = bookmarks[idx];
+				TrackInfo track = m_musicManager.GetTrack(bookmark.TrackId);
+				if (track == null) { continue; }
+
+				BookmarkEntry entry = new BookmarkEntry();
+				entry.username = user;
+				entry.position = bookmark.PositionMs;
+				entry.comment = bookmark.Comment ?? "";
+				if (bookmark.Created != default(DateTime))
+				{
+					entry.created = bookmark.Created.ToString("o");
+				}
+				if (bookmark.Changed != default(DateTime))
+				{
+					entry.changed = bookmark.Changed.ToString("o");
+				}
+				entry.entry = new SongID3(user, track);
+				body.bookmarks.bookmark.Add(entry);
+			}
+
+			return Respond(context, body);
+		}
+
+		// Standard /rest/createBookmark (Flatline #168). Upserts.
+		public IResult HandleCreateBookmark(HttpContext context)
+		{
+			string user = context.Request.Query["u"].FirstOrDefault();
+			string id = context.Request.Query["id"].FirstOrDefault();
+			long position = 0;
+			long.TryParse(context.Request.Query["position"].FirstOrDefault() ?? "0", out position);
+			string comment = context.Request.Query["comment"].FirstOrDefault() ?? "";
+
+			if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(id))
+			{
+				return Respond(context, CreateErrorResponse(10, "Missing required parameters"));
+			}
+
+			m_musicManager.SaveBookmark(user, id, position, comment);
+			return Respond(context, CreateResponse());
+		}
+
+		// Standard /rest/deleteBookmark (Flatline #168).
+		public IResult HandleDeleteBookmark(HttpContext context)
+		{
+			string user = context.Request.Query["u"].FirstOrDefault();
+			string id = context.Request.Query["id"].FirstOrDefault();
+
+			if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(id))
+			{
+				return Respond(context, CreateErrorResponse(10, "Missing required parameters"));
+			}
+
+			m_musicManager.DeleteBookmark(user, id);
+			return Respond(context, CreateResponse());
+		}
+
 		public IResult HandleGetOpenSubsonicExtensions(HttpContext context)
 		{
 			SubsonicResponseBody body = CreateResponse();
