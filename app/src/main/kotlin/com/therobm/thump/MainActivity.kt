@@ -214,12 +214,19 @@ private fun ThumpApp() {
                     ThumpBottomBar(
                         currentRoute = currentRoute,
                         onTabSelected = { destinationRoute: String ->
-                            navController.navigate(destinationRoute) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
+                            // If the destination's already in the back stack (typical when the
+                            // user has drilled into a detail screen from that tab), pop back to
+                            // it rather than pushing a duplicate. Only navigate fresh when the
+                            // destination has not been visited yet on this session.
+                            val poppedExisting = navController.popBackStack(destinationRoute, inclusive = false)
+                            if (!poppedExisting) {
+                                navController.navigate(destinationRoute) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
                             }
                         },
                     )
