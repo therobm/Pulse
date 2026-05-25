@@ -61,6 +61,79 @@ namespace Pulse.Protocols
 			return Results.Json(new { tracks = tracks });
 		}
 
+		// Bumps a playlist's LastPlayed to now. Called by the web client when the
+		// user clicks Play / Shuffle on a playlist; lets the left-rail "Recent"
+		// sort surface the playlists you actually listen to.
+		public IResult HandleMarkPlaylistPlayed(HttpContext context)
+		{
+			string playlistId = context.Request.Query["id"].FirstOrDefault();
+			if (string.IsNullOrEmpty(playlistId))
+			{
+				return Results.Json(new { ok = false });
+			}
+			PlaylistInfo playlist = m_musicManager.GetPlaylist(playlistId);
+			if (playlist == null)
+			{
+				return Results.Json(new { ok = false });
+			}
+			playlist.LastPlayed = DateTime.UtcNow;
+			playlist.m_bIsDirty = true;
+			return Results.Json(new { ok = true });
+		}
+
+		// Returns every track for a given artist in (album-index, track-number) order.
+		// Used by the artist detail Play / Shuffle buttons so the client can avoid
+		// firing one getAlbum call per album.
+		public IResult HandleArtistTracks(HttpContext context)
+		{
+			string artistId = context.Request.Query["id"].FirstOrDefault();
+			if (string.IsNullOrEmpty(artistId))
+			{
+				return Results.Json(new { tracks = new List<object>() });
+			}
+
+			ArtistInfo artist = m_musicManager.GetArtist(artistId);
+			if (artist == null)
+			{
+				return Results.Json(new { tracks = new List<object>() });
+			}
+
+			List<object> tracks = new List<object>();
+			for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
+			{
+				AlbumInfo album = artist.Albums[albumIndex];
+				List<TrackInfo> ordered = new List<TrackInfo>(album.Tracks);
+				ordered.Sort(CompareTrackByDiscThenNumber);
+				for (int trackIndex = 0; trackIndex < ordered.Count; trackIndex++)
+				{
+					TrackInfo track = ordered[trackIndex];
+					tracks.Add(new
+					{
+						id = track.Id,
+						title = track.Title,
+						artist = track.Artist,
+						artistId = track.ArtistId,
+						album = track.Album,
+						albumId = track.AlbumId,
+						coverArt = track.CoverArtId,
+						duration = track.DurationSeconds
+					});
+				}
+			}
+
+			return Results.Json(new { tracks = tracks });
+		}
+
+		private static int CompareTrackByDiscThenNumber(TrackInfo left, TrackInfo right)
+		{
+			int discCompare = left.DiscNumber.CompareTo(right.DiscNumber);
+			if (discCompare != 0)
+			{
+				return discCompare;
+			}
+			return left.TrackNumber.CompareTo(right.TrackNumber);
+		}
+
 		public IResult HandlePopularArtists(HttpContext context)
 		{
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
@@ -80,10 +153,6 @@ namespace Pulse.Protocols
 			for (int idx = 0; idx < limit; idx++)
 			{
 				ArtistInfo artist = scored[idx].Key;
-				if (scored[idx].Value <= 0f)
-				{
-					break;
-				}
 				string coverArt = null;
 				if (artist.Albums.Count > 0)
 				{
@@ -95,7 +164,8 @@ namespace Pulse.Protocols
 					name = artist.Name,
 					albumCount = artist.Albums.Count,
 					score = scored[idx].Value,
-					coverArt = coverArt
+					coverArt = coverArt,
+					lastPlayed = FormatLastPlayedForJson(artist.LastPlayed)
 				});
 			}
 
@@ -109,14 +179,17 @@ namespace Pulse.Protocols
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
 
-			// Playlists don't have their own score; rank by the sum of the scores of
-			// the distinct artists whose tracks appear in the playlist.
+			// Playlists don't have their own score; rank by the AVERAGE of the
+			// scores of the distinct artists whose tracks appear in the playlist.
+			// Average (not sum) so a long playlist of mediocre tracks doesn't
+			// outrank a tight playlist of favorites.
 			List<KeyValuePair<PlaylistInfo, float>> scored = new List<KeyValuePair<PlaylistInfo, float>>();
 			for (int playlistIndex = 0; playlistIndex < all.Count; playlistIndex++)
 			{
 				PlaylistInfo playlist = all[playlistIndex];
 				HashSet<string> seenArtistIds = new HashSet<string>();
 				float total = 0f;
+				int artistCount = 0;
 				for (int trackIndex = 0; trackIndex < playlist.TrackIds.Count; trackIndex++)
 				{
 					TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[trackIndex]);
@@ -132,9 +205,15 @@ namespace Pulse.Protocols
 					if (artist != null)
 					{
 						total += artist.GetScore(user);
+						artistCount++;
 					}
 				}
-				scored.Add(new KeyValuePair<PlaylistInfo, float>(playlist, total));
+				float average = 0f;
+				if (artistCount > 0)
+				{
+					average = total / artistCount;
+				}
+				scored.Add(new KeyValuePair<PlaylistInfo, float>(playlist, average));
 			}
 			scored.Sort(ComparePlaylistScoredDescending);
 
@@ -149,11 +228,23 @@ namespace Pulse.Protocols
 					name = playlist.Name,
 					songCount = playlist.GetSongCount(),
 					duration = playlist.DurationSeconds,
-					score = scored[idx].Value
+					score = scored[idx].Value,
+					lastPlayed = FormatLastPlayedForJson(playlist.LastPlayed)
 				});
 			}
 
 			return Results.Json(new { playlists = playlists });
+		}
+
+		// Round-trip ISO-8601 string for the JS side, empty for "never played"
+		// so the JS sort can treat that as oldest without parsing junk.
+		private static string FormatLastPlayedForJson(DateTime value)
+		{
+			if (value == default(DateTime))
+			{
+				return "";
+			}
+			return value.ToString("o");
 		}
 
 		private static int CompareArtistScoredDescending(KeyValuePair<ArtistInfo, float> left, KeyValuePair<ArtistInfo, float> right)

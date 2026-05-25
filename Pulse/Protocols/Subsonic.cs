@@ -830,9 +830,17 @@ namespace Pulse.SubsonicService
 					playlist.TrackIds.Clear();
 				}
 			}
-			
+
 			if (playlist == null)
 			{
+				if (string.IsNullOrEmpty(name))
+				{
+					return Respond(context, CreateErrorResponse(10, "Missing required parameter: name"));
+				}
+				if (PlaylistNameTaken(name, ""))
+				{
+					return Respond(context, CreateErrorResponse(50, "A playlist named '" + name + "' already exists."));
+				}
 				playlist = new PlaylistInfo();
 				playlist.Id = MusicManager.GenerateID("playlist/" + user + "/" + name + "/" + DateTime.UtcNow.Ticks);
 				playlist.Name = name;
@@ -890,6 +898,10 @@ namespace Pulse.SubsonicService
 
 			if (!string.IsNullOrEmpty(name))
 			{
+				if (PlaylistNameTaken(name, playlist.Id))
+				{
+					return Respond(context, CreateErrorResponse(50, "A playlist named '" + name + "' already exists."));
+				}
 				playlist.Name = name;
 			}
 
@@ -944,6 +956,26 @@ namespace Pulse.SubsonicService
 
 			IResult result = Respond(context, CreateResponse());
 			return result;
+		}
+
+		// Case-insensitive duplicate-name check. skipPlaylistId lets the caller
+		// exclude the playlist currently being renamed.
+		private bool PlaylistNameTaken(string name, string skipPlaylistId)
+		{
+			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(null);
+			for (int index = 0; index < all.Count; index++)
+			{
+				PlaylistInfo existing = all[index];
+				if (!string.IsNullOrEmpty(skipPlaylistId) && existing.Id == skipPlaylistId)
+				{
+					continue;
+				}
+				if (string.Equals(existing.Name, name, StringComparison.OrdinalIgnoreCase))
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		public IResult HandleDeletePlaylist(HttpContext context)
