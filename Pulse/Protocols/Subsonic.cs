@@ -984,6 +984,7 @@ namespace Pulse.SubsonicService
 				entry.comment = playlist.Comment;
 				entry.songCount = playlist.GetSongCount();
 				entry.duration = (int)playlist.DurationSeconds;
+				entry.coverArt = "pl-" + playlist.Id;
 				body.playlists.playlist.Add(entry);
 			}
 
@@ -1013,6 +1014,7 @@ namespace Pulse.SubsonicService
 			body.playlist.comment = playlist.Comment;
 			body.playlist.songCount = playlist.GetSongCount();
 			body.playlist.duration = (int)playlist.DurationSeconds;
+			body.playlist.coverArt = "pl-" + playlist.Id;
 
 			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
 			for (int index = 0; index < tracks.Count; index++)
@@ -1079,6 +1081,7 @@ namespace Pulse.SubsonicService
 			body.playlist.name = playlist.Name;
 			body.playlist.songCount = playlist.TrackIds.Count;
 			body.playlist.duration = (int)playlist.DurationSeconds;
+			body.playlist.coverArt = "pl-" + playlist.Id;
 
 			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
 			for (int index = 0; index < tracks.Count; index++)

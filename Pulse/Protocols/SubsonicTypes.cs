@@ -97,6 +97,11 @@ namespace Pulse.SubsonicService
 		public string comment { get; set; }
 		public int songCount { get; set; }
 		public int duration { get; set; }
+		// Spec-defined coverArt. Populated by HandleGetPlaylist /
+		// HandleCreatePlaylist as "pl-<id>"; the getCoverArt handler
+		// turns that into a server-side composite from the playlist's
+		// first distinct album covers.
+		public string coverArt { get; set; }
 		public List<SongID3> entry { get; set; }
 
 		public PlaylistWithSongs()
@@ -207,6 +212,8 @@ namespace Pulse.SubsonicService
 		public string comment { get; set; }
 		public int songCount { get; set; }
 		public int duration { get; set; }
+		// Spec-defined coverArt. See PlaylistWithSongs.coverArt.
+		public string coverArt { get; set; }
 	}
 
 	public class MusicFoldersContainer
