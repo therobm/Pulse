@@ -423,20 +423,39 @@ namespace Pulse.MusicLibrary
 
 		private void LoadDB()
 		{
-			string dbPath = Path.Combine(m_config.MusicPath, "PulseData/Staging");
-			if (!System.Diagnostics.Debugger.IsAttached)
+			// Pick environment from config (replaces the old Debugger.IsAttached
+			// coupling -- see Flatline bug #67). Empty / missing config falls back
+			// to Production, the safer default for existing deployments.
+			string environmentName = m_config.DatabaseEnvironment;
+			if (string.IsNullOrWhiteSpace(environmentName))
 			{
-				dbPath = Path.Combine(m_config.MusicPath, "PulseData/Production");
+				environmentName = "Production";
 			}
 
-			if (!Directory.Exists(dbPath))
+			string pulseDataRoot = Path.Combine(m_config.MusicPath, "PulseData");
+			if (!Directory.Exists(pulseDataRoot))
 			{
-				Directory.CreateDirectory(dbPath);
+				Directory.CreateDirectory(pulseDataRoot);
 			}
 
-			PulseFileDatabase fileDB = new PulseFileDatabase(dbPath, this);
-			m_database = fileDB;
-			fileDB.Load();
+			// Separate sqlite file per environment. Production -> pulse_production.db,
+			// Staging -> pulse_staging.db. Keeps the existing concept while letting
+			// the two run side-by-side without cross-contamination.
+			string sqliteFileName = "pulse_" + environmentName.ToLowerInvariant() + ".db";
+			string sqlitePath = Path.Combine(pulseDataRoot, sqliteFileName);
+			Pulse.Database.SqliteConnectionFactory.SetDatabaseFilePath(sqlitePath);
+			Pulse.Database.Migrations.RunMigrations();
+			Log.Info(-1, "Pulse DB: env=" + environmentName + " path=" + sqlitePath);
+
+			// One-time migration: if the legacy JSON tree exists at the matching
+			// PulseData/{Environment}/ folder and SQLite is empty, import then
+			// rename the JSON tree aside.
+			string legacyJsonPath = Path.Combine(pulseDataRoot, environmentName);
+			Pulse.Data.PulseSqliteImporter.ImportIfNeeded(legacyJsonPath, this);
+
+			PulseSqliteDatabase sqliteDb = new PulseSqliteDatabase();
+			m_database = sqliteDb;
+			sqliteDb.Load();
 		}
 
 		private void SaveDB()

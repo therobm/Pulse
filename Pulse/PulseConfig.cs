@@ -19,6 +19,10 @@ namespace Pulse
 
 		public string HttpsCertPath { get; set; } = "";
 
+		// "Production" (default) or "Staging". Picks which sqlite DB file under
+		// PulseData/ is used. Replaces the old Debugger.IsAttached coupling.
+		public string DatabaseEnvironment { get; set; } = "Production";
+
 
 		public static string GetConfigPath()
 		{
