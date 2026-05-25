@@ -38,6 +38,9 @@ data class SubsonicResponseEnvelope(
     val album: StandardAlbumDetailPayload? = null,
     val playlist: StandardPlaylistDetailPayload? = null,
     val artist: StandardArtistDetailPayload? = null,
+    val artists: StandardArtistsPayload? = null,
+    val genres: StandardGenresPayload? = null,
+    val songsByGenre: StandardSongsByGenrePayload? = null,
 )
 
 @Serializable

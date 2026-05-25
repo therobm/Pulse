@@ -173,6 +173,67 @@ class SubsonicClient(
     }
 
     /**
+     * Calls /rest/getArtists and returns the alphabetically-indexed list of artists.
+     */
+    suspend fun getArtists(): SubsonicResult<StandardArtistsPayload> {
+        return callAndDecodeEnvelope(
+            pathAfterBase = "rest/getArtists",
+            extraQueryParameters = emptyMap(),
+        ) { envelope: SubsonicResponseEnvelope ->
+            val payload = envelope.artists
+            if (payload == null) {
+                StandardArtistsPayload()
+            } else {
+                payload
+            }
+        }
+    }
+
+    /**
+     * Calls /rest/getSongsByGenre and returns up to `count` songs (after `offset`) tagged with
+     * the given genre. Used by the Genre detail screen and by the Library genre row's composite
+     * art (which only needs the first few cover IDs).
+     */
+    suspend fun getSongsByGenre(
+        genreName: String,
+        count: Int,
+        offset: Int,
+    ): SubsonicResult<List<StandardSongDetail>> {
+        return callAndDecodeEnvelope(
+            pathAfterBase = "rest/getSongsByGenre",
+            extraQueryParameters = mapOf(
+                "genre" to genreName,
+                "count" to count.toString(),
+                "offset" to offset.toString(),
+            ),
+        ) { envelope: SubsonicResponseEnvelope ->
+            val payload = envelope.songsByGenre
+            if (payload == null) {
+                emptyList<StandardSongDetail>()
+            } else {
+                payload.song
+            }
+        }
+    }
+
+    /**
+     * Calls /rest/getGenres and returns the genre list with per-genre song/album counts.
+     */
+    suspend fun getGenres(): SubsonicResult<List<StandardGenre>> {
+        return callAndDecodeEnvelope(
+            pathAfterBase = "rest/getGenres",
+            extraQueryParameters = emptyMap(),
+        ) { envelope: SubsonicResponseEnvelope ->
+            val payload = envelope.genres
+            if (payload == null) {
+                emptyList<StandardGenre>()
+            } else {
+                payload.genre
+            }
+        }
+    }
+
+    /**
      * Calls /rest/getArtist and returns the artist with their albums.
      */
     suspend fun getArtist(artistId: String): SubsonicResult<StandardArtistDetailPayload> {

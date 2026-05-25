@@ -45,6 +45,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.therobm.thump.detail.AlbumDetailScreen
 import com.therobm.thump.detail.ArtistDetailScreen
+import com.therobm.thump.detail.GenreDetailScreen
 import com.therobm.thump.detail.PlaylistDetailScreen
 import com.therobm.thump.home.HomeCarouselItem
 import com.therobm.thump.nowplaying.NowPlayingScreen
@@ -94,9 +95,11 @@ private const val ROUTE_NOW_PLAYING = "nowplaying"
 private const val NAV_ARG_ALBUM_ID = "albumId"
 private const val NAV_ARG_PLAYLIST_ID = "playlistId"
 private const val NAV_ARG_ARTIST_ID = "artistId"
+private const val NAV_ARG_GENRE_NAME = "genreName"
 private const val ROUTE_ALBUM_PATTERN = "album/{$NAV_ARG_ALBUM_ID}"
 private const val ROUTE_PLAYLIST_PATTERN = "playlist/{$NAV_ARG_PLAYLIST_ID}"
 private const val ROUTE_ARTIST_PATTERN = "artist/{$NAV_ARG_ARTIST_ID}"
+private const val ROUTE_GENRE_PATTERN = "genre/{$NAV_ARG_GENRE_NAME}"
 
 private const val MINI_PLAYER_ART_REQUEST_SIZE: Int = 150
 
@@ -110,6 +113,10 @@ private fun buildPlaylistRoute(playlistId: String): String {
 
 private fun buildArtistRoute(artistId: String): String {
     return "artist/" + artistId
+}
+
+private fun buildGenreRoute(genreName: String): String {
+    return "genre/" + java.net.URLEncoder.encode(genreName, Charsets.UTF_8)
 }
 
 @Composable
@@ -234,7 +241,27 @@ private fun ThumpApp() {
                     }
                 }
                 composable(ROUTE_LIBRARY) {
-                    LibraryScreen(contentPadding = innerPadding, modifier = Modifier)
+                    if (subsonicClient == null) {
+                        ConfigurePrompt(innerPadding)
+                    } else {
+                        LibraryScreen(
+                            subsonicClient = subsonicClient,
+                            onArtistSelected = { artistId: String ->
+                                navController.navigate(buildArtistRoute(artistId))
+                            },
+                            onAlbumSelected = { albumId: String ->
+                                navController.navigate(buildAlbumRoute(albumId))
+                            },
+                            onPlaylistSelected = { playlistId: String ->
+                                navController.navigate(buildPlaylistRoute(playlistId))
+                            },
+                            onGenreSelected = { genreName: String ->
+                                navController.navigate(buildGenreRoute(genreName))
+                            },
+                            contentPadding = innerPadding,
+                            modifier = Modifier,
+                        )
+                    }
                 }
                 composable(ROUTE_SEARCH) {
                     SearchScreen(contentPadding = innerPadding, modifier = Modifier)
@@ -303,6 +330,34 @@ private fun ThumpApp() {
                             onAlbumSelected = { selectedAlbumId: String ->
                                 navController.navigate(buildAlbumRoute(selectedAlbumId))
                             },
+                            onPlayQueue = onPlayQueue,
+                            contentPadding = innerPadding,
+                            modifier = Modifier,
+                        )
+                    }
+                }
+                composable(
+                    route = ROUTE_GENRE_PATTERN,
+                    arguments = listOf(navArgument(NAV_ARG_GENRE_NAME) { type = NavType.StringType }),
+                ) { backStackEntry ->
+                    val argumentBundle = backStackEntry.arguments
+                    val rawGenreArgument: String?
+                    if (argumentBundle == null) {
+                        rawGenreArgument = null
+                    } else {
+                        rawGenreArgument = argumentBundle.getString(NAV_ARG_GENRE_NAME)
+                    }
+                    val decodedGenreName: String?
+                    if (rawGenreArgument == null) {
+                        decodedGenreName = null
+                    } else {
+                        decodedGenreName = java.net.URLDecoder.decode(rawGenreArgument, Charsets.UTF_8)
+                    }
+                    if (subsonicClient != null && decodedGenreName != null) {
+                        GenreDetailScreen(
+                            genreName = decodedGenreName,
+                            subsonicClient = subsonicClient,
+                            onBackPressed = { navController.popBackStack() },
                             onPlayQueue = onPlayQueue,
                             contentPadding = innerPadding,
                             modifier = Modifier,

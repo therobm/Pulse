@@ -16,4 +16,5 @@ enum class PlaybackSourceKind {
     Album,
     Playlist,
     Artist,
+    Genre,
 }

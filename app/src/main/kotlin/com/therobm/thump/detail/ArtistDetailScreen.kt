@@ -186,12 +186,21 @@ private fun ArtistDetailContent(
     onPlayClicked: () -> Unit,
     onShuffleClicked: () -> Unit,
 ) {
-    val artistArtId = artist.coverArt
+    // Subsonic getArtist often returns no artist-level coverArt (e.g. when the server doesn't
+    // synthesize one). Fall back to the first album's cover so the portrait isn't blank.
+    val resolvedArtistArtId: String?
+    if (artist.coverArt != null) {
+        resolvedArtistArtId = artist.coverArt
+    } else if (artist.album.isNotEmpty()) {
+        resolvedArtistArtId = artist.album[0].coverArt
+    } else {
+        resolvedArtistArtId = null
+    }
     val artistArtUrl: String?
-    if (artistArtId == null) {
+    if (resolvedArtistArtId == null) {
         artistArtUrl = null
     } else {
-        artistArtUrl = subsonicClient.buildCoverArtUrl(artistArtId, ARTIST_ART_REQUEST_SIZE)
+        artistArtUrl = subsonicClient.buildCoverArtUrl(resolvedArtistArtId, ARTIST_ART_REQUEST_SIZE)
     }
 
     LazyColumn(
