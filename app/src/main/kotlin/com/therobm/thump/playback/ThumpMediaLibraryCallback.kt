@@ -328,7 +328,7 @@ class ThumpMediaLibraryCallback(
         val tiles = ArrayList<MediaItem>(summariesInDisplayOrder.size)
         val summaryCount = summariesInDisplayOrder.size
         for (index in 0 until summaryCount) {
-            tiles.add(playlistToBrowseable(summariesInDisplayOrder[index], subsonicClient, isPulse))
+            tiles.add(playlistToBrowseable(summariesInDisplayOrder[index], subsonicClient))
         }
         return tagWithGroupTitle(tiles, sectionTitle)
     }
@@ -526,7 +526,7 @@ class ThumpMediaLibraryCallback(
             if (emitted >= RECENTS_TOTAL_LIMIT) {
                 break
             }
-            combined.add(playlistToBrowseable(recentPlaylists[index], subsonicClient, isPulse))
+            combined.add(playlistToBrowseable(recentPlaylists[index], subsonicClient))
             emitted++
         }
         val artistEmitCount = orderedRecentArtists.size
@@ -569,11 +569,10 @@ class ThumpMediaLibraryCallback(
         playlists.sortWith(Comparator { left: StandardPlaylistSummary, right: StandardPlaylistSummary ->
             left.name.compareTo(right.name, ignoreCase = true)
         })
-        val isPulse = credentialsLoader.loadIsPulseDetected()
         val tiles = ImmutableList.builder<MediaItem>()
         val playlistCount = playlists.size
         for (index in 0 until playlistCount) {
-            tiles.add(playlistToBrowseable(playlists[index], subsonicClient, isPulse))
+            tiles.add(playlistToBrowseable(playlists[index], subsonicClient))
         }
         return LibraryResult.ofItemList(tiles.build(), params)
     }
@@ -731,31 +730,21 @@ class ThumpMediaLibraryCallback(
     /**
      * Build the browseable tile for a playlist.
      *
-     * Pulse exposes a server-generated composite cover for any playlist via getCoverArt with a
-     * "pl-<playlistId>" id (Pulse PR #34). Endpoints like pulse/topPlaylists and
-     * pulse/recentPlaylists already return that id in their `coverArt` field, but
-     * /rest/getPlaylists currently does not — so when the playlist's own coverArt is missing
-     * and we know we're talking to Pulse, synthesize the same id ourselves. Non-Pulse servers
-     * fall through to a blank tile until they expose their own composite.
+     * All Pulse playlist endpoints (/rest/getPlaylists, /rest/getPlaylist, pulse/topPlaylists,
+     * pulse/recentPlaylists) carry the pl-<id> server-generated composite in `coverArt`. Other
+     * OpenSubsonic servers that don't populate `coverArt` get a blank tile until they expose
+     * their own composite mechanism.
      */
     private fun playlistToBrowseable(
         playlist: StandardPlaylistSummary,
         subsonicClient: SubsonicClient,
-        isPulseServer: Boolean,
     ): MediaItem {
-        val effectiveCoverArtId: String?
-        if (playlist.coverArt != null) {
-            effectiveCoverArtId = playlist.coverArt
-        } else if (isPulseServer) {
-            effectiveCoverArtId = "pl-" + playlist.id
-        } else {
-            effectiveCoverArtId = null
-        }
         val coverArtUrl: String?
-        if (effectiveCoverArtId == null) {
+        val coverArtId = playlist.coverArt
+        if (coverArtId == null) {
             coverArtUrl = null
         } else {
-            coverArtUrl = subsonicClient.buildCoverArtUrl(effectiveCoverArtId, COVER_ART_REQUEST_SIZE_PX)
+            coverArtUrl = subsonicClient.buildCoverArtUrl(coverArtId, COVER_ART_REQUEST_SIZE_PX)
         }
         return buildBrowseableItem(
             mediaId = MEDIA_ID_PREFIX_PLAYLIST + playlist.id,
