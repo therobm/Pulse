@@ -34,6 +34,7 @@ import com.therobm.thump.subsonic.SubsonicResult
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
@@ -151,9 +152,12 @@ private fun PingTestScreen(modifier: Modifier) {
 }
 
 private fun buildPingTestHttpClient(): OkHttpClient {
+    val loggingInterceptor = HttpLoggingInterceptor()
+    loggingInterceptor.level = HttpLoggingInterceptor.Level.BODY
     return OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .addInterceptor(loggingInterceptor)
         .build()
 }
 
