@@ -75,6 +75,7 @@ private const val CONTENT_STYLE_GROUP_TITLE_HINT_KEY: String = "android.media.br
 class ThumpMediaLibraryCallback(
     private val applicationCoroutineScope: CoroutineScope,
     private val credentialsLoader: PlaybackCredentialsLoader,
+    private val applicationPackageName: String,
 ) : MediaLibrarySession.Callback {
 
     override fun onGetLibraryRoot(
@@ -383,27 +384,31 @@ class ThumpMediaLibraryCallback(
     /**
      * Build one of the Play / Shuffle action rows. The id is the synthetic action id; Auto
      * sends it through onAddMediaItems when tapped and we expand it into the real queue there.
+     *
+     * iconResourceId is a local drawable (e.g. ic_action_play / ic_action_shuffle). We serve it
+     * to Auto via an `android.resource://...` URI so the row gets a recognizable verb icon
+     * instead of the contextual album / playlist cover.
      */
     private fun buildActionItem(
         mediaId: String,
         title: String,
-        artCoverArtId: String?,
-        subsonicClient: SubsonicClient,
+        iconResourceId: Int,
     ): MediaItem {
         val metadataBuilder = MediaMetadata.Builder()
             .setTitle(title)
             .setIsBrowsable(false)
             .setIsPlayable(true)
             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-        if (artCoverArtId != null) {
-            metadataBuilder.setArtworkUri(
-                android.net.Uri.parse(subsonicClient.buildCoverArtUrl(artCoverArtId, COVER_ART_REQUEST_SIZE_PX))
-            )
-        }
+            .setArtworkUri(buildResourceUri(iconResourceId))
         return MediaItem.Builder()
             .setMediaId(mediaId)
             .setMediaMetadata(metadataBuilder.build())
             .build()
+    }
+
+    private fun buildResourceUri(resourceId: Int): android.net.Uri {
+        val packageName = applicationPackageName
+        return android.net.Uri.parse("android.resource://" + packageName + "/" + resourceId)
     }
 
     private fun buildRootChildren(): ImmutableList<MediaItem> {
@@ -856,17 +861,15 @@ class ThumpMediaLibraryCallback(
         out.add(
             buildActionItem(
                 mediaId = MEDIA_ID_PREFIX_PLAY_PLAYLIST + playlistId,
-                title = "Play playlist",
-                artCoverArtId = detail.coverArt,
-                subsonicClient = subsonicClient,
+                title = "Play",
+                iconResourceId = com.therobm.thump.R.drawable.ic_action_play,
             )
         )
         out.add(
             buildActionItem(
                 mediaId = MEDIA_ID_PREFIX_SHUFFLE_PLAYLIST + playlistId,
-                title = "Shuffle playlist",
-                artCoverArtId = detail.coverArt,
-                subsonicClient = subsonicClient,
+                title = "Shuffle",
+                iconResourceId = com.therobm.thump.R.drawable.ic_action_shuffle,
             )
         )
         val entryCount = detail.entry.size
@@ -906,17 +909,15 @@ class ThumpMediaLibraryCallback(
         out.add(
             buildActionItem(
                 mediaId = MEDIA_ID_PREFIX_PLAY_ALBUM + albumId,
-                title = "Play album",
-                artCoverArtId = detail.coverArt,
-                subsonicClient = subsonicClient,
+                title = "Play",
+                iconResourceId = com.therobm.thump.R.drawable.ic_action_play,
             )
         )
         out.add(
             buildActionItem(
                 mediaId = MEDIA_ID_PREFIX_SHUFFLE_ALBUM + albumId,
-                title = "Shuffle album",
-                artCoverArtId = detail.coverArt,
-                subsonicClient = subsonicClient,
+                title = "Shuffle",
+                iconResourceId = com.therobm.thump.R.drawable.ic_action_shuffle,
             )
         )
         val songCount = detail.song.size
@@ -954,29 +955,19 @@ class ThumpMediaLibraryCallback(
         val detail: StandardArtistDetailPayload = result.value
         val out = ImmutableList.builder<MediaItem>()
         // For artists we sample the first album's cover so the action rows have something
-        // identifiable next to them — the artist itself doesn't always carry a coverArt.
-        val artistRowCoverArtId: String?
-        if (detail.coverArt != null) {
-            artistRowCoverArtId = detail.coverArt
-        } else if (detail.album.isNotEmpty()) {
-            artistRowCoverArtId = detail.album[0].coverArt
-        } else {
-            artistRowCoverArtId = null
-        }
+        // identifiable next to them.
         out.add(
             buildActionItem(
                 mediaId = MEDIA_ID_PREFIX_PLAY_ARTIST + artistId,
-                title = "Play artist",
-                artCoverArtId = artistRowCoverArtId,
-                subsonicClient = subsonicClient,
+                title = "Play",
+                iconResourceId = com.therobm.thump.R.drawable.ic_action_play,
             )
         )
         out.add(
             buildActionItem(
                 mediaId = MEDIA_ID_PREFIX_SHUFFLE_ARTIST + artistId,
-                title = "Shuffle artist",
-                artCoverArtId = artistRowCoverArtId,
-                subsonicClient = subsonicClient,
+                title = "Shuffle",
+                iconResourceId = com.therobm.thump.R.drawable.ic_action_shuffle,
             )
         )
         val albumCount = detail.album.size
