@@ -423,13 +423,24 @@ namespace Pulse.MusicLibrary
 
 		private void LoadDB()
 		{
-			// Pick environment from config (replaces the old Debugger.IsAttached
-			// coupling -- see Flatline bug #67). Empty / missing config falls back
-			// to Production, the safer default for existing deployments.
+			// Environment selection: config drives in normal operation (Flatline
+			// bug #67 -- behavior shouldn't change based on launch method) BUT a
+			// debugger attached is a hard safety lockout to Staging. Debug
+			// sessions must never touch production data -- a test interaction
+			// scrobbling against the real DB is catastrophic and the silent
+			// inverse (prod accidentally writes to staging) is recoverable.
 			string environmentName = m_config.DatabaseEnvironment;
 			if (string.IsNullOrWhiteSpace(environmentName))
 			{
 				environmentName = "Production";
+			}
+			if (System.Diagnostics.Debugger.IsAttached)
+			{
+				if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
+				{
+					Log.Warning(-1, "Debugger attached: forcing Staging environment (config said '" + environmentName + "'). Debug sessions never touch production data.");
+				}
+				environmentName = "Staging";
 			}
 
 			string pulseDataRoot = Path.Combine(m_config.MusicPath, "PulseData");
