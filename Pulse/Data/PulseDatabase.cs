@@ -39,6 +39,17 @@ namespace Pulse.Data
 
 
 		void Save();
+
+		// Subsonic getPlayQueue / savePlayQueue / getBookmarks support (Flatline
+		// #168). Written through directly to the persistence layer -- not cached
+		// in memory and not part of the per-PulseInfo dirty flow. PulseFileDatabase
+		// is now legacy (post-#141) and stubs these as no-ops; PulseSqliteDatabase
+		// implements them against the v4 schema.
+		PlayQueueInfo GetPlayQueue(string userName);
+		void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy);
+		List<BookmarkInfo> GetBookmarks(string userName);
+		void SaveBookmark(string userName, string trackId, long positionMs, string comment);
+		void DeleteBookmark(string userName, string trackId);
 	}
 
 	public abstract class PulseDatabaseBase : IPulseDatabase
@@ -327,6 +338,32 @@ namespace Pulse.Data
 		}
 
 		public abstract void Save();
+
+		// Default no-op implementations (#168). Overridden in PulseSqliteDatabase.
+		// Existing PulseFileDatabase callers go through these stubs -- legacy file
+		// DB is not used at runtime (post-#141), only by the importer for cold
+		// migration, so returning empty / accepting writes silently is fine.
+		public virtual PlayQueueInfo GetPlayQueue(string userName)
+		{
+			return new PlayQueueInfo();
+		}
+
+		public virtual void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy)
+		{
+		}
+
+		public virtual List<BookmarkInfo> GetBookmarks(string userName)
+		{
+			return new List<BookmarkInfo>();
+		}
+
+		public virtual void SaveBookmark(string userName, string trackId, long positionMs, string comment)
+		{
+		}
+
+		public virtual void DeleteBookmark(string userName, string trackId)
+		{
+		}
 
 		private void RebuildSmartPlaylists(string userName)
 		{

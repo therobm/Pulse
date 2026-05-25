@@ -203,6 +203,41 @@ namespace Pulse.Database
 			";
 			steps.Add(v3);
 
+			// v4: per-user persistent play queue and bookmarks for the Subsonic
+			// getPlayQueue / savePlayQueue / getBookmarks endpoints (Flatline
+			// #168). Two tables for the queue (state row + ordered track list)
+			// keeps the position int separate from the variable-length entries.
+			MigrationStep v4 = new MigrationStep();
+			v4.Version = 4;
+			v4.Sql = @"
+				CREATE TABLE playqueue_state (
+					user_name TEXT PRIMARY KEY,
+					current_track_id TEXT NOT NULL DEFAULT '',
+					position_ms INTEGER NOT NULL DEFAULT 0,
+					changed TEXT NOT NULL DEFAULT '',
+					changed_by TEXT NOT NULL DEFAULT ''
+				);
+
+				CREATE TABLE playqueue_entries (
+					user_name TEXT NOT NULL,
+					position INTEGER NOT NULL,
+					track_id TEXT NOT NULL,
+					PRIMARY KEY (user_name, position)
+				);
+
+				CREATE TABLE bookmarks (
+					user_name TEXT NOT NULL,
+					track_id TEXT NOT NULL,
+					position_ms INTEGER NOT NULL,
+					comment TEXT NOT NULL DEFAULT '',
+					created TEXT NOT NULL,
+					changed TEXT NOT NULL,
+					PRIMARY KEY (user_name, track_id)
+				);
+				CREATE INDEX idx_bookmarks_user_name ON bookmarks(user_name);
+			";
+			steps.Add(v4);
+
 			return steps;
 		}
 	}
