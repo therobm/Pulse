@@ -21,17 +21,20 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.guava.future
 
 private const val MEDIA_ID_ROOT: String = "thump-root"
-private const val MEDIA_ID_RECENTLY: String = "thump-root/recently"
+private const val MEDIA_ID_HOME: String = "thump-root/home"
+private const val MEDIA_ID_RECENTS: String = "thump-root/recents"
 private const val MEDIA_ID_PLAYLISTS: String = "thump-root/playlists"
-private const val MEDIA_ID_ALBUMS: String = "thump-root/albums"
 private const val MEDIA_ID_ARTISTS: String = "thump-root/artists"
 private const val MEDIA_ID_PREFIX_PLAYLIST: String = "thump-root/playlist/"
 private const val MEDIA_ID_PREFIX_ALBUM: String = "thump-root/album/"
 private const val MEDIA_ID_PREFIX_ARTIST: String = "thump-root/artist/"
 private const val MEDIA_ID_PREFIX_TRACK: String = "thump-track/"
 
-private const val HOME_RECENTS_COUNT: Int = 40
-private const val LIBRARY_PAGE_SIZE: Int = 200
+private const val HOME_PLAYLIST_COUNT: Int = 8
+private const val RECENTS_TOTAL_LIMIT: Int = 15
+private const val RECENTS_TRACK_SCAN_COUNT: Int = 60
+private const val RECENTS_FALLBACK_ALBUM_COUNT: Int = 15
+private const val PLAYLISTS_FETCH_LIMIT: Int = 500
 private const val COVER_ART_REQUEST_SIZE_PX: Int = 400
 
 /**
@@ -86,14 +89,14 @@ class ThumpMediaLibraryCallback(
             if (parentId == MEDIA_ID_ROOT) {
                 return@future LibraryResult.ofItemList(buildRootChildren(), params)
             }
-            if (parentId == MEDIA_ID_RECENTLY) {
-                return@future buildRecentlyPlayedChildren(subsonicClient, params)
+            if (parentId == MEDIA_ID_HOME) {
+                return@future buildHomeChildren(subsonicClient, params)
+            }
+            if (parentId == MEDIA_ID_RECENTS) {
+                return@future buildRecentsChildren(subsonicClient, params)
             }
             if (parentId == MEDIA_ID_PLAYLISTS) {
                 return@future buildPlaylistsChildren(subsonicClient, params)
-            }
-            if (parentId == MEDIA_ID_ALBUMS) {
-                return@future buildAlbumsChildren(subsonicClient, params)
             }
             if (parentId == MEDIA_ID_ARTISTS) {
                 return@future buildArtistsChildren(subsonicClient, params)
@@ -146,56 +149,164 @@ class ThumpMediaLibraryCallback(
 
     private fun buildRootChildren(): ImmutableList<MediaItem> {
         val children = ImmutableList.builder<MediaItem>()
-        children.add(buildBrowseableItem(MEDIA_ID_RECENTLY, "Recently Played"))
+        children.add(buildBrowseableItem(MEDIA_ID_HOME, "Home"))
+        children.add(buildBrowseableItem(MEDIA_ID_RECENTS, "Recents"))
         children.add(buildBrowseableItem(MEDIA_ID_PLAYLISTS, "Playlists"))
-        children.add(buildBrowseableItem(MEDIA_ID_ALBUMS, "Albums"))
         children.add(buildBrowseableItem(MEDIA_ID_ARTISTS, "Artists"))
         return children.build()
     }
 
-    private suspend fun buildRecentlyPlayedChildren(
+    /**
+     * Home: the same top-of-Home quick grid the phone app shows — first N playlists from
+     * getPlaylists, in server order.
+     */
+    private suspend fun buildHomeChildren(
+        subsonicClient: SubsonicClient,
+        params: LibraryParams?,
+    ): LibraryResult<ImmutableList<MediaItem>> {
+        val result = subsonicClient.getPlaylists()
+        if (result !is SubsonicResult.Ok) {
+            return LibraryResult.ofItemList(ImmutableList.of<MediaItem>(), params)
+        }
+        val takeCount: Int
+        if (result.value.size < HOME_PLAYLIST_COUNT) {
+            takeCount = result.value.size
+        } else {
+            takeCount = HOME_PLAYLIST_COUNT
+        }
+        val out = ImmutableList.builder<MediaItem>()
+        for (index in 0 until takeCount) {
+            out.add(playlistToBrowseable(result.value[index], subsonicClient))
+        }
+        return LibraryResult.ofItemList(out.build(), params)
+    }
+
+    /**
+     * Recents: mixed recently-touched playlists and artists.
+     *
+     * On Pulse: walk pulse/recentlyPlayed tracks to collect distinct artists in first-seen order,
+     * pull recent playlists from pulse/topPlaylists sorted by `lastPlayed`, then stack them
+     * (playlists first because the user clicked into them deliberately; artists second as a
+     * heard-but-not-chosen tail). Cap the combined list at RECENTS_TOTAL_LIMIT.
+     *
+     * On standard servers: getAlbumList2?type=recent as the closest proxy.
+     */
+    private suspend fun buildRecentsChildren(
         subsonicClient: SubsonicClient,
         params: LibraryParams?,
     ): LibraryResult<ImmutableList<MediaItem>> {
         val isPulse = credentialsLoader.loadIsPulseDetected()
-        if (isPulse) {
-            val pulseResult = subsonicClient.getPulseRecentlyPlayed(HOME_RECENTS_COUNT)
-            if (pulseResult !is SubsonicResult.Ok) {
+        if (!isPulse) {
+            val albumResult = subsonicClient.getAlbumList2("recent", RECENTS_FALLBACK_ALBUM_COUNT)
+            if (albumResult !is SubsonicResult.Ok) {
                 return LibraryResult.ofItemList(ImmutableList.of<MediaItem>(), params)
             }
-            val tracks = pulseResult.value
-            val out = ImmutableList.builder<MediaItem>()
+            return LibraryResult.ofItemList(
+                albumsToBrowseable(albumResult.value, subsonicClient),
+                params,
+            )
+        }
+
+        val recentTracksResult = subsonicClient.getPulseRecentlyPlayed(RECENTS_TRACK_SCAN_COUNT)
+        val orderedRecentArtists = ArrayList<RecentArtistRef>()
+        if (recentTracksResult is SubsonicResult.Ok) {
+            val seenArtistIds = HashSet<String>()
+            val tracks = recentTracksResult.value
             val trackCount = tracks.size
             for (index in 0 until trackCount) {
                 val track = tracks[index]
-                val artistText: String
-                if (track.artist == null) {
-                    artistText = ""
-                } else {
-                    artistText = track.artist
+                val artistId = track.artistId
+                val artistName = track.artist
+                if (artistId == null || artistId.isEmpty()) {
+                    continue
                 }
-                out.add(
-                    buildPlayableStub(
-                        trackId = track.id,
-                        title = track.title,
-                        artist = artistText,
-                        album = track.album,
-                        coverArtId = track.coverArt,
-                        subsonicClient = subsonicClient,
-                    )
+                if (artistName == null || artistName.isEmpty()) {
+                    continue
+                }
+                if (seenArtistIds.contains(artistId)) {
+                    continue
+                }
+                seenArtistIds.add(artistId)
+                orderedRecentArtists.add(
+                    RecentArtistRef(id = artistId, name = artistName, coverArt = track.coverArt)
                 )
             }
-            return LibraryResult.ofItemList(out.build(), params)
         }
-        // Standard fallback: recent albums (no per-track recents endpoint exists in vanilla
-        // Subsonic, so the Auto user browses by recently-added album instead).
-        val albumResult = subsonicClient.getAlbumList2("recent", HOME_RECENTS_COUNT)
-        if (albumResult !is SubsonicResult.Ok) {
-            return LibraryResult.ofItemList(ImmutableList.of<MediaItem>(), params)
+
+        val recentPlaylists = ArrayList<StandardPlaylistSummary>()
+        val topPlaylistsResult = subsonicClient.getPulseTopPlaylists(RECENTS_TOTAL_LIMIT)
+        if (topPlaylistsResult is SubsonicResult.Ok) {
+            // pulse/topPlaylists doesn't return the StandardPlaylistSummary shape, just id +
+            // name + counts. Re-fetch the playlist list once to gain coverArt and to sort by
+            // a stable lastPlayed-ish proxy (we don't have lastPlayed on standard
+            // StandardPlaylistSummary). Order is whatever pulse/topPlaylists returned, which
+            // already ranks by recent listening.
+            val allPlaylistsResult = subsonicClient.getPlaylists()
+            val playlistsById = HashMap<String, StandardPlaylistSummary>()
+            if (allPlaylistsResult is SubsonicResult.Ok) {
+                val allPlaylists = allPlaylistsResult.value
+                val allPlaylistsCount = allPlaylists.size
+                for (index in 0 until allPlaylistsCount) {
+                    playlistsById[allPlaylists[index].id] = allPlaylists[index]
+                }
+            }
+            val rankedPlaylists = topPlaylistsResult.value
+            val rankedCount = rankedPlaylists.size
+            for (index in 0 until rankedCount) {
+                val ranked = rankedPlaylists[index]
+                val matched = playlistsById[ranked.id]
+                if (matched != null) {
+                    recentPlaylists.add(matched)
+                } else {
+                    // Fall back to a synthetic summary so the row still renders if the user has
+                    // a top playlist that getPlaylists somehow didn't list.
+                    recentPlaylists.add(
+                        StandardPlaylistSummary(
+                            id = ranked.id,
+                            name = ranked.name,
+                            songCount = ranked.songCount,
+                            duration = ranked.duration,
+                        )
+                    )
+                }
+            }
         }
-        return LibraryResult.ofItemList(albumsToBrowseable(albumResult.value, subsonicClient), params)
+
+        val combined = ImmutableList.builder<MediaItem>()
+        var emitted = 0
+        val playlistEmitCount = recentPlaylists.size
+        for (index in 0 until playlistEmitCount) {
+            if (emitted >= RECENTS_TOTAL_LIMIT) {
+                break
+            }
+            combined.add(playlistToBrowseable(recentPlaylists[index], subsonicClient))
+            emitted++
+        }
+        val artistEmitCount = orderedRecentArtists.size
+        for (index in 0 until artistEmitCount) {
+            if (emitted >= RECENTS_TOTAL_LIMIT) {
+                break
+            }
+            val artist = orderedRecentArtists[index]
+            combined.add(
+                artistToBrowseable(
+                    StandardLibraryArtist(
+                        id = artist.id,
+                        name = artist.name,
+                        albumCount = null,
+                        coverArt = artist.coverArt,
+                    ),
+                    subsonicClient,
+                )
+            )
+            emitted++
+        }
+        return LibraryResult.ofItemList(combined.build(), params)
     }
 
+    /**
+     * Playlists: every playlist, sorted alphabetically by name (case-insensitive).
+     */
     private suspend fun buildPlaylistsChildren(
         subsonicClient: SubsonicClient,
         params: LibraryParams?,
@@ -204,25 +315,19 @@ class ThumpMediaLibraryCallback(
         if (result !is SubsonicResult.Ok) {
             return LibraryResult.ofItemList(ImmutableList.of<MediaItem>(), params)
         }
-        val playlists = result.value
+        val playlists = ArrayList(result.value)
+        if (playlists.size > PLAYLISTS_FETCH_LIMIT) {
+            playlists.subList(PLAYLISTS_FETCH_LIMIT, playlists.size).clear()
+        }
+        playlists.sortWith(Comparator { left: StandardPlaylistSummary, right: StandardPlaylistSummary ->
+            left.name.compareTo(right.name, ignoreCase = true)
+        })
         val out = ImmutableList.builder<MediaItem>()
         val playlistCount = playlists.size
         for (index in 0 until playlistCount) {
-            val playlist: StandardPlaylistSummary = playlists[index]
-            out.add(playlistToBrowseable(playlist, subsonicClient))
+            out.add(playlistToBrowseable(playlists[index], subsonicClient))
         }
         return LibraryResult.ofItemList(out.build(), params)
-    }
-
-    private suspend fun buildAlbumsChildren(
-        subsonicClient: SubsonicClient,
-        params: LibraryParams?,
-    ): LibraryResult<ImmutableList<MediaItem>> {
-        val result = subsonicClient.getAlbumList2("alphabeticalByName", LIBRARY_PAGE_SIZE)
-        if (result !is SubsonicResult.Ok) {
-            return LibraryResult.ofItemList(ImmutableList.of<MediaItem>(), params)
-        }
-        return LibraryResult.ofItemList(albumsToBrowseable(result.value, subsonicClient), params)
     }
 
     private suspend fun buildArtistsChildren(
@@ -509,4 +614,14 @@ class ThumpMediaLibraryCallback(
         }
         return null
     }
+
+    /**
+     * Local helper bag for the recents builder. Carries the minimum we need to render an artist
+     * row (id, name, optional cover) without making a getArtist call per recent track.
+     */
+    private data class RecentArtistRef(
+        val id: String,
+        val name: String,
+        val coverArt: String?,
+    )
 }
