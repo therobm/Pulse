@@ -47,13 +47,19 @@ namespace Pulse.Data
 		private void LoadArtists(SqliteConnection connection)
 		{
 			SqliteCommand command = connection.CreateCommand();
-			command.CommandText = "SELECT id, name FROM artists;";
+			command.CommandText = "SELECT id, name, last_played FROM artists;";
 			SqliteDataReader reader = command.ExecuteReader();
 			while (reader.Read())
 			{
 				ArtistInfo artist = new ArtistInfo();
 				artist.Id = reader.GetString(0);
 				artist.Name = reader.GetString(1);
+				string lastPlayedStr = reader.GetString(2);
+				DateTime lastPlayed;
+				if (!string.IsNullOrEmpty(lastPlayedStr) && DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
+				{
+					artist.LastPlayed = lastPlayed;
+				}
 				m_artists[artist.Id] = artist;
 			}
 			reader.Close();
@@ -180,7 +186,7 @@ namespace Pulse.Data
 		private void LoadPlaylists(SqliteConnection connection)
 		{
 			SqliteCommand command = connection.CreateCommand();
-			command.CommandText = "SELECT id, name, comment, duration_seconds FROM playlists;";
+			command.CommandText = "SELECT id, name, comment, duration_seconds, last_played FROM playlists;";
 			SqliteDataReader reader = command.ExecuteReader();
 			while (reader.Read())
 			{
@@ -189,6 +195,12 @@ namespace Pulse.Data
 				playlist.Name = reader.GetString(1);
 				playlist.Comment = reader.GetString(2);
 				playlist.DurationSeconds = reader.GetInt64(3);
+				string lastPlayedStr = reader.GetString(4);
+				DateTime lastPlayed;
+				if (!string.IsNullOrEmpty(lastPlayedStr) && DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
+				{
+					playlist.LastPlayed = lastPlayed;
+				}
 				m_playlists[playlist.Id] = playlist;
 			}
 			reader.Close();
@@ -418,11 +430,21 @@ namespace Pulse.Data
 		{
 			SqliteCommand command = connection.CreateCommand();
 			command.Transaction = transaction;
-			command.CommandText = @"INSERT INTO artists (id, name) VALUES ($id, $name)
-				ON CONFLICT(id) DO UPDATE SET name = excluded.name;";
+			command.CommandText = @"INSERT INTO artists (id, name, last_played) VALUES ($id, $name, $last_played)
+				ON CONFLICT(id) DO UPDATE SET name = excluded.name, last_played = excluded.last_played;";
 			command.Parameters.AddWithValue("$id", artist.Id);
 			command.Parameters.AddWithValue("$name", artist.Name ?? "");
+			command.Parameters.AddWithValue("$last_played", FormatLastPlayed(artist.LastPlayed));
 			command.ExecuteNonQuery();
+		}
+
+		private static string FormatLastPlayed(DateTime value)
+		{
+			if (value == default(DateTime))
+			{
+				return "";
+			}
+			return value.ToString("o");
 		}
 
 		public static void UpsertAlbum(SqliteConnection connection, SqliteTransaction transaction, AlbumInfo album)
@@ -511,16 +533,18 @@ namespace Pulse.Data
 		{
 			SqliteCommand command = connection.CreateCommand();
 			command.Transaction = transaction;
-			command.CommandText = @"INSERT INTO playlists (id, name, comment, duration_seconds)
-				VALUES ($id, $name, $comment, $duration_seconds)
+			command.CommandText = @"INSERT INTO playlists (id, name, comment, duration_seconds, last_played)
+				VALUES ($id, $name, $comment, $duration_seconds, $last_played)
 				ON CONFLICT(id) DO UPDATE SET
 					name = excluded.name,
 					comment = excluded.comment,
-					duration_seconds = excluded.duration_seconds;";
+					duration_seconds = excluded.duration_seconds,
+					last_played = excluded.last_played;";
 			command.Parameters.AddWithValue("$id", playlist.Id);
 			command.Parameters.AddWithValue("$name", playlist.Name ?? "");
 			command.Parameters.AddWithValue("$comment", playlist.Comment ?? "");
 			command.Parameters.AddWithValue("$duration_seconds", playlist.DurationSeconds);
+			command.Parameters.AddWithValue("$last_played", FormatLastPlayed(playlist.LastPlayed));
 			command.ExecuteNonQuery();
 		}
 
