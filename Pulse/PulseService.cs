@@ -147,6 +147,7 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/recentlyPlayed", m_pulseAPI.HandleRecentlyPlayed);
 			host.RegisterResultRoute("pulse/popularArtists", m_pulseAPI.HandlePopularArtists);
 			host.RegisterResultRoute("pulse/topPlaylists", m_pulseAPI.HandleTopPlaylists);
+			host.RegisterResultRoute("pulse/recentPlaylists", m_pulseAPI.HandleRecentPlaylists);
 			host.RegisterResultRoute("pulse/artistTracks", m_pulseAPI.HandleArtistTracks);
 			host.RegisterResultRoute("pulse/markPlaylistPlayed", m_pulseAPI.HandleMarkPlaylistPlayed);
 			host.RegisterResultRoute("rest/playRandom", m_subsonic.HandlePlayRandom);

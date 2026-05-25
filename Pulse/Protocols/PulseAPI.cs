@@ -182,14 +182,22 @@ namespace Pulse.Protocols
 
 		public IResult HandleTopPlaylists(HttpContext context)
 		{
+			return RankAndEmitPlaylists(context, false);
+		}
+
+		// Same response shape as topPlaylists, sorted by per-user LastPlayed
+		// descending (never-played falls to the back). Separate route from
+		// topPlaylists so callers can pick the semantic they want without
+		// reading a query param that contradicts the route name (#151).
+		public IResult HandleRecentPlaylists(HttpContext context)
+		{
+			return RankAndEmitPlaylists(context, true);
+		}
+
+		private IResult RankAndEmitPlaylists(HttpContext context, bool sortByRecency)
+		{
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
 			string user = context.Request.Query["u"].FirstOrDefault();
-			// Optional sort override (Flatline #151). Default = lastPlayed desc
-			// then score desc (the user-tailored "Your Playlists" / recents
-			// blend). sort=score gives a pure relevance ranking that ignores
-			// recency, for clients that want a stable top-N regardless of when
-			// the user last played anything.
-			string sort = (context.Request.Query["sort"].FirstOrDefault() ?? "").ToLowerInvariant();
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
 
@@ -234,16 +242,17 @@ namespace Pulse.Protocols
 				row.LastPlayed = playlist.GetLastPlayed(user);
 				ranked.Add(row);
 			}
-			// Primary: per-user LastPlayed desc (never-played falls to the back).
-			// Tiebreaker: score desc, so first-time users still get something
-			// sensible on the home carousel before they've played anything.
-			if (sort == "score")
+			// Sort key follows the route the caller chose:
+			//  - topPlaylists: score desc, lastPlayed tiebreaker
+			//  - recentPlaylists: lastPlayed desc (never-played to the back),
+			//    score tiebreaker so unplayed users still get something sensible.
+			if (sortByRecency)
 			{
-				ranked.Sort(ComparePlaylistRankRowByScore);
+				ranked.Sort(ComparePlaylistRankRow);
 			}
 			else
 			{
-				ranked.Sort(ComparePlaylistRankRow);
+				ranked.Sort(ComparePlaylistRankRowByScore);
 			}
 
 			List<object> playlists = new List<object>();
