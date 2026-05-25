@@ -188,6 +188,21 @@ namespace Pulse.Database
 			";
 			steps.Add(v2);
 
+			// v3: per-user playlist last-played so the home carousel can rank
+			// by what *this* user actually listens to, not aggregate plays
+			// across everyone (Flatline #142).
+			MigrationStep v3 = new MigrationStep();
+			v3.Version = 3;
+			v3.Sql = @"
+				CREATE TABLE playlist_user_last_played (
+					playlist_id TEXT NOT NULL,
+					user_name TEXT NOT NULL,
+					last_played TEXT NOT NULL,
+					PRIMARY KEY (playlist_id, user_name)
+				);
+			";
+			steps.Add(v3);
+
 			return steps;
 		}
 	}

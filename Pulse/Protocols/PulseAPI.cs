@@ -63,7 +63,9 @@ namespace Pulse.Protocols
 
 		// Bumps a playlist's LastPlayed to now. Called by the web client when the
 		// user clicks Play / Shuffle on a playlist; lets the left-rail "Recent"
-		// sort surface the playlists you actually listen to.
+		// sort surface the playlists you actually listen to. Also bumps the
+		// per-user timestamp so the home carousel can rank by what *this* user
+		// listens to rather than aggregate activity.
 		public IResult HandleMarkPlaylistPlayed(HttpContext context)
 		{
 			string playlistId = context.Request.Query["id"].FirstOrDefault();
@@ -76,7 +78,13 @@ namespace Pulse.Protocols
 			{
 				return Results.Json(new { ok = false });
 			}
-			playlist.LastPlayed = DateTime.UtcNow;
+			string user = context.Request.Query["u"].FirstOrDefault();
+			DateTime now = DateTime.UtcNow;
+			playlist.LastPlayed = now;
+			if (!string.IsNullOrEmpty(user))
+			{
+				playlist.UserLastPlayed[user] = now;
+			}
 			playlist.m_bIsDirty = true;
 			return Results.Json(new { ok = true });
 		}
@@ -179,11 +187,11 @@ namespace Pulse.Protocols
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
 
-			// Playlists don't have their own score; rank by the AVERAGE of the
-			// scores of the distinct artists whose tracks appear in the playlist.
-			// Average (not sum) so a long playlist of mediocre tracks doesn't
-			// outrank a tight playlist of favorites.
-			List<KeyValuePair<PlaylistInfo, float>> scored = new List<KeyValuePair<PlaylistInfo, float>>();
+			// Playlists don't have their own score; the average of the scores
+			// of the distinct artists whose tracks appear in the playlist is
+			// the tiebreaker. Average (not sum) so a long playlist of mediocre
+			// tracks doesn't outrank a tight playlist of favorites.
+			List<PlaylistRankRow> ranked = new List<PlaylistRankRow>();
 			for (int playlistIndex = 0; playlistIndex < all.Count; playlistIndex++)
 			{
 				PlaylistInfo playlist = all[playlistIndex];
@@ -213,27 +221,52 @@ namespace Pulse.Protocols
 				{
 					average = total / artistCount;
 				}
-				scored.Add(new KeyValuePair<PlaylistInfo, float>(playlist, average));
+
+				PlaylistRankRow row = new PlaylistRankRow();
+				row.Playlist = playlist;
+				row.Score = average;
+				row.LastPlayed = playlist.GetLastPlayed(user);
+				ranked.Add(row);
 			}
-			scored.Sort(ComparePlaylistScoredDescending);
+			// Primary: per-user LastPlayed desc (never-played falls to the back).
+			// Tiebreaker: score desc, so first-time users still get something
+			// sensible on the home carousel before they've played anything.
+			ranked.Sort(ComparePlaylistRankRow);
 
 			List<object> playlists = new List<object>();
-			int limit = Math.Min(count, scored.Count);
+			int limit = Math.Min(count, ranked.Count);
 			for (int idx = 0; idx < limit; idx++)
 			{
-				PlaylistInfo playlist = scored[idx].Key;
+				PlaylistInfo playlist = ranked[idx].Playlist;
 				playlists.Add(new
 				{
 					id = playlist.Id,
 					name = playlist.Name,
 					songCount = playlist.GetSongCount(),
 					duration = playlist.DurationSeconds,
-					score = scored[idx].Value,
-					lastPlayed = FormatLastPlayedForJson(playlist.LastPlayed)
+					score = ranked[idx].Score,
+					lastPlayed = FormatLastPlayedForJson(ranked[idx].LastPlayed)
 				});
 			}
 
 			return Results.Json(new { playlists = playlists });
+		}
+
+		private class PlaylistRankRow
+		{
+			public PlaylistInfo Playlist;
+			public float Score;
+			public DateTime LastPlayed;
+		}
+
+		private static int ComparePlaylistRankRow(PlaylistRankRow left, PlaylistRankRow right)
+		{
+			int byLastPlayed = right.LastPlayed.CompareTo(left.LastPlayed);
+			if (byLastPlayed != 0)
+			{
+				return byLastPlayed;
+			}
+			return right.Score.CompareTo(left.Score);
 		}
 
 		// Round-trip ISO-8601 string for the JS side, empty for "never played"
@@ -248,11 +281,6 @@ namespace Pulse.Protocols
 		}
 
 		private static int CompareArtistScoredDescending(KeyValuePair<ArtistInfo, float> left, KeyValuePair<ArtistInfo, float> right)
-		{
-			return right.Value.CompareTo(left.Value);
-		}
-
-		private static int ComparePlaylistScoredDescending(KeyValuePair<PlaylistInfo, float> left, KeyValuePair<PlaylistInfo, float> right)
 		{
 			return right.Value.CompareTo(left.Value);
 		}
