@@ -32,12 +32,23 @@ import java.io.File
 class AudioCacheFactory(private val applicationContext: Context) {
 
     fun buildMediaSourceFactory(): MediaSource.Factory {
+        return DefaultMediaSourceFactory(applicationContext)
+            .setDataSourceFactory(buildCacheDataSourceFactory())
+    }
+
+    /**
+     * Returns a CacheDataSource.Factory wrapping the shared SimpleCache. ExoPlayer uses one
+     * to play with write-through; the prefetcher uses its own to download tracks ahead of the
+     * playhead. Both end up writing to the same disk cache because they reference the same
+     * SimpleCache singleton.
+     */
+    fun buildCacheDataSourceFactory(): CacheDataSource.Factory {
         val cache = obtainCache(applicationContext)
         val upstreamFactory = DefaultHttpDataSource.Factory()
             .setConnectTimeoutMs(HTTP_CONNECT_TIMEOUT_MS)
             .setReadTimeoutMs(HTTP_READ_TIMEOUT_MS)
             .setAllowCrossProtocolRedirects(true)
-        val cacheDataSourceFactory = CacheDataSource.Factory()
+        return CacheDataSource.Factory()
             .setCache(cache)
             .setUpstreamDataSourceFactory(upstreamFactory)
             .setCacheKeyFactory { dataSpec ->
@@ -49,8 +60,6 @@ class AudioCacheFactory(private val applicationContext: Context) {
                 }
             }
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-        return DefaultMediaSourceFactory(applicationContext)
-            .setDataSourceFactory(cacheDataSourceFactory)
     }
 
     companion object {
