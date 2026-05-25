@@ -80,6 +80,14 @@ namespace Pulse.SubsonicService
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public StarredContainer starred2 { get; set; }
 
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public SongsByGenreContainer songsByGenre { get; set; }
+
+	}
+
+	public class SongsByGenreContainer
+	{
+		public List<SongID3> song { get; set; } = new List<SongID3>();
 	}
 
 	public class PlaylistWithSongs
