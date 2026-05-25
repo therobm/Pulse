@@ -423,20 +423,50 @@ namespace Pulse.MusicLibrary
 
 		private void LoadDB()
 		{
-			string dbPath = Path.Combine(m_config.MusicPath, "PulseData/Staging");
-			if (!System.Diagnostics.Debugger.IsAttached)
+			// Environment selection: config drives in normal operation (Flatline
+			// bug #67 -- behavior shouldn't change based on launch method) BUT a
+			// debugger attached is a hard safety lockout to Staging. Debug
+			// sessions must never touch production data -- a test interaction
+			// scrobbling against the real DB is catastrophic and the silent
+			// inverse (prod accidentally writes to staging) is recoverable.
+			string environmentName = m_config.DatabaseEnvironment;
+			if (string.IsNullOrWhiteSpace(environmentName))
 			{
-				dbPath = Path.Combine(m_config.MusicPath, "PulseData/Production");
+				environmentName = "Production";
+			}
+#if DEBUG
+			//Enforce debug builds never touch production
+			if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
+			{
+				Log.Warning(-1, "Debugger attached: forcing Staging environment (config said '" + environmentName + "'). Debug sessions never touch production data.");
+			}
+			environmentName = "Staging";
+#endif
+
+			string pulseDataRoot = Path.Combine(m_config.MusicPath, "PulseData");
+			if (!Directory.Exists(pulseDataRoot))
+			{
+				Directory.CreateDirectory(pulseDataRoot);
 			}
 
-			if (!Directory.Exists(dbPath))
-			{
-				Directory.CreateDirectory(dbPath);
-			}
+			// Separate sqlite file per environment. Production -> pulse_production.db,
+			// Staging -> pulse_staging.db. Keeps the existing concept while letting
+			// the two run side-by-side without cross-contamination.
+			string sqliteFileName = "pulse_" + environmentName.ToLowerInvariant() + ".db";
+			string sqlitePath = Path.Combine(pulseDataRoot, sqliteFileName);
+			Pulse.Database.SqliteConnectionFactory.SetDatabaseFilePath(sqlitePath);
+			Pulse.Database.Migrations.RunMigrations();
+			Log.Info(-1, "Pulse DB: env=" + environmentName + " path=" + sqlitePath);
 
-			PulseFileDatabase fileDB = new PulseFileDatabase(dbPath, this);
-			m_database = fileDB;
-			fileDB.Load();
+			// One-time migration: if the legacy JSON tree exists at the matching
+			// PulseData/{Environment}/ folder and SQLite is empty, import then
+			// rename the JSON tree aside.
+			string legacyJsonPath = Path.Combine(pulseDataRoot, environmentName);
+			Pulse.Data.PulseSqliteImporter.ImportIfNeeded(legacyJsonPath, this);
+
+			PulseSqliteDatabase sqliteDb = new PulseSqliteDatabase();
+			m_database = sqliteDb;
+			sqliteDb.Load();
 		}
 
 		private void SaveDB()
