@@ -49,39 +49,39 @@ namespace Pulse.Data
 			sw.Start();
 			LoadAnalytics();
 			sw.Stop();
-			Console.WriteLine("LoadAnalytics: " + sw.ElapsedMilliseconds + "ms");
+			Log.Info(-1, "LoadAnalytics: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 
 			sw.Start();
 			LoadTracks();
 			sw.Stop();
-			Console.WriteLine("LoadTracks: " + sw.ElapsedMilliseconds + "ms");
+			Log.Info(-1, "LoadTracks: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 
 			sw.Start();
 			LoadAlbums();
 			sw.Stop();
-			Console.WriteLine("LoadAlbums: " + sw.ElapsedMilliseconds + "ms");
+			Log.Info(-1, "LoadAlbums: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 
 
 			sw.Start();
 			LoadArtists();
-			Console.WriteLine("LoadArtists: " + sw.ElapsedMilliseconds + "ms");
+			Log.Info(-1, "LoadArtists: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 			sw.Start();
 
 
 			sw.Start();
 			LoadPlaylists();
-			Console.WriteLine("LoadPlaylists: " + sw.ElapsedMilliseconds + "ms");
+			Log.Info(-1, "LoadPlaylists: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 			sw.Start();
 
 
 			sw.Start();
 			WireUpReferences();
-			Console.WriteLine("WireUpReferences: " + sw.ElapsedMilliseconds + "ms");
+			Log.Info(-1, "WireUpReferences: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 			sw.Start();
 
@@ -167,7 +167,7 @@ namespace Pulse.Data
 		private void LoadTracks()
 		{
 			string[] files = Directory.GetFiles(m_tracksPath, "*.json");
-			Console.WriteLine("Loading TrackInfo: " + files.Length);
+			Log.Info(-1, "Loading TrackInfo: " + files.Length);
 			ParallelOptions options = new ParallelOptions();
 			options.MaxDegreeOfParallelism = 8;
 			// Parallel.For (and its lambda) is intentional here. Library loads are I/O-bound and the parallel fan-out is massively faster than a sequential for. Exempt from the "no lambdas" rule on purpose. Do not convert to a sequential for.
@@ -187,7 +187,7 @@ namespace Pulse.Data
 		private void LoadAlbums()
 		{
 			string[] files = Directory.GetFiles(m_albumsPath, "*.json");
-			Console.WriteLine("Loading AlbumInfo: " + files.Length);
+			Log.Info(-1, "Loading AlbumInfo: " + files.Length);
 			ParallelOptions options = new ParallelOptions();
 			options.MaxDegreeOfParallelism = 8;
 			// Parallel.For (and its lambda) is intentional here. See LoadTracks for the rationale.
@@ -207,7 +207,7 @@ namespace Pulse.Data
 		private void LoadArtists()
 		{
 			string[] files = Directory.GetFiles(m_artistsPath, "*.json");
-			Console.WriteLine("Loading ArtistInfo: " + files.Length);
+			Log.Info(-1, "Loading ArtistInfo: " + files.Length);
 			ParallelOptions options = new ParallelOptions();
 			options.MaxDegreeOfParallelism = 8;
 			// Parallel.For (and its lambda) is intentional here. See LoadTracks for the rationale.
@@ -287,7 +287,7 @@ namespace Pulse.Data
 		private void LoadPlaylists()
 		{
 			string[] files = Directory.GetFiles(m_playlistsPath, "*.json");
-			Console.WriteLine("Loading PlaylistInfo: " + files.Length);
+			Log.Info(-1, "Loading PlaylistInfo: " + files.Length);
 			ParallelOptions options = new ParallelOptions();
 			options.MaxDegreeOfParallelism = 8;
 			// Parallel.For (and its lambda) is intentional here. See LoadTracks for the rationale.
