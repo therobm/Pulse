@@ -85,6 +85,11 @@ namespace Pulse.SubsonicService
 			body.user.downloadRole = true;
 			body.user.playlistRole = true;
 			body.user.streamRole = true;
+			// New spec fields default through the UserInfo type itself
+			// (Flatline #160). coverArtRole = true, other unsupported roles
+			// stay false, folder pre-populated with "1" to match
+			// HandleGetMusicFolders. Nothing to do here beyond the existing
+			// assignments above.
 			return Respond(context, body);
 		}
 
@@ -937,6 +942,8 @@ namespace Pulse.SubsonicService
 				return Respond(context, CreateErrorResponse(70, "Artist not found"));
 			}
 
+			string artistUser = context.Request.Query["u"].FirstOrDefault();
+
 			SubsonicResponseBody body = CreateResponse();
 			body.artist = new ArtistWithAlbumsID3();
 			body.artist.id = source.Id;
@@ -952,6 +959,12 @@ namespace Pulse.SubsonicService
 					body.artist.coverArt = source.Albums[coverIndex].CoverArtId;
 					break;
 				}
+			}
+			// OpenSubsonic per-user starred (#159).
+			bool artistStarredFlag;
+			if (!string.IsNullOrEmpty(artistUser) && source.Starred.TryGetValue(artistUser, out artistStarredFlag) && artistStarredFlag)
+			{
+				body.artist.starred = DateTime.UtcNow.ToString("o");
 			}
 
 			for (int index = 0; index < source.Albums.Count; index++)
@@ -987,6 +1000,37 @@ namespace Pulse.SubsonicService
 			body.album.coverArt = source.CoverArtId;
 			body.album.year = source.Year;
 			body.album.genre = source.Genre;
+			// OpenSubsonic aggregates + per-user starred (#159).
+			body.album.displayArtist = source.ArtistName;
+			bool albumStarredFlag;
+			if (!string.IsNullOrEmpty(user) && source.Starred.TryGetValue(user, out albumStarredFlag) && albumStarredFlag)
+			{
+				body.album.starred = DateTime.UtcNow.ToString("o");
+			}
+			int albumPlayCount = 0;
+			DateTime albumMostRecent = default(DateTime);
+			float albumRatingTotal = 0f;
+			int albumRatedCount = 0;
+			for (int statIndex = 0; statIndex < source.Tracks.Count; statIndex++)
+			{
+				TrackInfo statTrack = source.Tracks[statIndex];
+				albumPlayCount = albumPlayCount + statTrack.Score.PlayCount;
+				if (statTrack.LastPlayed > albumMostRecent) { albumMostRecent = statTrack.LastPlayed; }
+				if (statTrack.Rating > 0)
+				{
+					albumRatingTotal = albumRatingTotal + statTrack.Rating;
+					albumRatedCount++;
+				}
+			}
+			body.album.playCount = albumPlayCount;
+			if (albumMostRecent != default(DateTime))
+			{
+				body.album.played = albumMostRecent.ToString("o");
+			}
+			if (albumRatedCount > 0)
+			{
+				body.album.userRating = (int)Math.Round(albumRatingTotal / albumRatedCount);
+			}
 
 			List<TrackInfo> orderedTracks = new List<TrackInfo>(source.Tracks);
 			orderedTracks.Sort(CompareTrackByDiscThenNumber);
@@ -1774,6 +1818,11 @@ namespace Pulse.SubsonicService
 				entry.songCount = playlist.GetSongCount();
 				entry.duration = (int)playlist.DurationSeconds;
 				entry.coverArt = "pl-" + playlist.Id;
+				// OpenSubsonic ownership fields (#159). Pulse is single-user,
+				// so owner = the requesting user and everything is treated as
+				// public. created / changed need schema support; left unset.
+				entry.owner = user ?? "";
+				entry.@public = true;
 				body.playlists.playlist.Add(entry);
 			}
 
@@ -1804,6 +1853,9 @@ namespace Pulse.SubsonicService
 			body.playlist.songCount = playlist.GetSongCount();
 			body.playlist.duration = (int)playlist.DurationSeconds;
 			body.playlist.coverArt = "pl-" + playlist.Id;
+			// OpenSubsonic ownership fields (#159).
+			body.playlist.owner = user ?? "";
+			body.playlist.@public = true;
 
 			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
 			for (int index = 0; index < tracks.Count; index++)
@@ -1871,6 +1923,8 @@ namespace Pulse.SubsonicService
 			body.playlist.songCount = playlist.TrackIds.Count;
 			body.playlist.duration = (int)playlist.DurationSeconds;
 			body.playlist.coverArt = "pl-" + playlist.Id;
+			body.playlist.owner = user ?? "";
+			body.playlist.@public = true;
 
 			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
 			for (int index = 0; index < tracks.Count; index++)
