@@ -205,4 +205,25 @@ namespace Pulse.MusicLibrary
 	{
 		public List<string> RecentlyPlayed { get; set; } = new List<string>();
 	}
+
+	// Persistent per-user play queue (Subsonic getPlayQueue / savePlayQueue).
+	// Written directly to SQLite on save -- no in-memory cache, no dirty flag.
+	public class PlayQueueInfo
+	{
+		public List<string> TrackIds { get; set; } = new List<string>();
+		public string CurrentTrackId { get; set; } = "";
+		public long PositionMs { get; set; } = 0;
+		public DateTime Changed { get; set; }
+		public string ChangedBy { get; set; } = "";
+	}
+
+	// Persistent per-user bookmark on a track (Subsonic getBookmarks / createBookmark).
+	public class BookmarkInfo
+	{
+		public string TrackId { get; set; } = "";
+		public long PositionMs { get; set; } = 0;
+		public string Comment { get; set; } = "";
+		public DateTime Created { get; set; }
+		public DateTime Changed { get; set; }
+	}
 }

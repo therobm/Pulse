@@ -751,5 +751,215 @@ namespace Pulse.Data
 				connection.Close();
 			}
 		}
+
+		// ---------- Play queue + bookmarks (Flatline #168) ----------
+		// Read-through / write-through: no in-memory cache, no dirty bit. The
+		// access pattern is one row per user max for play queue and small
+		// per-user lists for bookmarks, so the indirection isn't worth it.
+
+		public override PlayQueueInfo GetPlayQueue(string userName)
+		{
+			PlayQueueInfo result = new PlayQueueInfo();
+			if (string.IsNullOrEmpty(userName))
+			{
+				return result;
+			}
+
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				SqliteCommand state = connection.CreateCommand();
+				state.CommandText = "SELECT current_track_id, position_ms, changed, changed_by FROM playqueue_state WHERE user_name = $u;";
+				state.Parameters.AddWithValue("$u", userName);
+				SqliteDataReader stateReader = state.ExecuteReader();
+				if (stateReader.Read())
+				{
+					result.CurrentTrackId = stateReader.GetString(0);
+					result.PositionMs = stateReader.GetInt64(1);
+					string changedStr = stateReader.GetString(2);
+					DateTime changed;
+					if (!string.IsNullOrEmpty(changedStr) && DateTime.TryParse(changedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out changed))
+					{
+						result.Changed = changed;
+					}
+					result.ChangedBy = stateReader.GetString(3);
+				}
+				stateReader.Close();
+
+				SqliteCommand entries = connection.CreateCommand();
+				entries.CommandText = "SELECT track_id FROM playqueue_entries WHERE user_name = $u ORDER BY position;";
+				entries.Parameters.AddWithValue("$u", userName);
+				SqliteDataReader entriesReader = entries.ExecuteReader();
+				while (entriesReader.Read())
+				{
+					result.TrackIds.Add(entriesReader.GetString(0));
+				}
+				entriesReader.Close();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
+
+		public override void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy)
+		{
+			if (string.IsNullOrEmpty(userName))
+			{
+				return;
+			}
+
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				SqliteTransaction transaction = connection.BeginTransaction();
+				try
+				{
+					SqliteCommand clearEntries = connection.CreateCommand();
+					clearEntries.Transaction = transaction;
+					clearEntries.CommandText = "DELETE FROM playqueue_entries WHERE user_name = $u;";
+					clearEntries.Parameters.AddWithValue("$u", userName);
+					clearEntries.ExecuteNonQuery();
+
+					if (trackIds != null)
+					{
+						for (int position = 0; position < trackIds.Count; position++)
+						{
+							SqliteCommand insertEntry = connection.CreateCommand();
+							insertEntry.Transaction = transaction;
+							insertEntry.CommandText = "INSERT INTO playqueue_entries (user_name, position, track_id) VALUES ($u, $p, $t);";
+							insertEntry.Parameters.AddWithValue("$u", userName);
+							insertEntry.Parameters.AddWithValue("$p", position);
+							insertEntry.Parameters.AddWithValue("$t", trackIds[position]);
+							insertEntry.ExecuteNonQuery();
+						}
+					}
+
+					SqliteCommand upsertState = connection.CreateCommand();
+					upsertState.Transaction = transaction;
+					upsertState.CommandText = @"INSERT INTO playqueue_state (user_name, current_track_id, position_ms, changed, changed_by)
+						VALUES ($u, $c, $p, $ch, $cb)
+						ON CONFLICT(user_name) DO UPDATE SET
+							current_track_id = excluded.current_track_id,
+							position_ms = excluded.position_ms,
+							changed = excluded.changed,
+							changed_by = excluded.changed_by;";
+					upsertState.Parameters.AddWithValue("$u", userName);
+					upsertState.Parameters.AddWithValue("$c", currentTrackId ?? "");
+					upsertState.Parameters.AddWithValue("$p", positionMs);
+					upsertState.Parameters.AddWithValue("$ch", DateTime.UtcNow.ToString("o"));
+					upsertState.Parameters.AddWithValue("$cb", changedBy ?? "");
+					upsertState.ExecuteNonQuery();
+
+					transaction.Commit();
+				}
+				catch
+				{
+					transaction.Rollback();
+					throw;
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		public override List<BookmarkInfo> GetBookmarks(string userName)
+		{
+			List<BookmarkInfo> result = new List<BookmarkInfo>();
+			if (string.IsNullOrEmpty(userName))
+			{
+				return result;
+			}
+
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT track_id, position_ms, comment, created, changed FROM bookmarks WHERE user_name = $u ORDER BY changed DESC;";
+				command.Parameters.AddWithValue("$u", userName);
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
+				{
+					BookmarkInfo bookmark = new BookmarkInfo();
+					bookmark.TrackId = reader.GetString(0);
+					bookmark.PositionMs = reader.GetInt64(1);
+					bookmark.Comment = reader.GetString(2);
+					DateTime created;
+					if (DateTime.TryParse(reader.GetString(3), null, System.Globalization.DateTimeStyles.RoundtripKind, out created))
+					{
+						bookmark.Created = created;
+					}
+					DateTime changed;
+					if (DateTime.TryParse(reader.GetString(4), null, System.Globalization.DateTimeStyles.RoundtripKind, out changed))
+					{
+						bookmark.Changed = changed;
+					}
+					result.Add(bookmark);
+				}
+				reader.Close();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
+
+		public override void SaveBookmark(string userName, string trackId, long positionMs, string comment)
+		{
+			if (string.IsNullOrEmpty(userName) || string.IsNullOrEmpty(trackId))
+			{
+				return;
+			}
+
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				string nowIso = DateTime.UtcNow.ToString("o");
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = @"INSERT INTO bookmarks (user_name, track_id, position_ms, comment, created, changed)
+					VALUES ($u, $t, $p, $c, $created, $changed)
+					ON CONFLICT(user_name, track_id) DO UPDATE SET
+						position_ms = excluded.position_ms,
+						comment = excluded.comment,
+						changed = excluded.changed;";
+				command.Parameters.AddWithValue("$u", userName);
+				command.Parameters.AddWithValue("$t", trackId);
+				command.Parameters.AddWithValue("$p", positionMs);
+				command.Parameters.AddWithValue("$c", comment ?? "");
+				command.Parameters.AddWithValue("$created", nowIso);
+				command.Parameters.AddWithValue("$changed", nowIso);
+				command.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		public override void DeleteBookmark(string userName, string trackId)
+		{
+			if (string.IsNullOrEmpty(userName) || string.IsNullOrEmpty(trackId))
+			{
+				return;
+			}
+
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "DELETE FROM bookmarks WHERE user_name = $u AND track_id = $t;";
+				command.Parameters.AddWithValue("$u", userName);
+				command.Parameters.AddWithValue("$t", trackId);
+				command.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
 	}
 }
