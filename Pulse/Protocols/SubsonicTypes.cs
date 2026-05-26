@@ -66,13 +66,11 @@ namespace Pulse.SubsonicService
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public SearchResult3 searchResult3 { get; set; }
 
-		[JsonPropertyName("internetRadioStations")]
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-		public InternetRadioStationsContainer InternetRadioStations { get; set; }
+		public InternetRadioStationsContainer internetRadioStations { get; set; }
 
-		[JsonPropertyName("indexes")]
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-		public IndexesContainer Indexes { get; set; }
+		public IndexesContainer indexes { get; set; }
 
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public DirectoryContainer directory { get; set; }
@@ -309,14 +307,12 @@ namespace Pulse.SubsonicService
 		// articles ("The Beatles" → sorted under B) before alpha-sorting.
 		// Default matches the Subsonic spec example string.
 		public string ignoredArticles { get; set; } = "The El La Los Las Le Les";
-		[JsonPropertyName("index")]
-		public List<ArtistIndex> Index { get; set; }
+		public List<ArtistIndex> index { get; set; }
 	}
 
 	public class InternetRadioStationsContainer
 	{
-		[JsonPropertyName("internetRadioStation")]
-		public List<object> InternetRadioStation { get; set; }
+		public List<object> internetRadioStation { get; set; }
 	}
 
 	public class StarredContainer
