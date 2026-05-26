@@ -292,7 +292,7 @@ private fun ThumpApp() {
                         ConfigurePrompt(innerPadding)
                     } else {
                         LibraryScreen(
-                            subsonicClient = subsonicClient,
+                            thumpData = thumpData,
                             onArtistSelected = { artistId: String ->
                                 navController.navigate(buildArtistRoute(artistId))
                             },
