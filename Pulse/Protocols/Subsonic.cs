@@ -468,8 +468,8 @@ namespace Pulse.SubsonicService
 			}
 
 			SubsonicResponseBody body = new SubsonicResponseBody();
-			body.Indexes = new IndexesContainer();
-			body.Indexes.Index = indexList;
+			body.indexes = new IndexesContainer();
+			body.indexes.index = indexList;
 
 			return Results.Json(new SubsonicWrapper { response = body });
 		}
@@ -477,8 +477,8 @@ namespace Pulse.SubsonicService
 		public IResult HandleGetInternetRadioStations(HttpContext context)
 		{
 			SubsonicResponseBody body = new SubsonicResponseBody();
-			body.InternetRadioStations = new InternetRadioStationsContainer();
-			body.InternetRadioStations.InternetRadioStation = new List<object>();
+			body.internetRadioStations = new InternetRadioStationsContainer();
+			body.internetRadioStations.internetRadioStation = new List<object>();
 			return Results.Json(new SubsonicWrapper { response = body });
 		}
 

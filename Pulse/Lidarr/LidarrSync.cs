@@ -64,16 +64,16 @@ namespace Pulse.Lidarr
 				}
 			}
 
-			Console.WriteLine("LidarrSync: " + missingArtistNames.Count + " unique artists from " + requestedSongs.Count + " missing songs");
+			Log.Info(-1, "LidarrSync: " + missingArtistNames.Count + " unique artists from " + requestedSongs.Count + " missing songs");
 
 			// Fetch existing artists from Lidarr
 			if (!FetchExistingArtists())
 			{
-				Console.WriteLine("LidarrSync: Failed to fetch existing artists from Lidarr, aborting");
+				Log.Error(-1, "LidarrSync: Failed to fetch existing artists from Lidarr, aborting");
 				return 0;
 			}
 
-			Console.WriteLine("LidarrSync: Lidarr has " + m_lidarrArtistNames.Count + " artists");
+			Log.Info(-1, "LidarrSync: Lidarr has " + m_lidarrArtistNames.Count + " artists");
 
 			// Fetch root folder and quality/metadata profile IDs
 			int qualityProfileId = FetchFirstId("qualityprofile");
@@ -82,11 +82,11 @@ namespace Pulse.Lidarr
 
 			if (qualityProfileId < 0 || metadataProfileId < 0 || rootFolderPath == null)
 			{
-				Console.WriteLine("LidarrSync: Failed to fetch Lidarr config (profiles/root folder), aborting");
+				Log.Error(-1, "LidarrSync: Failed to fetch Lidarr config (profiles/root folder), aborting");
 				return 0;
 			}
 
-			Console.WriteLine("LidarrSync: rootFolder=" + rootFolderPath + " qualityProfile=" + qualityProfileId + " metadataProfile=" + metadataProfileId);
+			Log.Info(-1, "LidarrSync: rootFolder=" + rootFolderPath + " qualityProfile=" + qualityProfileId + " metadataProfile=" + metadataProfileId);
 
 			int addedCount = 0;
 
@@ -103,7 +103,7 @@ namespace Pulse.Lidarr
 				bool found = TryLookupArtist(artistName, out lookupResult);
 				if (!found)
 				{
-					Console.WriteLine("LidarrSync: FAIL lookup - " + artistName);
+					Log.Warning(-1, "LidarrSync: FAIL lookup - " + artistName);
 					m_lastFailed.Add(artistName);
 					Thread.Sleep(1500);
 					continue;
@@ -127,21 +127,21 @@ namespace Pulse.Lidarr
 				bool added = AddArtist(lookupResult, rootFolderPath, qualityProfileId, metadataProfileId);
 				if (added)
 				{
-					Console.WriteLine("LidarrSync: ADDED - " + artistName);
+					Log.Info(-1, "LidarrSync: ADDED - " + artistName);
 					m_lastAdded.Add(artistName);
 					m_lidarrArtistNames.Add(artistName);
 					addedCount++;
 				}
 				else
 				{
-					Console.WriteLine("LidarrSync: FAIL add - " + artistName);
+					Log.Warning(-1, "LidarrSync: FAIL add - " + artistName);
 					m_lastFailed.Add(artistName);
 				}
 
 				Thread.Sleep(1500);
 			}
 
-			Console.WriteLine("LidarrSync: Done. Added=" + addedCount + " Skipped=" + m_lastSkipped.Count + " Failed=" + m_lastFailed.Count);
+			Log.Info(-1, "LidarrSync: Done. Added=" + addedCount + " Skipped=" + m_lastSkipped.Count + " Failed=" + m_lastFailed.Count);
 			return addedCount;
 		}
 
@@ -294,14 +294,14 @@ namespace Pulse.Lidarr
 				if (!response.IsSuccessStatusCode)
 				{
 					string errorBody = ReadResponseBody(response);
-					Console.WriteLine("LidarrSync: GET " + endpoint + " failed - " + response.StatusCode + " - " + errorBody);
+					Log.Error(-1, "LidarrSync: GET " + endpoint + " failed - " + response.StatusCode + " - " + errorBody);
 					return null;
 				}
 				return ReadResponseBody(response);
 			}
 			catch (Exception ex)
 			{
-				Console.WriteLine("LidarrSync: GET " + endpoint + " exception - " + ex.Message);
+				Log.Error(-1, "LidarrSync: GET " + endpoint + " exception - " + ex.Message);
 				return null;
 			}
 		}
@@ -318,14 +318,14 @@ namespace Pulse.Lidarr
 				if (!response.IsSuccessStatusCode)
 				{
 					string errorBody = ReadResponseBody(response);
-					Console.WriteLine("LidarrSync: POST " + endpoint + " failed - " + response.StatusCode + " - " + errorBody);
+					Log.Error(-1, "LidarrSync: POST " + endpoint + " failed - " + response.StatusCode + " - " + errorBody);
 					return null;
 				}
 				return ReadResponseBody(response);
 			}
 			catch (Exception ex)
 			{
-				Console.WriteLine("LidarrSync: POST " + endpoint + " exception - " + ex.Message);
+				Log.Error(-1, "LidarrSync: POST " + endpoint + " exception - " + ex.Message);
 				return null;
 			}
 		}
