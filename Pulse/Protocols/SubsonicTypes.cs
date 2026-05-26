@@ -237,6 +237,24 @@ namespace Pulse.SubsonicService
 		public string coverArt { get; set; }
 		public List<SongID3> entry { get; set; }
 
+		// --- OpenSubsonic spec fields (Flatline #159), all additive ---
+		// Pulse doesn't track ownership today (single-user system) so owner
+		// defaults to empty and isPublic to true. created / changed need
+		// schema support; left empty for now (separate follow-up).
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string owner { get; set; }
+		// Wire name is "public" (C# reserved keyword); rename the field
+		// instead of using @public escape syntax.
+		[JsonPropertyName("public")]
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public bool isPublic { get; set; } = true;
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string created { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string changed { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public List<string> allowedUser { get; set; }
+
 		public PlaylistWithSongs()
 		{
 			entry = new List<SongID3>();
@@ -287,6 +305,10 @@ namespace Pulse.SubsonicService
 
 	public class IndexesContainer
 	{
+		// Spec field (Flatline #161). Clients use this to strip leading
+		// articles ("The Beatles" → sorted under B) before alpha-sorting.
+		// Default matches the Subsonic spec example string.
+		public string ignoredArticles { get; set; } = "The El La Los Las Le Les";
 		[JsonPropertyName("index")]
 		public List<ArtistIndex> Index { get; set; }
 	}
@@ -347,6 +369,17 @@ namespace Pulse.SubsonicService
 		public int duration { get; set; }
 		// Spec-defined coverArt. See PlaylistWithSongs.coverArt.
 		public string coverArt { get; set; }
+
+		// --- OpenSubsonic spec fields (Flatline #159), mirror PlaylistWithSongs. ---
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string owner { get; set; }
+		[JsonPropertyName("public")]
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public bool isPublic { get; set; } = true;
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string created { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string changed { get; set; }
 	}
 
 	public class MusicFoldersContainer
@@ -362,6 +395,9 @@ namespace Pulse.SubsonicService
 
 	public class ArtistsContainer
 	{
+		// Same spec hint as IndexesContainer (#161) -- /rest/getArtists
+		// also returns ArtistsID3 wrapped in indexes by first letter.
+		public string ignoredArticles { get; set; } = "The El La Los Las Le Les";
 		public List<ArtistIndex> index { get; set; } = new List<ArtistIndex>();
 	}
 
@@ -371,12 +407,30 @@ namespace Pulse.SubsonicService
 		public string name { get; set; }
 		public int albumCount { get; set; }
 		public string coverArt { get; set; }
+
+		// --- OpenSubsonic spec fields (Flatline #159), all additive ---
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string starred { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public int userRating { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string musicBrainzId { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string sortName { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public List<string> roles { get; set; }
+		// Legacy clients sometimes still want artistImageUrl (pre-OpenSubsonic).
+		// Empty when we have nothing; same path as coverArt feeds it via
+		// getCoverArt if the client requests it.
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string artistImageUrl { get; set; }
+
 		public ArtistID3(ArtistInfo artistInfo)
 		{
 			id = artistInfo.Id;
 			name = artistInfo.Name;
 			albumCount = artistInfo.Albums.Count;
-			if (albumCount > 0) 
+			if (albumCount > 0)
 			{
 				coverArt = artistInfo.Albums[0].CoverArtId;
 			}
@@ -402,6 +456,30 @@ namespace Pulse.SubsonicService
 		public int year { get; set; }
 		public string genre { get; set; }
 		public List<SongID3> song { get; set; } = new List<SongID3>();
+
+		// --- OpenSubsonic spec fields (Flatline #159), mirror AlbumID3. ---
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public int playCount { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string played { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string starred { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string displayArtist { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string created { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string musicBrainzId { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string sortName { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public bool isCompilation { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string releaseDate { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string originalReleaseDate { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public int userRating { get; set; }
 	}
 
 	public class SongID3
@@ -425,6 +503,35 @@ namespace Pulse.SubsonicService
 		public int userRating { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string starred { get; set; }  // ISO datetime string or null
+
+		// --- OpenSubsonic spec fields (Flatline #159), all additive ---
+		// Constants that strict clients expect to always be present:
+		public string parent { get; set; }
+		public bool isDir { get; set; } = false;
+		public bool isVideo { get; set; } = false;
+		public string type { get; set; } = "music";
+		public string mediaType { get; set; } = "song";
+		// Optional metadata. Emitted only when populated so existing clients
+		// see exactly the JSON they used to. Pulse has no source for most of
+		// these without an external metadata provider; left at default.
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public int bitRate { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public int playCount { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string played { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string created { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string displayArtist { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string sortName { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string musicBrainzId { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string comment { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public int bpm { get; set; }
 
 		public SongID3(string user, TrackInfo trackInfo)
 		{
@@ -452,6 +559,29 @@ namespace Pulse.SubsonicService
 			{
 				starred = null;
 			}
+
+			// --- New populations for OpenSubsonic (#159) ---
+			parent = trackInfo.AlbumId;
+			displayArtist = trackInfo.Artist;
+			// Rough average bitrate from file size + duration. Spec is kbps.
+			if (trackInfo.DurationSeconds > 0 && trackInfo.FileSizeBytes > 0)
+			{
+				bitRate = (int)((trackInfo.FileSizeBytes * 8L) / (trackInfo.DurationSeconds * 1000L));
+			}
+			// Per-user play count + last played when we have a user context;
+			// fall back to the global counters otherwise.
+			if (user != null && trackInfo.UserScore.ContainsKey(user))
+			{
+				playCount = trackInfo.UserScore[user].PlayCount;
+			}
+			else
+			{
+				playCount = trackInfo.Score.PlayCount;
+			}
+			if (trackInfo.LastPlayed != default(DateTime))
+			{
+				played = trackInfo.LastPlayed.ToString("o");
+			}
 		}
 	}
 
@@ -462,6 +592,20 @@ namespace Pulse.SubsonicService
 		public int albumCount { get; set; }
 		public string coverArt { get; set; }
 		public List<AlbumID3> album { get; set; } = new List<AlbumID3>();
+
+		// --- OpenSubsonic spec fields (Flatline #159), mirror ArtistID3. ---
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string starred { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public int userRating { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string musicBrainzId { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string sortName { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public List<string> roles { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string artistImageUrl { get; set; }
 	}
 
 	public class AlbumList2
@@ -480,6 +624,31 @@ namespace Pulse.SubsonicService
 		public string coverArt { get; set; }
 		public int year { get; set; }
 		public string genre { get; set; }
+
+		// --- OpenSubsonic spec fields (Flatline #159), all additive ---
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public int playCount { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string played { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string starred { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string displayArtist { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string created { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string musicBrainzId { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string sortName { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public bool isCompilation { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string releaseDate { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+		public string originalReleaseDate { get; set; }
+		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+		public int userRating { get; set; }
+
 		public AlbumID3(AlbumInfo albumInfo)
 		{
 			id = albumInfo.Id;
@@ -493,11 +662,35 @@ namespace Pulse.SubsonicService
 			// Sum track durations -- previously left at 0 so every album in
 			// getAlbumList2 / getArtist / search3 / starred2 reported 0:00.
 			long total = 0;
+			int playCountTotal = 0;
+			DateTime mostRecent = default(DateTime);
+			float ratingTotal = 0f;
+			int ratedCount = 0;
 			for (int trackIndex = 0; trackIndex < albumInfo.Tracks.Count; trackIndex++)
 			{
-				total = total + albumInfo.Tracks[trackIndex].DurationSeconds;
+				TrackInfo track = albumInfo.Tracks[trackIndex];
+				total = total + track.DurationSeconds;
+				playCountTotal = playCountTotal + track.Score.PlayCount;
+				if (track.LastPlayed > mostRecent) { mostRecent = track.LastPlayed; }
+				if (track.Rating > 0)
+				{
+					ratingTotal = ratingTotal + track.Rating;
+					ratedCount++;
+				}
 			}
 			duration = (int)total;
+
+			// OpenSubsonic aggregates (#159).
+			displayArtist = albumInfo.ArtistName;
+			playCount = playCountTotal;
+			if (mostRecent != default(DateTime))
+			{
+				played = mostRecent.ToString("o");
+			}
+			if (ratedCount > 0)
+			{
+				userRating = (int)Math.Round(ratingTotal / ratedCount);
+			}
 		}
 	}
 
@@ -522,6 +715,23 @@ namespace Pulse.SubsonicService
 		public bool downloadRole { get; set; }
 		public bool playlistRole { get; set; }
 		public bool streamRole { get; set; }
+
+		// --- Spec fields (Flatline #160). Clients gate UI features on
+		// these; missing = treated as false by lenient parsers, rejected
+		// by strict ones. Pulse is single-user-ish for now so defaults are
+		// generous except for features we don't actually implement.
+		public string email { get; set; } = "";
+		public int maxBitRate { get; set; } = 0;          // 0 = no limit
+		public bool uploadRole { get; set; } = false;     // no upload UI
+		public bool coverArtRole { get; set; } = true;
+		public bool commentRole { get; set; } = false;
+		public bool podcastRole { get; set; } = false;
+		public bool jukeboxRole { get; set; } = false;
+		public bool shareRole { get; set; } = false;
+		public bool videoConversionRole { get; set; } = false;
+		// folder ids the user can access. Matches getMusicFolders, which
+		// returns a single folder id "1" (see HandleGetMusicFolders).
+		public List<string> folder { get; set; } = new List<string>() { "1" };
 	}
 	
 
