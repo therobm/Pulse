@@ -239,12 +239,15 @@ namespace Pulse.SubsonicService
 
 		// --- OpenSubsonic spec fields (Flatline #159), all additive ---
 		// Pulse doesn't track ownership today (single-user system) so owner
-		// defaults to empty and `public` to true. created / changed need
+		// defaults to empty and isPublic to true. created / changed need
 		// schema support; left empty for now (separate follow-up).
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string owner { get; set; }
+		// Wire name is "public" (C# reserved keyword); rename the field
+		// instead of using @public escape syntax.
+		[JsonPropertyName("public")]
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-		public bool @public { get; set; } = true;
+		public bool isPublic { get; set; } = true;
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string created { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -370,8 +373,9 @@ namespace Pulse.SubsonicService
 		// --- OpenSubsonic spec fields (Flatline #159), mirror PlaylistWithSongs. ---
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string owner { get; set; }
+		[JsonPropertyName("public")]
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-		public bool @public { get; set; } = true;
+		public bool isPublic { get; set; } = true;
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string created { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

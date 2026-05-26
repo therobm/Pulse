@@ -961,10 +961,14 @@ namespace Pulse.SubsonicService
 				}
 			}
 			// OpenSubsonic per-user starred (#159).
-			bool artistStarredFlag;
-			if (!string.IsNullOrEmpty(artistUser) && source.Starred.TryGetValue(artistUser, out artistStarredFlag) && artistStarredFlag)
+			if (!string.IsNullOrEmpty(artistUser))
 			{
-				body.artist.starred = DateTime.UtcNow.ToString("o");
+				bool artistStarredFlag = false;
+				bool artistHasStar = source.Starred.TryGetValue(artistUser, out artistStarredFlag);
+				if (artistHasStar && artistStarredFlag)
+				{
+					body.artist.starred = DateTime.UtcNow.ToString("o");
+				}
 			}
 
 			for (int index = 0; index < source.Albums.Count; index++)
@@ -1002,11 +1006,16 @@ namespace Pulse.SubsonicService
 			body.album.genre = source.Genre;
 			// OpenSubsonic aggregates + per-user starred (#159).
 			body.album.displayArtist = source.ArtistName;
-			bool albumStarredFlag;
-			if (!string.IsNullOrEmpty(user) && source.Starred.TryGetValue(user, out albumStarredFlag) && albumStarredFlag)
+			if (!string.IsNullOrEmpty(user))
 			{
-				body.album.starred = DateTime.UtcNow.ToString("o");
+				bool albumStarredFlag = false;
+				bool albumHasStar = source.Starred.TryGetValue(user, out albumStarredFlag);
+				if (albumHasStar && albumStarredFlag)
+				{
+					body.album.starred = DateTime.UtcNow.ToString("o");
+				}
 			}
+
 			int albumPlayCount = 0;
 			DateTime albumMostRecent = default(DateTime);
 			float albumRatingTotal = 0f;
@@ -1015,7 +1024,10 @@ namespace Pulse.SubsonicService
 			{
 				TrackInfo statTrack = source.Tracks[statIndex];
 				albumPlayCount = albumPlayCount + statTrack.Score.PlayCount;
-				if (statTrack.LastPlayed > albumMostRecent) { albumMostRecent = statTrack.LastPlayed; }
+				if (statTrack.LastPlayed > albumMostRecent)
+				{
+					albumMostRecent = statTrack.LastPlayed;
+				}
 				if (statTrack.Rating > 0)
 				{
 					albumRatingTotal = albumRatingTotal + statTrack.Rating;
@@ -1821,8 +1833,13 @@ namespace Pulse.SubsonicService
 				// OpenSubsonic ownership fields (#159). Pulse is single-user,
 				// so owner = the requesting user and everything is treated as
 				// public. created / changed need schema support; left unset.
-				entry.owner = user ?? "";
-				entry.@public = true;
+				string ownerName = user;
+				if (ownerName == null)
+				{
+					ownerName = "";
+				}
+				entry.owner = ownerName;
+				entry.isPublic = true;
 				body.playlists.playlist.Add(entry);
 			}
 
@@ -1854,8 +1871,13 @@ namespace Pulse.SubsonicService
 			body.playlist.duration = (int)playlist.DurationSeconds;
 			body.playlist.coverArt = "pl-" + playlist.Id;
 			// OpenSubsonic ownership fields (#159).
-			body.playlist.owner = user ?? "";
-			body.playlist.@public = true;
+			string playlistOwner = user;
+			if (playlistOwner == null)
+			{
+				playlistOwner = "";
+			}
+			body.playlist.owner = playlistOwner;
+			body.playlist.isPublic = true;
 
 			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
 			for (int index = 0; index < tracks.Count; index++)
@@ -1923,8 +1945,13 @@ namespace Pulse.SubsonicService
 			body.playlist.songCount = playlist.TrackIds.Count;
 			body.playlist.duration = (int)playlist.DurationSeconds;
 			body.playlist.coverArt = "pl-" + playlist.Id;
-			body.playlist.owner = user ?? "";
-			body.playlist.@public = true;
+			string createdOwner = user;
+			if (createdOwner == null)
+			{
+				createdOwner = "";
+			}
+			body.playlist.owner = createdOwner;
+			body.playlist.isPublic = true;
 
 			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
 			for (int index = 0; index < tracks.Count; index++)
