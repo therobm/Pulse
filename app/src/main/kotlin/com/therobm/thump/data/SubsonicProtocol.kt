@@ -523,7 +523,7 @@ class SubsonicProtocol(
                             + " size=" + sizePx + " returned HTTP " + response.code
                     )
                 }
-                val body = response.body
+                val body: okhttp3.ResponseBody? = response.body
                 if (body == null) {
                     throw IOException("Cover-art response had no body for id=" + coverArtId)
                 }
@@ -675,7 +675,7 @@ class SubsonicProtocol(
         val request: Request = Request.Builder().url(requestUrl).get().build()
         val responseBodyText: String = withContext(Dispatchers.IO) {
             okHttpClient.newCall(request).execute().use { response ->
-                val body = response.body
+                val body: okhttp3.ResponseBody? = response.body
                 if (body == null) {
                     throw IOException(
                         "Subsonic response had no body (path=" + pathAfterBase

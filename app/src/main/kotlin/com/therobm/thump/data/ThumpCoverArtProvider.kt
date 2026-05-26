@@ -148,11 +148,11 @@ class ThumpCoverArtProvider : ContentProvider() {
     }
 
     private fun resolveThumpDataOrThrow(): ThumpData {
-        val rawContext = context
+        val rawContext: android.content.Context? = context
         if (rawContext == null) {
             throw IllegalStateException("ThumpCoverArtProvider has no Context")
         }
-        val rawApplication = rawContext.applicationContext
+        val rawApplication: android.content.Context = rawContext.applicationContext
         if (rawApplication !is ThumpApplication) {
             throw IllegalStateException(
                 "ThumpCoverArtProvider expected ThumpApplication; got "

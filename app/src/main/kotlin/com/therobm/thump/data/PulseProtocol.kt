@@ -113,7 +113,7 @@ class PulseProtocol(
                 if (!response.isSuccessful) {
                     throw IOException("pulse/recentlyPlayed returned HTTP " + response.code)
                 }
-                val body = response.body
+                val body: okhttp3.ResponseBody? = response.body
                 if (body == null) {
                     throw IOException("pulse/recentlyPlayed response had no body")
                 }
@@ -145,7 +145,7 @@ class PulseProtocol(
                 if (!response.isSuccessful) {
                     throw IOException("pulse/popularArtists returned HTTP " + response.code)
                 }
-                val body = response.body
+                val body: okhttp3.ResponseBody? = response.body
                 if (body == null) {
                     throw IOException("pulse/popularArtists response had no body")
                 }
@@ -188,7 +188,7 @@ class PulseProtocol(
                 if (!response.isSuccessful) {
                     throw IOException("pulse/topPlaylists returned HTTP " + response.code)
                 }
-                val body = response.body
+                val body: okhttp3.ResponseBody? = response.body
                 if (body == null) {
                     throw IOException("pulse/topPlaylists response had no body")
                 }
