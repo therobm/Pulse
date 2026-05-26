@@ -490,6 +490,14 @@ namespace Pulse.SubsonicService
 			coverArt = albumInfo.CoverArtId;
 			year = albumInfo.Year;
 			genre = albumInfo.Genre;
+			// Sum track durations -- previously left at 0 so every album in
+			// getAlbumList2 / getArtist / search3 / starred2 reported 0:00.
+			long total = 0;
+			for (int trackIndex = 0; trackIndex < albumInfo.Tracks.Count; trackIndex++)
+			{
+				total = total + albumInfo.Tracks[trackIndex].DurationSeconds;
+			}
+			duration = (int)total;
 		}
 	}
 

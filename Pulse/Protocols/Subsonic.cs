@@ -590,15 +590,33 @@ namespace Pulse.SubsonicService
 
 		public IResult HandleGetStarred(HttpContext context)
 		{
+			// Spec returns starred artists + albums + songs (same as getStarred2).
+			// Previously only emitted songs (Flatline #155). Mirror the
+			// getStarred2 population so legacy clients see what they expect.
 			string userName = context.Request.Query["u"].FirstOrDefault() ?? "";
 
 			SubsonicResponseBody body = CreateResponse();
 			body.starred = new StarredContainer();
 
+			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+			for (int index = 0; index < allArtists.Count; index++)
+			{
+				ArtistInfo artist = allArtists[index];
+				if (artist.Starred.ContainsKey(userName) && artist.Starred[userName])
+				{
+					body.starred.artist.Add(new ArtistID3(artist));
+				}
+			}
+
 			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
 			for (int albumIndex = 0; albumIndex < allAlbums.Count; albumIndex++)
 			{
 				AlbumInfo album = allAlbums[albumIndex];
+				if (album.Starred.ContainsKey(userName) && album.Starred[userName])
+				{
+					body.starred.album.Add(new AlbumID3(album));
+				}
+
 				List<TrackInfo> tracks = album.Tracks;
 				for (int trackIndex = 0; trackIndex < tracks.Count; trackIndex++)
 				{
@@ -657,16 +675,145 @@ namespace Pulse.SubsonicService
 
 		public IResult HandleGetTopSongs(HttpContext context)
 		{
+			// Spec params: artist (name, required), count (default 50).
+			// Pulse derives "top" from per-track WeightedScore desc, then
+			// PlayCount desc as the tiebreaker. Previously returned an empty
+			// container regardless of input (Flatline #157).
+			string artistName = context.Request.Query["artist"].FirstOrDefault();
+			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "50");
+			if (count < 1) { count = 1; }
+			if (count > 500) { count = 500; }
+			string user = context.Request.Query["u"].FirstOrDefault();
+
 			SubsonicResponseBody body = CreateResponse();
 			body.topSongs = new TopSongsContainer();
+
+			if (string.IsNullOrEmpty(artistName))
+			{
+				return Respond(context, body);
+			}
+
+			// Case-insensitive artist-name match against ArtistInfo.Name.
+			ArtistInfo artist = null;
+			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+			for (int idx = 0; idx < allArtists.Count; idx++)
+			{
+				if (string.Equals(allArtists[idx].Name, artistName, StringComparison.OrdinalIgnoreCase))
+				{
+					artist = allArtists[idx];
+					break;
+				}
+			}
+			if (artist == null)
+			{
+				return Respond(context, body);
+			}
+
+			List<TrackInfo> tracks = new List<TrackInfo>();
+			for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
+			{
+				AlbumInfo album = artist.Albums[albumIndex];
+				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+				{
+					tracks.Add(album.Tracks[trackIndex]);
+				}
+			}
+			tracks.Sort(CompareTrackByTopSongsRank);
+
+			for (int idx = 0; idx < tracks.Count && body.topSongs.song.Count < count; idx++)
+			{
+				TrackInfo track = tracks[idx];
+				// Drop never-played tracks so callers don't get filler in
+				// "top songs" lists for artists with no listening history.
+				if (track.Score.PlayCount == 0 && track.Score.WeightedScore <= 0f)
+				{
+					break;
+				}
+				body.topSongs.song.Add(new SongID3(user, track));
+			}
+
 			return Respond(context, body);
+		}
+
+		private static int CompareTrackByTopSongsRank(TrackInfo left, TrackInfo right)
+		{
+			int byScore = right.Score.WeightedScore.CompareTo(left.Score.WeightedScore);
+			if (byScore != 0) { return byScore; }
+			return right.Score.PlayCount.CompareTo(left.Score.PlayCount);
 		}
 
 		public IResult HandleGetArtistInfo(HttpContext context)
 		{
+			// Pulse has no external metadata provider, so biography /
+			// musicBrainzId / lastFm / image URLs stay empty. similarArtist
+			// is derivable from in-memory state though (Flatline #158):
+			// other artists whose albums overlap on genre with this one,
+			// sorted by WeightedScore desc.
+			string id = context.Request.Query["id"].FirstOrDefault();
+			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "20");
+			if (count < 1) { count = 1; }
+			if (count > 100) { count = 100; }
+
 			SubsonicResponseBody body = CreateResponse();
 			body.artistInfo2 = new ArtistInfo2();
+
+			if (string.IsNullOrEmpty(id))
+			{
+				return Respond(context, body);
+			}
+
+			ArtistInfo subject = m_musicManager.GetArtist(id);
+			if (subject == null)
+			{
+				return Respond(context, body);
+			}
+
+			HashSet<string> subjectGenres = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			for (int albumIndex = 0; albumIndex < subject.Albums.Count; albumIndex++)
+			{
+				string g = subject.Albums[albumIndex].Genre;
+				if (!string.IsNullOrEmpty(g)) { subjectGenres.Add(g); }
+			}
+			if (subjectGenres.Count == 0)
+			{
+				return Respond(context, body);
+			}
+
+			List<ArtistInfo> candidates = new List<ArtistInfo>();
+			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+			for (int idx = 0; idx < allArtists.Count; idx++)
+			{
+				ArtistInfo other = allArtists[idx];
+				if (other.Id == subject.Id) { continue; }
+				bool genreOverlap = false;
+				for (int otherAlbumIndex = 0; otherAlbumIndex < other.Albums.Count; otherAlbumIndex++)
+				{
+					string g = other.Albums[otherAlbumIndex].Genre;
+					if (!string.IsNullOrEmpty(g) && subjectGenres.Contains(g))
+					{
+						genreOverlap = true;
+						break;
+					}
+				}
+				if (genreOverlap)
+				{
+					candidates.Add(other);
+				}
+			}
+			candidates.Sort(CompareArtistByWeightedScoreDescending);
+
+			int take = Math.Min(count, candidates.Count);
+			for (int idx = 0; idx < take; idx++)
+			{
+				body.artistInfo2.similarArtist.Add(new ArtistID3(candidates[idx]));
+			}
+
 			return Respond(context, body);
+		}
+
+		private static int CompareArtistByWeightedScoreDescending(ArtistInfo left, ArtistInfo right)
+		{
+			return right.WeightedScore.CompareTo(left.WeightedScore);
 		}
 
 		public IResult HandleSetRating(HttpContext context)
@@ -795,6 +942,17 @@ namespace Pulse.SubsonicService
 			body.artist.id = source.Id;
 			body.artist.name = source.Name;
 			body.artist.albumCount = source.Albums.Count;
+			// Spec coverArt for the artist (Flatline #154). Previously unset
+			// so client artist screens had no avatar source. First album with
+			// a non-empty CoverArtId wins; matches the ArtistID3 ctor pattern.
+			for (int coverIndex = 0; coverIndex < source.Albums.Count; coverIndex++)
+			{
+				if (!string.IsNullOrEmpty(source.Albums[coverIndex].CoverArtId))
+				{
+					body.artist.coverArt = source.Albums[coverIndex].CoverArtId;
+					break;
+				}
+			}
 
 			for (int index = 0; index < source.Albums.Count; index++)
 			{
@@ -849,9 +1007,14 @@ namespace Pulse.SubsonicService
 		}
 		public IResult HandleGetAlbumList2(HttpContext context)
 		{
+			// Honors every spec type value (Flatline #156). Previously only
+			// newest / random did anything; everything else silently fell
+			// through to "whatever order we had". Each branch derives its
+			// ranking on the fly from in-memory state -- no schema changes.
 			string type = context.Request.Query["type"].FirstOrDefault() ?? "random";
 			int size = int.Parse(context.Request.Query["size"].FirstOrDefault() ?? "20");
 			int offset = int.Parse(context.Request.Query["offset"].FirstOrDefault() ?? "0");
+			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
 
 			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
 
@@ -870,7 +1033,157 @@ namespace Pulse.SubsonicService
 					allAlbums[swapIndex] = temp;
 				}
 			}
-			// "frequent", "recent", "byYear" all just return whatever we have for now
+			else if (type == "alphabeticalByName")
+			{
+				allAlbums.Sort(CompareAlbumByName);
+			}
+			else if (type == "alphabeticalByArtist")
+			{
+				allAlbums.Sort(CompareAlbumByArtistThenName);
+			}
+			else if (type == "frequent")
+			{
+				// Sum play counts across each album's tracks, sort desc, drop zeros.
+				List<KeyValuePair<AlbumInfo, int>> scored = new List<KeyValuePair<AlbumInfo, int>>();
+				for (int idx = 0; idx < allAlbums.Count; idx++)
+				{
+					AlbumInfo album = allAlbums[idx];
+					int total = 0;
+					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+					{
+						total = total + album.Tracks[trackIndex].Score.PlayCount;
+					}
+					if (total > 0)
+					{
+						scored.Add(new KeyValuePair<AlbumInfo, int>(album, total));
+					}
+				}
+				scored.Sort(CompareAlbumPlayCountDescending);
+				allAlbums = new List<AlbumInfo>();
+				for (int idx = 0; idx < scored.Count; idx++)
+				{
+					allAlbums.Add(scored[idx].Key);
+				}
+			}
+			else if (type == "recent")
+			{
+				// Most-recent track LastPlayed across the album. Albums no tracks
+				// have been played in get dropped (no recency signal at all).
+				List<KeyValuePair<AlbumInfo, DateTime>> scored = new List<KeyValuePair<AlbumInfo, DateTime>>();
+				for (int idx = 0; idx < allAlbums.Count; idx++)
+				{
+					AlbumInfo album = allAlbums[idx];
+					DateTime mostRecent = default(DateTime);
+					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+					{
+						DateTime trackPlayed = album.Tracks[trackIndex].LastPlayed;
+						if (trackPlayed > mostRecent)
+						{
+							mostRecent = trackPlayed;
+						}
+					}
+					if (mostRecent != default(DateTime))
+					{
+						scored.Add(new KeyValuePair<AlbumInfo, DateTime>(album, mostRecent));
+					}
+				}
+				scored.Sort(CompareAlbumDateDescending);
+				allAlbums = new List<AlbumInfo>();
+				for (int idx = 0; idx < scored.Count; idx++)
+				{
+					allAlbums.Add(scored[idx].Key);
+				}
+			}
+			else if (type == "byYear")
+			{
+				int fromYear = int.MinValue;
+				int toYear = int.MaxValue;
+				int parsed;
+				if (int.TryParse(context.Request.Query["fromYear"].FirstOrDefault(), out parsed)) { fromYear = parsed; }
+				if (int.TryParse(context.Request.Query["toYear"].FirstOrDefault(), out parsed)) { toYear = parsed; }
+				List<AlbumInfo> filtered = new List<AlbumInfo>();
+				for (int idx = 0; idx < allAlbums.Count; idx++)
+				{
+					AlbumInfo album = allAlbums[idx];
+					if (album.Year >= fromYear && album.Year <= toYear)
+					{
+						filtered.Add(album);
+					}
+				}
+				// Spec: ascending if fromYear <= toYear, descending if reversed.
+				if (fromYear <= toYear)
+				{
+					filtered.Sort(CompareAlbumYearAscending);
+				}
+				else
+				{
+					filtered.Sort(CompareAlbumYearDescending);
+				}
+				allAlbums = filtered;
+			}
+			else if (type == "byGenre")
+			{
+				string genre = context.Request.Query["genre"].FirstOrDefault();
+				List<AlbumInfo> filtered = new List<AlbumInfo>();
+				if (!string.IsNullOrEmpty(genre))
+				{
+					for (int idx = 0; idx < allAlbums.Count; idx++)
+					{
+						AlbumInfo album = allAlbums[idx];
+						if (!string.IsNullOrEmpty(album.Genre) && string.Equals(album.Genre, genre, StringComparison.OrdinalIgnoreCase))
+						{
+							filtered.Add(album);
+						}
+					}
+				}
+				allAlbums = filtered;
+			}
+			else if (type == "starred")
+			{
+				List<AlbumInfo> filtered = new List<AlbumInfo>();
+				for (int idx = 0; idx < allAlbums.Count; idx++)
+				{
+					AlbumInfo album = allAlbums[idx];
+					bool isStarred;
+					if (album.Starred.TryGetValue(user, out isStarred) && isStarred)
+					{
+						filtered.Add(album);
+					}
+				}
+				allAlbums = filtered;
+			}
+			else if (type == "highest")
+			{
+				// Spec: highest user-rated albums. Pulse only has per-track
+				// Rating, so average it across each album. Albums with no
+				// rated tracks fall off the end.
+				List<KeyValuePair<AlbumInfo, float>> scored = new List<KeyValuePair<AlbumInfo, float>>();
+				for (int idx = 0; idx < allAlbums.Count; idx++)
+				{
+					AlbumInfo album = allAlbums[idx];
+					float total = 0f;
+					int rated = 0;
+					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+					{
+						int r = album.Tracks[trackIndex].Rating;
+						if (r > 0)
+						{
+							total = total + r;
+							rated++;
+						}
+					}
+					if (rated > 0)
+					{
+						scored.Add(new KeyValuePair<AlbumInfo, float>(album, total / rated));
+					}
+				}
+				scored.Sort(CompareAlbumFloatDescending);
+				allAlbums = new List<AlbumInfo>();
+				for (int idx = 0; idx < scored.Count; idx++)
+				{
+					allAlbums.Add(scored[idx].Key);
+				}
+			}
 
 			SubsonicResponseBody body = CreateResponse();
 			body.albumList2 = new AlbumList2();
@@ -885,6 +1198,39 @@ namespace Pulse.SubsonicService
 			}
 
 			return Respond(context, body);
+		}
+
+		// ---- helpers for HandleGetAlbumList2 (#156) ----
+		private static int CompareAlbumByName(AlbumInfo left, AlbumInfo right)
+		{
+			return string.Compare(left.Name ?? "", right.Name ?? "", StringComparison.OrdinalIgnoreCase);
+		}
+
+		private static int CompareAlbumByArtistThenName(AlbumInfo left, AlbumInfo right)
+		{
+			int byArtist = string.Compare(left.ArtistName ?? "", right.ArtistName ?? "", StringComparison.OrdinalIgnoreCase);
+			if (byArtist != 0) { return byArtist; }
+			return string.Compare(left.Name ?? "", right.Name ?? "", StringComparison.OrdinalIgnoreCase);
+		}
+
+		private static int CompareAlbumYearAscending(AlbumInfo left, AlbumInfo right)
+		{
+			return left.Year.CompareTo(right.Year);
+		}
+
+		private static int CompareAlbumPlayCountDescending(KeyValuePair<AlbumInfo, int> left, KeyValuePair<AlbumInfo, int> right)
+		{
+			return right.Value.CompareTo(left.Value);
+		}
+
+		private static int CompareAlbumDateDescending(KeyValuePair<AlbumInfo, DateTime> left, KeyValuePair<AlbumInfo, DateTime> right)
+		{
+			return right.Value.CompareTo(left.Value);
+		}
+
+		private static int CompareAlbumFloatDescending(KeyValuePair<AlbumInfo, float> left, KeyValuePair<AlbumInfo, float> right)
+		{
+			return right.Value.CompareTo(left.Value);
 		}
 
 		public IResult HandleGetGenres(HttpContext context)
