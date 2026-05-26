@@ -112,6 +112,7 @@ class SubsonicProtocol(
                         name = rawArtist.name,
                         albumCount = albumCountValue,
                         coverArtId = rawArtist.coverArt,
+                        albums = emptyList<Album>(),
                     )
                 )
             }
@@ -131,6 +132,7 @@ class SubsonicProtocol(
                 name = "",
                 albumCount = 0,
                 coverArtId = null,
+                albums = emptyList<Album>(),
             )
         }
         val albumCountValue: Int
@@ -139,18 +141,35 @@ class SubsonicProtocol(
         } else {
             albumCountValue = artistPayload.albumCount
         }
+        val translatedAlbums: ArrayList<Album> = ArrayList<Album>(artistPayload.album.size)
+        val albumCountForLoop: Int = artistPayload.album.size
+        for (albumIndex in 0 until albumCountForLoop) {
+            translatedAlbums.add(translateArtistAlbum(artistPayload.album[albumIndex], artistPayload.name))
+        }
         return Artist(
             artistId = artistPayload.id,
             name = artistPayload.name,
             albumCount = albumCountValue,
             coverArtId = artistPayload.coverArt,
+            albums = translatedAlbums,
         )
     }
 
     override suspend fun getArtistTracks(artistId: String): List<Track> {
-        // Skeleton stub. Real fan-out (call getArtist, then getAlbum per album) lands when the
-        // ArtistDetail screen is ported to ThumpData.
-        return emptyList<Track>()
+        // Standard Subsonic has no single endpoint for "every track by artist", so this fans out
+        // getAlbum per album in the artist's album list and concatenates the results in the
+        // order getArtist returned the albums. PulseProtocol overrides with the pulse/artistTracks
+        // fast path.
+        val artist: Artist = getArtist(artistId)
+        val albumsForArtist: List<Album> = artist.albums
+        val combinedTracks: ArrayList<Track> = ArrayList<Track>()
+        val albumCount: Int = albumsForArtist.size
+        for (albumIndex in 0 until albumCount) {
+            val albumSummary: Album = albumsForArtist[albumIndex]
+            val albumDetail: Album = getAlbum(albumSummary.albumId)
+            combinedTracks.addAll(albumDetail.tracks)
+        }
+        return combinedTracks
     }
 
     override suspend fun getAlbum(albumId: String): Album {
@@ -418,6 +437,7 @@ class SubsonicProtocol(
                     name = rawArtist.name,
                     albumCount = albumCountValue,
                     coverArtId = rawArtist.coverArt,
+                    albums = emptyList<Album>(),
                 )
             )
         }
@@ -627,6 +647,22 @@ class SubsonicProtocol(
             name = raw.name,
             albumCount = albumCountValue,
             coverArtId = raw.coverArt,
+            albums = emptyList<Album>(),
+        )
+    }
+
+    private fun translateArtistAlbum(rawAlbum: SubsonicArtistAlbum, artistName: String): Album {
+        return Album(
+            albumId = rawAlbum.id,
+            name = rawAlbum.name,
+            artistName = artistName,
+            artistId = null,
+            year = rawAlbum.year,
+            genre = null,
+            durationSeconds = rawAlbum.duration,
+            songCount = rawAlbum.songCount,
+            coverArtId = rawAlbum.coverArt,
+            tracks = emptyList<Track>(),
         )
     }
 

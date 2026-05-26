@@ -193,6 +193,19 @@ private fun ThumpApp() {
             playbackController.playQueue(items, startIndex, source)
         }
 
+        // Wraps the list-of-Track callback the detail screens emit. The screens no longer build
+        // PlaybackQueueItems themselves; MainActivity walks the domain Track list, calls the
+        // legacy SubsonicClient URL builders, and hands the assembled queue to PlaybackController.
+        // This goes away once the audio path is ported to ThumpData (a follow-up).
+        val onPlayTracks: (List<Track>, Int, PlaybackSource?) -> Unit = {
+            tracks: List<Track>, startIndex: Int, source: PlaybackSource? ->
+            val currentSubsonicClient: SubsonicClient? = subsonicClient
+            if (currentSubsonicClient != null && tracks.isNotEmpty()) {
+                val queueItems: List<PlaybackQueueItem> = buildQueueItemsFromTracks(tracks, currentSubsonicClient)
+                playbackController.playQueue(queueItems, startIndex, source)
+            }
+        }
+
         val playPlaylistScope: CoroutineScope = rememberCoroutineScope()
         val onPlayPlaylist: (String, String) -> Unit = { playlistId: String, playlistName: String ->
             val currentSubsonicClient: SubsonicClient? = subsonicClient
@@ -367,9 +380,9 @@ private fun ThumpApp() {
                     if (subsonicClient != null && albumIdArgument != null) {
                         AlbumDetailScreen(
                             albumId = albumIdArgument,
-                            subsonicClient = subsonicClient,
+                            thumpData = thumpData,
                             onBackPressed = { navController.popBackStack() },
-                            onPlayQueue = onPlayQueue,
+                            onPlayTracks = onPlayTracks,
                             contentPadding = innerPadding,
                             modifier = Modifier,
                         )
@@ -389,9 +402,9 @@ private fun ThumpApp() {
                     if (subsonicClient != null && playlistIdArgument != null) {
                         PlaylistDetailScreen(
                             playlistId = playlistIdArgument,
-                            subsonicClient = subsonicClient,
+                            thumpData = thumpData,
                             onBackPressed = { navController.popBackStack() },
-                            onPlayQueue = onPlayQueue,
+                            onPlayTracks = onPlayTracks,
                             contentPadding = innerPadding,
                             modifier = Modifier,
                         )
@@ -411,13 +424,12 @@ private fun ThumpApp() {
                     if (subsonicClient != null && artistIdArgument != null) {
                         ArtistDetailScreen(
                             artistId = artistIdArgument,
-                            subsonicClient = subsonicClient,
-                            isPulseServer = isPulseServer,
+                            thumpData = thumpData,
                             onBackPressed = { navController.popBackStack() },
                             onAlbumSelected = { selectedAlbumId: String ->
                                 navController.navigate(buildAlbumRoute(selectedAlbumId))
                             },
-                            onPlayQueue = onPlayQueue,
+                            onPlayTracks = onPlayTracks,
                             contentPadding = innerPadding,
                             modifier = Modifier,
                         )
@@ -443,9 +455,9 @@ private fun ThumpApp() {
                     if (subsonicClient != null && decodedGenreName != null) {
                         GenreDetailScreen(
                             genreName = decodedGenreName,
-                            subsonicClient = subsonicClient,
+                            thumpData = thumpData,
                             onBackPressed = { navController.popBackStack() },
-                            onPlayQueue = onPlayQueue,
+                            onPlayTracks = onPlayTracks,
                             contentPadding = innerPadding,
                             modifier = Modifier,
                         )
@@ -637,6 +649,48 @@ private fun buildJsonDecoder(): Json {
     return Json {
         ignoreUnknownKeys = true
     }
+}
+
+/**
+ * Walk a list of domain Tracks and build PlaybackQueueItems for each, using the legacy
+ * SubsonicClient URL builders. Detail screens emit `List<Track>` callbacks; MainActivity does
+ * the URL assembly here so the screens never see a SubsonicClient. Goes away once the audio
+ * path moves through ThumpData.
+ */
+private fun buildQueueItemsFromTracks(
+    tracks: List<Track>,
+    subsonicClient: SubsonicClient,
+): List<PlaybackQueueItem> {
+    val queueItems: ArrayList<PlaybackQueueItem> = ArrayList<PlaybackQueueItem>(tracks.size)
+    val trackCount: Int = tracks.size
+    for (trackIndex in 0 until trackCount) {
+        val track: Track = tracks[trackIndex]
+        val coverArtUrl: String?
+        val coverArtId: String? = track.coverArtId
+        if (coverArtId == null) {
+            coverArtUrl = null
+        } else {
+            coverArtUrl = subsonicClient.buildCoverArtUrl(coverArtId, QUEUE_ITEM_ART_REQUEST_SIZE_PX)
+        }
+        val artistText: String
+        val trackArtistName: String? = track.artistName
+        if (trackArtistName == null) {
+            artistText = ""
+        } else {
+            artistText = trackArtistName
+        }
+        queueItems.add(
+            PlaybackQueueItem(
+                trackId = track.trackId,
+                streamUrl = subsonicClient.buildStreamUrl(track.trackId),
+                title = track.title,
+                artist = artistText,
+                album = track.albumName,
+                coverArtUrl = coverArtUrl,
+            )
+        )
+    }
+    return queueItems
 }
 
 /**

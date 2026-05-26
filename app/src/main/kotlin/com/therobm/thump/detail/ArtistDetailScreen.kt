@@ -3,7 +3,6 @@ package com.therobm.thump.detail
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -40,52 +39,46 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.therobm.thump.ThumpColors
-import com.therobm.thump.playback.PlaybackQueueItem
+import com.therobm.thump.art.ArtImage
+import com.therobm.thump.data.Album
+import com.therobm.thump.data.Artist
+import com.therobm.thump.data.ThumpData
+import com.therobm.thump.data.ThumpDataNotConfigured
+import com.therobm.thump.data.Track
 import com.therobm.thump.playback.PlaybackSource
 import com.therobm.thump.playback.PlaybackSourceKind
-import com.therobm.thump.subsonic.PulseRecentlyPlayedTrack
-import com.therobm.thump.subsonic.StandardArtistAlbum
-import com.therobm.thump.subsonic.StandardArtistDetailPayload
-import com.therobm.thump.subsonic.StandardSongDetail
-import com.therobm.thump.subsonic.SubsonicClient
-import com.therobm.thump.subsonic.SubsonicResult
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import java.io.IOException
 
 private const val ARTIST_ART_REQUEST_SIZE: Int = 400
 private const val ALBUM_ROW_ART_REQUEST_SIZE: Int = 200
-private const val QUEUE_ITEM_ART_REQUEST_SIZE: Int = 200
+private const val NO_SERVER_CONFIGURED_MESSAGE: String = "No server configured"
 
 @Composable
 fun ArtistDetailScreen(
     artistId: String,
-    subsonicClient: SubsonicClient,
-    isPulseServer: Boolean,
+    thumpData: ThumpData,
     onBackPressed: () -> Unit,
     onAlbumSelected: (String) -> Unit,
-    onPlayQueue: (List<PlaybackQueueItem>, Int, PlaybackSource?) -> Unit,
+    onPlayTracks: (tracks: List<Track>, startIndex: Int, source: PlaybackSource?) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier,
 ) {
-    var loadState: DetailLoadState<StandardArtistDetailPayload> by remember(artistId) {
-        mutableStateOf(DetailLoadState.Loading)
+    var loadState: DetailLoadState<Artist> by remember(artistId) {
+        mutableStateOf<DetailLoadState<Artist>>(DetailLoadState.Loading)
     }
-    var isLoadingTracks by remember(artistId) { mutableStateOf(false) }
-    var loadTracksError: String? by remember(artistId) { mutableStateOf(null) }
+    var isLoadingTracks: Boolean by remember(artistId) { mutableStateOf(false) }
+    var loadTracksError: String? by remember(artistId) { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(artistId, subsonicClient) {
-        val result = subsonicClient.getArtist(artistId)
-        when (result) {
-            is SubsonicResult.Ok -> {
-                loadState = DetailLoadState.Loaded(result.value)
-            }
-            else -> {
-                loadState = DetailLoadState.Failed(describeSubsonicFailure(result))
-            }
+    LaunchedEffect(artistId, thumpData) {
+        try {
+            val artist: Artist = thumpData.getArtist(artistId)
+            loadState = DetailLoadState.Loaded(artist)
+        } catch (notConfigured: ThumpDataNotConfigured) {
+            loadState = DetailLoadState.Failed(NO_SERVER_CONFIGURED_MESSAGE)
+        } catch (transportFailure: IOException) {
+            loadState = DetailLoadState.Failed("Network error: " + transportFailure.javaClass.simpleName)
         }
     }
 
@@ -99,7 +92,7 @@ fun ArtistDetailScreen(
     ) {
         DetailTopBar(title = "Artist", onBackPressed = onBackPressed)
 
-        val currentLoadState = loadState
+        val currentLoadState: DetailLoadState<Artist> = loadState
         when (currentLoadState) {
             is DetailLoadState.Loading -> {
                 CenteredSpinner()
@@ -112,9 +105,10 @@ fun ArtistDetailScreen(
                 )
             }
             is DetailLoadState.Loaded -> {
+                val loadedArtist: Artist = currentLoadState.value
                 ArtistDetailContent(
-                    artist = currentLoadState.value,
-                    subsonicClient = subsonicClient,
+                    artist = loadedArtist,
+                    thumpData = thumpData,
                     isLoadingTracks = isLoadingTracks,
                     loadTracksError = loadTracksError,
                     onAlbumSelected = onAlbumSelected,
@@ -122,24 +116,16 @@ fun ArtistDetailScreen(
                         loadTracksError = null
                         isLoadingTracks = true
                         coroutineScope.launch {
-                            val queueResult = buildArtistQueue(
-                                artist = currentLoadState.value,
-                                subsonicClient = subsonicClient,
-                                isPulseServer = isPulseServer,
-                            )
-                            when (queueResult) {
-                                is QueueBuildResult.Ok -> {
-                                    if (queueResult.items.isNotEmpty()) {
-                                        onPlayQueue(
-                                            queueResult.items,
-                                            0,
-                                            PlaybackSource(PlaybackSourceKind.Artist, currentLoadState.value.name),
-                                        )
-                                    }
+                            val source: PlaybackSource = PlaybackSource(PlaybackSourceKind.Artist, loadedArtist.name)
+                            try {
+                                val tracks: List<Track> = thumpData.getArtistTracks(loadedArtist.artistId)
+                                if (tracks.isNotEmpty()) {
+                                    onPlayTracks(tracks, 0, source)
                                 }
-                                is QueueBuildResult.Failed -> {
-                                    loadTracksError = queueResult.message
-                                }
+                            } catch (notConfigured: ThumpDataNotConfigured) {
+                                loadTracksError = NO_SERVER_CONFIGURED_MESSAGE
+                            } catch (transportFailure: IOException) {
+                                loadTracksError = "Network error: " + transportFailure.javaClass.simpleName
                             }
                             isLoadingTracks = false
                         }
@@ -148,24 +134,16 @@ fun ArtistDetailScreen(
                         loadTracksError = null
                         isLoadingTracks = true
                         coroutineScope.launch {
-                            val queueResult = buildArtistQueue(
-                                artist = currentLoadState.value,
-                                subsonicClient = subsonicClient,
-                                isPulseServer = isPulseServer,
-                            )
-                            when (queueResult) {
-                                is QueueBuildResult.Ok -> {
-                                    if (queueResult.items.isNotEmpty()) {
-                                        onPlayQueue(
-                                            queueResult.items.shuffled(),
-                                            0,
-                                            PlaybackSource(PlaybackSourceKind.Artist, currentLoadState.value.name),
-                                        )
-                                    }
+                            val source: PlaybackSource = PlaybackSource(PlaybackSourceKind.Artist, loadedArtist.name)
+                            try {
+                                val tracks: List<Track> = thumpData.getArtistTracks(loadedArtist.artistId)
+                                if (tracks.isNotEmpty()) {
+                                    onPlayTracks(tracks.shuffled(), 0, source)
                                 }
-                                is QueueBuildResult.Failed -> {
-                                    loadTracksError = queueResult.message
-                                }
+                            } catch (notConfigured: ThumpDataNotConfigured) {
+                                loadTracksError = NO_SERVER_CONFIGURED_MESSAGE
+                            } catch (transportFailure: IOException) {
+                                loadTracksError = "Network error: " + transportFailure.javaClass.simpleName
                             }
                             isLoadingTracks = false
                         }
@@ -178,31 +156,14 @@ fun ArtistDetailScreen(
 
 @Composable
 private fun ArtistDetailContent(
-    artist: StandardArtistDetailPayload,
-    subsonicClient: SubsonicClient,
+    artist: Artist,
+    thumpData: ThumpData,
     isLoadingTracks: Boolean,
     loadTracksError: String?,
     onAlbumSelected: (String) -> Unit,
     onPlayClicked: () -> Unit,
     onShuffleClicked: () -> Unit,
 ) {
-    // Subsonic getArtist often returns no artist-level coverArt (e.g. when the server doesn't
-    // synthesize one). Fall back to the first album's cover so the portrait isn't blank.
-    val resolvedArtistArtId: String?
-    if (artist.coverArt != null) {
-        resolvedArtistArtId = artist.coverArt
-    } else if (artist.album.isNotEmpty()) {
-        resolvedArtistArtId = artist.album[0].coverArt
-    } else {
-        resolvedArtistArtId = null
-    }
-    val artistArtUrl: String?
-    if (resolvedArtistArtId == null) {
-        artistArtUrl = null
-    } else {
-        artistArtUrl = subsonicClient.buildCoverArtUrl(resolvedArtistArtId, ARTIST_ART_REQUEST_SIZE)
-    }
-
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 24.dp),
@@ -214,19 +175,16 @@ private fun ArtistDetailContent(
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                val portraitModifier = Modifier
+                val portraitModifier: Modifier = Modifier
                     .size(180.dp)
                     .clip(CircleShape)
-                    .background(ThumpColors.Surface)
-                if (artistArtUrl == null) {
-                    Box(modifier = portraitModifier)
-                } else {
-                    AsyncImage(
-                        model = artistArtUrl,
-                        contentDescription = null,
-                        modifier = portraitModifier,
-                    )
-                }
+                ArtImage(
+                    thumpData = thumpData,
+                    artId = artist.coverArtId,
+                    sizePx = ARTIST_ART_REQUEST_SIZE,
+                    contentDescription = null,
+                    modifier = portraitModifier,
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -235,7 +193,7 @@ private fun ArtistDetailContent(
                     color = ThumpColors.OnBackground,
                     textAlign = TextAlign.Center,
                 )
-                if (artist.albumCount != null && artist.albumCount > 0) {
+                if (artist.albumCount > 0) {
                     Text(
                         text = artist.albumCount.toString() + " albums",
                         style = MaterialTheme.typography.bodySmall,
@@ -285,11 +243,11 @@ private fun ArtistDetailContent(
             }
         }
 
-        items(items = artist.album, key = { album -> album.id }) { album: StandardArtistAlbum ->
+        items(items = artist.albums, key = { album: Album -> album.albumId }) { album: Album ->
             ArtistAlbumRow(
                 album = album,
-                subsonicClient = subsonicClient,
-                onTapped = { onAlbumSelected(album.id) },
+                thumpData = thumpData,
+                onTapped = { onAlbumSelected(album.albumId) },
             )
         }
     }
@@ -297,18 +255,10 @@ private fun ArtistDetailContent(
 
 @Composable
 private fun ArtistAlbumRow(
-    album: StandardArtistAlbum,
-    subsonicClient: SubsonicClient,
+    album: Album,
+    thumpData: ThumpData,
     onTapped: () -> Unit,
 ) {
-    val coverArtUrl: String?
-    val coverArtId = album.coverArt
-    if (coverArtId == null) {
-        coverArtUrl = null
-    } else {
-        coverArtUrl = subsonicClient.buildCoverArtUrl(coverArtId, ALBUM_ROW_ART_REQUEST_SIZE)
-    }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -317,19 +267,16 @@ private fun ArtistAlbumRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        val artModifier = Modifier
+        val artModifier: Modifier = Modifier
             .size(64.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(ThumpColors.Surface)
-        if (coverArtUrl == null) {
-            Box(modifier = artModifier)
-        } else {
-            AsyncImage(
-                model = coverArtUrl,
-                contentDescription = null,
-                modifier = artModifier,
-            )
-        }
+        ArtImage(
+            thumpData = thumpData,
+            artId = album.coverArtId,
+            sizePx = ALBUM_ROW_ART_REQUEST_SIZE,
+            contentDescription = null,
+            modifier = artModifier,
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = album.name,
@@ -338,7 +285,7 @@ private fun ArtistAlbumRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val subtitle = buildAlbumRowSubtitle(album)
+            val subtitle: String = buildAlbumRowSubtitle(album)
             if (subtitle.isNotEmpty()) {
                 Text(
                     text = subtitle,
@@ -352,8 +299,8 @@ private fun ArtistAlbumRow(
     }
 }
 
-private fun buildAlbumRowSubtitle(album: StandardArtistAlbum): String {
-    val parts = ArrayList<String>(2)
+private fun buildAlbumRowSubtitle(album: Album): String {
+    val parts: ArrayList<String> = ArrayList<String>(2)
     if (album.year != null) {
         parts.add(album.year.toString())
     }
@@ -361,137 +308,4 @@ private fun buildAlbumRowSubtitle(album: StandardArtistAlbum): String {
         parts.add(album.songCount.toString() + " tracks")
     }
     return parts.joinToString(separator = " • ")
-}
-
-/**
- * Result of an artist-tracks load. Held internally to keep the call sites readable; only the
- * QueueBuildResult.Ok branch carries a queue worth playing.
- */
-private sealed interface QueueBuildResult {
-    data class Ok(val items: List<PlaybackQueueItem>) : QueueBuildResult
-    data class Failed(val message: String) : QueueBuildResult
-}
-
-/**
- * Load every track for the artist. On Pulse, one call to pulse/artistTracks. On standard
- * OpenSubsonic, fan out getAlbum per album in parallel and concatenate in the order the
- * albums were returned by getArtist.
- */
-private suspend fun buildArtistQueue(
-    artist: StandardArtistDetailPayload,
-    subsonicClient: SubsonicClient,
-    isPulseServer: Boolean,
-): QueueBuildResult {
-    if (isPulseServer) {
-        val pulseResult = subsonicClient.getPulseArtistTracks(artist.id)
-        return when (pulseResult) {
-            is SubsonicResult.Ok -> {
-                QueueBuildResult.Ok(mapPulseTracksToQueue(pulseResult.value, subsonicClient))
-            }
-            else -> {
-                QueueBuildResult.Failed(describeSubsonicFailure(pulseResult))
-            }
-        }
-    }
-
-    val albums = artist.album
-    val albumCount = albums.size
-    if (albumCount == 0) {
-        return QueueBuildResult.Ok(emptyList())
-    }
-    val combined = ArrayList<PlaybackQueueItem>()
-    val albumResults: List<SubsonicResult<com.therobm.thump.subsonic.StandardAlbumDetailPayload>> = coroutineScope {
-        val deferreds = ArrayList<Deferred<SubsonicResult<com.therobm.thump.subsonic.StandardAlbumDetailPayload>>>(albumCount)
-        for (albumIndex in 0 until albumCount) {
-            val albumIdForFetch = albums[albumIndex].id
-            deferreds.add(async { subsonicClient.getAlbum(albumIdForFetch) })
-        }
-        val collected = ArrayList<SubsonicResult<com.therobm.thump.subsonic.StandardAlbumDetailPayload>>(albumCount)
-        val deferredCount = deferreds.size
-        for (deferredIndex in 0 until deferredCount) {
-            collected.add(deferreds[deferredIndex].await())
-        }
-        collected
-    }
-
-    val resultCount = albumResults.size
-    for (resultIndex in 0 until resultCount) {
-        val singleResult = albumResults[resultIndex]
-        if (singleResult is SubsonicResult.Ok) {
-            val payload = singleResult.value
-            combined.addAll(mapStandardSongsToQueue(payload.song, payload.name, subsonicClient))
-        }
-    }
-    return QueueBuildResult.Ok(combined)
-}
-
-private fun mapPulseTracksToQueue(
-    tracks: List<PulseRecentlyPlayedTrack>,
-    subsonicClient: SubsonicClient,
-): List<PlaybackQueueItem> {
-    val result = ArrayList<PlaybackQueueItem>(tracks.size)
-    val trackCount = tracks.size
-    for (trackIndex in 0 until trackCount) {
-        val track = tracks[trackIndex]
-        val coverArtUrl: String?
-        val coverArtId = track.coverArt
-        if (coverArtId == null) {
-            coverArtUrl = null
-        } else {
-            coverArtUrl = subsonicClient.buildCoverArtUrl(coverArtId, QUEUE_ITEM_ART_REQUEST_SIZE)
-        }
-        val artistText: String
-        if (track.artist == null) {
-            artistText = ""
-        } else {
-            artistText = track.artist
-        }
-        result.add(
-            PlaybackQueueItem(
-                trackId = track.id,
-                streamUrl = subsonicClient.buildStreamUrl(track.id),
-                title = track.title,
-                artist = artistText,
-                album = track.album,
-                coverArtUrl = coverArtUrl,
-            )
-        )
-    }
-    return result
-}
-
-private fun mapStandardSongsToQueue(
-    songs: List<StandardSongDetail>,
-    albumName: String,
-    subsonicClient: SubsonicClient,
-): List<PlaybackQueueItem> {
-    val result = ArrayList<PlaybackQueueItem>(songs.size)
-    val songCount = songs.size
-    for (songIndex in 0 until songCount) {
-        val song = songs[songIndex]
-        val coverArtUrl: String?
-        val coverArtId = song.coverArt
-        if (coverArtId == null) {
-            coverArtUrl = null
-        } else {
-            coverArtUrl = subsonicClient.buildCoverArtUrl(coverArtId, QUEUE_ITEM_ART_REQUEST_SIZE)
-        }
-        val artistText: String
-        if (song.artist == null) {
-            artistText = ""
-        } else {
-            artistText = song.artist
-        }
-        result.add(
-            PlaybackQueueItem(
-                trackId = song.id,
-                streamUrl = subsonicClient.buildStreamUrl(song.id),
-                title = song.title,
-                artist = artistText,
-                album = albumName,
-                coverArtUrl = coverArtUrl,
-            )
-        )
-    }
-    return result
 }

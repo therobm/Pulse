@@ -36,10 +36,36 @@ class PulseProtocol(
     }
 
     override suspend fun getArtistTracks(artistId: String): List<Track> {
-        // Pulse has `pulse/artistTracks?id=` which avoids the per-album fan-out. Skeleton step
-        // leaves the call stubbed via the Subsonic fallback so the IProtocol contract is met
-        // without committing to wire details before the screen is ported.
-        return subsonicFallback.getArtistTracks(artistId)
+        // Pulse fast path: pulse/artistTracks returns every track for an artist in
+        // (album-index, track-number) order in a single call, avoiding the per-album fan-out
+        // the Subsonic fallback has to do.
+        val pulseUrl: String = subsonicFallback.buildAuthenticatedUrl(
+            pathAfterBase = "pulse/artistTracks",
+            extraQueryParameters = mapOf("id" to artistId),
+        )
+        val request: Request = Request.Builder().url(pulseUrl).get().build()
+        val responseBodyText: String = withContext(Dispatchers.IO) {
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("pulse/artistTracks returned HTTP " + response.code)
+                }
+                val body: okhttp3.ResponseBody? = response.body
+                if (body == null) {
+                    throw IOException("pulse/artistTracks response had no body")
+                }
+                body.string()
+            }
+        }
+        val parsed: PulseArtistTracksWire = jsonDecoder.decodeFromString(
+            PulseArtistTracksWire.serializer(),
+            responseBodyText,
+        )
+        val trackCount: Int = parsed.tracks.size
+        val collected: ArrayList<Track> = ArrayList<Track>(trackCount)
+        for (trackIndex in 0 until trackCount) {
+            collected.add(translatePulseArtistTrack(parsed.tracks[trackIndex]))
+        }
+        return collected
     }
 
     override suspend fun getAlbum(albumId: String): Album {
@@ -214,6 +240,33 @@ class PulseProtocol(
             name = nameValue,
             albumCount = albumCountValue,
             coverArtId = raw.coverArt,
+            albums = emptyList<Album>(),
+        )
+    }
+
+    private fun translatePulseArtistTrack(raw: PulseArtistTrackWire): Track {
+        val titleValue: String
+        if (raw.title == null) {
+            titleValue = ""
+        } else {
+            titleValue = raw.title
+        }
+        return Track(
+            trackId = raw.id,
+            title = titleValue,
+            artistName = raw.artist,
+            artistId = raw.artistId,
+            albumName = raw.album,
+            albumId = raw.albumId,
+            trackNumber = null,
+            discNumber = null,
+            year = null,
+            genre = null,
+            durationSeconds = raw.duration,
+            sizeBytes = null,
+            suffix = null,
+            contentType = null,
+            coverArtId = raw.coverArt,
         )
     }
 
@@ -294,6 +347,7 @@ class PulseProtocol(
                 name = raw.name,
                 albumCount = albumCountValue,
                 coverArtId = raw.coverArt,
+                albums = emptyList<Album>(),
             )
             collected.add(HomeItem.ArtistItem(translatedArtist))
         }
@@ -411,4 +465,21 @@ private data class PulseTopPlaylistWire(
     val score: Float? = null,
     val lastPlayed: String? = null,
     val coverArt: String? = null,
+)
+
+@Serializable
+private data class PulseArtistTracksWire(
+    val tracks: List<PulseArtistTrackWire> = emptyList(),
+)
+
+@Serializable
+private data class PulseArtistTrackWire(
+    val id: String,
+    val title: String? = null,
+    val artist: String? = null,
+    val artistId: String? = null,
+    val album: String? = null,
+    val albumId: String? = null,
+    val coverArt: String? = null,
+    val duration: Int? = null,
 )
