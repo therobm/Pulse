@@ -30,10 +30,13 @@ namespace Pulse.Protocols
 
 		// Mixed-kind recents shelf (Flatline #223). Accepts a comma-separated
 		// `types` query param -- any combination of "track", "artist", "album",
-		// "playlist". Omitted = all kinds. The server picks the mix and ordering
-		// by each entity's last-played timestamp; the client takes the result
-		// as-is. Each item carries a `kind` discriminator and a `coverArt` id
-		// that always resolves through getCoverArt.
+		// "playlist". When `types` is omitted the response stays tracks-only to
+		// keep pre-#223 external callers working; new callers (e.g. Thump) pass
+		// `types=track,artist,playlist` to opt into the mixed shelf. Each item
+		// carries a `kind` discriminator and a `coverArt` id that always
+		// resolves through getCoverArt. The response also still includes the
+		// legacy `tracks` field (kind=track subset) for backward compatibility
+		// until #228 retires it.
 		public IResult HandleRecentlyPlayed(HttpContext context)
 		{
 			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
@@ -131,20 +134,43 @@ namespace Pulse.Protocols
 			candidates.Sort(CompareRecentCandidateDescending);
 
 			List<object> items = new List<object>();
+			List<object> legacyTracks = new List<object>();
 			int emit = Math.Min(count, candidates.Count);
 			for (int idx = 0; idx < emit; idx++)
 			{
-				items.Add(BuildRecentItem(candidates[idx]));
+				object built = BuildRecentItem(candidates[idx]);
+				items.Add(built);
+				// Mirror the kind=track items into the legacy `tracks` field
+				// without their `kind` / `lastPlayed` keys, matching the pre-#223
+				// shape exactly. Removed by #228 once external callers migrate.
+				if (string.Equals(candidates[idx].Kind, "track", StringComparison.Ordinal))
+				{
+					TrackInfo t = candidates[idx].Track;
+					legacyTracks.Add(new
+					{
+						id = t.Id,
+						title = t.Title,
+						artist = t.Artist,
+						artistId = t.ArtistId,
+						album = t.Album,
+						albumId = t.AlbumId,
+						coverArt = t.CoverArtId,
+						duration = t.DurationSeconds
+					});
+				}
 			}
 
-			return Results.Json(new { items = items });
+			return Results.Json(new { items = items, tracks = legacyTracks });
 		}
 
 		private static void ParseTypesParam(string raw, out bool track, out bool artist, out bool album, out bool playlist)
 		{
 			if (string.IsNullOrWhiteSpace(raw))
 			{
-				track = true; artist = true; album = true; playlist = true;
+				// Omitted -> tracks only, matching pre-#223 behavior. New callers
+				// must opt into mixed shelves explicitly. Bug #228 tracks the
+				// future flip to default=all once external clients have migrated.
+				track = true; artist = false; album = false; playlist = false;
 				return;
 			}
 			track = false; artist = false; album = false; playlist = false;
