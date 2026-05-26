@@ -20,7 +20,16 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Publish
-        run: dotnet publish Pulse/Pulse.csproj --configuration Release --output publish /p:Version=${{ inputs.version }}
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          dotnet publish Pulse/Pulse.csproj --configuration Release --output publish /p:Version="${VERSION}"
+          # Compact version tag for the exe filename: drop dots, keep
+          # everything else (e.g. 0.2.6 -> 026, 1.0.0-rc.1 -> 100-rc1).
+          EXE_NAME="pulse_${VERSION//./}.exe"
+          mv publish/Pulse.exe "publish/${EXE_NAME}"
+          echo "EXE_NAME=${EXE_NAME}" >> "${GITHUB_ENV}"
 
       - name: Create release
         env:
@@ -30,4 +39,4 @@ jobs:
           gh release create "v${{ inputs.version }}" \
             --title "Pulse ${{ inputs.version }}" \
             --generate-notes \
-            publish/Pulse.exe
+            "publish/${EXE_NAME}"
