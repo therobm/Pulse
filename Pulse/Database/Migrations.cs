@@ -238,6 +238,41 @@ namespace Pulse.Database
 			";
 			steps.Add(v4);
 
+			// v5: explicit users table for the settings-page user management
+			// (Flatline #201). User identity was previously implicit -- a bare
+			// user_name string used as a foreign key in every per-user table.
+			// Adding a real users table gives us a stable identity to attach
+			// display name / created / is_admin metadata to, and a place to
+			// CRUD against. Backfill seeds one row per distinct user_name
+			// observed across the existing per-user tables so the new endpoint
+			// surfaces every user that already has data.
+			MigrationStep v5 = new MigrationStep();
+			v5.Version = 5;
+			v5.Sql = @"
+				CREATE TABLE users (
+					name TEXT PRIMARY KEY,
+					display_name TEXT NOT NULL DEFAULT '',
+					created TEXT NOT NULL,
+					is_admin INTEGER NOT NULL DEFAULT 0
+				);
+
+				INSERT OR IGNORE INTO users (name, display_name, created, is_admin)
+				SELECT name, name, datetime('now'), 0 FROM (
+					SELECT DISTINCT user_name AS name FROM track_user_scores
+					UNION
+					SELECT DISTINCT user_name AS name FROM starred
+					UNION
+					SELECT DISTINCT user_name AS name FROM playlist_user_last_played
+					UNION
+					SELECT DISTINCT user_name AS name FROM playqueue_state
+					UNION
+					SELECT DISTINCT user_name AS name FROM playqueue_entries
+					UNION
+					SELECT DISTINCT user_name AS name FROM bookmarks
+				) WHERE name <> '';
+			";
+			steps.Add(v5);
+
 			return steps;
 		}
 	}

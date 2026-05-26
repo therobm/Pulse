@@ -226,4 +226,18 @@ namespace Pulse.MusicLibrary
 		public DateTime Created { get; set; }
 		public DateTime Changed { get; set; }
 	}
+
+	// Settings-page record for a single user. Backed by the `users` SQLite
+	// table (migration v5, Flatline #201); the activity counters are derived
+	// at read time by scanning the in-memory stores.
+	public class UserRecord
+	{
+		public string Name = "";
+		public string DisplayName = "";
+		public DateTime Created = DateTime.MinValue;
+		public bool IsAdmin = false;
+		public int ScoredTrackCount;
+		public int StarredCount;
+		public int PlaylistLastPlayedCount;
+	}
 }

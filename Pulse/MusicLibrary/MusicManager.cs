@@ -134,6 +134,31 @@ namespace Pulse.MusicLibrary
 			m_database.DeleteBookmark(userName, trackId);
 		}
 
+		public List<UserRecord> GetAllUsers()
+		{
+			return m_database.GetAllUsers();
+		}
+
+		public UserRecord GetUser(string name)
+		{
+			return m_database.GetUser(name);
+		}
+
+		public string CreateUser(string name, string displayName, bool isAdmin)
+		{
+			return m_database.CreateUser(name, displayName, isAdmin);
+		}
+
+		public string UpdateUser(string oldName, string newName, string displayName, bool isAdmin)
+		{
+			return m_database.UpdateUser(oldName, newName, displayName, isAdmin);
+		}
+
+		public void DeleteUser(string userName)
+		{
+			m_database.DeleteUser(userName);
+		}
+
 
 		private IPulseDatabase m_database;
 		private object m_missingLock = new object();
@@ -286,8 +311,11 @@ namespace Pulse.MusicLibrary
 		public PlaylistInfo ImportPlaylist(string name, List<PlaylistImportEntry> entries)
 		{
 			//Console.WriteLine("Importing playlist: " + name);
+			string playlistId = MusicManager.GenerateID("playlist/" + name);
+			PlaylistInfo existing = m_database.GetPlaylist(playlistId);
+
 			PlaylistInfo playlist = new PlaylistInfo();
-			playlist.Id = MusicManager.GenerateID("playlist/" + name);
+			playlist.Id = playlistId;
 			playlist.Name = name;
 
 			int matched = 0;
@@ -305,7 +333,12 @@ namespace Pulse.MusicLibrary
 				splitTrackArtists[trackIndex] = SplitArtists(normalizedTrackArtists[trackIndex]);
 			}
 
-
+			// Collect the source-order matched ids and durations, then merge with
+			// any prior manual order so that re-syncs don't clobber the order the
+			// user has set locally via drag-reorder. New tracks appear at the end;
+			// removed tracks drop out.
+			List<string> sourceOrderIds = new List<string>();
+			Dictionary<string, long> durationsById = new Dictionary<string, long>();
 
 			for (int index = 0; index < entries.Count; index++)
 			{
@@ -330,8 +363,11 @@ namespace Pulse.MusicLibrary
 				int threshold = Math.Max(3, entryTitle.Length / 4);
 				if (bestMatch != null && bestScore <= threshold)
 				{
-					playlist.TrackIds.Add(bestMatch.Id);
-					totalDuration = totalDuration + bestMatch.DurationSeconds;
+					if (!durationsById.ContainsKey(bestMatch.Id))
+					{
+						sourceOrderIds.Add(bestMatch.Id);
+						durationsById[bestMatch.Id] = bestMatch.DurationSeconds;
+					}
 					matched++;
 					if (bestMatch.Score.PlayCount == 0)
 					{
@@ -346,6 +382,34 @@ namespace Pulse.MusicLibrary
 					m_missingSongs.Add(entries[index].Artist + " - " + entries[index].Title);
 					missed++;
 				}
+			}
+
+			HashSet<string> placed = new HashSet<string>();
+			if (existing != null && existing.TrackIds != null)
+			{
+				HashSet<string> matchedSet = new HashSet<string>(sourceOrderIds);
+				for (int index = 0; index < existing.TrackIds.Count; index++)
+				{
+					string id = existing.TrackIds[index];
+					if (matchedSet.Contains(id) && !placed.Contains(id))
+					{
+						playlist.TrackIds.Add(id);
+						placed.Add(id);
+					}
+				}
+			}
+			for (int index = 0; index < sourceOrderIds.Count; index++)
+			{
+				string id = sourceOrderIds[index];
+				if (!placed.Contains(id))
+				{
+					playlist.TrackIds.Add(id);
+					placed.Add(id);
+				}
+			}
+			for (int index = 0; index < playlist.TrackIds.Count; index++)
+			{
+				totalDuration = totalDuration + durationsById[playlist.TrackIds[index]];
 			}
 
 			playlist.DurationSeconds = totalDuration;
