@@ -49,39 +49,39 @@ namespace Pulse.Data
 			sw.Start();
 			LoadAnalytics();
 			sw.Stop();
-			Log.Info(-1, "LoadAnalytics: " + sw.ElapsedMilliseconds + "ms");
+			Console.WriteLine("LoadAnalytics: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 
 			sw.Start();
 			LoadTracks();
 			sw.Stop();
-			Log.Info(-1, "LoadTracks: " + sw.ElapsedMilliseconds + "ms");
+			Console.WriteLine("LoadTracks: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 
 			sw.Start();
 			LoadAlbums();
 			sw.Stop();
-			Log.Info(-1, "LoadAlbums: " + sw.ElapsedMilliseconds + "ms");
+			Console.WriteLine("LoadAlbums: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 
 
 			sw.Start();
 			LoadArtists();
-			Log.Info(-1, "LoadArtists: " + sw.ElapsedMilliseconds + "ms");
+			Console.WriteLine("LoadArtists: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 			sw.Start();
 
 
 			sw.Start();
 			LoadPlaylists();
-			Log.Info(-1, "LoadPlaylists: " + sw.ElapsedMilliseconds + "ms");
+			Console.WriteLine("LoadPlaylists: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 			sw.Start();
 
 
 			sw.Start();
 			WireUpReferences();
-			Log.Info(-1, "WireUpReferences: " + sw.ElapsedMilliseconds + "ms");
+			Console.WriteLine("WireUpReferences: " + sw.ElapsedMilliseconds + "ms");
 			sw.Reset();
 			sw.Start();
 
