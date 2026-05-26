@@ -99,13 +99,19 @@ class PulseProtocol(
     }
 
     override suspend fun getRecentlyPlayed(limit: Int, types: Set<HomeItemKind>): List<HomeItem> {
-        // TODO Flatline #223: `pulse/recentlyPlayed` does not yet accept the `types` query
-        //  parameter. Once that lands server-side, pass `types` through so Pulse can return a
-        //  mixed shelf with the kinds the caller asked for. For now every entry is wrapped as a
-        //  TrackItem since the existing endpoint returns track-shaped objects.
+        // Pulse returns a mixed-kind shelf when `types=` is supplied; absent that param it
+        // falls back to tracks-only for pre-#223 compatibility. We honour the caller's filter
+        // by sending whatever subset they asked for and only omit the parameter when the set
+        // is empty (giving the caller the same tracks-only default Pulse uses).
+        val queryParameters: LinkedHashMap<String, String> = LinkedHashMap<String, String>()
+        queryParameters["count"] = limit.toString()
+        if (types.isNotEmpty()) {
+            val wireTypesValue: String = buildPulseTypesParameter(types)
+            queryParameters["types"] = wireTypesValue
+        }
         val pulseUrl: String = subsonicFallback.buildAuthenticatedUrl(
             pathAfterBase = "pulse/recentlyPlayed",
-            extraQueryParameters = mapOf("count" to limit.toString()),
+            extraQueryParameters = queryParameters,
         )
         val request: Request = Request.Builder().url(pulseUrl).get().build()
         val responseBodyText: String = withContext(Dispatchers.IO) {
@@ -124,14 +130,131 @@ class PulseProtocol(
             PulseRecentlyPlayedWire.serializer(),
             responseBodyText,
         )
-        val collected: ArrayList<HomeItem> = ArrayList<HomeItem>(parsed.tracks.size)
-        val trackCount: Int = parsed.tracks.size
-        for (trackIndex in 0 until trackCount) {
-            val raw: PulseRecentlyPlayedTrackWire = parsed.tracks[trackIndex]
-            val translatedTrack: Track = translatePulseTrack(raw)
-            collected.add(HomeItem.TrackItem(translatedTrack))
+        val itemCount: Int = parsed.items.size
+        val collected: ArrayList<HomeItem> = ArrayList<HomeItem>(itemCount)
+        for (itemIndex in 0 until itemCount) {
+            val raw: PulseRecentItemWire = parsed.items[itemIndex]
+            val kindValue: String = raw.kind
+            if (kindValue == "track") {
+                val translatedTrack: Track = translatePulseRecentTrack(raw)
+                collected.add(HomeItem.TrackItem(translatedTrack))
+            } else if (kindValue == "artist") {
+                val translatedArtist: Artist = translatePulseRecentArtist(raw)
+                collected.add(HomeItem.ArtistItem(translatedArtist))
+            } else if (kindValue == "album") {
+                val translatedAlbum: Album = translatePulseRecentAlbum(raw)
+                collected.add(HomeItem.AlbumItem(translatedAlbum))
+            } else if (kindValue == "playlist") {
+                val translatedPlaylist: Playlist = translatePulseRecentPlaylist(raw)
+                collected.add(HomeItem.PlaylistItem(translatedPlaylist))
+            }
+            // Unknown kind: skip silently so new Pulse-side kinds don't crash older clients.
         }
         return collected
+    }
+
+    private fun buildPulseTypesParameter(types: Set<HomeItemKind>): String {
+        val wireNames: ArrayList<String> = ArrayList<String>(types.size)
+        if (types.contains(HomeItemKind.Track)) {
+            wireNames.add("track")
+        }
+        if (types.contains(HomeItemKind.Artist)) {
+            wireNames.add("artist")
+        }
+        if (types.contains(HomeItemKind.Album)) {
+            wireNames.add("album")
+        }
+        if (types.contains(HomeItemKind.Playlist)) {
+            wireNames.add("playlist")
+        }
+        return wireNames.joinToString(separator = ",")
+    }
+
+    private fun translatePulseRecentTrack(raw: PulseRecentItemWire): Track {
+        val titleValue: String
+        if (raw.title == null) {
+            titleValue = ""
+        } else {
+            titleValue = raw.title
+        }
+        return Track(
+            trackId = raw.id,
+            title = titleValue,
+            artistName = raw.artist,
+            artistId = raw.artistId,
+            albumName = raw.album,
+            albumId = raw.albumId,
+            trackNumber = null,
+            discNumber = null,
+            year = null,
+            genre = null,
+            durationSeconds = raw.duration,
+            sizeBytes = null,
+            suffix = null,
+            contentType = null,
+            coverArtId = raw.coverArt,
+        )
+    }
+
+    private fun translatePulseRecentArtist(raw: PulseRecentItemWire): Artist {
+        val nameValue: String
+        if (raw.name == null) {
+            nameValue = ""
+        } else {
+            nameValue = raw.name
+        }
+        val albumCountValue: Int
+        if (raw.albumCount == null) {
+            albumCountValue = 0
+        } else {
+            albumCountValue = raw.albumCount
+        }
+        return Artist(
+            artistId = raw.id,
+            name = nameValue,
+            albumCount = albumCountValue,
+            coverArtId = raw.coverArt,
+        )
+    }
+
+    private fun translatePulseRecentAlbum(raw: PulseRecentItemWire): Album {
+        val nameValue: String
+        if (raw.name == null) {
+            nameValue = ""
+        } else {
+            nameValue = raw.name
+        }
+        return Album(
+            albumId = raw.id,
+            name = nameValue,
+            artistName = raw.artist,
+            artistId = raw.artistId,
+            year = raw.year,
+            genre = null,
+            durationSeconds = null,
+            songCount = null,
+            coverArtId = raw.coverArt,
+            tracks = emptyList<Track>(),
+        )
+    }
+
+    private fun translatePulseRecentPlaylist(raw: PulseRecentItemWire): Playlist {
+        val nameValue: String
+        if (raw.name == null) {
+            nameValue = ""
+        } else {
+            nameValue = raw.name
+        }
+        return Playlist(
+            playlistId = raw.id,
+            name = nameValue,
+            ownerUsername = null,
+            comment = null,
+            songCount = raw.songCount,
+            durationSeconds = raw.duration,
+            coverArtId = raw.coverArt,
+            tracks = emptyList<Track>(),
+        )
     }
 
     override suspend fun getPopularArtists(limit: Int): List<HomeItem> {
@@ -230,44 +353,34 @@ class PulseProtocol(
         return subsonicFallback.openAudioStream(trackId)
     }
 
-    private fun translatePulseTrack(raw: PulseRecentlyPlayedTrackWire): Track {
-        return Track(
-            trackId = raw.id,
-            title = raw.title,
-            artistName = raw.artist,
-            artistId = raw.artistId,
-            albumName = raw.album,
-            albumId = raw.albumId,
-            trackNumber = null,
-            discNumber = null,
-            year = null,
-            genre = null,
-            durationSeconds = raw.duration,
-            sizeBytes = null,
-            suffix = null,
-            contentType = null,
-            coverArtId = raw.coverArt,
-        )
-    }
 }
 
 // -- wire shapes (private to this protocol implementation) ---------------------------------------
 
 @Serializable
 private data class PulseRecentlyPlayedWire(
-    val tracks: List<PulseRecentlyPlayedTrackWire> = emptyList(),
+    val items: List<PulseRecentItemWire> = emptyList(),
 )
 
+// Merged shape for the kind-tagged `items` array. Each kind populates only the subset of fields
+// it cares about; the rest stay null. The legacy `tracks` mirror field on the response is
+// ignored via the Json decoder's `ignoreUnknownKeys` setting.
 @Serializable
-private data class PulseRecentlyPlayedTrackWire(
+private data class PulseRecentItemWire(
+    val kind: String,
     val id: String,
-    val title: String,
+    val title: String? = null,
+    val name: String? = null,
     val artist: String? = null,
     val artistId: String? = null,
     val album: String? = null,
     val albumId: String? = null,
     val coverArt: String? = null,
     val duration: Int? = null,
+    val albumCount: Int? = null,
+    val songCount: Int? = null,
+    val year: Int? = null,
+    val lastPlayed: String? = null,
 )
 
 @Serializable
