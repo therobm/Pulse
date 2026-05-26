@@ -134,6 +134,16 @@ namespace Pulse.MusicLibrary
 			m_database.DeleteBookmark(userName, trackId);
 		}
 
+		public List<UserSummary> GetAllUsers()
+		{
+			return m_database.GetAllUsers();
+		}
+
+		public void DeleteUser(string userName)
+		{
+			m_database.DeleteUser(userName);
+		}
+
 
 		private IPulseDatabase m_database;
 		private object m_missingLock = new object();

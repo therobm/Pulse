@@ -50,6 +50,12 @@ namespace Pulse.Data
 		List<BookmarkInfo> GetBookmarks(string userName);
 		void SaveBookmark(string userName, string trackId, long positionMs, string comment);
 		void DeleteBookmark(string userName, string trackId);
+
+		// Settings page: list every user_name observed across the in-memory stores
+		// and wipe one out. See PulseDatabaseBase / PulseSqliteDatabase for the
+		// concrete behavior.
+		List<UserSummary> GetAllUsers();
+		void DeleteUser(string userName);
 	}
 
 	public abstract class PulseDatabaseBase : IPulseDatabase
@@ -363,6 +369,102 @@ namespace Pulse.Data
 
 		public virtual void DeleteBookmark(string userName, string trackId)
 		{
+		}
+
+		public virtual List<UserSummary> GetAllUsers()
+		{
+			Dictionary<string, UserSummary> byName = new Dictionary<string, UserSummary>();
+			foreach (TrackInfo track in m_tracks.Values)
+			{
+				foreach (KeyValuePair<string, ScoreData> entry in track.UserScore)
+				{
+					GetOrCreateUserSummary(byName, entry.Key).ScoredTrackCount++;
+				}
+				foreach (KeyValuePair<string, bool> entry in track.Starred)
+				{
+					if (entry.Value)
+					{
+						GetOrCreateUserSummary(byName, entry.Key).StarredCount++;
+					}
+				}
+			}
+			foreach (AlbumInfo album in m_albums.Values)
+			{
+				foreach (KeyValuePair<string, bool> entry in album.Starred)
+				{
+					if (entry.Value)
+					{
+						GetOrCreateUserSummary(byName, entry.Key).StarredCount++;
+					}
+				}
+			}
+			foreach (ArtistInfo artist in m_artists.Values)
+			{
+				foreach (KeyValuePair<string, bool> entry in artist.Starred)
+				{
+					if (entry.Value)
+					{
+						GetOrCreateUserSummary(byName, entry.Key).StarredCount++;
+					}
+				}
+			}
+			foreach (PlaylistInfo playlist in m_playlists.Values)
+			{
+				foreach (KeyValuePair<string, DateTime> entry in playlist.UserLastPlayed)
+				{
+					GetOrCreateUserSummary(byName, entry.Key).PlaylistLastPlayedCount++;
+				}
+			}
+			List<UserSummary> users = new List<UserSummary>(byName.Values);
+			users.Sort(CompareUserByName);
+			return users;
+		}
+
+		private static int CompareUserByName(UserSummary left, UserSummary right)
+		{
+			return string.Compare(left.UserName, right.UserName, StringComparison.Ordinal);
+		}
+
+		private static UserSummary GetOrCreateUserSummary(Dictionary<string, UserSummary> byName, string userName)
+		{
+			UserSummary summary;
+			if (byName.TryGetValue(userName, out summary))
+			{
+				return summary;
+			}
+			summary = new UserSummary();
+			summary.UserName = userName;
+			byName[userName] = summary;
+			return summary;
+		}
+
+		// Removes every in-memory trace of `userName` and flags the touched entities
+		// dirty so the next Save rewrites their per-user rows. Concrete subclasses
+		// override this to also wipe rows that aren't held in memory (bookmarks,
+		// play queues) before chaining to the base implementation.
+		public virtual void DeleteUser(string userName)
+		{
+			if (string.IsNullOrEmpty(userName)) { return; }
+
+			foreach (TrackInfo track in m_tracks.Values)
+			{
+				bool touched = false;
+				if (track.UserScore.Remove(userName)) { touched = true; }
+				if (track.Starred.Remove(userName)) { touched = true; }
+				if (touched) { track.m_bIsDirty = true; }
+			}
+			foreach (AlbumInfo album in m_albums.Values)
+			{
+				if (album.Starred.Remove(userName)) { album.m_bIsDirty = true; }
+			}
+			foreach (ArtistInfo artist in m_artists.Values)
+			{
+				if (artist.Starred.Remove(userName)) { artist.m_bIsDirty = true; }
+			}
+			foreach (PlaylistInfo playlist in m_playlists.Values)
+			{
+				if (playlist.UserLastPlayed.Remove(userName)) { playlist.m_bIsDirty = true; }
+			}
 		}
 
 		private void RebuildSmartPlaylists(string userName)

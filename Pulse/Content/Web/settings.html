@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Pulse — Settings</title>
+	<style>
+		:root {
+			--bg: #0e0e12;
+			--surface: #17171e;
+			--border: #2a2a38;
+			--text-primary: #e8e6f0;
+			--text-secondary: #8a88a0;
+			--text-dim: #5c5a70;
+			--accent: #6c5ce7;
+			--danger: #e17055;
+			--danger-hover: #ef8265;
+		}
+
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+
+		body {
+			background: var(--bg);
+			color: var(--text-primary);
+			font-family: 'Segoe UI', system-ui, sans-serif;
+			padding: 24px 32px;
+			min-height: 100vh;
+		}
+
+		.page {
+			max-width: 1000px;
+			margin: 0 auto;
+		}
+
+		.header {
+			display: grid;
+			grid-template-columns: auto 1fr;
+			align-items: baseline;
+			gap: 16px;
+			margin-bottom: 24px;
+			border-bottom: 1px solid var(--border);
+			padding-bottom: 12px;
+		}
+
+			.header h1 {
+				font-size: 24px;
+				font-weight: 300;
+				letter-spacing: 2px;
+				text-transform: uppercase;
+			}
+
+				.header h1 span {
+					color: var(--accent);
+					font-weight: 600;
+				}
+
+			.header .subtitle {
+				font-size: 12px;
+				color: var(--text-dim);
+			}
+
+		.section {
+			background: var(--surface);
+			border: 1px solid var(--border);
+			border-radius: 8px;
+			padding: 18px 20px;
+			margin-bottom: 20px;
+		}
+
+			.section h2 {
+				font-size: 14px;
+				font-weight: 600;
+				letter-spacing: 1px;
+				text-transform: uppercase;
+				color: var(--text-secondary);
+				margin-bottom: 6px;
+			}
+
+			.section .section-hint {
+				font-size: 12px;
+				color: var(--text-dim);
+				margin-bottom: 14px;
+			}
+
+		.user-table {
+			width: 100%;
+			border-collapse: collapse;
+		}
+
+			.user-table th, .user-table td {
+				text-align: left;
+				padding: 10px 12px;
+				border-bottom: 1px solid var(--border);
+				font-size: 13px;
+			}
+
+			.user-table th {
+				font-weight: 600;
+				font-size: 11px;
+				letter-spacing: 1px;
+				text-transform: uppercase;
+				color: var(--text-secondary);
+			}
+
+			.user-table tr:last-child td {
+				border-bottom: 0;
+			}
+
+			.user-table .col-name {
+				font-weight: 600;
+			}
+
+			.user-table .col-num {
+				font-family: 'DM Mono', monospace;
+				color: var(--text-secondary);
+				width: 140px;
+			}
+
+			.user-table .col-actions {
+				width: 220px;
+				text-align: right;
+			}
+
+		.btn {
+			background: transparent;
+			border: 1px solid var(--border);
+			color: var(--text-primary);
+			padding: 6px 12px;
+			border-radius: 4px;
+			font-size: 12px;
+			cursor: pointer;
+			font-family: inherit;
+		}
+
+			.btn:hover {
+				border-color: var(--text-secondary);
+			}
+
+			.btn.btn-danger {
+				color: var(--danger);
+				border-color: var(--danger);
+			}
+
+				.btn.btn-danger:hover {
+					background: var(--danger);
+					color: var(--bg);
+				}
+
+			.btn.btn-confirm {
+				background: var(--danger);
+				color: var(--bg);
+				border-color: var(--danger);
+			}
+
+				.btn.btn-confirm:hover {
+					background: var(--danger-hover);
+				}
+
+		.confirm-row {
+			display: inline-flex;
+			align-items: center;
+			gap: 8px;
+		}
+
+			.confirm-row .confirm-label {
+				font-size: 12px;
+				color: var(--danger);
+			}
+
+		.empty-state {
+			padding: 24px;
+			text-align: center;
+			color: var(--text-dim);
+			font-size: 13px;
+		}
+
+		.loading-text {
+			padding: 24px;
+			text-align: center;
+			color: var(--text-dim);
+			font-size: 13px;
+		}
+
+		.toast {
+			position: fixed;
+			bottom: 24px;
+			left: 50%;
+			transform: translateX(-50%);
+			background: var(--surface);
+			border: 1px solid var(--border);
+			color: var(--text-primary);
+			padding: 10px 18px;
+			border-radius: 6px;
+			font-size: 13px;
+			opacity: 0;
+			transition: opacity 0.2s;
+			pointer-events: none;
+		}
+
+			.toast.visible {
+				opacity: 1;
+			}
+	</style>
+</head>
+<body>
+	<div class="page">
+		<div class="header">
+			<h1>Pulse<span>/</span>Settings</h1>
+			<div class="subtitle">administer the server</div>
+		</div>
+
+		<div class="section">
+			<h2>Users</h2>
+			<div class="section-hint">Every user_name observed across scores, stars, playlists, and bookmarks. Deleting wipes that user's per-user rows from the database. Track / album / playlist content is unaffected.</div>
+			<div id="users-container">
+				<div class="loading-text">Loading users...</div>
+			</div>
+		</div>
+	</div>
+
+	<div id="toast" class="toast"></div>
+
+	<script>
+		let API_USER = 'Rob';
+
+		function pulseGet(endpoint, callback) {
+			let xhr = new XMLHttpRequest();
+			xhr.open('GET', '/pulse/' + endpoint);
+			xhr.onload = function () {
+				if (xhr.status === 200) {
+					let data = JSON.parse(xhr.responseText);
+					callback(data);
+				}
+				else {
+					console.error('HTTP error:', endpoint, xhr.status);
+					showToast('Request failed: ' + endpoint);
+				}
+			};
+			xhr.send();
+		}
+
+		function showToast(message) {
+			let toast = document.getElementById('toast');
+			toast.textContent = message;
+			toast.classList.add('visible');
+			setTimeout(function () { toast.classList.remove('visible'); }, 2500);
+		}
+
+		function loadUsers() {
+			let container = document.getElementById('users-container');
+			container.innerHTML = '<div class="loading-text">Loading users...</div>';
+			pulseGet('listUsers', function (data) { renderUsers(data.users || []); });
+		}
+
+		function renderUsers(users) {
+			let container = document.getElementById('users-container');
+			if (users.length === 0) {
+				container.innerHTML = '<div class="empty-state">No users found.</div>';
+				return;
+			}
+
+			let table = document.createElement('table');
+			table.className = 'user-table';
+
+			let head = document.createElement('thead');
+			let headRow = document.createElement('tr');
+			let headers = ['User', 'Scored tracks', 'Stars', 'Playlist plays', ''];
+			let widthClasses = ['col-name', 'col-num', 'col-num', 'col-num', 'col-actions'];
+			for (let idx = 0; idx < headers.length; idx++) {
+				let th = document.createElement('th');
+				th.textContent = headers[idx];
+				th.className = widthClasses[idx];
+				headRow.appendChild(th);
+			}
+			head.appendChild(headRow);
+			table.appendChild(head);
+
+			let body = document.createElement('tbody');
+			for (let idx = 0; idx < users.length; idx++) {
+				body.appendChild(buildUserRow(users[idx]));
+			}
+			table.appendChild(body);
+
+			container.innerHTML = '';
+			container.appendChild(table);
+		}
+
+		function buildUserRow(user) {
+			let row = document.createElement('tr');
+			row.setAttribute('data-user-name', user.userName);
+
+			let nameCell = document.createElement('td');
+			nameCell.className = 'col-name';
+			nameCell.textContent = user.userName;
+			row.appendChild(nameCell);
+
+			let scoredCell = document.createElement('td');
+			scoredCell.className = 'col-num';
+			scoredCell.textContent = user.scoredTrackCount;
+			row.appendChild(scoredCell);
+
+			let starredCell = document.createElement('td');
+			starredCell.className = 'col-num';
+			starredCell.textContent = user.starredCount;
+			row.appendChild(starredCell);
+
+			let playlistCell = document.createElement('td');
+			playlistCell.className = 'col-num';
+			playlistCell.textContent = user.playlistLastPlayedCount;
+			row.appendChild(playlistCell);
+
+			let actionsCell = document.createElement('td');
+			actionsCell.className = 'col-actions';
+			let deleteBtn = document.createElement('button');
+			deleteBtn.className = 'btn btn-danger';
+			deleteBtn.textContent = 'Delete';
+			deleteBtn.addEventListener('click', function () { showDeleteConfirm(row, user.userName); });
+			actionsCell.appendChild(deleteBtn);
+			row.appendChild(actionsCell);
+
+			return row;
+		}
+
+		function showDeleteConfirm(row, userName) {
+			let actionsCell = row.querySelector('.col-actions');
+			actionsCell.innerHTML = '';
+
+			let wrapper = document.createElement('span');
+			wrapper.className = 'confirm-row';
+
+			let label = document.createElement('span');
+			label.className = 'confirm-label';
+			label.textContent = 'Delete ' + userName + '?';
+			wrapper.appendChild(label);
+
+			let confirmBtn = document.createElement('button');
+			confirmBtn.className = 'btn btn-confirm';
+			confirmBtn.textContent = 'Confirm';
+			confirmBtn.addEventListener('click', function () { runDelete(userName); });
+			wrapper.appendChild(confirmBtn);
+
+			let cancelBtn = document.createElement('button');
+			cancelBtn.className = 'btn';
+			cancelBtn.textContent = 'Cancel';
+			cancelBtn.addEventListener('click', function () { loadUsers(); });
+			wrapper.appendChild(cancelBtn);
+
+			actionsCell.appendChild(wrapper);
+		}
+
+		function runDelete(userName) {
+			let xhr = new XMLHttpRequest();
+			xhr.open('GET', '/pulse/deleteUser?user=' + encodeURIComponent(userName));
+			xhr.onload = function () {
+				if (xhr.status === 200) {
+					let data = JSON.parse(xhr.responseText);
+					if (data.ok) {
+						showToast('Deleted ' + userName);
+					}
+					else {
+						showToast('Delete failed: ' + (data.error || 'unknown error'));
+					}
+				}
+				else {
+					showToast('Delete failed (HTTP ' + xhr.status + ')');
+				}
+				loadUsers();
+			};
+			xhr.send();
+		}
+
+		document.addEventListener('DOMContentLoaded', function () { loadUsers(); });
+	</script>
+</body>
+</html>

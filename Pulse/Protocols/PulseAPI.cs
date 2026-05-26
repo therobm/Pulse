@@ -89,6 +89,42 @@ namespace Pulse.Protocols
 			return Results.Json(new { ok = true });
 		}
 
+		// Returns every user_name observed in the in-memory stores along with a
+		// few counters so the settings UI can show what would be lost if the user
+		// were deleted. Pulse has no users table -- user identity is implicit.
+		public IResult HandleListUsers(HttpContext context)
+		{
+			List<UserSummary> users = m_musicManager.GetAllUsers();
+			List<object> response = new List<object>();
+			for (int index = 0; index < users.Count; index++)
+			{
+				UserSummary user = users[index];
+				response.Add(new
+				{
+					userName = user.UserName,
+					scoredTrackCount = user.ScoredTrackCount,
+					starredCount = user.StarredCount,
+					playlistLastPlayedCount = user.PlaylistLastPlayedCount
+				});
+			}
+			return Results.Json(new { users = response });
+		}
+
+		// Deletes every per-user row for the given user_name across the database
+		// and the in-memory caches. Bug #201 -- used by the settings page to clean
+		// up duplicate-cased names that crept in (e.g. "shannon" vs "Shannon").
+		public IResult HandleDeleteUser(HttpContext context)
+		{
+			string userName = context.Request.Query["user"].FirstOrDefault();
+			if (string.IsNullOrEmpty(userName))
+			{
+				return Results.Json(new { ok = false, error = "Missing user" });
+			}
+			m_musicManager.DeleteUser(userName);
+			Log.Info(-1, "Settings: deleted user '" + userName + "'");
+			return Results.Json(new { ok = true });
+		}
+
 		// Returns every track for a given artist in (album-index, track-number) order.
 		// Used by the artist detail Play / Shuffle buttons so the client can avoid
 		// firing one getAlbum call per album.

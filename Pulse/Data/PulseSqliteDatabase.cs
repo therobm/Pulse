@@ -961,5 +961,56 @@ namespace Pulse.Data
 				connection.Close();
 			}
 		}
+
+		// Two-stage wipe: directly delete the non-cached per-user rows
+		// (playqueue + bookmarks), then let the base scrub the in-memory
+		// dicts and flag affected tracks/albums/artists/playlists dirty so
+		// the upcoming Save rewrites their starred / score / last-played
+		// rows without this user.
+		public override void DeleteUser(string userName)
+		{
+			if (string.IsNullOrEmpty(userName)) { return; }
+
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				SqliteTransaction transaction = connection.BeginTransaction();
+				try
+				{
+					SqliteCommand delPlayQueueEntries = connection.CreateCommand();
+					delPlayQueueEntries.Transaction = transaction;
+					delPlayQueueEntries.CommandText = "DELETE FROM playqueue_entries WHERE user_name = $u;";
+					delPlayQueueEntries.Parameters.AddWithValue("$u", userName);
+					delPlayQueueEntries.ExecuteNonQuery();
+
+					SqliteCommand delPlayQueueState = connection.CreateCommand();
+					delPlayQueueState.Transaction = transaction;
+					delPlayQueueState.CommandText = "DELETE FROM playqueue_state WHERE user_name = $u;";
+					delPlayQueueState.Parameters.AddWithValue("$u", userName);
+					delPlayQueueState.ExecuteNonQuery();
+
+					SqliteCommand delBookmarks = connection.CreateCommand();
+					delBookmarks.Transaction = transaction;
+					delBookmarks.CommandText = "DELETE FROM bookmarks WHERE user_name = $u;";
+					delBookmarks.Parameters.AddWithValue("$u", userName);
+					delBookmarks.ExecuteNonQuery();
+
+					transaction.Commit();
+				}
+				catch (Exception ex)
+				{
+					transaction.Rollback();
+					Log.Error(-1, "DeleteUser failed for '" + userName + "', rolled back: " + ex.Message);
+					throw;
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+
+			base.DeleteUser(userName);
+			Save();
+		}
 	}
 }

@@ -183,6 +183,10 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/stats", HandleStats);
 			host.RegisterRoute("pulse/stats.html", HandleStatsPage);
 
+			host.RegisterResultRoute("pulse/listUsers", m_pulseAPI.HandleListUsers);
+			host.RegisterResultRoute("pulse/deleteUser", m_pulseAPI.HandleDeleteUser);
+			host.RegisterRoute("pulse/settings.html", HandleSettingsPage);
+
 
 			host.RegisterRoute("spotify/callback", HandleSpotifyCallback);
 			host.RegisterRoute("spotify/authorize", HandleSpotifyAuthorize);
@@ -246,6 +250,21 @@ namespace Pulse
 			{
 				context.Response.StatusCode = 404;
 				byte[] notFound = System.Text.Encoding.UTF8.GetBytes("Stats page not found");
+				context.Response.Body.Write(notFound, 0, notFound.Length);
+				return;
+			}
+			byte[] htmlBytes = File.ReadAllBytes(htmlPath);
+			context.Response.ContentType = "text/html";
+			context.Response.Body.Write(htmlBytes, 0, htmlBytes.Length);
+		}
+
+		private void HandleSettingsPage(HttpContext context)
+		{
+			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "settings.html");
+			if (!File.Exists(htmlPath))
+			{
+				context.Response.StatusCode = 404;
+				byte[] notFound = System.Text.Encoding.UTF8.GetBytes("Settings page not found");
 				context.Response.Body.Write(notFound, 0, notFound.Length);
 				return;
 			}
