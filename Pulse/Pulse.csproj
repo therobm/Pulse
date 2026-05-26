@@ -12,6 +12,11 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
+    <!-- Default for local builds. CI overrides via /p:Version=... in
+         .github/workflows/release.yml and .github/workflows/dev-build.yml,
+         and the value is read at runtime via AssemblyInformationalVersion
+         to expose /pulse/version (Flatline #229). -->
+    <Version>0.0.0-local</Version>
 	<PublishTrimmed>false</PublishTrimmed>
 	<SelfContained>true</SelfContained>
 	<RuntimeIdentifier>win-x64</RuntimeIdentifier>
