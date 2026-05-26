@@ -23,56 +23,52 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.therobm.thump.ThumpColors
-import com.therobm.thump.art.CompositeArtTile
-import com.therobm.thump.playback.PlaybackQueueItem
-import com.therobm.thump.playback.PlaybackSource
-import com.therobm.thump.subsonic.SubsonicClient
-import com.therobm.thump.subsonic.SubsonicResult
+import com.therobm.thump.art.ArtImage
+import com.therobm.thump.data.ThumpData
 import kotlinx.coroutines.launch
 
 /**
  * The home screen: a vertical scroll of horizontal carousels.
  *
  * Sections load in parallel and render independently. A failed section shows its error message
- * inline so the rest of the screen stays usable.
+ * inline so the rest of the screen stays usable. All data comes from ThumpData — the screen
+ * does not know which protocol the active server speaks.
  */
 @Composable
 fun HomeScreen(
-    subsonicClient: SubsonicClient,
-    isPulseServer: Boolean,
+    thumpData: ThumpData,
     contentPadding: PaddingValues,
     onItemTapped: (HomeCarouselItem) -> Unit,
-    onPlayQueue: (List<PlaybackQueueItem>, Int, PlaybackSource?) -> Unit,
+    onPlaylistSelected: (playlistId: String, playlistName: String) -> Unit,
+    onPlayPlaylist: (playlistId: String, playlistName: String) -> Unit,
     modifier: Modifier,
 ) {
-    val repository = remember(subsonicClient, isPulseServer) {
-        HomeRepository(subsonicClient, isPulseServer)
+    val repository: HomeRepository = remember(thumpData) {
+        HomeRepository(thumpData)
     }
 
-    val initialSections = remember(isPulseServer) {
-        buildInitialSections(isPulseServer)
+    val initialSections: List<HomeSection> = remember { buildInitialSections() }
+    val sectionsState: MutableState<List<HomeSection>> = remember(repository) {
+        mutableStateOf<List<HomeSection>>(initialSections)
     }
-    var sections by remember(repository) { mutableStateOf(initialSections) }
 
     LaunchedEffect(repository) {
-        val sectionKeys = HomeSectionKey.values()
-        val keyCount = sectionKeys.size
+        val sectionKeys: Array<HomeSectionKey> = HomeSectionKey.values()
+        val keyCount: Int = sectionKeys.size
         for (keyIndex in 0 until keyCount) {
-            val key = sectionKeys[keyIndex]
+            val key: HomeSectionKey = sectionKeys[keyIndex]
             launch {
-                val loaded = repository.loadSection(key)
-                sections = replaceSection(sections, loaded)
+                val loaded: HomeSection = repository.loadSection(key)
+                sectionsState.value = replaceSection(sectionsState.value, loaded)
             }
         }
     }
@@ -89,25 +85,18 @@ fun HomeScreen(
         }
         item {
             QuickPlaylistsGrid(
-                subsonicClient = subsonicClient,
-                onPlaylistSelected = { playlistId: String, playlistName: String ->
-                    onItemTapped(
-                        HomeCarouselItem(
-                            id = playlistId,
-                            kind = HomeItemKind.Playlist,
-                            title = playlistName,
-                            subtitle = "",
-                            coverArtId = null,
-                        )
-                    )
-                },
-                onPlayQueue = onPlayQueue,
+                thumpData = thumpData,
+                onPlaylistSelected = onPlaylistSelected,
+                onPlayPlaylist = onPlayPlaylist,
             )
         }
-        items(items = sections, key = { section -> section.key.name }) { section ->
+        items(
+            items = sectionsState.value,
+            key = { section: HomeSection -> section.key.name },
+        ) { section: HomeSection ->
             HomeSectionView(
                 section = section,
-                subsonicClient = subsonicClient,
+                thumpData = thumpData,
                 onItemTapped = onItemTapped,
             )
         }
@@ -120,7 +109,7 @@ fun HomeScreen(
 @Composable
 private fun HomeSectionView(
     section: HomeSection,
-    subsonicClient: SubsonicClient,
+    thumpData: ThumpData,
     onItemTapped: (HomeCarouselItem) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -131,7 +120,7 @@ private fun HomeSectionView(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
 
-        val loadState = section.loadState
+        val loadState: HomeSectionLoadState = section.loadState
         when (loadState) {
             is HomeSectionLoadState.Loading -> {
                 Box(
@@ -160,7 +149,7 @@ private fun HomeSectionView(
                 } else {
                     HomeCarouselRow(
                         items = loadState.items,
-                        subsonicClient = subsonicClient,
+                        thumpData = thumpData,
                         onItemTapped = onItemTapped,
                     )
                 }
@@ -172,7 +161,7 @@ private fun HomeSectionView(
 @Composable
 private fun HomeCarouselRow(
     items: List<HomeCarouselItem>,
-    subsonicClient: SubsonicClient,
+    thumpData: ThumpData,
     onItemTapped: (HomeCarouselItem) -> Unit,
 ) {
     LazyRow(
@@ -180,11 +169,14 @@ private fun HomeCarouselRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items(items = items, key = { item -> item.kind.name + ":" + item.id }) { item ->
+        items(
+            items = items,
+            key = { tile: HomeCarouselItem -> tile.kind.name + ":" + tile.id },
+        ) { tile: HomeCarouselItem ->
             HomeCarouselTile(
-                item = item,
-                subsonicClient = subsonicClient,
-                onTapped = { onItemTapped(item) },
+                item = tile,
+                thumpData = thumpData,
+                onTapped = { onItemTapped(tile) },
             )
         }
     }
@@ -193,7 +185,7 @@ private fun HomeCarouselRow(
 @Composable
 private fun HomeCarouselTile(
     item: HomeCarouselItem,
-    subsonicClient: SubsonicClient,
+    thumpData: ThumpData,
     onTapped: () -> Unit,
 ) {
     Column(
@@ -201,32 +193,23 @@ private fun HomeCarouselTile(
             .width(140.dp)
             .clickable(onClick = onTapped),
     ) {
-        val coverArtId = item.coverArtId
-        val artUrl: String?
-        if (coverArtId == null) {
-            artUrl = null
-        } else {
-            artUrl = subsonicClient.buildCoverArtUrl(coverArtId, COVER_ART_REQUEST_SIZE)
-        }
-
+        val tileShapeModifier: Modifier
         if (item.kind == HomeItemKind.Artist) {
-            ArtistTileArt(artUrl = artUrl)
-        } else if (item.kind == HomeItemKind.Playlist) {
-            // When the playlist already carries a coverArt id (Pulse's pl-<id> composite is
-            // returned from pulse/topPlaylists), render it as a single-image tile. Fall back to
-            // the on-device 2x2 stitcher only when no art is available — non-Pulse servers or
-            // playlists that have no resolvable composite.
-            if (artUrl != null) {
-                RectangularTileArt(artUrl = artUrl)
-            } else {
-                PlaylistCompositeTile(
-                    playlistId = item.id,
-                    subsonicClient = subsonicClient,
-                )
-            }
+            tileShapeModifier = Modifier
+                .size(140.dp)
+                .clip(CircleShape)
         } else {
-            RectangularTileArt(artUrl = artUrl)
+            tileShapeModifier = Modifier
+                .size(140.dp)
+                .clip(RoundedCornerShape(10.dp))
         }
+        ArtImage(
+            thumpData = thumpData,
+            artId = item.coverArtId,
+            sizePx = COVER_ART_REQUEST_SIZE,
+            contentDescription = null,
+            modifier = tileShapeModifier,
+        )
 
         Spacer(modifier = Modifier.height(8.dp))
         Text(
@@ -248,94 +231,21 @@ private fun HomeCarouselTile(
     }
 }
 
-@Composable
-private fun RectangularTileArt(artUrl: String?) {
-    val tileModifier = Modifier
-        .size(140.dp)
-        .clip(RoundedCornerShape(10.dp))
-        .background(ThumpColors.Surface)
-    if (artUrl == null) {
-        Box(modifier = tileModifier)
-    } else {
-        AsyncImage(
-            model = artUrl,
-            contentDescription = null,
-            modifier = tileModifier,
-        )
-    }
-}
-
-@Composable
-private fun ArtistTileArt(artUrl: String?) {
-    val tileModifier = Modifier
-        .size(140.dp)
-        .clip(CircleShape)
-        .background(ThumpColors.Surface)
-    if (artUrl == null) {
-        Box(modifier = tileModifier)
-    } else {
-        AsyncImage(
-            model = artUrl,
-            contentDescription = null,
-            modifier = tileModifier,
-        )
-    }
-}
-
-@Composable
-private fun PlaylistCompositeTile(
-    playlistId: String,
-    subsonicClient: SubsonicClient,
-) {
-    var coverArtIds: List<String> by remember(playlistId) { mutableStateOf(emptyList()) }
-
-    LaunchedEffect(playlistId, subsonicClient) {
-        val result = subsonicClient.getPlaylist(playlistId)
-        if (result is SubsonicResult.Ok) {
-            val entries = result.value.entry
-            val ids = ArrayList<String>(entries.size)
-            val entryCount = entries.size
-            for (entryIndex in 0 until entryCount) {
-                val candidate = entries[entryIndex].coverArt
-                if (candidate != null) {
-                    ids.add(candidate)
-                }
-            }
-            coverArtIds = ids
-        }
-    }
-
-    val tileModifier = Modifier
-        .size(140.dp)
-        .clip(RoundedCornerShape(10.dp))
-    CompositeArtTile(
-        coverArtIds = coverArtIds,
-        subsonicClient = subsonicClient,
-        requestSizePx = COMPOSITE_QUADRANT_REQUEST_SIZE,
-        modifier = tileModifier,
-    )
-}
-
-private fun buildInitialSections(isPulseServer: Boolean): List<HomeSection> {
-    val sections = ArrayList<HomeSection>(5)
+private fun buildInitialSections(): List<HomeSection> {
+    val sections: ArrayList<HomeSection> = ArrayList<HomeSection>(5)
     sections.add(HomeSection(HomeSectionKey.RecentlyPlayed, "Recently Played", HomeSectionLoadState.Loading))
-    if (isPulseServer) {
-        sections.add(HomeSection(HomeSectionKey.Playlists, "Your Playlists", HomeSectionLoadState.Loading))
-        sections.add(HomeSection(HomeSectionKey.PopularOrFrequent, "Popular Artists", HomeSectionLoadState.Loading))
-    } else {
-        sections.add(HomeSection(HomeSectionKey.Playlists, "Playlists", HomeSectionLoadState.Loading))
-        sections.add(HomeSection(HomeSectionKey.PopularOrFrequent, "Most Played", HomeSectionLoadState.Loading))
-    }
+    sections.add(HomeSection(HomeSectionKey.Playlists, "Your Playlists", HomeSectionLoadState.Loading))
+    sections.add(HomeSection(HomeSectionKey.PopularOrFrequent, "Popular Artists", HomeSectionLoadState.Loading))
     sections.add(HomeSection(HomeSectionKey.RecentlyAdded, "Recently Added", HomeSectionLoadState.Loading))
     sections.add(HomeSection(HomeSectionKey.Favorites, "Favorites", HomeSectionLoadState.Loading))
     return sections
 }
 
 private fun replaceSection(current: List<HomeSection>, replacement: HomeSection): List<HomeSection> {
-    val result = ArrayList<HomeSection>(current.size)
-    val currentCount = current.size
+    val result: ArrayList<HomeSection> = ArrayList<HomeSection>(current.size)
+    val currentCount: Int = current.size
     for (sectionIndex in 0 until currentCount) {
-        val existing = current[sectionIndex]
+        val existing: HomeSection = current[sectionIndex]
         if (existing.key == replacement.key) {
             result.add(replacement)
         } else {
@@ -346,4 +256,3 @@ private fun replaceSection(current: List<HomeSection>, replacement: HomeSection)
 }
 
 private const val COVER_ART_REQUEST_SIZE: Int = 300
-private const val COMPOSITE_QUADRANT_REQUEST_SIZE: Int = 150

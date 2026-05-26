@@ -25,10 +25,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +45,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.therobm.thump.data.ThumpData
 import com.therobm.thump.detail.AlbumDetailScreen
 import com.therobm.thump.detail.ArtistDetailScreen
 import com.therobm.thump.detail.GenreDetailScreen
@@ -57,14 +60,21 @@ import com.therobm.thump.playback.NowPlaying
 import com.therobm.thump.playback.PlaybackController
 import com.therobm.thump.playback.PlaybackQueueItem
 import com.therobm.thump.playback.PlaybackSource
+import com.therobm.thump.playback.PlaybackSourceKind
 import com.therobm.thump.search.SearchScreen
 import com.therobm.thump.settings.SettingsScreen
+import com.therobm.thump.subsonic.StandardPlaylistDetailPayload
+import com.therobm.thump.subsonic.StandardSongDetail
 import com.therobm.thump.subsonic.SubsonicAuthMode
 import com.therobm.thump.subsonic.SubsonicClient
 import com.therobm.thump.subsonic.SubsonicCredentials
+import com.therobm.thump.subsonic.SubsonicResult
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
@@ -102,6 +112,7 @@ private const val ROUTE_ARTIST_PATTERN = "artist/{$NAV_ARG_ARTIST_ID}"
 private const val ROUTE_GENRE_PATTERN = "genre/{$NAV_ARG_GENRE_NAME}"
 
 private const val MINI_PLAYER_ART_REQUEST_SIZE: Int = 150
+private const val QUEUE_ITEM_ART_REQUEST_SIZE_PX: Int = 200
 
 private fun buildAlbumRoute(albumId: String): String {
     return "album/" + albumId
@@ -145,6 +156,24 @@ private fun ThumpApp() {
         }
 
         val applicationContext = context.applicationContext
+        val thumpApplication: ThumpApplication = applicationContext as ThumpApplication
+        val thumpData: ThumpData = thumpApplication.thumpData
+
+        LaunchedEffect(serverUrl, username, password, useTokenAuth) {
+            val trimmedUrl: String = serverUrl.trim()
+            val trimmedUsername: String = username.trim()
+            if (trimmedUrl.isBlank() || trimmedUsername.isBlank() || password.isBlank()) {
+                return@LaunchedEffect
+            }
+            try {
+                thumpData.setServerConfig(trimmedUrl, trimmedUsername, password)
+            } catch (configFailure: IOException) {
+                // setServerConfig handles its own probe failures internally; an IOException
+                // escaping here is a startup hiccup that surfaces as offline behavior on the
+                // Home screen until connectivity returns.
+            }
+        }
+
         val playbackController: PlaybackController = remember(applicationContext) {
             PlaybackController(applicationContext)
         }
@@ -161,6 +190,21 @@ private fun ThumpApp() {
         val onPlayQueue: (List<PlaybackQueueItem>, Int, PlaybackSource?) -> Unit = {
             items: List<PlaybackQueueItem>, startIndex: Int, source: PlaybackSource? ->
             playbackController.playQueue(items, startIndex, source)
+        }
+
+        val playPlaylistScope: CoroutineScope = rememberCoroutineScope()
+        val onPlayPlaylist: (String, String) -> Unit = { playlistId: String, playlistName: String ->
+            val currentSubsonicClient: SubsonicClient? = subsonicClient
+            if (currentSubsonicClient != null) {
+                playPlaylistScope.launch {
+                    startPlaylistPlaybackUsingSubsonicClient(
+                        playlistId = playlistId,
+                        playlistName = playlistName,
+                        subsonicClient = currentSubsonicClient,
+                        onPlayQueue = onPlayQueue,
+                    )
+                }
+            }
         }
 
         val onHomeItemTapped: (HomeCarouselItem) -> Unit = { tappedItem: HomeCarouselItem ->
@@ -232,11 +276,13 @@ private fun ThumpApp() {
                         ConfigurePrompt(innerPadding)
                     } else {
                         HomeScreen(
-                            subsonicClient = subsonicClient,
-                            isPulseServer = isPulseServer,
+                            thumpData = thumpData,
                             contentPadding = innerPadding,
                             onItemTapped = onHomeItemTapped,
-                            onPlayQueue = onPlayQueue,
+                            onPlaylistSelected = { playlistId: String, unusedDisplayName: String ->
+                                navController.navigate(buildPlaylistRoute(playlistId))
+                            },
+                            onPlayPlaylist = onPlayPlaylist,
                             modifier = Modifier,
                         )
                     }
@@ -566,6 +612,59 @@ private fun buildJsonDecoder(): Json {
     return Json {
         ignoreUnknownKeys = true
     }
+}
+
+/**
+ * Fetch the playlist's entries via the SubsonicClient stream-URL path, map them into
+ * PlaybackQueueItems, and start playback. Lives here so the home/ package does not need to
+ * see SubsonicClient — the home composable only fires (playlistId, playlistName) intents and
+ * MainActivity routes them through the existing audio plumbing until the audio path port
+ * lands in a later step.
+ */
+private suspend fun startPlaylistPlaybackUsingSubsonicClient(
+    playlistId: String,
+    playlistName: String,
+    subsonicClient: SubsonicClient,
+    onPlayQueue: (List<PlaybackQueueItem>, Int, PlaybackSource?) -> Unit,
+) {
+    val result: SubsonicResult<StandardPlaylistDetailPayload> = subsonicClient.getPlaylist(playlistId)
+    if (result !is SubsonicResult.Ok) {
+        return
+    }
+    val songs: List<StandardSongDetail> = result.value.entry
+    val queue: ArrayList<PlaybackQueueItem> = ArrayList<PlaybackQueueItem>(songs.size)
+    val songCount: Int = songs.size
+    for (songIndex in 0 until songCount) {
+        val song: StandardSongDetail = songs[songIndex]
+        val coverArtUrl: String?
+        val coverArtId: String? = song.coverArt
+        if (coverArtId == null) {
+            coverArtUrl = null
+        } else {
+            coverArtUrl = subsonicClient.buildCoverArtUrl(coverArtId, QUEUE_ITEM_ART_REQUEST_SIZE_PX)
+        }
+        val artistText: String
+        val songArtist: String? = song.artist
+        if (songArtist == null) {
+            artistText = ""
+        } else {
+            artistText = songArtist
+        }
+        queue.add(
+            PlaybackQueueItem(
+                trackId = song.id,
+                streamUrl = subsonicClient.buildStreamUrl(song.id),
+                title = song.title,
+                artist = artistText,
+                album = song.album,
+                coverArtUrl = coverArtUrl,
+            )
+        )
+    }
+    if (queue.isEmpty()) {
+        return
+    }
+    onPlayQueue(queue, 0, PlaybackSource(PlaybackSourceKind.Playlist, playlistName))
 }
 
 private fun buildSubsonicClient(

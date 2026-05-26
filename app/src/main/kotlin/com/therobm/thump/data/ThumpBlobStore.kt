@@ -13,8 +13,8 @@ import java.util.UUID
 /**
  * On-disk blob directory plus the matching `blobs` row in ThumpData's SQLite database. One
  * file per blob; the file path is recorded only after the file is renamed into place. Reads
- * touch the SQLite row's `last_accessed_at_epoch_millis` for the LRU sweep that lands in a
- * later step.
+ * touch the SQLite row's `last_accessed_at_epoch_millis` for the LRU eviction sweep that runs
+ * after every write.
  *
  * Blob keys follow a small vocabulary so the index can be filtered cheaply:
  *
@@ -22,17 +22,21 @@ import java.util.UUID
  * - `track:<id>` — a track's full audio body
  *
  * The atomic write goes: write `<final>.tmp`, fsync (via FileOutputStream.close), rename to
- * `<final>`, then INSERT/REPLACE the SQLite row. A torn write leaves a `.tmp` behind that the
- * eviction sweep can clean; no incomplete blob is ever observable through the index.
+ * `<final>`, then INSERT/REPLACE the SQLite row in a transaction that also runs the LRU
+ * eviction. A torn write leaves a `.tmp` behind that the next eviction sweep can clean; no
+ * incomplete blob is ever observable through the index.
  *
- * Step 2 status: paths are wired through but no caller exercises CacheFirst yet. ThumpData
- * defaults its binary fetches to NetworkOnly through the IProtocol for the skeleton step;
- * the disk-hit-or-fetch policy lands when the Home screen port (step 3) starts using cover
- * art at volume.
+ * Eviction is synchronous-on-write per the architecture spec: after the inserted row lands,
+ * the transaction sums `size_bytes` across all rows; if the total exceeds the configured cap,
+ * it deletes the row with the oldest `last_accessed_at_epoch_millis` (and its on-disk file)
+ * and repeats until the total is back under the cap. Holding the SQLite transaction over the
+ * sweep is what stops the UI process and the MediaLibraryService process from racing on which
+ * blob is next to go.
  */
 class ThumpBlobStore(
     private val database: ThumpDatabase,
     applicationContext: Context,
+    private val cacheSizeBytesProvider: () -> Long,
 ) {
 
     private val blobDirectory: File = File(applicationContext.filesDir, BLOB_DIRECTORY_NAME)
@@ -98,8 +102,9 @@ class ThumpBlobStore(
 
     /**
      * Persist bytes for a blob. The bytes are written to `<dir>/<random>.tmp`, then renamed to
-     * the final path, then indexed. A failed rename surfaces as an exception; a failed insert
-     * after a successful rename leaves the file on disk to be cleaned by a future eviction.
+     * the final path, then indexed in a SQLite transaction that also runs the LRU eviction
+     * sweep. A failed rename surfaces as an exception; a failed insert after a successful
+     * rename leaves the file on disk to be cleaned by a future eviction.
      */
     fun writeBlobBytes(
         blobKey: String,
@@ -131,20 +136,28 @@ class ThumpBlobStore(
                     + " -> " + finalFile.absolutePath
             )
         }
-        val now: Long = System.currentTimeMillis()
-        val row: ContentValues = ContentValues()
-        row.put("blob_key", blobKey)
-        row.put("file_path", finalFile.absolutePath)
-        row.put("size_bytes", bytes.size.toLong())
-        row.put("content_type", contentType)
-        row.put("fetched_at_epoch_millis", now)
-        row.put("last_accessed_at_epoch_millis", now)
-        database.writableDatabase.insertWithOnConflict(
-            "blobs",
-            null,
-            row,
-            SQLiteDatabase.CONFLICT_REPLACE,
-        )
+        val writableDatabase: SQLiteDatabase = database.writableDatabase
+        writableDatabase.beginTransaction()
+        try {
+            val now: Long = System.currentTimeMillis()
+            val row: ContentValues = ContentValues()
+            row.put("blob_key", blobKey)
+            row.put("file_path", finalFile.absolutePath)
+            row.put("size_bytes", bytes.size.toLong())
+            row.put("content_type", contentType)
+            row.put("fetched_at_epoch_millis", now)
+            row.put("last_accessed_at_epoch_millis", now)
+            writableDatabase.insertWithOnConflict(
+                "blobs",
+                null,
+                row,
+                SQLiteDatabase.CONFLICT_REPLACE,
+            )
+            enforceLruCap(writableDatabase)
+            writableDatabase.setTransactionSuccessful()
+        } finally {
+            writableDatabase.endTransaction()
+        }
     }
 
     /**
@@ -178,6 +191,100 @@ class ThumpBlobStore(
             "blob_key = ?",
             arrayOf<String>(blobKey),
         )
+    }
+
+    private fun enforceLruCap(writableDatabase: SQLiteDatabase): Unit {
+        val capBytes: Long = cacheSizeBytesProvider()
+        val totalBytesAtStart: Long = readTotalBlobBytes(writableDatabase)
+        if (totalBytesAtStart <= capBytes) {
+            return
+        }
+        val rowCount: Int = readBlobRowCount(writableDatabase)
+        var runningTotalBytes: Long = totalBytesAtStart
+        // Bounded by the current row count — at most one eviction per row before we either
+        // drop under cap or empty the index. No risk of an unbounded loop.
+        for (evictionStep in 0 until rowCount) {
+            if (runningTotalBytes <= capBytes) {
+                return
+            }
+            val evictedSize: Long = evictOldestBlob(writableDatabase)
+            if (evictedSize < 0L) {
+                return
+            }
+            runningTotalBytes -= evictedSize
+        }
+    }
+
+    private fun readTotalBlobBytes(writableDatabase: SQLiteDatabase): Long {
+        val cursor: Cursor = writableDatabase.rawQuery(
+            "SELECT IFNULL(SUM(size_bytes), 0) FROM blobs",
+            arrayOf<String>(),
+        )
+        try {
+            if (!cursor.moveToFirst()) {
+                return 0L
+            }
+            return cursor.getLong(0)
+        } finally {
+            cursor.close()
+        }
+    }
+
+    private fun readBlobRowCount(writableDatabase: SQLiteDatabase): Int {
+        val cursor: Cursor = writableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM blobs",
+            arrayOf<String>(),
+        )
+        try {
+            if (!cursor.moveToFirst()) {
+                return 0
+            }
+            return cursor.getInt(0)
+        } finally {
+            cursor.close()
+        }
+    }
+
+    /**
+     * Delete the row with the oldest `last_accessed_at_epoch_millis` and its on-disk file.
+     * Returns the byte count of the evicted blob so the caller can decrement the running total,
+     * or `-1L` when there is nothing left to evict.
+     */
+    private fun evictOldestBlob(writableDatabase: SQLiteDatabase): Long {
+        val cursor: Cursor = writableDatabase.rawQuery(
+            "SELECT blob_key, file_path, size_bytes FROM blobs "
+                + "ORDER BY last_accessed_at_epoch_millis ASC LIMIT 1",
+            arrayOf<String>(),
+        )
+        val evictKey: String
+        val evictPath: String?
+        val evictSize: Long
+        try {
+            if (!cursor.moveToFirst()) {
+                return -1L
+            }
+            evictKey = cursor.getString(0)
+            if (cursor.isNull(1)) {
+                evictPath = null
+            } else {
+                evictPath = cursor.getString(1)
+            }
+            evictSize = cursor.getLong(2)
+        } finally {
+            cursor.close()
+        }
+        if (evictPath != null) {
+            val evictFile: File = File(evictPath)
+            if (evictFile.exists()) {
+                evictFile.delete()
+            }
+        }
+        writableDatabase.delete(
+            "blobs",
+            "blob_key = ?",
+            arrayOf<String>(evictKey),
+        )
+        return evictSize
     }
 
     private fun deriveFileName(blobKey: String): String {
