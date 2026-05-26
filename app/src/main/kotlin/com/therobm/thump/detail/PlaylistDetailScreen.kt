@@ -3,7 +3,6 @@ package com.therobm.thump.detail
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -38,42 +38,41 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.therobm.thump.ThumpColors
-import com.therobm.thump.art.CompositeArtTile
-import com.therobm.thump.playback.PlaybackQueueItem
+import com.therobm.thump.art.ArtImage
+import com.therobm.thump.data.Playlist
+import com.therobm.thump.data.ThumpData
+import com.therobm.thump.data.ThumpDataNotConfigured
+import com.therobm.thump.data.Track
 import com.therobm.thump.playback.PlaybackSource
 import com.therobm.thump.playback.PlaybackSourceKind
-import com.therobm.thump.subsonic.StandardPlaylistDetailPayload
-import com.therobm.thump.subsonic.StandardSongDetail
-import com.therobm.thump.subsonic.SubsonicClient
-import com.therobm.thump.subsonic.SubsonicResult
+import java.io.IOException
 
 private const val COVER_ART_REQUEST_SIZE: Int = 600
 private const val ROW_ART_REQUEST_SIZE: Int = 150
+private const val NO_SERVER_CONFIGURED_MESSAGE: String = "No server configured"
 
 @Composable
 fun PlaylistDetailScreen(
     playlistId: String,
-    subsonicClient: SubsonicClient,
+    thumpData: ThumpData,
     onBackPressed: () -> Unit,
-    onPlayQueue: (List<PlaybackQueueItem>, Int, PlaybackSource?) -> Unit,
+    onPlayTracks: (tracks: List<Track>, startIndex: Int, source: PlaybackSource?) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier,
 ) {
-    var loadState: DetailLoadState<StandardPlaylistDetailPayload> by remember(playlistId) {
-        mutableStateOf(DetailLoadState.Loading)
+    var loadState: DetailLoadState<Playlist> by remember(playlistId) {
+        mutableStateOf<DetailLoadState<Playlist>>(DetailLoadState.Loading)
     }
 
-    LaunchedEffect(playlistId, subsonicClient) {
-        val result = subsonicClient.getPlaylist(playlistId)
-        when (result) {
-            is SubsonicResult.Ok -> {
-                loadState = DetailLoadState.Loaded(result.value)
-            }
-            else -> {
-                loadState = DetailLoadState.Failed(describeSubsonicFailure(result))
-            }
+    LaunchedEffect(playlistId, thumpData) {
+        try {
+            val playlist: Playlist = thumpData.getPlaylist(playlistId)
+            loadState = DetailLoadState.Loaded(playlist)
+        } catch (notConfigured: ThumpDataNotConfigured) {
+            loadState = DetailLoadState.Failed(NO_SERVER_CONFIGURED_MESSAGE)
+        } catch (transportFailure: IOException) {
+            loadState = DetailLoadState.Failed("Network error: " + transportFailure.javaClass.simpleName)
         }
     }
 
@@ -85,7 +84,7 @@ fun PlaylistDetailScreen(
     ) {
         DetailTopBar(title = "Playlist", onBackPressed = onBackPressed)
 
-        val currentLoadState = loadState
+        val currentLoadState: DetailLoadState<Playlist> = loadState
         when (currentLoadState) {
             is DetailLoadState.Loading -> {
                 CenteredSpinner()
@@ -100,8 +99,8 @@ fun PlaylistDetailScreen(
             is DetailLoadState.Loaded -> {
                 PlaylistDetailContent(
                     playlist = currentLoadState.value,
-                    subsonicClient = subsonicClient,
-                    onPlayQueue = onPlayQueue,
+                    thumpData = thumpData,
+                    onPlayTracks = onPlayTracks,
                 )
             }
         }
@@ -110,28 +109,10 @@ fun PlaylistDetailScreen(
 
 @Composable
 private fun PlaylistDetailContent(
-    playlist: StandardPlaylistDetailPayload,
-    subsonicClient: SubsonicClient,
-    onPlayQueue: (List<PlaybackQueueItem>, Int, PlaybackSource?) -> Unit,
+    playlist: Playlist,
+    thumpData: ThumpData,
+    onPlayTracks: (tracks: List<Track>, startIndex: Int, source: PlaybackSource?) -> Unit,
 ) {
-    // Prefer the playlist's own coverArt when the server supplies one (Pulse hands us its
-     // pl-<id> server-generated composite). Fall back to the on-device 2x2 stitch from the
-     // entries' covers only when the playlist itself has no art.
-    val headerCoverArtIds: List<String>
-    if (playlist.coverArt != null) {
-        headerCoverArtIds = listOf(playlist.coverArt)
-    } else {
-        val stitched = ArrayList<String>(playlist.entry.size)
-        val entryCount = playlist.entry.size
-        for (entryIndex in 0 until entryCount) {
-            val candidate = playlist.entry[entryIndex].coverArt
-            if (candidate != null) {
-                stitched.add(candidate)
-            }
-        }
-        headerCoverArtIds = stitched
-    }
-
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 24.dp),
@@ -144,14 +125,15 @@ private fun PlaylistDetailContent(
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                val artModifier = Modifier
+                val artModifier: Modifier = Modifier
                     .fillMaxWidth(0.8f)
                     .aspectRatio(1f)
                     .clip(RoundedCornerShape(12.dp))
-                CompositeArtTile(
-                    coverArtIds = headerCoverArtIds,
-                    subsonicClient = subsonicClient,
-                    requestSizePx = COVER_ART_REQUEST_SIZE,
+                ArtImage(
+                    thumpData = thumpData,
+                    artId = playlist.coverArtId,
+                    sizePx = COVER_ART_REQUEST_SIZE,
+                    contentDescription = null,
                     modifier = artModifier,
                 )
 
@@ -162,7 +144,7 @@ private fun PlaylistDetailContent(
                     color = ThumpColors.OnBackground,
                     textAlign = TextAlign.Center,
                 )
-                val metadataLine = buildPlaylistMetadataLine(playlist)
+                val metadataLine: String = buildPlaylistMetadataLine(playlist)
                 if (metadataLine.isNotEmpty()) {
                     Text(
                         text = metadataLine,
@@ -183,9 +165,8 @@ private fun PlaylistDetailContent(
             ) {
                 Button(
                     onClick = {
-                        val queue = buildPlaylistQueue(playlist.entry, subsonicClient)
-                        if (queue.isNotEmpty()) {
-                            onPlayQueue(queue, 0, PlaybackSource(PlaybackSourceKind.Playlist, playlist.name))
+                        if (playlist.tracks.isNotEmpty()) {
+                            onPlayTracks(playlist.tracks, 0, PlaybackSource(PlaybackSourceKind.Playlist, playlist.name))
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ThumpColors.Accent),
@@ -197,9 +178,8 @@ private fun PlaylistDetailContent(
                 }
                 OutlinedButton(
                     onClick = {
-                        val queue = buildPlaylistQueue(playlist.entry, subsonicClient).shuffled()
-                        if (queue.isNotEmpty()) {
-                            onPlayQueue(queue, 0, PlaybackSource(PlaybackSourceKind.Playlist, playlist.name))
+                        if (playlist.tracks.isNotEmpty()) {
+                            onPlayTracks(playlist.tracks.shuffled(), 0, PlaybackSource(PlaybackSourceKind.Playlist, playlist.name))
                         }
                     },
                     modifier = Modifier.weight(1f),
@@ -211,13 +191,16 @@ private fun PlaylistDetailContent(
             }
         }
 
-        itemsIndexed(items = playlist.entry, key = { rowIndex, song -> rowIndex.toString() + ":" + song.id }) { rowIndex: Int, song: StandardSongDetail ->
+        itemsIndexed(
+            items = playlist.tracks,
+            key = { rowIndex, track -> rowIndex.toString() + ":" + track.trackId },
+        ) { rowIndex: Int, track: Track ->
             PlaylistTrackRow(
-                song = song,
+                track = track,
+                thumpData = thumpData,
                 onTapped = {
-                    val queue = buildPlaylistQueue(playlist.entry, subsonicClient)
-                    if (queue.isNotEmpty()) {
-                        onPlayQueue(queue, rowIndex, PlaybackSource(PlaybackSourceKind.Playlist, playlist.name))
+                    if (playlist.tracks.isNotEmpty()) {
+                        onPlayTracks(playlist.tracks, rowIndex, PlaybackSource(PlaybackSourceKind.Playlist, playlist.name))
                     }
                 },
             )
@@ -227,7 +210,8 @@ private fun PlaylistDetailContent(
 
 @Composable
 private fun PlaylistTrackRow(
-    song: StandardSongDetail,
+    track: Track,
+    thumpData: ThumpData,
     onTapped: () -> Unit,
 ) {
     Row(
@@ -237,15 +221,26 @@ private fun PlaylistTrackRow(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val thumbModifier: Modifier = Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(6.dp))
+        ArtImage(
+            thumpData = thumpData,
+            artId = track.coverArtId,
+            sizePx = ROW_ART_REQUEST_SIZE,
+            contentDescription = null,
+            modifier = thumbModifier,
+        )
+        Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = song.title,
+                text = track.title,
                 style = MaterialTheme.typography.bodyMedium,
                 color = ThumpColors.OnBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val artistText = textOrFallback(song.artist, "")
+            val artistText: String = textOrFallback(track.artistName, "")
             if (artistText.isNotEmpty()) {
                 Text(
                     text = artistText,
@@ -258,50 +253,21 @@ private fun PlaylistTrackRow(
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = formatDurationSeconds(song.duration),
+            text = formatDurationSeconds(track.durationSeconds),
             style = MaterialTheme.typography.bodySmall,
             color = ThumpColors.TextSecondary,
         )
     }
 }
 
-private fun buildPlaylistMetadataLine(playlist: StandardPlaylistDetailPayload): String {
-    val parts = ArrayList<String>(2)
+private fun buildPlaylistMetadataLine(playlist: Playlist): String {
+    val parts: ArrayList<String> = ArrayList<String>(2)
     if (playlist.songCount != null && playlist.songCount > 0) {
         parts.add(playlist.songCount.toString() + " tracks")
     }
-    val durationText = formatDurationSeconds(playlist.duration)
+    val durationText: String = formatDurationSeconds(playlist.durationSeconds)
     if (durationText.isNotEmpty()) {
         parts.add(durationText)
     }
     return parts.joinToString(separator = " • ")
-}
-
-private fun buildPlaylistQueue(
-    songs: List<StandardSongDetail>,
-    subsonicClient: SubsonicClient,
-): List<PlaybackQueueItem> {
-    val result = ArrayList<PlaybackQueueItem>(songs.size)
-    val songCount = songs.size
-    for (songIndex in 0 until songCount) {
-        val song = songs[songIndex]
-        val coverArtUrl: String?
-        val coverArtId = song.coverArt
-        if (coverArtId == null) {
-            coverArtUrl = null
-        } else {
-            coverArtUrl = subsonicClient.buildCoverArtUrl(coverArtId, ROW_ART_REQUEST_SIZE)
-        }
-        result.add(
-            PlaybackQueueItem(
-                trackId = song.id,
-                streamUrl = subsonicClient.buildStreamUrl(song.id),
-                title = song.title,
-                artist = textOrFallback(song.artist, ""),
-                album = song.album,
-                coverArtUrl = coverArtUrl,
-            )
-        )
-    }
-    return result
 }
