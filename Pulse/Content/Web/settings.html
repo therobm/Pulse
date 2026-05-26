@@ -13,6 +13,8 @@
 			--text-secondary: #8a88a0;
 			--text-dim: #5c5a70;
 			--accent: #6c5ce7;
+			--accent-dim: #6c5ce722;
+			--success: #00cec9;
 			--danger: #e17055;
 			--danger-hover: #ef8265;
 		}
@@ -32,7 +34,7 @@
 		}
 
 		.page {
-			max-width: 1000px;
+			max-width: 1100px;
 			margin: 0 auto;
 		}
 
@@ -71,16 +73,23 @@
 			margin-bottom: 20px;
 		}
 
-			.section h2 {
-				font-size: 14px;
-				font-weight: 600;
-				letter-spacing: 1px;
-				text-transform: uppercase;
-				color: var(--text-secondary);
+			.section-head {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 12px;
 				margin-bottom: 6px;
 			}
 
-			.section .section-hint {
+				.section-head h2 {
+					font-size: 14px;
+					font-weight: 600;
+					letter-spacing: 1px;
+					text-transform: uppercase;
+					color: var(--text-secondary);
+				}
+
+			.section-hint {
 				font-size: 12px;
 				color: var(--text-dim);
 				margin-bottom: 14px;
@@ -96,6 +105,7 @@
 				padding: 10px 12px;
 				border-bottom: 1px solid var(--border);
 				font-size: 13px;
+				vertical-align: middle;
 			}
 
 			.user-table th {
@@ -112,17 +122,43 @@
 
 			.user-table .col-name {
 				font-weight: 600;
+				width: 180px;
 			}
 
-			.user-table .col-num {
-				font-family: 'DM Mono', monospace;
+			.user-table .col-display {
+				width: 200px;
 				color: var(--text-secondary);
+			}
+
+			.user-table .col-created {
+				width: 130px;
+				color: var(--text-dim);
+				font-family: 'DM Mono', monospace;
+				font-size: 11px;
+			}
+
+			.user-table .col-admin {
+				width: 70px;
+				text-align: center;
+			}
+
+			.user-table .col-counts {
+				color: var(--text-dim);
+				font-family: 'DM Mono', monospace;
+				font-size: 11px;
 				width: 140px;
 			}
 
 			.user-table .col-actions {
-				width: 220px;
+				width: 200px;
 				text-align: right;
+			}
+
+			.user-table tr.orphan td.col-name::after {
+				content: ' (orphan)';
+				color: var(--danger);
+				font-weight: 400;
+				font-size: 11px;
 			}
 
 		.btn {
@@ -139,6 +175,17 @@
 			.btn:hover {
 				border-color: var(--text-secondary);
 			}
+
+			.btn.btn-primary {
+				background: var(--accent);
+				border-color: var(--accent);
+				color: #fff;
+			}
+
+				.btn.btn-primary:hover {
+					background: #7d6ef0;
+					border-color: #7d6ef0;
+				}
 
 			.btn.btn-danger {
 				color: var(--danger);
@@ -160,16 +207,40 @@
 					background: var(--danger-hover);
 				}
 
-		.confirm-row {
+		.action-row {
 			display: inline-flex;
 			align-items: center;
-			gap: 8px;
+			gap: 6px;
+			flex-wrap: wrap;
+			justify-content: flex-end;
 		}
 
-			.confirm-row .confirm-label {
+			.action-row .confirm-label {
 				font-size: 12px;
 				color: var(--danger);
 			}
+
+		.input {
+			background: var(--bg);
+			border: 1px solid var(--border);
+			color: var(--text-primary);
+			padding: 6px 8px;
+			border-radius: 4px;
+			font-size: 13px;
+			font-family: inherit;
+			width: 100%;
+		}
+
+			.input:focus {
+				outline: none;
+				border-color: var(--accent);
+			}
+
+		.checkbox-cell {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
 
 		.empty-state {
 			padding: 24px;
@@ -184,6 +255,49 @@
 			color: var(--text-dim);
 			font-size: 13px;
 		}
+
+		.create-form {
+			display: none;
+			margin-top: 14px;
+			padding: 14px;
+			border: 1px dashed var(--border);
+			border-radius: 6px;
+		}
+
+			.create-form.visible {
+				display: block;
+			}
+
+			.create-form .form-row {
+				display: grid;
+				grid-template-columns: 1fr 1fr auto auto auto;
+				gap: 10px;
+				align-items: center;
+			}
+
+			.create-form label {
+				font-size: 11px;
+				color: var(--text-secondary);
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				display: block;
+				margin-bottom: 4px;
+			}
+
+			.create-form .checkbox-label {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 12px;
+				color: var(--text-secondary);
+			}
+
+			.create-form .form-error {
+				color: var(--danger);
+				font-size: 12px;
+				margin-top: 8px;
+				min-height: 16px;
+			}
 
 		.toast {
 			position: fixed;
@@ -204,6 +318,11 @@
 			.toast.visible {
 				opacity: 1;
 			}
+
+			.toast.error {
+				border-color: var(--danger);
+				color: var(--danger);
+			}
 	</style>
 </head>
 <body>
@@ -214,8 +333,29 @@
 		</div>
 
 		<div class="section">
-			<h2>Users</h2>
-			<div class="section-hint">Every user_name observed across scores, stars, playlists, and bookmarks. Deleting wipes that user's per-user rows from the database. Track / album / playlist content is unaffected.</div>
+			<div class="section-head">
+				<h2>Users</h2>
+				<button class="btn btn-primary" id="new-user-btn">New user</button>
+			</div>
+			<div class="section-hint">Real entries live in the <code>users</code> table. Rows still referenced by per-user data but missing from <code>users</code> are surfaced as orphans so you can clean them up.</div>
+
+			<div id="create-form" class="create-form">
+				<div class="form-row">
+					<div>
+						<label for="create-name">Name</label>
+						<input type="text" class="input" id="create-name" maxlength="120" autocomplete="off" />
+					</div>
+					<div>
+						<label for="create-display">Display name</label>
+						<input type="text" class="input" id="create-display" maxlength="120" autocomplete="off" />
+					</div>
+					<label class="checkbox-label"><input type="checkbox" id="create-admin" /> Admin</label>
+					<button class="btn btn-primary" id="create-submit">Create</button>
+					<button class="btn" id="create-cancel">Cancel</button>
+				</div>
+				<div class="form-error" id="create-error"></div>
+			</div>
+
 			<div id="users-container">
 				<div class="loading-text">Loading users...</div>
 			</div>
@@ -225,8 +365,6 @@
 	<div id="toast" class="toast"></div>
 
 	<script>
-		let API_USER = 'Rob';
-
 		function pulseGet(endpoint, callback) {
 			let xhr = new XMLHttpRequest();
 			xhr.open('GET', '/pulse/' + endpoint);
@@ -237,17 +375,28 @@
 				}
 				else {
 					console.error('HTTP error:', endpoint, xhr.status);
-					showToast('Request failed: ' + endpoint);
+					showToast('Request failed: ' + endpoint, true);
 				}
 			};
 			xhr.send();
 		}
 
-		function showToast(message) {
+		function showToast(message, isError) {
 			let toast = document.getElementById('toast');
 			toast.textContent = message;
+			toast.classList.toggle('error', !!isError);
 			toast.classList.add('visible');
 			setTimeout(function () { toast.classList.remove('visible'); }, 2500);
+		}
+
+		function formatCreated(iso) {
+			if (!iso) { return '—'; }
+			let date = new Date(iso);
+			if (isNaN(date.getTime())) { return '—'; }
+			let year = date.getFullYear();
+			let month = String(date.getMonth() + 1).padStart(2, '0');
+			let day = String(date.getDate()).padStart(2, '0');
+			return year + '-' + month + '-' + day;
 		}
 
 		function loadUsers() {
@@ -268,12 +417,18 @@
 
 			let head = document.createElement('thead');
 			let headRow = document.createElement('tr');
-			let headers = ['User', 'Scored tracks', 'Stars', 'Playlist plays', ''];
-			let widthClasses = ['col-name', 'col-num', 'col-num', 'col-num', 'col-actions'];
-			for (let idx = 0; idx < headers.length; idx++) {
+			let columns = [
+				{ label: 'Name', cls: 'col-name' },
+				{ label: 'Display name', cls: 'col-display' },
+				{ label: 'Created', cls: 'col-created' },
+				{ label: 'Admin', cls: 'col-admin' },
+				{ label: 'Activity', cls: 'col-counts' },
+				{ label: '', cls: 'col-actions' }
+			];
+			for (let idx = 0; idx < columns.length; idx++) {
 				let th = document.createElement('th');
-				th.textContent = headers[idx];
-				th.className = widthClasses[idx];
+				th.textContent = columns[idx].label;
+				th.className = columns[idx].cls;
 				headRow.appendChild(th);
 			}
 			head.appendChild(headRow);
@@ -291,46 +446,70 @@
 
 		function buildUserRow(user) {
 			let row = document.createElement('tr');
-			row.setAttribute('data-user-name', user.userName);
+			let isOrphan = !user.created;
+			if (isOrphan) { row.classList.add('orphan'); }
+			row.setAttribute('data-user-name', user.name);
 
 			let nameCell = document.createElement('td');
 			nameCell.className = 'col-name';
-			nameCell.textContent = user.userName;
+			nameCell.textContent = user.name;
 			row.appendChild(nameCell);
 
-			let scoredCell = document.createElement('td');
-			scoredCell.className = 'col-num';
-			scoredCell.textContent = user.scoredTrackCount;
-			row.appendChild(scoredCell);
+			let displayCell = document.createElement('td');
+			displayCell.className = 'col-display';
+			displayCell.textContent = user.displayName || '—';
+			row.appendChild(displayCell);
 
-			let starredCell = document.createElement('td');
-			starredCell.className = 'col-num';
-			starredCell.textContent = user.starredCount;
-			row.appendChild(starredCell);
+			let createdCell = document.createElement('td');
+			createdCell.className = 'col-created';
+			createdCell.textContent = formatCreated(user.created);
+			row.appendChild(createdCell);
 
-			let playlistCell = document.createElement('td');
-			playlistCell.className = 'col-num';
-			playlistCell.textContent = user.playlistLastPlayedCount;
-			row.appendChild(playlistCell);
+			let adminCell = document.createElement('td');
+			adminCell.className = 'col-admin';
+			adminCell.textContent = user.isAdmin ? 'Yes' : '';
+			row.appendChild(adminCell);
+
+			let countsCell = document.createElement('td');
+			countsCell.className = 'col-counts';
+			countsCell.textContent = user.scoredTrackCount + ' s · ' + user.starredCount + ' ★ · ' + user.playlistLastPlayedCount + ' pl';
+			row.appendChild(countsCell);
 
 			let actionsCell = document.createElement('td');
 			actionsCell.className = 'col-actions';
-			let deleteBtn = document.createElement('button');
-			deleteBtn.className = 'btn btn-danger';
-			deleteBtn.textContent = 'Delete';
-			deleteBtn.addEventListener('click', function () { showDeleteConfirm(row, user.userName); });
-			actionsCell.appendChild(deleteBtn);
+			renderRowActions(actionsCell, user);
 			row.appendChild(actionsCell);
 
 			return row;
 		}
 
-		function showDeleteConfirm(row, userName) {
-			let actionsCell = row.querySelector('.col-actions');
+		function renderRowActions(actionsCell, user) {
+			actionsCell.innerHTML = '';
+			let wrapper = document.createElement('span');
+			wrapper.className = 'action-row';
+
+			if (user.created) {
+				let editBtn = document.createElement('button');
+				editBtn.className = 'btn';
+				editBtn.textContent = 'Edit';
+				editBtn.addEventListener('click', function () { showEditRow(user); });
+				wrapper.appendChild(editBtn);
+			}
+
+			let deleteBtn = document.createElement('button');
+			deleteBtn.className = 'btn btn-danger';
+			deleteBtn.textContent = 'Delete';
+			deleteBtn.addEventListener('click', function () { showDeleteConfirm(actionsCell, user.name); });
+			wrapper.appendChild(deleteBtn);
+
+			actionsCell.appendChild(wrapper);
+		}
+
+		function showDeleteConfirm(actionsCell, userName) {
 			actionsCell.innerHTML = '';
 
 			let wrapper = document.createElement('span');
-			wrapper.className = 'confirm-row';
+			wrapper.className = 'action-row';
 
 			let label = document.createElement('span');
 			label.className = 'confirm-label';
@@ -352,28 +531,159 @@
 			actionsCell.appendChild(wrapper);
 		}
 
+		function showEditRow(user) {
+			let row = document.querySelector('tr[data-user-name="' + cssEscape(user.name) + '"]');
+			if (!row) { return; }
+
+			let nameCell = row.querySelector('.col-name');
+			let displayCell = row.querySelector('.col-display');
+			let adminCell = row.querySelector('.col-admin');
+			let actionsCell = row.querySelector('.col-actions');
+
+			let nameInput = document.createElement('input');
+			nameInput.type = 'text';
+			nameInput.className = 'input';
+			nameInput.value = user.name;
+			nameInput.maxLength = 120;
+			nameCell.innerHTML = '';
+			nameCell.appendChild(nameInput);
+
+			let displayInput = document.createElement('input');
+			displayInput.type = 'text';
+			displayInput.className = 'input';
+			displayInput.value = user.displayName || '';
+			displayInput.maxLength = 120;
+			displayCell.innerHTML = '';
+			displayCell.appendChild(displayInput);
+
+			let adminInput = document.createElement('input');
+			adminInput.type = 'checkbox';
+			adminInput.checked = !!user.isAdmin;
+			adminCell.innerHTML = '';
+			let adminWrap = document.createElement('div');
+			adminWrap.className = 'checkbox-cell';
+			adminWrap.appendChild(adminInput);
+			adminCell.appendChild(adminWrap);
+
+			actionsCell.innerHTML = '';
+			let wrapper = document.createElement('span');
+			wrapper.className = 'action-row';
+
+			let saveBtn = document.createElement('button');
+			saveBtn.className = 'btn btn-primary';
+			saveBtn.textContent = 'Save';
+			saveBtn.addEventListener('click', function () {
+				runUpdate(user.name, nameInput.value.trim(), displayInput.value.trim(), adminInput.checked);
+			});
+			wrapper.appendChild(saveBtn);
+
+			let cancelBtn = document.createElement('button');
+			cancelBtn.className = 'btn';
+			cancelBtn.textContent = 'Cancel';
+			cancelBtn.addEventListener('click', function () { loadUsers(); });
+			wrapper.appendChild(cancelBtn);
+
+			actionsCell.appendChild(wrapper);
+			nameInput.focus();
+		}
+
+		function cssEscape(value) {
+			if (window.CSS && window.CSS.escape) { return window.CSS.escape(value); }
+			return value.replace(/(["\\])/g, '\\$1');
+		}
+
 		function runDelete(userName) {
+			let url = '/pulse/deleteUser?user=' + encodeURIComponent(userName);
+			postPulse(url, function (data) {
+				if (data.ok) { showToast('Deleted ' + userName); }
+				else { showToast('Delete failed: ' + (data.error || 'unknown error'), true); }
+				loadUsers();
+			});
+		}
+
+		function runUpdate(oldName, newName, displayName, isAdmin) {
+			if (!newName) { showToast('Name is required', true); return; }
+			let url = '/pulse/updateUser?name=' + encodeURIComponent(oldName)
+				+ '&newName=' + encodeURIComponent(newName)
+				+ '&displayName=' + encodeURIComponent(displayName)
+				+ '&isAdmin=' + (isAdmin ? 'true' : 'false');
+			postPulse(url, function (data) {
+				if (data.ok) { showToast('Saved ' + newName); }
+				else { showToast('Update failed: ' + (data.error || 'unknown error'), true); }
+				loadUsers();
+			});
+		}
+
+		function postPulse(url, callback) {
 			let xhr = new XMLHttpRequest();
-			xhr.open('GET', '/pulse/deleteUser?user=' + encodeURIComponent(userName));
+			xhr.open('GET', url);
 			xhr.onload = function () {
 				if (xhr.status === 200) {
-					let data = JSON.parse(xhr.responseText);
-					if (data.ok) {
-						showToast('Deleted ' + userName);
-					}
-					else {
-						showToast('Delete failed: ' + (data.error || 'unknown error'));
-					}
+					callback(JSON.parse(xhr.responseText));
 				}
 				else {
-					showToast('Delete failed (HTTP ' + xhr.status + ')');
+					showToast('Request failed (HTTP ' + xhr.status + ')', true);
+					callback({ ok: false });
 				}
-				loadUsers();
 			};
 			xhr.send();
 		}
 
-		document.addEventListener('DOMContentLoaded', function () { loadUsers(); });
+		function showCreateForm() {
+			let form = document.getElementById('create-form');
+			form.classList.add('visible');
+			document.getElementById('create-error').textContent = '';
+			document.getElementById('create-name').value = '';
+			document.getElementById('create-display').value = '';
+			document.getElementById('create-admin').checked = false;
+			document.getElementById('create-name').focus();
+		}
+
+		function hideCreateForm() {
+			document.getElementById('create-form').classList.remove('visible');
+		}
+
+		function submitCreate() {
+			let name = document.getElementById('create-name').value.trim();
+			let displayName = document.getElementById('create-display').value.trim();
+			let isAdmin = document.getElementById('create-admin').checked;
+			let errEl = document.getElementById('create-error');
+			errEl.textContent = '';
+			if (!name) { errEl.textContent = 'Name is required.'; return; }
+
+			let url = '/pulse/createUser?name=' + encodeURIComponent(name)
+				+ '&displayName=' + encodeURIComponent(displayName)
+				+ '&isAdmin=' + (isAdmin ? 'true' : 'false');
+			postPulse(url, function (data) {
+				if (data.ok) {
+					hideCreateForm();
+					showToast('Created ' + name);
+					loadUsers();
+				}
+				else {
+					errEl.textContent = data.error || 'Create failed';
+				}
+			});
+		}
+
+		function wireUp() {
+			document.getElementById('new-user-btn').addEventListener('click', showCreateForm);
+			document.getElementById('create-cancel').addEventListener('click', hideCreateForm);
+			document.getElementById('create-submit').addEventListener('click', submitCreate);
+			document.getElementById('create-name').addEventListener('keydown', function (event) {
+				if (event.key === 'Enter') { submitCreate(); }
+				else if (event.key === 'Escape') { hideCreateForm(); }
+			});
+			document.getElementById('create-display').addEventListener('keydown', function (event) {
+				if (event.key === 'Enter') { submitCreate(); }
+				else if (event.key === 'Escape') { hideCreateForm(); }
+			});
+		}
+
+		document.addEventListener('DOMContentLoaded', function () {
+			wireUp();
+			loadUsers();
+		});
 	</script>
 </body>
 </html>

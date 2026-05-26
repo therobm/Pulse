@@ -962,11 +962,204 @@ namespace Pulse.Data
 			}
 		}
 
+		// SELECT from the users table, then layer the in-memory per-user counts
+		// on top. Names that have per-user rows but no users-table entry (e.g.
+		// scrobbled after the user was deleted) are surfaced as orphan records
+		// with Created=MinValue so the operator can spot and clean them up.
+		public override List<UserRecord> GetAllUsers()
+		{
+			Dictionary<string, UserRecord> byName = new Dictionary<string, UserRecord>();
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT name, display_name, created, is_admin FROM users;";
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
+				{
+					UserRecord record = ReadUserRecord(reader);
+					byName[record.Name] = record;
+				}
+				reader.Close();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			PopulateUserCounts(byName, true);
+			List<UserRecord> users = new List<UserRecord>(byName.Values);
+			users.Sort(CompareUserRecordByName);
+			return users;
+		}
+
+		public override UserRecord GetUser(string name)
+		{
+			if (string.IsNullOrEmpty(name)) { return null; }
+			UserRecord record = null;
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT name, display_name, created, is_admin FROM users WHERE name = $name;";
+				command.Parameters.AddWithValue("$name", name);
+				SqliteDataReader reader = command.ExecuteReader();
+				if (reader.Read())
+				{
+					record = ReadUserRecord(reader);
+				}
+				reader.Close();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return record;
+		}
+
+		private static UserRecord ReadUserRecord(SqliteDataReader reader)
+		{
+			UserRecord record = new UserRecord();
+			record.Name = reader.GetString(0);
+			record.DisplayName = reader.GetString(1);
+			string createdStr = reader.GetString(2);
+			DateTime created;
+			if (!string.IsNullOrEmpty(createdStr) && DateTime.TryParse(createdStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out created))
+			{
+				record.Created = created;
+			}
+			record.IsAdmin = reader.GetInt32(3) != 0;
+			return record;
+		}
+
+		public override string CreateUser(string name, string displayName, bool isAdmin)
+		{
+			if (string.IsNullOrWhiteSpace(name)) { return "Name is required."; }
+
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				SqliteCommand exists = connection.CreateCommand();
+				exists.CommandText = "SELECT 1 FROM users WHERE name = $name;";
+				exists.Parameters.AddWithValue("$name", name);
+				object found = exists.ExecuteScalar();
+				if (found != null)
+				{
+					return "A user with that name already exists.";
+				}
+
+				SqliteCommand insert = connection.CreateCommand();
+				insert.CommandText = "INSERT INTO users (name, display_name, created, is_admin) VALUES ($name, $dn, $created, $admin);";
+				insert.Parameters.AddWithValue("$name", name);
+				insert.Parameters.AddWithValue("$dn", displayName ?? "");
+				insert.Parameters.AddWithValue("$created", DateTime.UtcNow.ToString("o"));
+				insert.Parameters.AddWithValue("$admin", isAdmin ? 1 : 0);
+				insert.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return "";
+		}
+
+		// Single-transaction update. If `newName` differs from `oldName` the FK
+		// columns in every per-user table are also rewritten -- on UNIQUE
+		// constraint violation (e.g. a track already had a row for newName)
+		// the transaction rolls back and the caller gets an error.
+		public override string UpdateUser(string oldName, string newName, string displayName, bool isAdmin)
+		{
+			if (string.IsNullOrWhiteSpace(oldName)) { return "Old name is required."; }
+			if (string.IsNullOrWhiteSpace(newName)) { return "New name is required."; }
+
+			bool renaming = !string.Equals(oldName, newName, StringComparison.Ordinal);
+
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				SqliteCommand oldExists = connection.CreateCommand();
+				oldExists.CommandText = "SELECT 1 FROM users WHERE name = $name;";
+				oldExists.Parameters.AddWithValue("$name", oldName);
+				if (oldExists.ExecuteScalar() == null)
+				{
+					return "User not found.";
+				}
+
+				if (renaming)
+				{
+					SqliteCommand newExists = connection.CreateCommand();
+					newExists.CommandText = "SELECT 1 FROM users WHERE name = $name;";
+					newExists.Parameters.AddWithValue("$name", newName);
+					if (newExists.ExecuteScalar() != null)
+					{
+						return "A user named '" + newName + "' already exists.";
+					}
+				}
+
+				SqliteTransaction transaction = connection.BeginTransaction();
+				try
+				{
+					SqliteCommand updateUsersRow = connection.CreateCommand();
+					updateUsersRow.Transaction = transaction;
+					updateUsersRow.CommandText = "UPDATE users SET name = $new, display_name = $dn, is_admin = $admin WHERE name = $old;";
+					updateUsersRow.Parameters.AddWithValue("$new", newName);
+					updateUsersRow.Parameters.AddWithValue("$dn", displayName ?? "");
+					updateUsersRow.Parameters.AddWithValue("$admin", isAdmin ? 1 : 0);
+					updateUsersRow.Parameters.AddWithValue("$old", oldName);
+					updateUsersRow.ExecuteNonQuery();
+
+					if (renaming)
+					{
+						string[] tables = new string[] {
+							"track_user_scores",
+							"starred",
+							"playlist_user_last_played",
+							"playqueue_state",
+							"playqueue_entries",
+							"bookmarks"
+						};
+						for (int index = 0; index < tables.Length; index++)
+						{
+							SqliteCommand update = connection.CreateCommand();
+							update.Transaction = transaction;
+							update.CommandText = "UPDATE " + tables[index] + " SET user_name = $new WHERE user_name = $old;";
+							update.Parameters.AddWithValue("$new", newName);
+							update.Parameters.AddWithValue("$old", oldName);
+							update.ExecuteNonQuery();
+						}
+					}
+
+					transaction.Commit();
+				}
+				catch (SqliteException ex)
+				{
+					transaction.Rollback();
+					Log.Warning(-1, "UpdateUser '" + oldName + "' -> '" + newName + "' failed: " + ex.Message);
+					return "Rename failed -- another row would collide on this name. " + ex.Message;
+				}
+				catch (Exception ex)
+				{
+					transaction.Rollback();
+					Log.Error(-1, "UpdateUser unexpected error: " + ex.Message);
+					throw;
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+
+			if (renaming)
+			{
+				RenameUserInMemory(oldName, newName);
+			}
+			return "";
+		}
+
 		// Two-stage wipe: directly delete the non-cached per-user rows
-		// (playqueue + bookmarks), then let the base scrub the in-memory
-		// dicts and flag affected tracks/albums/artists/playlists dirty so
-		// the upcoming Save rewrites their starred / score / last-played
-		// rows without this user.
+		// (playqueue + bookmarks) plus the users-table row, then let the base
+		// scrub the in-memory dicts and flag affected tracks/albums/artists/
+		// playlists dirty so the upcoming Save rewrites their starred / score /
+		// last-played rows without this user.
 		public override void DeleteUser(string userName)
 		{
 			if (string.IsNullOrEmpty(userName)) { return; }
@@ -994,6 +1187,12 @@ namespace Pulse.Data
 					delBookmarks.CommandText = "DELETE FROM bookmarks WHERE user_name = $u;";
 					delBookmarks.Parameters.AddWithValue("$u", userName);
 					delBookmarks.ExecuteNonQuery();
+
+					SqliteCommand delUsersRow = connection.CreateCommand();
+					delUsersRow.Transaction = transaction;
+					delUsersRow.CommandText = "DELETE FROM users WHERE name = $u;";
+					delUsersRow.Parameters.AddWithValue("$u", userName);
+					delUsersRow.ExecuteNonQuery();
 
 					transaction.Commit();
 				}

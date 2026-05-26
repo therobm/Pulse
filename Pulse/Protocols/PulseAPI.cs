@@ -89,25 +89,70 @@ namespace Pulse.Protocols
 			return Results.Json(new { ok = true });
 		}
 
-		// Returns every user_name observed in the in-memory stores along with a
-		// few counters so the settings UI can show what would be lost if the user
-		// were deleted. Pulse has no users table -- user identity is implicit.
+		// Returns every user row from the v5 users table plus any orphan
+		// user_names still referenced by per-user data (so the operator can
+		// see and clean them up). Each row carries activity counters derived
+		// from the in-memory stores.
 		public IResult HandleListUsers(HttpContext context)
 		{
-			List<UserSummary> users = m_musicManager.GetAllUsers();
+			List<UserRecord> users = m_musicManager.GetAllUsers();
 			List<object> response = new List<object>();
 			for (int index = 0; index < users.Count; index++)
 			{
-				UserSummary user = users[index];
+				UserRecord user = users[index];
+				string createdStr = "";
+				if (user.Created != DateTime.MinValue)
+				{
+					createdStr = user.Created.ToString("o");
+				}
 				response.Add(new
 				{
-					userName = user.UserName,
+					name = user.Name,
+					displayName = user.DisplayName,
+					created = createdStr,
+					isAdmin = user.IsAdmin,
 					scoredTrackCount = user.ScoredTrackCount,
 					starredCount = user.StarredCount,
 					playlistLastPlayedCount = user.PlaylistLastPlayedCount
 				});
 			}
 			return Results.Json(new { users = response });
+		}
+
+		public IResult HandleCreateUser(HttpContext context)
+		{
+			string name = context.Request.Query["name"].FirstOrDefault();
+			string displayName = context.Request.Query["displayName"].FirstOrDefault() ?? "";
+			bool isAdmin = string.Equals(context.Request.Query["isAdmin"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase);
+
+			string error = m_musicManager.CreateUser(name, displayName, isAdmin);
+			if (!string.IsNullOrEmpty(error))
+			{
+				return Results.Json(new { ok = false, error = error });
+			}
+			Log.Info(-1, "Settings: created user '" + name + "'");
+			return Results.Json(new { ok = true });
+		}
+
+		public IResult HandleUpdateUser(HttpContext context)
+		{
+			string oldName = context.Request.Query["name"].FirstOrDefault();
+			string newName = context.Request.Query["newName"].FirstOrDefault();
+			string displayName = context.Request.Query["displayName"].FirstOrDefault() ?? "";
+			bool isAdmin = string.Equals(context.Request.Query["isAdmin"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase);
+
+			if (string.IsNullOrEmpty(newName))
+			{
+				newName = oldName;
+			}
+
+			string error = m_musicManager.UpdateUser(oldName, newName, displayName, isAdmin);
+			if (!string.IsNullOrEmpty(error))
+			{
+				return Results.Json(new { ok = false, error = error });
+			}
+			Log.Info(-1, "Settings: updated user '" + oldName + "' (now '" + newName + "')");
+			return Results.Json(new { ok = true });
 		}
 
 		// Deletes every per-user row for the given user_name across the database

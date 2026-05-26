@@ -184,6 +184,8 @@ namespace Pulse
 			host.RegisterRoute("pulse/stats.html", HandleStatsPage);
 
 			host.RegisterResultRoute("pulse/listUsers", m_pulseAPI.HandleListUsers);
+			host.RegisterResultRoute("pulse/createUser", m_pulseAPI.HandleCreateUser);
+			host.RegisterResultRoute("pulse/updateUser", m_pulseAPI.HandleUpdateUser);
 			host.RegisterResultRoute("pulse/deleteUser", m_pulseAPI.HandleDeleteUser);
 			host.RegisterRoute("pulse/settings.html", HandleSettingsPage);
 

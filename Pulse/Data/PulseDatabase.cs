@@ -51,10 +51,14 @@ namespace Pulse.Data
 		void SaveBookmark(string userName, string trackId, long positionMs, string comment);
 		void DeleteBookmark(string userName, string trackId);
 
-		// Settings page: list every user_name observed across the in-memory stores
-		// and wipe one out. See PulseDatabaseBase / PulseSqliteDatabase for the
-		// concrete behavior.
-		List<UserSummary> GetAllUsers();
+		// Settings-page CRUD over the v5 `users` table plus the per-user rows in
+		// every other table (Flatline #201). PulseSqliteDatabase is the real
+		// implementation; PulseDatabaseBase keeps an in-memory fallback for the
+		// legacy PulseFileDatabase, which is no longer used at runtime.
+		List<UserRecord> GetAllUsers();
+		UserRecord GetUser(string name);
+		string CreateUser(string name, string displayName, bool isAdmin);
+		string UpdateUser(string oldName, string newName, string displayName, bool isAdmin);
 		void DeleteUser(string userName);
 	}
 
@@ -371,71 +375,165 @@ namespace Pulse.Data
 		{
 		}
 
-		public virtual List<UserSummary> GetAllUsers()
+		// Base implementation walks the in-memory stores to synthesize a record
+		// per observed name -- legacy PulseFileDatabase fallback only. The
+		// SQLite backend overrides this to read the real users table and
+		// layers the in-memory counts on top via PopulateUserCounts.
+		public virtual List<UserRecord> GetAllUsers()
 		{
-			Dictionary<string, UserSummary> byName = new Dictionary<string, UserSummary>();
+			Dictionary<string, UserRecord> byName = new Dictionary<string, UserRecord>();
+			PopulateUserCounts(byName, true);
+			List<UserRecord> users = new List<UserRecord>(byName.Values);
+			users.Sort(CompareUserRecordByName);
+			return users;
+		}
+
+		public virtual UserRecord GetUser(string name)
+		{
+			List<UserRecord> all = GetAllUsers();
+			for (int index = 0; index < all.Count; index++)
+			{
+				if (string.Equals(all[index].Name, name, StringComparison.Ordinal))
+				{
+					return all[index];
+				}
+			}
+			return null;
+		}
+
+		public virtual string CreateUser(string name, string displayName, bool isAdmin)
+		{
+			return "";
+		}
+
+		public virtual string UpdateUser(string oldName, string newName, string displayName, bool isAdmin)
+		{
+			return "";
+		}
+
+		// Walks the in-memory stores and bumps ScoredTrackCount / StarredCount /
+		// PlaylistLastPlayedCount on the matching record. When `createMissing` is
+		// true (legacy file-backend path) a record is materialized for any name
+		// that doesn't already have one in the dict; when false (SQLite path)
+		// names that aren't in the `users` table are ignored -- they'd be orphan
+		// per-user rows, not real users.
+		protected void PopulateUserCounts(Dictionary<string, UserRecord> byName, bool createMissing)
+		{
 			foreach (TrackInfo track in m_tracks.Values)
 			{
 				foreach (KeyValuePair<string, ScoreData> entry in track.UserScore)
 				{
-					GetOrCreateUserSummary(byName, entry.Key).ScoredTrackCount++;
+					UserRecord record = GetOrLookupUserRecord(byName, entry.Key, createMissing);
+					if (record != null) { record.ScoredTrackCount++; }
 				}
 				foreach (KeyValuePair<string, bool> entry in track.Starred)
 				{
-					if (entry.Value)
-					{
-						GetOrCreateUserSummary(byName, entry.Key).StarredCount++;
-					}
+					if (!entry.Value) { continue; }
+					UserRecord record = GetOrLookupUserRecord(byName, entry.Key, createMissing);
+					if (record != null) { record.StarredCount++; }
 				}
 			}
 			foreach (AlbumInfo album in m_albums.Values)
 			{
 				foreach (KeyValuePair<string, bool> entry in album.Starred)
 				{
-					if (entry.Value)
-					{
-						GetOrCreateUserSummary(byName, entry.Key).StarredCount++;
-					}
+					if (!entry.Value) { continue; }
+					UserRecord record = GetOrLookupUserRecord(byName, entry.Key, createMissing);
+					if (record != null) { record.StarredCount++; }
 				}
 			}
 			foreach (ArtistInfo artist in m_artists.Values)
 			{
 				foreach (KeyValuePair<string, bool> entry in artist.Starred)
 				{
-					if (entry.Value)
-					{
-						GetOrCreateUserSummary(byName, entry.Key).StarredCount++;
-					}
+					if (!entry.Value) { continue; }
+					UserRecord record = GetOrLookupUserRecord(byName, entry.Key, createMissing);
+					if (record != null) { record.StarredCount++; }
 				}
 			}
 			foreach (PlaylistInfo playlist in m_playlists.Values)
 			{
 				foreach (KeyValuePair<string, DateTime> entry in playlist.UserLastPlayed)
 				{
-					GetOrCreateUserSummary(byName, entry.Key).PlaylistLastPlayedCount++;
+					UserRecord record = GetOrLookupUserRecord(byName, entry.Key, createMissing);
+					if (record != null) { record.PlaylistLastPlayedCount++; }
 				}
 			}
-			List<UserSummary> users = new List<UserSummary>(byName.Values);
-			users.Sort(CompareUserByName);
-			return users;
 		}
 
-		private static int CompareUserByName(UserSummary left, UserSummary right)
+		protected static int CompareUserRecordByName(UserRecord left, UserRecord right)
 		{
-			return string.Compare(left.UserName, right.UserName, StringComparison.Ordinal);
+			return string.Compare(left.Name, right.Name, StringComparison.Ordinal);
 		}
 
-		private static UserSummary GetOrCreateUserSummary(Dictionary<string, UserSummary> byName, string userName)
+		private static UserRecord GetOrLookupUserRecord(Dictionary<string, UserRecord> byName, string userName, bool createMissing)
 		{
-			UserSummary summary;
-			if (byName.TryGetValue(userName, out summary))
+			UserRecord record;
+			if (byName.TryGetValue(userName, out record))
 			{
-				return summary;
+				return record;
 			}
-			summary = new UserSummary();
-			summary.UserName = userName;
-			byName[userName] = summary;
-			return summary;
+			if (!createMissing)
+			{
+				return null;
+			}
+			record = new UserRecord();
+			record.Name = userName;
+			record.DisplayName = userName;
+			byName[userName] = record;
+			return record;
+		}
+
+		// Cascades a rename across every in-memory store. Concrete subclasses
+		// run this AFTER the SQL UPDATE succeeded so a constraint failure rolls
+		// the SQL back without leaving in-memory in a half-renamed state.
+		protected void RenameUserInMemory(string oldName, string newName)
+		{
+			if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName)) { return; }
+			if (string.Equals(oldName, newName, StringComparison.Ordinal)) { return; }
+
+			foreach (TrackInfo track in m_tracks.Values)
+			{
+				ScoreData score;
+				if (track.UserScore.TryGetValue(oldName, out score))
+				{
+					track.UserScore.Remove(oldName);
+					track.UserScore[newName] = score;
+				}
+				bool starred;
+				if (track.Starred.TryGetValue(oldName, out starred))
+				{
+					track.Starred.Remove(oldName);
+					track.Starred[newName] = starred;
+				}
+			}
+			foreach (AlbumInfo album in m_albums.Values)
+			{
+				bool starred;
+				if (album.Starred.TryGetValue(oldName, out starred))
+				{
+					album.Starred.Remove(oldName);
+					album.Starred[newName] = starred;
+				}
+			}
+			foreach (ArtistInfo artist in m_artists.Values)
+			{
+				bool starred;
+				if (artist.Starred.TryGetValue(oldName, out starred))
+				{
+					artist.Starred.Remove(oldName);
+					artist.Starred[newName] = starred;
+				}
+			}
+			foreach (PlaylistInfo playlist in m_playlists.Values)
+			{
+				DateTime lastPlayed;
+				if (playlist.UserLastPlayed.TryGetValue(oldName, out lastPlayed))
+				{
+					playlist.UserLastPlayed.Remove(oldName);
+					playlist.UserLastPlayed[newName] = lastPlayed;
+				}
+			}
 		}
 
 		// Removes every in-memory trace of `userName` and flags the touched entities

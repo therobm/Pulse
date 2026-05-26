@@ -227,13 +227,15 @@ namespace Pulse.MusicLibrary
 		public DateTime Changed { get; set; }
 	}
 
-	// Settings-page summary of a single user. Pulse has no users table -- user
-	// identity is implicit in every place a user_name string is written. This
-	// type aggregates what we can find about a name across the various stores
-	// so the settings UI has something to show beside a Delete button.
-	public class UserSummary
+	// Settings-page record for a single user. Backed by the `users` SQLite
+	// table (migration v5, Flatline #201); the activity counters are derived
+	// at read time by scanning the in-memory stores.
+	public class UserRecord
 	{
-		public string UserName = "";
+		public string Name = "";
+		public string DisplayName = "";
+		public DateTime Created = DateTime.MinValue;
+		public bool IsAdmin = false;
 		public int ScoredTrackCount;
 		public int StarredCount;
 		public int PlaylistLastPlayedCount;
