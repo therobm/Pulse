@@ -48,6 +48,27 @@ namespace Pulse
 			return s_musicManager != null && !s_musicManager.GetIsScanning();
 		}
 
+		// Server version as set by /p:Version at publish time (CI). Falls back
+		// to whatever AssemblyInformationalVersion the local build produced
+		// (csproj default = "0.0.0-local"). Strips any "+<sha>" suffix that
+		// the .NET SDK appends so the web tag stays compact (Flatline #229).
+		public static string GetServerVersion()
+		{
+			System.Reflection.AssemblyInformationalVersionAttribute attr =
+				(System.Reflection.AssemblyInformationalVersionAttribute)Attribute.GetCustomAttribute(
+					typeof(PulseService).Assembly,
+					typeof(System.Reflection.AssemblyInformationalVersionAttribute));
+			if (attr == null) { return "dev"; }
+			string version = attr.InformationalVersion;
+			if (string.IsNullOrEmpty(version)) { return "dev"; }
+			int plus = version.IndexOf('+');
+			if (plus > 0)
+			{
+				version = version.Substring(0, plus);
+			}
+			return version;
+		}
+
 		static PulseConfig m_config;
 		static MusicManager s_musicManager;
 		private Subsonic m_subsonic;
@@ -183,6 +204,8 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/stats", HandleStats);
 			host.RegisterRoute("pulse/stats.html", HandleStatsPage);
 
+			host.RegisterResultRoute("pulse/version", HandleVersion);
+
 			host.RegisterResultRoute("pulse/listUsers", m_pulseAPI.HandleListUsers);
 			host.RegisterResultRoute("pulse/createUser", m_pulseAPI.HandleCreateUser);
 			host.RegisterResultRoute("pulse/updateUser", m_pulseAPI.HandleUpdateUser);
@@ -243,6 +266,11 @@ namespace Pulse
 			PulseStatsResponse stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userName);
 			string json = System.Text.Json.JsonSerializer.Serialize(stats);
 			return Results.Content(json, "application/json");
+		}
+
+		private IResult HandleVersion(HttpContext context)
+		{
+			return Results.Json(new { version = GetServerVersion() });
 		}
 
 		private void HandleStatsPage(HttpContext context)

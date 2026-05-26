@@ -1444,6 +1444,19 @@
 			font-size: 13px;
 			padding: 16px 0;
 		}
+
+		.version-tag {
+			position: fixed;
+			right: 8px;
+			bottom: 6px;
+			font-family: 'DM Mono', monospace;
+			font-size: 10px;
+			color: var(--text-dim);
+			opacity: 0.55;
+			pointer-events: none;
+			user-select: none;
+			z-index: 1000;
+		}
 	</style>
 </head>
 <body>
@@ -2222,12 +2235,26 @@
 			else if (action === 'cancel-playlist-comment') { cancelPlaylistComment(); }
 			else if (action === 'confirm-cancel') { cancelConfirm(); }
 		}
+		function loadVersionTag() {
+			let request = new XMLHttpRequest();
+			request.open('GET', '/pulse/version');
+			request.onload = function () {
+				if (request.status !== 200) { return; }
+				let data = JSON.parse(request.responseText);
+				if (!data || !data.version) { return; }
+				let tagEl = document.getElementById('pulse-version-tag');
+				if (tagEl) { tagEl.textContent = 'v' + data.version; }
+			};
+			request.send();
+		}
 		document.addEventListener('DOMContentLoaded', function () {
 			wireUpStaticHandlers();
 			document.body.addEventListener('click', handleDelegatedClick);
 			showView('home');
 			renderLeftList();
+			loadVersionTag();
 		});
 	</script>
+	<div id="pulse-version-tag" class="version-tag"></div>
 </body>
 </html>
