@@ -10,6 +10,7 @@ import android.net.Uri
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
+import com.therobm.thump.settings.ThumpSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -41,7 +42,12 @@ class ThumpData(
 ) : DataSource {
 
     private val database: ThumpDatabase = ThumpDatabase(applicationContext)
-    private val blobStore: ThumpBlobStore = ThumpBlobStore(database, applicationContext)
+    private val thumpSettings: ThumpSettings = ThumpSettings(applicationContext)
+    private val blobStore: ThumpBlobStore = ThumpBlobStore(
+        database = database,
+        applicationContext = applicationContext,
+        cacheSizeBytesProvider = { thumpSettings.getAudioCacheSizeBytes() },
+    )
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
