@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,36 +33,34 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.therobm.thump.ThumpColors
-import com.therobm.thump.art.CompositeArtTile
-import com.therobm.thump.subsonic.StandardAlbumSummary
-import com.therobm.thump.subsonic.StandardArtistsPayload
-import com.therobm.thump.subsonic.StandardGenre
-import com.therobm.thump.subsonic.StandardLibraryArtist
-import com.therobm.thump.subsonic.StandardPlaylistSummary
-import com.therobm.thump.subsonic.SubsonicClient
-import com.therobm.thump.subsonic.SubsonicResult
+import com.therobm.thump.art.ArtImage
+import com.therobm.thump.data.Album
+import com.therobm.thump.data.AlbumSort
+import com.therobm.thump.data.Artist
+import com.therobm.thump.data.Genre
+import com.therobm.thump.data.Playlist
+import com.therobm.thump.data.ThumpData
+import com.therobm.thump.data.ThumpDataNotConfigured
 
 private const val ALBUM_LIST_PAGE_SIZE: Int = 500
 private const val ROW_ART_REQUEST_SIZE_PX: Int = 150
-private const val PLAYLIST_ROW_ART_REQUEST_SIZE_PX: Int = 120
 private const val ROW_THUMB_SIZE_DP: Int = 56
-// Fetch just enough songs from a genre to find 4 unique cover-art IDs for the composite.
-// Using a small count keeps the per-row network cost low; the genre detail screen pages later.
-private const val GENRE_SAMPLE_FETCH_COUNT: Int = 8
+private const val NO_SERVER_CONFIGURED_MESSAGE: String = "No server configured"
 
 /**
  * The Library tab. Chip row at the top picks between Artists, Albums, Playlists, and Genres;
  * the selected chip drives the list below. Each tab's data loads lazily on first selection
- * and stays cached for the lifetime of the screen.
+ * through ThumpData and stays cached for the lifetime of the screen.
  *
  * Skipped for this iteration (will come in follow-ups): alphabetical section headers, fast
- * scroll for long lists, a Genre detail screen.
+ * scroll for long lists. Genre rows render the flat placeholder tile because the Subsonic and
+ * Pulse wires do not expose a canonical genre cover-art id today; server-side genre composites
+ * land in a separate Pulse-side bug.
  */
 @Composable
 fun LibraryScreen(
-    subsonicClient: SubsonicClient,
+    thumpData: ThumpData,
     onArtistSelected: (String) -> Unit,
     onAlbumSelected: (String) -> Unit,
     onPlaylistSelected: (String) -> Unit,
@@ -76,74 +73,66 @@ fun LibraryScreen(
     var selectedChipOrdinal by rememberSaveable { mutableStateOf(0) }
     val selectedChip: LibraryChip = LibraryChip.values()[selectedChipOrdinal]
 
-    var artistsState: LibraryLoadState<StandardArtistsPayload> by remember(subsonicClient) {
+    var artistsState: LibraryLoadState<List<Artist>> by remember(thumpData) {
         mutableStateOf(LibraryLoadState.Idle)
     }
-    var albumsState: LibraryLoadState<List<StandardAlbumSummary>> by remember(subsonicClient) {
+    var albumsState: LibraryLoadState<List<Album>> by remember(thumpData) {
         mutableStateOf(LibraryLoadState.Idle)
     }
-    var playlistsState: LibraryLoadState<List<StandardPlaylistSummary>> by remember(subsonicClient) {
+    var playlistsState: LibraryLoadState<List<Playlist>> by remember(thumpData) {
         mutableStateOf(LibraryLoadState.Idle)
     }
-    var genresState: LibraryLoadState<List<StandardGenre>> by remember(subsonicClient) {
+    var genresState: LibraryLoadState<List<Genre>> by remember(thumpData) {
         mutableStateOf(LibraryLoadState.Idle)
     }
 
-    LaunchedEffect(selectedChip, subsonicClient) {
+    LaunchedEffect(selectedChip, thumpData) {
         when (selectedChip) {
             LibraryChip.Artists -> {
                 if (artistsState is LibraryLoadState.Idle) {
                     artistsState = LibraryLoadState.Loading
-                    val result = subsonicClient.getArtists()
-                    artistsState = when (result) {
-                        is SubsonicResult.Ok -> {
-                            LibraryLoadState.Loaded(result.value)
-                        }
-                        else -> {
-                            LibraryLoadState.Failed(describeFailure(result))
-                        }
+                    try {
+                        val loaded: List<Artist> = thumpData.getAllArtists()
+                        artistsState = LibraryLoadState.Loaded(loaded)
+                    } catch (notConfigured: ThumpDataNotConfigured) {
+                        artistsState = LibraryLoadState.Failed(NO_SERVER_CONFIGURED_MESSAGE)
                     }
                 }
             }
             LibraryChip.Albums -> {
                 if (albumsState is LibraryLoadState.Idle) {
                     albumsState = LibraryLoadState.Loading
-                    val result = subsonicClient.getAlbumList2("alphabeticalByName", ALBUM_LIST_PAGE_SIZE)
-                    albumsState = when (result) {
-                        is SubsonicResult.Ok -> {
-                            LibraryLoadState.Loaded(result.value)
-                        }
-                        else -> {
-                            LibraryLoadState.Failed(describeFailure(result))
-                        }
+                    try {
+                        val loaded: List<Album> = thumpData.getAllAlbums(
+                            sort = AlbumSort.AlphabeticalByName,
+                            limit = ALBUM_LIST_PAGE_SIZE,
+                            offset = 0,
+                        )
+                        albumsState = LibraryLoadState.Loaded(loaded)
+                    } catch (notConfigured: ThumpDataNotConfigured) {
+                        albumsState = LibraryLoadState.Failed(NO_SERVER_CONFIGURED_MESSAGE)
                     }
                 }
             }
             LibraryChip.Playlists -> {
                 if (playlistsState is LibraryLoadState.Idle) {
                     playlistsState = LibraryLoadState.Loading
-                    val result = subsonicClient.getPlaylists()
-                    playlistsState = when (result) {
-                        is SubsonicResult.Ok -> {
-                            LibraryLoadState.Loaded(result.value)
-                        }
-                        else -> {
-                            LibraryLoadState.Failed(describeFailure(result))
-                        }
+                    try {
+                        val loaded: List<Playlist> = thumpData.getAllPlaylists()
+                        playlistsState = LibraryLoadState.Loaded(loaded)
+                    } catch (notConfigured: ThumpDataNotConfigured) {
+                        playlistsState = LibraryLoadState.Failed(NO_SERVER_CONFIGURED_MESSAGE)
                     }
                 }
             }
             LibraryChip.Genres -> {
                 if (genresState is LibraryLoadState.Idle) {
                     genresState = LibraryLoadState.Loading
-                    val result = subsonicClient.getGenres()
-                    genresState = when (result) {
-                        is SubsonicResult.Ok -> {
-                            LibraryLoadState.Loaded(result.value)
-                        }
-                        else -> {
-                            LibraryLoadState.Failed(describeFailure(result))
-                        }
+                    try {
+                        val loaded: List<Genre> = thumpData.getGenres()
+                        genresState = LibraryLoadState.Loaded(loaded)
+                    } catch (notConfigured: ThumpDataNotConfigured) {
+                        genresState = LibraryLoadState.Failed(NO_SERVER_CONFIGURED_MESSAGE)
                     }
                 }
             }
@@ -164,28 +153,28 @@ fun LibraryScreen(
             LibraryChip.Artists -> {
                 ArtistsList(
                     state = artistsState,
-                    subsonicClient = subsonicClient,
+                    thumpData = thumpData,
                     onArtistSelected = onArtistSelected,
                 )
             }
             LibraryChip.Albums -> {
                 AlbumsList(
                     state = albumsState,
-                    subsonicClient = subsonicClient,
+                    thumpData = thumpData,
                     onAlbumSelected = onAlbumSelected,
                 )
             }
             LibraryChip.Playlists -> {
                 PlaylistsList(
                     state = playlistsState,
-                    subsonicClient = subsonicClient,
+                    thumpData = thumpData,
                     onPlaylistSelected = onPlaylistSelected,
                 )
             }
             LibraryChip.Genres -> {
                 GenresList(
                     state = genresState,
-                    subsonicClient = subsonicClient,
+                    thumpData = thumpData,
                     onGenreSelected = onGenreSelected,
                 )
             }
@@ -198,15 +187,15 @@ private fun LibraryChipRow(
     selectedChip: LibraryChip,
     onChipSelected: (LibraryChip) -> Unit,
 ) {
-    val chips = LibraryChip.values()
+    val chips: Array<LibraryChip> = LibraryChip.values()
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(items = chips.toList(), key = { chip -> chip.name }) { chip ->
-            val isSelected = chip == selectedChip
+        items(items = chips.toList(), key = { chip: LibraryChip -> chip.name }) { chip: LibraryChip ->
+            val isSelected: Boolean = chip == selectedChip
             FilterChip(
                 selected = isSelected,
                 onClick = { onChipSelected(chip) },
@@ -224,8 +213,8 @@ private fun LibraryChipRow(
 
 @Composable
 private fun ArtistsList(
-    state: LibraryLoadState<StandardArtistsPayload>,
-    subsonicClient: SubsonicClient,
+    state: LibraryLoadState<List<Artist>>,
+    thumpData: ThumpData,
     onArtistSelected: (String) -> Unit,
 ) {
     when (state) {
@@ -236,22 +225,16 @@ private fun ArtistsList(
             ErrorText(message = state.message)
         }
         is LibraryLoadState.Loaded -> {
-            val flattened = ArrayList<StandardLibraryArtist>()
-            val indexes = state.value.index
-            val indexCount = indexes.size
-            for (indexIndex in 0 until indexCount) {
-                flattened.addAll(indexes[indexIndex].artist)
-            }
-            if (flattened.isEmpty()) {
+            if (state.value.isEmpty()) {
                 EmptyText(message = "No artists yet")
                 return
             }
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(items = flattened, key = { artist -> artist.id }) { artist ->
+                items(items = state.value, key = { artist: Artist -> artist.artistId }) { artist: Artist ->
                     LibraryArtistRow(
                         artist = artist,
-                        subsonicClient = subsonicClient,
-                        onTapped = { onArtistSelected(artist.id) },
+                        thumpData = thumpData,
+                        onTapped = { onArtistSelected(artist.artistId) },
                     )
                 }
             }
@@ -261,8 +244,8 @@ private fun ArtistsList(
 
 @Composable
 private fun AlbumsList(
-    state: LibraryLoadState<List<StandardAlbumSummary>>,
-    subsonicClient: SubsonicClient,
+    state: LibraryLoadState<List<Album>>,
+    thumpData: ThumpData,
     onAlbumSelected: (String) -> Unit,
 ) {
     when (state) {
@@ -278,11 +261,11 @@ private fun AlbumsList(
                 return
             }
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(items = state.value, key = { album -> album.id }) { album ->
+                items(items = state.value, key = { album: Album -> album.albumId }) { album: Album ->
                     LibraryAlbumRow(
                         album = album,
-                        subsonicClient = subsonicClient,
-                        onTapped = { onAlbumSelected(album.id) },
+                        thumpData = thumpData,
+                        onTapped = { onAlbumSelected(album.albumId) },
                     )
                 }
             }
@@ -292,8 +275,8 @@ private fun AlbumsList(
 
 @Composable
 private fun PlaylistsList(
-    state: LibraryLoadState<List<StandardPlaylistSummary>>,
-    subsonicClient: SubsonicClient,
+    state: LibraryLoadState<List<Playlist>>,
+    thumpData: ThumpData,
     onPlaylistSelected: (String) -> Unit,
 ) {
     when (state) {
@@ -309,11 +292,11 @@ private fun PlaylistsList(
                 return
             }
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(items = state.value, key = { playlist -> playlist.id }) { playlist ->
+                items(items = state.value, key = { playlist: Playlist -> playlist.playlistId }) { playlist: Playlist ->
                     LibraryPlaylistRow(
                         playlist = playlist,
-                        subsonicClient = subsonicClient,
-                        onTapped = { onPlaylistSelected(playlist.id) },
+                        thumpData = thumpData,
+                        onTapped = { onPlaylistSelected(playlist.playlistId) },
                     )
                 }
             }
@@ -323,8 +306,8 @@ private fun PlaylistsList(
 
 @Composable
 private fun GenresList(
-    state: LibraryLoadState<List<StandardGenre>>,
-    subsonicClient: SubsonicClient,
+    state: LibraryLoadState<List<Genre>>,
+    thumpData: ThumpData,
     onGenreSelected: (String) -> Unit,
 ) {
     when (state) {
@@ -340,11 +323,11 @@ private fun GenresList(
                 return
             }
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(items = state.value, key = { genre -> genre.value }) { genre ->
+                items(items = state.value, key = { genre: Genre -> genre.name }) { genre: Genre ->
                     LibraryGenreRow(
                         genre = genre,
-                        subsonicClient = subsonicClient,
-                        onTapped = { onGenreSelected(genre.value) },
+                        thumpData = thumpData,
+                        onTapped = { onGenreSelected(genre.name) },
                     )
                 }
             }
@@ -354,34 +337,24 @@ private fun GenresList(
 
 @Composable
 private fun LibraryArtistRow(
-    artist: StandardLibraryArtist,
-    subsonicClient: SubsonicClient,
+    artist: Artist,
+    thumpData: ThumpData,
     onTapped: () -> Unit,
 ) {
-    val coverArtId = artist.coverArt
-    val coverArtUrl: String?
-    if (coverArtId == null) {
-        coverArtUrl = null
-    } else {
-        coverArtUrl = subsonicClient.buildCoverArtUrl(coverArtId, ROW_ART_REQUEST_SIZE_PX)
-    }
     LibraryListRow(
         title = artist.name,
         subtitle = buildArtistSubtitle(artist),
         leading = {
-            val thumbModifier = Modifier
+            val thumbModifier: Modifier = Modifier
                 .size(ROW_THUMB_SIZE_DP.dp)
                 .clip(CircleShape)
-                .background(ThumpColors.Surface)
-            if (coverArtUrl == null) {
-                Box(modifier = thumbModifier)
-            } else {
-                AsyncImage(
-                    model = coverArtUrl,
-                    contentDescription = null,
-                    modifier = thumbModifier,
-                )
-            }
+            ArtImage(
+                thumpData = thumpData,
+                artId = artist.coverArtId,
+                sizePx = ROW_ART_REQUEST_SIZE_PX,
+                contentDescription = null,
+                modifier = thumbModifier,
+            )
         },
         onTapped = onTapped,
     )
@@ -389,40 +362,30 @@ private fun LibraryArtistRow(
 
 @Composable
 private fun LibraryAlbumRow(
-    album: StandardAlbumSummary,
-    subsonicClient: SubsonicClient,
+    album: Album,
+    thumpData: ThumpData,
     onTapped: () -> Unit,
 ) {
-    val coverArtId = album.coverArt
-    val coverArtUrl: String?
-    if (coverArtId == null) {
-        coverArtUrl = null
-    } else {
-        coverArtUrl = subsonicClient.buildCoverArtUrl(coverArtId, ROW_ART_REQUEST_SIZE_PX)
-    }
     val artistText: String
-    if (album.artist == null) {
+    if (album.artistName == null) {
         artistText = ""
     } else {
-        artistText = album.artist
+        artistText = album.artistName
     }
     LibraryListRow(
         title = album.name,
         subtitle = artistText,
         leading = {
-            val thumbModifier = Modifier
+            val thumbModifier: Modifier = Modifier
                 .size(ROW_THUMB_SIZE_DP.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(ThumpColors.Surface)
-            if (coverArtUrl == null) {
-                Box(modifier = thumbModifier)
-            } else {
-                AsyncImage(
-                    model = coverArtUrl,
-                    contentDescription = null,
-                    modifier = thumbModifier,
-                )
-            }
+            ArtImage(
+                thumpData = thumpData,
+                artId = album.coverArtId,
+                sizePx = ROW_ART_REQUEST_SIZE_PX,
+                contentDescription = null,
+                modifier = thumbModifier,
+            )
         },
         onTapped = onTapped,
     )
@@ -430,52 +393,23 @@ private fun LibraryAlbumRow(
 
 @Composable
 private fun LibraryPlaylistRow(
-    playlist: StandardPlaylistSummary,
-    subsonicClient: SubsonicClient,
+    playlist: Playlist,
+    thumpData: ThumpData,
     onTapped: () -> Unit,
 ) {
-    // Prefer the playlist's own coverArt when the server supplies one; fall back to the on-
-    // device 2x2 stitch from entry covers when it's absent.
-    var entryCoverArtIds: List<String> by remember(playlist.id) {
-        val initial: List<String>
-        if (playlist.coverArt != null) {
-            initial = listOf(playlist.coverArt)
-        } else {
-            initial = emptyList()
-        }
-        mutableStateOf(initial)
-    }
-    LaunchedEffect(playlist.id, subsonicClient) {
-        if (playlist.coverArt != null) {
-            return@LaunchedEffect
-        }
-        val result = subsonicClient.getPlaylist(playlist.id)
-        if (result is SubsonicResult.Ok) {
-            val entries = result.value.entry
-            val ids = ArrayList<String>(entries.size)
-            val entryCount = entries.size
-            for (entryIndex in 0 until entryCount) {
-                val candidate = entries[entryIndex].coverArt
-                if (candidate != null) {
-                    ids.add(candidate)
-                }
-            }
-            entryCoverArtIds = ids
-        }
-    }
-
     LibraryListRow(
         title = playlist.name,
         subtitle = buildPlaylistSubtitle(playlist),
         leading = {
-            val thumbModifier = Modifier
+            val thumbModifier: Modifier = Modifier
                 .size(ROW_THUMB_SIZE_DP.dp)
                 .clip(RoundedCornerShape(8.dp))
-            CompositeArtTile(
-                coverArtIds = entryCoverArtIds,
-                subsonicClient = subsonicClient,
-                requestSizePx = PLAYLIST_ROW_ART_REQUEST_SIZE_PX,
-                modifier = thumbModifier.size(ROW_THUMB_SIZE_DP.dp),
+            ArtImage(
+                thumpData = thumpData,
+                artId = playlist.coverArtId,
+                sizePx = ROW_ART_REQUEST_SIZE_PX,
+                contentDescription = null,
+                modifier = thumbModifier,
             )
         },
         onTapped = onTapped,
@@ -484,43 +418,26 @@ private fun LibraryPlaylistRow(
 
 @Composable
 private fun LibraryGenreRow(
-    genre: StandardGenre,
-    subsonicClient: SubsonicClient,
+    genre: Genre,
+    thumpData: ThumpData,
     onTapped: () -> Unit,
 ) {
-    var sampleCoverArtIds: List<String> by remember(genre.value) { mutableStateOf(emptyList()) }
-    LaunchedEffect(genre.value, subsonicClient) {
-        val result = subsonicClient.getSongsByGenre(
-            genreName = genre.value,
-            count = GENRE_SAMPLE_FETCH_COUNT,
-            offset = 0,
-        )
-        if (result is SubsonicResult.Ok) {
-            val songs = result.value
-            val ids = ArrayList<String>(songs.size)
-            val songCount = songs.size
-            for (songIndex in 0 until songCount) {
-                val candidate = songs[songIndex].coverArt
-                if (candidate != null) {
-                    ids.add(candidate)
-                }
-            }
-            sampleCoverArtIds = ids
-        }
-    }
-
     LibraryListRow(
-        title = genre.value,
+        title = genre.name,
         subtitle = buildGenreSubtitle(genre),
         leading = {
-            val thumbModifier = Modifier
+            val thumbModifier: Modifier = Modifier
                 .size(ROW_THUMB_SIZE_DP.dp)
                 .clip(RoundedCornerShape(8.dp))
-            CompositeArtTile(
-                coverArtIds = sampleCoverArtIds,
-                subsonicClient = subsonicClient,
-                requestSizePx = PLAYLIST_ROW_ART_REQUEST_SIZE_PX,
-                modifier = thumbModifier.size(ROW_THUMB_SIZE_DP.dp),
+            // No canonical genre cover-art id in Subsonic or Pulse today; pass null and let
+            // ArtImage render its flat placeholder. Server-side genre composites are a separate
+            // Pulse-side bug.
+            ArtImage(
+                thumpData = thumpData,
+                artId = null,
+                sizePx = ROW_ART_REQUEST_SIZE_PX,
+                contentDescription = null,
+                modifier = thumbModifier,
             )
         },
         onTapped = onTapped,
@@ -600,44 +517,31 @@ private fun EmptyText(message: String) {
     }
 }
 
-private fun describeFailure(result: SubsonicResult<*>): String {
-    when (result) {
-        is SubsonicResult.Ok -> {
-            return "Unexpected success"
-        }
-        is SubsonicResult.ServerError -> {
-            return "Server error " + result.code + ": " + result.message
-        }
-        is SubsonicResult.TransportError -> {
-            return "Network error: " + result.cause.javaClass.simpleName
-        }
-        is SubsonicResult.MalformedResponse -> {
-            return "Bad response: " + result.cause.javaClass.simpleName
-        }
-    }
-}
-
-private fun buildArtistSubtitle(artist: StandardLibraryArtist): String {
-    if (artist.albumCount == null || artist.albumCount <= 0) {
+private fun buildArtistSubtitle(artist: Artist): String {
+    if (artist.albumCount <= 0) {
         return ""
     }
     return artist.albumCount.toString() + " albums"
 }
 
-private fun buildPlaylistSubtitle(playlist: StandardPlaylistSummary): String {
-    if (playlist.songCount == null || playlist.songCount <= 0) {
+private fun buildPlaylistSubtitle(playlist: Playlist): String {
+    val songCount: Int?
+    songCount = playlist.songCount
+    if (songCount == null || songCount <= 0) {
         return ""
     }
-    return playlist.songCount.toString() + " tracks"
+    return songCount.toString() + " tracks"
 }
 
-private fun buildGenreSubtitle(genre: StandardGenre): String {
-    val parts = ArrayList<String>(2)
-    if (genre.songCount != null && genre.songCount > 0) {
-        parts.add(genre.songCount.toString() + " songs")
+private fun buildGenreSubtitle(genre: Genre): String {
+    val parts: ArrayList<String> = ArrayList<String>(2)
+    val songCount: Int? = genre.songCount
+    if (songCount != null && songCount > 0) {
+        parts.add(songCount.toString() + " songs")
     }
-    if (genre.albumCount != null && genre.albumCount > 0) {
-        parts.add(genre.albumCount.toString() + " albums")
+    val albumCount: Int? = genre.albumCount
+    if (albumCount != null && albumCount > 0) {
+        parts.add(albumCount.toString() + " albums")
     }
     return parts.joinToString(separator = " • ")
 }
