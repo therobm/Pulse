@@ -14,12 +14,12 @@ namespace Pulse
 			List<string> configErrors = config.Validate();
 			if (configErrors.Count > 0)
 			{
-				Console.WriteLine("Pulse: invalid configuration in " + PulseConfig.GetConfigPath());
+				Log.Error(-1, "Pulse: invalid configuration in " + PulseConfig.GetConfigPath());
 				for (int idx = 0; idx < configErrors.Count; idx++)
 				{
-					Console.WriteLine("  - " + configErrors[idx]);
+					Log.Error(-1, "  - " + configErrors[idx]);
 				}
-				Console.WriteLine("Fix the config and restart.");
+				Log.Error(-1, "Fix the config and restart.");
 				return;
 			}
 

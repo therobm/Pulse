@@ -270,17 +270,17 @@ namespace Pulse
 					if (sync.IsAuthorized())
 					{
 						sync.Start();
-						Console.WriteLine("Pulse: Started Spotify sync for " + userName);
+						Log.Info(-1, "Pulse: Started Spotify sync for " + userName);
 					}
 					else
 					{
-						Console.WriteLine("Pulse: Failed Spotify sync for " + userName);
+						Log.Warning(-1, "Pulse: Failed Spotify sync for " + userName);
 					}
 				}
 			}
 			catch (Exception ex)
 			{
-				Console.WriteLine("Pulse: Spotify startup failed - " + ex.Message + "\n" + ex.StackTrace);
+				Log.Error(-1, "Pulse: Spotify startup failed - " + ex.Message + "\n" + ex.StackTrace);
 			}
 		}
 		private SpotifySync GetOrCreateSpotifySync(string userName)

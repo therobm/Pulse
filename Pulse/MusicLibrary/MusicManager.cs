@@ -571,13 +571,13 @@ namespace Pulse.MusicLibrary
 				}
 				catch (Exception exception)
 				{
-					Console.WriteLine("Scan failed: " + filePath + " - " + exception.Message);
+					Log.Error(-1, "Scan failed: " + filePath + " - " + exception.Message);
 				}
 			}
 
 
 			//remove missing files
-			Console.WriteLine("Scanning for deleted tracks...");
+			Log.Info(-1, "Scanning for deleted tracks...");
 			List<TrackInfo> allTracks = m_database.GetAllTracks();
 			for (int index = 0; index < allTracks.Count; index++)
 			{
@@ -590,13 +590,13 @@ namespace Pulse.MusicLibrary
 					{
 						artist.m_bIsDirty = true;
 					}
-					Console.WriteLine("Pulse: Removed dead track: " + allTracks[index].FilePath);
+					Log.Info(-1, "Pulse: Removed dead track: " + allTracks[index].FilePath);
 				}
 			}
 
 
 
-			Console.WriteLine("Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_database.GetTrackCount());
+			Log.Info(-1, "Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_database.GetTrackCount());
 			m_scanning = false;
 			SaveDB();
 		}
@@ -695,7 +695,7 @@ namespace Pulse.MusicLibrary
 				{
 					if (!seenTrackIds.Add(album.Tracks[index].Id))
 					{
-						Console.WriteLine("Duplicate track in album \"" + album.Name + "\": " + album.Tracks[index].Title + " (" + album.Tracks[index].Id + ")");
+						Log.Warning(-1, "Duplicate track in album \"" + album.Name + "\": " + album.Tracks[index].Title + " (" + album.Tracks[index].Id + ")");
 						duplicateAlbumTracks++;
 					}
 				}
@@ -709,7 +709,7 @@ namespace Pulse.MusicLibrary
 				{
 					if (!seenAlbumIds.Add(artist.Albums[index].Id))
 					{
-						Console.WriteLine("Duplicate album in artist \"" + artist.Name + "\": " + artist.Albums[index].Name + " (" + artist.Albums[index].Id + ")");
+						Log.Warning(-1, "Duplicate album in artist \"" + artist.Name + "\": " + artist.Albums[index].Name + " (" + artist.Albums[index].Id + ")");
 						duplicateArtistAlbums++;
 					}
 				}
@@ -721,7 +721,7 @@ namespace Pulse.MusicLibrary
 				totalTracksInAlbums = totalTracksInAlbums + album.Tracks.Count;
 			}
 
-			Console.WriteLine("Pulse: Tracks in dictionary: " + m_database.GetTrackCount() + ", tracks across albums: " + totalTracksInAlbums + ", duplicate tracks: " + duplicateAlbumTracks + ", duplicate albums: " + duplicateArtistAlbums);
+			Log.Info(-1, "Pulse: Tracks in dictionary: " + m_database.GetTrackCount() + ", tracks across albums: " + totalTracksInAlbums + ", duplicate tracks: " + duplicateAlbumTracks + ", duplicate albums: " + duplicateArtistAlbums);
 		}
 
 		public void RecalculateScore(TrackInfo track)
