@@ -223,6 +223,14 @@ namespace Pulse.SubsonicService
 				return HandlePlaylistCompositeCover(id);
 			}
 
+			// Artist alias (Flatline #224): "ar-<artistId>" resolves to a
+			// representative album's cover so every artist response has a
+			// usable coverArt id even when no portrait is uploaded.
+			if (!string.IsNullOrEmpty(id) && id.StartsWith("ar-"))
+			{
+				return HandleArtistAliasCover(id);
+			}
+
 			AlbumInfo album = m_musicManager.GetAlbum(id);
 			byte[] albumBytes;
 			string albumContentType;
@@ -292,6 +300,66 @@ namespace Pulse.SubsonicService
 			}
 
 			return false;
+		}
+
+		/// <summary>
+		/// Resolve a stable "ar-<id>" cover-art alias to a representative
+		/// album cover so every artist response has usable bytes behind it
+		/// (Flatline #224). Picks the album with the most plays, falling back
+		/// to the first album with any embedded/folder art. Cached under the
+		/// alias so repeat fetches don't re-scan the artist's discography.
+		/// </summary>
+		private IResult HandleArtistAliasCover(string coverId)
+		{
+			string artistId = coverId.Substring(3);
+			ArtistInfo artist = m_musicManager.GetArtist(artistId);
+			if (artist == null || artist.Albums.Count == 0)
+			{
+				m_coverArtCache[coverId] = m_defaultCoverArt;
+				return Results.Bytes(m_defaultCoverArt, "image/png");
+			}
+
+			// Score each album by its total play count across tracks and pick the
+			// busiest. Ties go to the order the artist has albums in. New albums
+			// (zero plays) still get a chance through the fallback loop below.
+			AlbumInfo bestAlbum = null;
+			int bestPlays = -1;
+			for (int index = 0; index < artist.Albums.Count; index++)
+			{
+				AlbumInfo album = artist.Albums[index];
+				int plays = 0;
+				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+				{
+					plays = plays + album.Tracks[trackIndex].Score.PlayCount;
+				}
+				if (plays > bestPlays)
+				{
+					bestPlays = plays;
+					bestAlbum = album;
+				}
+			}
+
+			byte[] bytes;
+			string contentType;
+			if (bestAlbum != null && TryGetAlbumCoverBytes(bestAlbum, out bytes, out contentType))
+			{
+				m_coverArtCache[coverId] = bytes;
+				return Results.Bytes(bytes, contentType);
+			}
+
+			// Fallback: walk every album until we find one with art.
+			for (int index = 0; index < artist.Albums.Count; index++)
+			{
+				if (artist.Albums[index] == bestAlbum) { continue; }
+				if (TryGetAlbumCoverBytes(artist.Albums[index], out bytes, out contentType))
+				{
+					m_coverArtCache[coverId] = bytes;
+					return Results.Bytes(bytes, contentType);
+				}
+			}
+
+			m_coverArtCache[coverId] = m_defaultCoverArt;
+			return Results.Bytes(m_defaultCoverArt, "image/png");
 		}
 
 		/// <summary>
@@ -949,17 +1017,10 @@ namespace Pulse.SubsonicService
 			body.artist.id = source.Id;
 			body.artist.name = source.Name;
 			body.artist.albumCount = source.Albums.Count;
-			// Spec coverArt for the artist (Flatline #154). Previously unset
-			// so client artist screens had no avatar source. First album with
-			// a non-empty CoverArtId wins; matches the ArtistID3 ctor pattern.
-			for (int coverIndex = 0; coverIndex < source.Albums.Count; coverIndex++)
-			{
-				if (!string.IsNullOrEmpty(source.Albums[coverIndex].CoverArtId))
-				{
-					body.artist.coverArt = source.Albums[coverIndex].CoverArtId;
-					break;
-				}
-			}
+			// Spec coverArt for the artist (Flatline #154 / #224). Stable alias
+			// id; HandleGetCoverArt resolves "ar-<id>" to a representative
+			// album cover so the bytes are always available.
+			body.artist.coverArt = "ar-" + source.Id;
 			// OpenSubsonic per-user starred (#159).
 			if (!string.IsNullOrEmpty(artistUser))
 			{
@@ -2038,6 +2099,11 @@ namespace Pulse.SubsonicService
 			playlist.DurationSeconds = totalDuration;
 
 			m_musicManager.CreateOrUpdatePlaylist(playlist);
+
+			// Drop the cached composite so the next /rest/getCoverArt regenerates
+			// from the new track set (Flatline #224).
+			byte[] discard;
+			m_coverArtCache.TryRemove("pl-" + playlist.Id, out discard);
 
 			IResult result = Respond(context, CreateResponse());
 			return result;

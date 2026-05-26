@@ -426,10 +426,11 @@ namespace Pulse.SubsonicService
 			id = artistInfo.Id;
 			name = artistInfo.Name;
 			albumCount = artistInfo.Albums.Count;
-			if (albumCount > 0)
-			{
-				coverArt = artistInfo.Albums[0].CoverArtId;
-			}
+			// Always emit a stable id; HandleGetCoverArt resolves "ar-<id>"
+			// to a representative album cover (Flatline #224). Keeping the
+			// alias here means the response shape doesn't change when an
+			// artist gains or loses albums later.
+			coverArt = "ar-" + artistInfo.Id;
 		}
 	}
 
