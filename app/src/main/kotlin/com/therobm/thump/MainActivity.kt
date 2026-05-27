@@ -523,6 +523,9 @@ private fun BottomBarStack(
                         playbackController.resume()
                     }
                 },
+                onRetryClicked = {
+                    playbackController.retryCurrentTrack()
+                },
                 onExpandClicked = {
                     navController.navigate(ROUTE_NOW_PLAYING)
                 },

@@ -3,7 +3,6 @@ package com.therobm.thump.playback
 import android.content.ComponentName
 import android.content.Context
 import android.os.Bundle
-import android.widget.Toast
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -14,16 +13,8 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.therobm.thump.data.ThumpData
-import com.therobm.thump.data.ThumpDataNotConfigured
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
-import java.io.IOException
 
 /**
  * Owns the app-side MediaController that drives the playback service.
@@ -37,7 +28,11 @@ class PlaybackController(applicationContext: Context, thumpData: ThumpData) {
 
     private val resolvedApplicationContext: Context = applicationContext.applicationContext
     private val persistence: PlaybackPersistence = PlaybackPersistence(resolvedApplicationContext)
-    private val thumpDataForPrefetch: ThumpData = thumpData
+    // ThumpData is no longer required for prefetch in this class — the service drives all
+    // prefetch decisions. Retained on the constructor signature so MainActivity wiring does
+    // not need to change; the reference is kept here in case a future surface (e.g. retry from
+    // a disabled UI) wants to cross-check cache state before issuing playback calls.
+    private val thumpDataForRetry: ThumpData = thumpData
 
     private val nowPlayingFlow: MutableStateFlow<NowPlaying?> = MutableStateFlow(null)
     val nowPlaying: StateFlow<NowPlaying?> = nowPlayingFlow
@@ -47,17 +42,6 @@ class PlaybackController(applicationContext: Context, thumpData: ThumpData) {
 
     private var currentQueueMetadata: List<PlaybackQueueItem> = emptyList()
     private var currentQueueSource: PlaybackSource? = null
-
-    // Dedicated scope for the prefetch-then-load handoff in playQueue. Lives on Main.immediate
-    // because the MediaController calls inside the coroutine (setMediaItems / prepare /
-    // playWhenReady) all require the MediaController's application looper, which is Main, and
-    // we want the synchronous portion before the first suspension to stay on the caller's
-    // (Compose lambda) thread without an extra dispatch hop. SupervisorJob so one failed
-    // playQueue does not poison subsequent launches. Cancelled in release() so an in-flight
-    // prefetch never resolves into a released controller.
-    private val playbackCoroutineScope: CoroutineScope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Main.immediate,
-    )
 
     private val playerListener: Player.Listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -71,8 +55,8 @@ class PlaybackController(applicationContext: Context, thumpData: ThumpData) {
 
     // Custom-command channel the playback service uses to push the unavailable-track reason
     // string across the process boundary. NowPlaying lives in this (UI) process inside
-    // nowPlayingFlow, and the service cannot mutate it directly. The service's gate and safety
-    // net both broadcast a SessionCommand carrying the failing trackId and a human-readable
+    // nowPlayingFlow, and the service cannot mutate it directly. The service's auto-advance
+    // failure path broadcasts a SessionCommand carrying the failing trackId and a human-readable
     // reason; this listener parses that and routes it through publishNowPlayingFor so the mini
     // player and Now Playing screen render the unavailable banner. The toast itself fires on
     // the service side (single source of truth for ExoPlayer state), so this side only updates
@@ -173,18 +157,11 @@ class PlaybackController(applicationContext: Context, thumpData: ThumpData) {
      * Replace the current queue with the given items and start playback at startIndex. No-op if
      * the controller has not connected yet.
      *
-     * Public surface stays non-suspending so Compose lambdas can call it directly. Internally
-     * the function persists the new queue state, then launches a coroutine that awaits the
-     * current track's prefetch into ThumpData's on-disk store before handing the items to the
-     * MediaController. ThumpData's DataSource is cache-only — if we let ExoPlayer's first
-     * `open()` run on an uncached track it would throw IOException synchronously and crash the
-     * playback path. The prefetch await closes that window. Lookahead for tracks 2..N is still
-     * driven reactively by the playback service's `onMediaItemTransition` / `onTimelineChanged`
-     * listener; this gating is only for the very first track of a new queue.
-     *
-     * Persistence happens BEFORE the prefetch await so a cold relaunch on the same queue picks
-     * up the right state even if the await is cancelled (release() called mid-prefetch) before
-     * setMediaItems runs.
+     * Synchronous: builds MediaItems, persists, then drives setMediaItems / prepare /
+     * playWhenReady=true straight through to the MediaController. No prefetch gate. If the
+     * current track's audio isn't on disk, ExoPlayer's first open() raises IOException and the
+     * service's onPlayerError recovery (prefetch-then-prepare, with auto-advance fallback)
+     * handles it.
      */
     fun playQueue(items: List<PlaybackQueueItem>, startIndex: Int, source: PlaybackSource?) {
         val controller: MediaController? = mediaController
@@ -213,51 +190,14 @@ class PlaybackController(applicationContext: Context, thumpData: ThumpData) {
             mediaItems.add(MediaItem.fromUri(trackUri))
         }
 
-        // Persist immediately so a cold launch on Auto picks up the same state, even if the
-        // prefetch await never resolves into the player. Subsequent transitions and position
-        // ticks are persisted by the service.
+        // Persist immediately so a cold launch on Auto picks up the same state even if the
+        // process dies before the service has a chance to write its own position update.
         persistCurrentQueueState(safeStartIndex, positionMs = 0L)
 
-        val currentTrackId: String = items[safeStartIndex].trackId
-        playbackCoroutineScope.launch {
-            var prefetchSucceeded: Boolean = false
-            var prefetchFailureReason: String? = null
-            try {
-                thumpDataForPrefetch.prefetchAudio(currentTrackId)
-                prefetchSucceeded = true
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (notConfigured: ThumpDataNotConfigured) {
-                // No active protocol — surface a non-playing state so the UI shows the track
-                // selection but does not pretend playback started.
-                val ignoredNotConfigured: ThumpDataNotConfigured = notConfigured
-                prefetchFailureReason = UNAVAILABLE_REASON_NOT_CONFIGURED
-            } catch (cacheMissOrTransport: IOException) {
-                // Offline + not cached, or download failure. Same UX as above.
-                prefetchFailureReason = classifyPrefetchIoFailure(cacheMissOrTransport)
-            }
-            if (prefetchSucceeded) {
-                controller.setMediaItems(mediaItems, safeStartIndex, 0L)
-                controller.prepare()
-                controller.playWhenReady = true
-                publishNowPlayingFor(safeStartIndex, isPlayingHint = true, unavailableReason = null)
-            } else {
-                val failureMessage: String
-                if (prefetchFailureReason == null) {
-                    failureMessage = UNAVAILABLE_REASON_GENERIC_LOAD_FAILURE
-                } else {
-                    failureMessage = prefetchFailureReason
-                }
-                publishNowPlayingFor(
-                    safeStartIndex,
-                    isPlayingHint = false,
-                    unavailableReason = failureMessage,
-                )
-                // playbackCoroutineScope runs on Dispatchers.Main.immediate, so Toast.makeText
-                // can be invoked directly without an extra dispatch.
-                Toast.makeText(resolvedApplicationContext, failureMessage, Toast.LENGTH_LONG).show()
-            }
-        }
+        controller.setMediaItems(mediaItems, safeStartIndex, 0L)
+        controller.prepare()
+        controller.playWhenReady = true
+        publishNowPlayingFor(safeStartIndex, isPlayingHint = true, unavailableReason = null)
     }
 
     fun pause() {
@@ -359,10 +299,31 @@ class PlaybackController(applicationContext: Context, thumpData: ThumpData) {
         return controller.hasPreviousMediaItem()
     }
 
+    /**
+     * Retry the currently-loaded track after the UI has shown an unavailable banner. Clears the
+     * banner from NowPlaying and asks the player to re-prepare the current MediaItem.
+     *
+     * Media3 routes `MediaController.prepare()` through the session to the underlying ExoPlayer,
+     * which re-runs source preparation on whatever the current media item is. If the cache is
+     * still missing, the service's onPlayerError path fires again (so a second tap of retry
+     * while offline just keeps showing the banner). If the cache is now populated — typically
+     * because connectivity returned and the lookahead prefetched the track in the meantime — the
+     * load succeeds and playback resumes from the user's existing playWhenReady intent.
+     */
+    fun retryCurrentTrack() {
+        val controller: MediaController? = mediaController
+        if (controller == null) {
+            return
+        }
+        val current: NowPlaying? = nowPlayingFlow.value
+        if (current != null) {
+            nowPlayingFlow.value = current.copy(unavailableReason = null)
+        }
+        controller.prepare()
+        controller.playWhenReady = true
+    }
+
     fun release() {
-        // Cancel any in-flight prefetch-then-load so it cannot resume into a released
-        // MediaController and try to drive a dead session.
-        playbackCoroutineScope.cancel()
         val controller: MediaController? = mediaController
         if (controller != null) {
             controller.removeListener(playerListener)
@@ -377,26 +338,50 @@ class PlaybackController(applicationContext: Context, thumpData: ThumpData) {
     }
 
     private fun updateIsPlayingFlag(isPlaying: Boolean) {
-        val current = nowPlayingFlow.value
+        val current: NowPlaying? = nowPlayingFlow.value
         if (current == null) {
             return
         }
-        if (current.isPlaying == isPlaying) {
+        // Track actually started playing — by definition the load succeeded, so any pending
+        // unavailable banner is no longer accurate and should be wiped.
+        val nextReason: String?
+        if (isPlaying) {
+            nextReason = null
+        } else {
+            nextReason = current.unavailableReason
+        }
+        if (current.isPlaying == isPlaying && current.unavailableReason == nextReason) {
             return
         }
-        nowPlayingFlow.value = current.copy(isPlaying = isPlaying)
+        nowPlayingFlow.value = current.copy(isPlaying = isPlaying, unavailableReason = nextReason)
     }
 
     private fun refreshNowPlayingFromCurrentIndex() {
-        val controller = mediaController
+        val controller: MediaController? = mediaController
         if (controller == null) {
             return
         }
-        val newIndex = controller.currentMediaItemIndex
+        val newIndex: Int = controller.currentMediaItemIndex
+        // Persistence rule: an unavailable banner stays visible across every intermediate
+        // transition (auto-advance from one uncached track to the next, manual skip while
+        // offline, etc.) until either (a) the player actually starts playing — i.e. the new
+        // track loaded successfully — or (b) retryCurrentTrack() is called. The service's
+        // unavailable-reason broadcast replaces the banner authoritatively whenever a new
+        // failure is identified, and the onIsPlayingChanged path below wipes it when isPlaying
+        // becomes true (track is genuinely loaded). Carrying the previous reason here even
+        // across trackId changes prevents the banner from flickering off during a cluster of
+        // failed auto-advances.
+        val previous: NowPlaying? = nowPlayingFlow.value
+        val carriedReason: String?
+        if (previous == null) {
+            carriedReason = null
+        } else {
+            carriedReason = previous.unavailableReason
+        }
         publishNowPlayingFor(
             newIndex,
             isPlayingHint = controller.isPlaying,
-            unavailableReason = null,
+            unavailableReason = carriedReason,
         )
     }
 
@@ -509,28 +494,13 @@ class PlaybackController(applicationContext: Context, thumpData: ThumpData) {
         return -1
     }
 
-    // The prefetch IOException carries the protocol's underlying message. We cannot tell
-    // "offline + uncached" from a generic transport error with certainty, but the offline-mode
-    // message branch in ThumpData stamps "offline" into the text, so a substring check picks
-    // it up without coupling to a stable error type.
-    private fun classifyPrefetchIoFailure(failure: IOException): String {
-        val rawMessage: String? = failure.message
-        if (rawMessage == null) {
-            return UNAVAILABLE_REASON_GENERIC_LOAD_FAILURE
-        }
-        if (rawMessage.contains("offline", ignoreCase = true)) {
-            return UNAVAILABLE_REASON_OFFLINE
-        }
-        return UNAVAILABLE_REASON_GENERIC_LOAD_FAILURE
-    }
-
     companion object {
         // Pressing previous within this many ms of the start of a track moves to the previous
         // track. After this, previous restarts the current track. Standard media-app convention.
         private const val PREVIOUS_RESTART_THRESHOLD_MS: Long = 3000L
 
-        const val UNAVAILABLE_REASON_OFFLINE: String = "Not available offline"
-        const val UNAVAILABLE_REASON_GENERIC_LOAD_FAILURE: String = "Could not load track"
+        const val UNAVAILABLE_REASON_OFFLINE: String = "Not available offline — tap play to retry"
+        const val UNAVAILABLE_REASON_GENERIC_LOAD_FAILURE: String = "Could not load track — tap play to retry"
         const val UNAVAILABLE_REASON_NOT_CONFIGURED: String = "Server not configured"
 
         // Service → controller custom-command channel for the auto-advance / skip cache-miss

@@ -165,18 +165,29 @@ fun NowPlayingScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        val controlsEnabled: Boolean = unavailableReason == null
-        TransportControlsRow(
-            isPlaying = nowPlaying.isPlaying,
-            controlsEnabled = controlsEnabled,
-            onPreviousClicked = { playbackController.skipToPrevious() },
+        // In the unavailable state, skip controls are dead: auto-advance has already failed, so
+        // the next/prev buttons wouldn't get the user anywhere useful. The play button stays
+        // hot and acts as a retry.
+        val skipControlsEnabled: Boolean = unavailableReason == null
+        val onPlayPauseClicked: () -> Unit
+        if (unavailableReason == null) {
             onPlayPauseClicked = {
                 if (nowPlaying.isPlaying) {
                     playbackController.pause()
                 } else {
                     playbackController.resume()
                 }
-            },
+            }
+        } else {
+            onPlayPauseClicked = { playbackController.retryCurrentTrack() }
+        }
+        TransportControlsRow(
+            isPlaying = nowPlaying.isPlaying,
+            playPauseEnabled = true,
+            skipControlsEnabled = skipControlsEnabled,
+            isRetryMode = unavailableReason != null,
+            onPreviousClicked = { playbackController.skipToPrevious() },
+            onPlayPauseClicked = onPlayPauseClicked,
             onNextClicked = { playbackController.skipToNext() },
         )
 
@@ -339,19 +350,26 @@ private fun SeekBarBlock(
 @Composable
 private fun TransportControlsRow(
     isPlaying: Boolean,
-    controlsEnabled: Boolean,
+    playPauseEnabled: Boolean,
+    skipControlsEnabled: Boolean,
+    isRetryMode: Boolean,
     onPreviousClicked: () -> Unit,
     onPlayPauseClicked: () -> Unit,
     onNextClicked: () -> Unit,
 ) {
     val sideTint: Color
-    val centerTint: Color
-    if (controlsEnabled) {
+    if (skipControlsEnabled) {
         sideTint = ThumpColors.OnBackground
-        centerTint = ThumpColors.Accent
     } else {
         sideTint = ThumpColors.TextSecondary
+    }
+    val centerTint: Color
+    if (!playPauseEnabled) {
         centerTint = ThumpColors.TextSecondary
+    } else if (isRetryMode) {
+        centerTint = UnavailableAccent
+    } else {
+        centerTint = ThumpColors.Accent
     }
     Row(
         modifier = Modifier
@@ -362,7 +380,7 @@ private fun TransportControlsRow(
     ) {
         IconButton(
             onClick = onPreviousClicked,
-            enabled = controlsEnabled,
+            enabled = skipControlsEnabled,
             modifier = Modifier.size(SIDE_TRANSPORT_BUTTON_SIZE_DP.dp),
         ) {
             Icon(
@@ -375,10 +393,10 @@ private fun TransportControlsRow(
         Spacer(modifier = Modifier.size(16.dp))
         IconButton(
             onClick = onPlayPauseClicked,
-            enabled = controlsEnabled,
+            enabled = playPauseEnabled,
             modifier = Modifier.size(LARGE_PLAY_BUTTON_SIZE_DP.dp),
         ) {
-            if (isPlaying) {
+            if (isPlaying && !isRetryMode) {
                 Icon(
                     imageVector = Icons.Filled.Pause,
                     contentDescription = "Pause",
@@ -386,9 +404,15 @@ private fun TransportControlsRow(
                     modifier = Modifier.size(56.dp),
                 )
             } else {
+                val description: String
+                if (isRetryMode) {
+                    description = "Retry"
+                } else {
+                    description = "Play"
+                }
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Play",
+                    contentDescription = description,
                     tint = centerTint,
                     modifier = Modifier.size(56.dp),
                 )
@@ -397,7 +421,7 @@ private fun TransportControlsRow(
         Spacer(modifier = Modifier.size(16.dp))
         IconButton(
             onClick = onNextClicked,
-            enabled = controlsEnabled,
+            enabled = skipControlsEnabled,
             modifier = Modifier.size(SIDE_TRANSPORT_BUTTON_SIZE_DP.dp),
         ) {
             Icon(

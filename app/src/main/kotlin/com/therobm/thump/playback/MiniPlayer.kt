@@ -3,7 +3,6 @@ package com.therobm.thump.playback
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,7 +12,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,14 +37,17 @@ private val UnavailableAccent: Color = Color(0xFFD08080)
  * Bar pinned above the bottom navigation that shows whatever is currently loaded into the
  * player.
  *
- * Tapping the play/pause button toggles state. Tapping the rest of the bar will open the full
- * now-playing screen once that exists; for now the row just renders metadata.
+ * Tapping the play/pause button toggles state. When the track is unavailable (offline / load
+ * failure), the play button becomes a retry affordance: tap fires `onRetryClicked` which the
+ * caller routes to PlaybackController.retryCurrentTrack(). Tapping the rest of the bar will
+ * open the full now-playing screen.
  */
 @Composable
 fun MiniPlayer(
     nowPlaying: NowPlaying,
     thumpData: ThumpData,
     onPlayPauseClicked: () -> Unit,
+    onRetryClicked: () -> Unit,
     onExpandClicked: () -> Unit,
 ) {
     val unavailableReason: String? = nowPlaying.unavailableReason
@@ -58,9 +59,9 @@ fun MiniPlayer(
             .clickable(onClick = onExpandClicked)
             .padding(horizontal = 12.dp, vertical = 8.dp)
     } else {
-        // No expand affordance — the track cannot play, so opening the full screen would offer
-        // controls that don't do anything. The row still renders so the user sees what they
-        // tapped and the reason text.
+        // Tap-to-expand is disabled in the unavailable state — only the play button is hot,
+        // and it acts as a retry. The row still renders so the user sees what they tapped and
+        // the reason text.
         rowModifier = Modifier
             .fillMaxWidth()
             .background(ThumpColors.SurfaceElevated)
@@ -110,35 +111,34 @@ fun MiniPlayer(
             }
         }
 
-        if (unavailableReason != null) {
-            // IconButton-sized box so the row height matches the playable variant and the icon
-            // sits where the play/pause button would normally sit. Not clickable — tapping it
-            // would just retrigger the failing prefetch.
-            Box(
-                modifier = Modifier.size(48.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Warning,
-                    contentDescription = unavailableReason,
-                    tint = UnavailableAccent,
-                )
-            }
+        val effectiveClick: () -> Unit
+        if (unavailableReason == null) {
+            effectiveClick = onPlayPauseClicked
         } else {
-            IconButton(onClick = onPlayPauseClicked) {
-                if (nowPlaying.isPlaying) {
-                    Icon(
-                        imageVector = Icons.Filled.Pause,
-                        contentDescription = "Pause",
-                        tint = ThumpColors.OnSurface,
-                    )
+            effectiveClick = onRetryClicked
+        }
+        IconButton(onClick = effectiveClick) {
+            if (unavailableReason == null && nowPlaying.isPlaying) {
+                Icon(
+                    imageVector = Icons.Filled.Pause,
+                    contentDescription = "Pause",
+                    tint = ThumpColors.OnSurface,
+                )
+            } else {
+                val iconTint: Color
+                val iconDescription: String
+                if (unavailableReason == null) {
+                    iconTint = ThumpColors.OnSurface
+                    iconDescription = "Play"
                 } else {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = "Play",
-                        tint = ThumpColors.OnSurface,
-                    )
+                    iconTint = UnavailableAccent
+                    iconDescription = "Retry"
                 }
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = iconDescription,
+                    tint = iconTint,
+                )
             }
         }
     }
