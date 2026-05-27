@@ -202,7 +202,7 @@ namespace Pulse
 			host.RegisterResultRoute("rest/playRandom", m_subsonic.HandlePlayRandom);
 
 			host.RegisterResultRoute("pulse/stats", HandleStats);
-			host.RegisterRoute("pulse/stats.html", HandleStatsPage);
+			host.RegisterRoute("web/stats.html", HandleStatsPage);
 
 			host.RegisterResultRoute("pulse/version", HandleVersion);
 
@@ -210,7 +210,7 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/createUser", m_pulseAPI.HandleCreateUser);
 			host.RegisterResultRoute("pulse/updateUser", m_pulseAPI.HandleUpdateUser);
 			host.RegisterResultRoute("pulse/deleteUser", m_pulseAPI.HandleDeleteUser);
-			host.RegisterRoute("pulse/settings.html", HandleSettingsPage);
+			host.RegisterRoute("web/settings.html", HandleSettingsPage);
 
 
 			host.RegisterRoute("spotify/callback", HandleSpotifyCallback);
@@ -275,6 +275,18 @@ namespace Pulse
 
 		private void HandleStatsPage(HttpContext context)
 		{
+			string embed = context.Request.Query["embed"].FirstOrDefault();
+			if (embed != "1")
+			{
+				string user = context.Request.Query["u"].FirstOrDefault();
+				string redirect = "/web/pulse.html?view=stats";
+				if (!string.IsNullOrEmpty(user))
+				{
+					redirect = redirect + "&u=" + System.Uri.EscapeDataString(user);
+				}
+				context.Response.Redirect(redirect);
+				return;
+			}
 			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "stats.html");
 			if (!File.Exists(htmlPath))
 			{
@@ -290,6 +302,12 @@ namespace Pulse
 
 		private void HandleSettingsPage(HttpContext context)
 		{
+			string embed = context.Request.Query["embed"].FirstOrDefault();
+			if (embed != "1")
+			{
+				context.Response.Redirect("/web/pulse.html?view=settings");
+				return;
+			}
 			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "settings.html");
 			if (!File.Exists(htmlPath))
 			{
