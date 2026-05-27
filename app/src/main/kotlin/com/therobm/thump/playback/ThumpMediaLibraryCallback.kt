@@ -20,6 +20,7 @@ import com.therobm.thump.data.ThumpData
 import com.therobm.thump.data.ThumpDataNotConfigured
 import com.therobm.thump.data.Track
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.guava.future
@@ -409,7 +410,7 @@ class ThumpMediaLibraryCallback(
             val recentlyPlayedDeferred = async {
                 fetchRecentlyPlayedSection("Recently Played")
             }
-            val popularArtistsDeferred = async {
+            val popularArtistsDeferred: Deferred<List<MediaItem>> = async {
                 fetchPopularArtistsSection("Popular Artists")
             }
             val recentlyAddedDeferred = async {
