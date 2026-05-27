@@ -213,7 +213,12 @@ namespace Pulse.MusicLibrary
 
 		public void OnPlaylistSyncComplete()
 		{
-			m_lidarrSync.RequestArtists(m_missingSongs);
+			HashSet<string> missingSongsSnapshot;
+			lock (m_missingLock)
+			{
+				missingSongsSnapshot = new HashSet<string>(m_missingSongs);
+			}
+			m_lidarrSync.RequestArtists(missingSongsSnapshot);
 		}
 
 		public void OnTrackStreamed(string userName, string trackId)
@@ -379,7 +384,10 @@ namespace Pulse.MusicLibrary
 				}
 				else
 				{
-					m_missingSongs.Add(entries[index].Artist + " - " + entries[index].Title);
+					lock (m_missingLock)
+					{
+						m_missingSongs.Add(entries[index].Artist + " - " + entries[index].Title);
+					}
 					missed++;
 				}
 			}
