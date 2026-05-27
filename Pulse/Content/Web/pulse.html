@@ -1444,6 +1444,77 @@
 			font-size: 13px;
 			padding: 16px 0;
 		}
+
+		.version-tag {
+			position: fixed;
+			right: 8px;
+			bottom: 6px;
+			font-family: 'DM Mono', monospace;
+			font-size: 10px;
+			color: var(--text-dim);
+			opacity: 0.55;
+			pointer-events: none;
+			user-select: none;
+			z-index: 1000;
+		}
+
+		#header-nav {
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			margin-right: 8px;
+		}
+
+		.nav-btn {
+			width: 40px;
+			height: 40px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			cursor: pointer;
+			color: var(--text-dim);
+			border-radius: 8px;
+			transition: background 0.15s, color 0.15s;
+			background: none;
+			border: none;
+		}
+
+			.nav-btn:hover, .nav-btn:active {
+				background: var(--bg-hover);
+				color: var(--text-primary);
+			}
+
+			.nav-btn.active {
+				color: var(--accent);
+				background: var(--accent-dim);
+			}
+
+		#logo {
+			cursor: pointer;
+		}
+
+		#page-overlay {
+			display: none;
+			flex: 1;
+			overflow: hidden;
+			background: var(--bg-deep);
+		}
+
+			#page-overlay.active {
+				display: flex;
+			}
+
+		#page-frame {
+			flex: 1;
+			width: 100%;
+			height: 100%;
+			border: none;
+			background: var(--bg-deep);
+		}
+
+		body.page-mode #main-layout {
+			display: none;
+		}
 	</style>
 </head>
 <body>
@@ -1458,8 +1529,15 @@
 				<input id="search-input" type="text" placeholder="Search library..." />
 			</div>
 		</div>
-		<div id="header-right"><span id="clock"></span></div>
+		<div id="header-right">
+			<div id="header-nav">
+				<button class="nav-btn" id="nav-stats" title="Library stats" data-action="nav-stats"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></button>
+				<button class="nav-btn" id="nav-settings" title="Settings" data-action="nav-settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+			</div>
+			<span id="clock"></span>
+		</div>
 	</div>
+	<div id="page-overlay"><iframe id="page-frame" title="Pulse"></iframe></div>
 	<div id="main-layout">
 		<div id="left-panel">
 			<div id="left-tabs">
@@ -2222,12 +2300,112 @@
 			else if (action === 'cancel-playlist-comment') { cancelPlaylistComment(); }
 			else if (action === 'confirm-cancel') { cancelConfirm(); }
 		}
+		let currentPage = 'pulse';
+		function routeTo(pageName, userParam, replace) {
+			let overlay = document.getElementById('page-overlay');
+			let frame = document.getElementById('page-frame');
+			let navStats = document.getElementById('nav-stats');
+			let navSettings = document.getElementById('nav-settings');
+			navStats.classList.remove('active');
+			navSettings.classList.remove('active');
+			let url;
+			let frameSrc;
+			if (pageName === 'pulse') {
+				document.body.classList.remove('page-mode');
+				overlay.classList.remove('active');
+				frame.src = 'about:blank';
+				url = '/web/pulse.html';
+			} else if (pageName === 'settings') {
+				document.body.classList.add('page-mode');
+				overlay.classList.add('active');
+				frameSrc = '/web/settings.html?embed=1';
+				if (frame.src.indexOf('/web/settings.html') === -1) { frame.src = frameSrc; }
+				navSettings.classList.add('active');
+				url = '/web/pulse.html?view=settings';
+			} else if (pageName === 'stats') {
+				document.body.classList.add('page-mode');
+				overlay.classList.add('active');
+				frameSrc = '/web/stats.html?embed=1';
+				if (userParam) { frameSrc = frameSrc + '&u=' + encodeURIComponent(userParam); }
+				if (frame.src.indexOf('/web/stats.html') === -1) { frame.src = frameSrc; }
+				navStats.classList.add('active');
+				url = '/web/pulse.html?view=stats';
+				if (userParam) { url = url + '&u=' + encodeURIComponent(userParam); }
+			} else {
+				return;
+			}
+			currentPage = pageName;
+			if (replace) { history.replaceState({ page: pageName, u: userParam || '' }, '', url); }
+			else { history.pushState({ page: pageName, u: userParam || '' }, '', url); }
+		}
+		function readPageFromUrl() {
+			let params = new URLSearchParams(window.location.search);
+			let view = params.get('view');
+			let user = params.get('u') || '';
+			if (view === 'settings') { return { page: 'settings', u: '' }; }
+			if (view === 'stats') { return { page: 'stats', u: user }; }
+			return { page: 'pulse', u: '' };
+		}
+		function onNavStats() { routeTo('stats', '', false); }
+		function onNavSettings() { routeTo('settings', '', false); }
+		function onNavPulse() { routeTo('pulse', '', false); }
+		function onPopState(event) {
+			let state = event.state;
+			let page;
+			let user = '';
+			if (state && state.page) { page = state.page; user = state.u || ''; }
+			else { let parsed = readPageFromUrl(); page = parsed.page; user = parsed.u; }
+			let overlay = document.getElementById('page-overlay');
+			let frame = document.getElementById('page-frame');
+			let navStats = document.getElementById('nav-stats');
+			let navSettings = document.getElementById('nav-settings');
+			navStats.classList.remove('active');
+			navSettings.classList.remove('active');
+			if (page === 'pulse') {
+				document.body.classList.remove('page-mode');
+				overlay.classList.remove('active');
+				frame.src = 'about:blank';
+			} else if (page === 'settings') {
+				document.body.classList.add('page-mode');
+				overlay.classList.add('active');
+				if (frame.src.indexOf('/web/settings.html') === -1) { frame.src = '/web/settings.html?embed=1'; }
+				navSettings.classList.add('active');
+			} else if (page === 'stats') {
+				document.body.classList.add('page-mode');
+				overlay.classList.add('active');
+				let src = '/web/stats.html?embed=1';
+				if (user) { src = src + '&u=' + encodeURIComponent(user); }
+				if (frame.src.indexOf('/web/stats.html') === -1) { frame.src = src; }
+				navStats.classList.add('active');
+			}
+			currentPage = page;
+		}
+		function loadVersionTag() {
+			let request = new XMLHttpRequest();
+			request.open('GET', '/pulse/version');
+			request.onload = function () {
+				if (request.status !== 200) { return; }
+				let data = JSON.parse(request.responseText);
+				if (!data || !data.version) { return; }
+				let tagEl = document.getElementById('pulse-version-tag');
+				if (tagEl) { tagEl.textContent = 'v' + data.version; }
+			};
+			request.send();
+		}
 		document.addEventListener('DOMContentLoaded', function () {
 			wireUpStaticHandlers();
 			document.body.addEventListener('click', handleDelegatedClick);
 			showView('home');
 			renderLeftList();
+			loadVersionTag();
+			document.getElementById('nav-stats').addEventListener('click', onNavStats);
+			document.getElementById('nav-settings').addEventListener('click', onNavSettings);
+			document.getElementById('logo').addEventListener('click', onNavPulse);
+			window.addEventListener('popstate', onPopState);
+			let initial = readPageFromUrl();
+			routeTo(initial.page, initial.u, true);
 		});
 	</script>
+	<div id="pulse-version-tag" class="version-tag"></div>
 </body>
 </html>

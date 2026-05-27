@@ -48,6 +48,27 @@ namespace Pulse
 			return s_musicManager != null && !s_musicManager.GetIsScanning();
 		}
 
+		// Server version as set by /p:Version at publish time (CI). Falls back
+		// to whatever AssemblyInformationalVersion the local build produced
+		// (csproj default = "0.0.0-local"). Strips any "+<sha>" suffix that
+		// the .NET SDK appends so the web tag stays compact (Flatline #229).
+		public static string GetServerVersion()
+		{
+			System.Reflection.AssemblyInformationalVersionAttribute attr =
+				(System.Reflection.AssemblyInformationalVersionAttribute)Attribute.GetCustomAttribute(
+					typeof(PulseService).Assembly,
+					typeof(System.Reflection.AssemblyInformationalVersionAttribute));
+			if (attr == null) { return "dev"; }
+			string version = attr.InformationalVersion;
+			if (string.IsNullOrEmpty(version)) { return "dev"; }
+			int plus = version.IndexOf('+');
+			if (plus > 0)
+			{
+				version = version.Substring(0, plus);
+			}
+			return version;
+		}
+
 		static PulseConfig m_config;
 		static MusicManager s_musicManager;
 		private Subsonic m_subsonic;
@@ -181,13 +202,15 @@ namespace Pulse
 			host.RegisterResultRoute("rest/playRandom", m_subsonic.HandlePlayRandom);
 
 			host.RegisterResultRoute("pulse/stats", HandleStats);
-			host.RegisterRoute("pulse/stats.html", HandleStatsPage);
+			host.RegisterRoute("web/stats.html", HandleStatsPage);
+
+			host.RegisterResultRoute("pulse/version", HandleVersion);
 
 			host.RegisterResultRoute("pulse/listUsers", m_pulseAPI.HandleListUsers);
 			host.RegisterResultRoute("pulse/createUser", m_pulseAPI.HandleCreateUser);
 			host.RegisterResultRoute("pulse/updateUser", m_pulseAPI.HandleUpdateUser);
 			host.RegisterResultRoute("pulse/deleteUser", m_pulseAPI.HandleDeleteUser);
-			host.RegisterRoute("pulse/settings.html", HandleSettingsPage);
+			host.RegisterRoute("web/settings.html", HandleSettingsPage);
 
 
 			host.RegisterRoute("spotify/callback", HandleSpotifyCallback);
@@ -245,8 +268,25 @@ namespace Pulse
 			return Results.Content(json, "application/json");
 		}
 
+		private IResult HandleVersion(HttpContext context)
+		{
+			return Results.Json(new { version = GetServerVersion() });
+		}
+
 		private void HandleStatsPage(HttpContext context)
 		{
+			string embed = context.Request.Query["embed"].FirstOrDefault();
+			if (embed != "1")
+			{
+				string user = context.Request.Query["u"].FirstOrDefault();
+				string redirect = "/web/pulse.html?view=stats";
+				if (!string.IsNullOrEmpty(user))
+				{
+					redirect = redirect + "&u=" + System.Uri.EscapeDataString(user);
+				}
+				context.Response.Redirect(redirect);
+				return;
+			}
 			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "stats.html");
 			if (!File.Exists(htmlPath))
 			{
@@ -262,6 +302,12 @@ namespace Pulse
 
 		private void HandleSettingsPage(HttpContext context)
 		{
+			string embed = context.Request.Query["embed"].FirstOrDefault();
+			if (embed != "1")
+			{
+				context.Response.Redirect("/web/pulse.html?view=settings");
+				return;
+			}
 			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "settings.html");
 			if (!File.Exists(htmlPath))
 			{
