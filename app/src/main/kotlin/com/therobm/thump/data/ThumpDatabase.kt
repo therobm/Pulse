@@ -72,6 +72,6 @@ class ThumpDatabase(
 
     companion object {
         const val DATABASE_FILE_NAME: String = "thump_data.db"
-        const val CURRENT_SCHEMA_VERSION: Int = 1
+        const val CURRENT_SCHEMA_VERSION: Int = 2
     }
 }
