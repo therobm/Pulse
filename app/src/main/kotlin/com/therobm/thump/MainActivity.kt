@@ -172,8 +172,8 @@ private fun ThumpApp() {
             }
         }
 
-        val playbackController: PlaybackController = remember(applicationContext) {
-            PlaybackController(applicationContext)
+        val playbackController: PlaybackController = remember(applicationContext, thumpData) {
+            PlaybackController(applicationContext, thumpData)
         }
         DisposableEffect(playbackController) {
             playbackController.connect()
@@ -522,6 +522,9 @@ private fun BottomBarStack(
                     } else {
                         playbackController.resume()
                     }
+                },
+                onRetryClicked = {
+                    playbackController.retryCurrentTrack()
                 },
                 onExpandClicked = {
                     navController.navigate(ROUTE_NOW_PLAYING)
