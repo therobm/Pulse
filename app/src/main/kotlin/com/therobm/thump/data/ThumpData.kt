@@ -8,15 +8,26 @@ import android.database.sqlite.SQLiteDatabase
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import com.therobm.thump.settings.ThumpSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.TimeUnit
@@ -75,6 +86,21 @@ class ThumpData(
     private var openDataSpec: DataSpec? = null
     private var openInputStream: InputStream? = null
     private var openBytesRemaining: Long = 0L
+
+    // -- Audio prefetch state ------------------------------------------------------------------
+    //
+    // Coalesces concurrent `prefetchAudio` calls for the same trackId so two callers asking
+    // for the same audio body only trigger one network download. The Deferred is installed by
+    // the first caller and any later caller awaits the same Deferred. Each Deferred runs on
+    // `prefetchCoroutineScope`, a private SupervisorJob-backed scope: that scope is what makes
+    // the prefetch outlive a caller that gets cancelled (per spec: other awaiters may still
+    // need the bytes) and what keeps one prefetch failure from cancelling sibling prefetches
+    // when the playback service kicks off a window of them at once.
+    private val prefetchCoroutineScope: CoroutineScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO,
+    )
+    private val prefetchInFlightMutex: Mutex = Mutex()
+    private val prefetchInFlightDeferreds: HashMap<String, Deferred<Unit>> = HashMap<String, Deferred<Unit>>()
 
     init {
         // Eager bind from disk-or-prefs at construction so the first caller never sees an
@@ -683,30 +709,235 @@ class ThumpData(
         return fetched
     }
 
+    // -- Audio prefetch ------------------------------------------------------------------------
+
+    /**
+     * Download a track's full audio body into the on-disk blob store ahead of playback. The
+     * playback service drives this with a lookahead window so by the time ExoPlayer asks the
+     * DataSource to open a track the bytes are already on disk.
+     *
+     * Idempotent — a no-op when the blob is already cached. Coalesces concurrent calls for the
+     * same `trackId` behind a single in-flight Deferred so a duplicate request only triggers
+     * one network download. Cancellation-aware: callers that get cancelled while awaiting do
+     * not cancel the underlying download (siblings may still need the bytes); cancelling the
+     * Deferred itself runs the finally block that drops the partial `.tmp` file.
+     */
+    suspend fun prefetchAudio(trackId: String): Unit {
+        val cacheKey: String = ThumpBlobStore.trackBlobKey(trackId)
+        val existingFile: File? = withContext(Dispatchers.IO) {
+            blobStore.openBlobFile(cacheKey)
+        }
+        if (existingFile != null) {
+            return
+        }
+        val deferredToAwait: Deferred<Unit>
+        prefetchInFlightMutex.withLock {
+            val existingDeferred: Deferred<Unit>? = prefetchInFlightDeferreds[trackId]
+            if (existingDeferred != null) {
+                deferredToAwait = existingDeferred
+            } else {
+                val createdDeferred: Deferred<Unit> = prefetchCoroutineScope.async {
+                    executePrefetchDownload(trackId)
+                }
+                prefetchInFlightDeferreds[trackId] = createdDeferred
+                createdDeferred.invokeOnCompletion { completionThrowable: Throwable? ->
+                    val ignoredCompletionThrowable: Throwable? = completionThrowable
+                    removePrefetchDeferredEntry(trackId, createdDeferred)
+                }
+                deferredToAwait = createdDeferred
+            }
+        }
+        deferredToAwait.await()
+    }
+
+    /**
+     * Body of the in-flight prefetch Deferred. Resolves the active protocol, opens the audio
+     * stream, and copies it to a temp file via `ThumpBlobStore.createTemporaryBlobFile` /
+     * `commitTemporaryBlobFile`. On any failure (including cancellation) the temp file is
+     * dropped in a NonCancellable cleanup so a half-written `.tmp` never lingers in the blob
+     * directory.
+     */
+    private suspend fun executePrefetchDownload(trackId: String): Unit {
+        val cacheKey: String = ThumpBlobStore.trackBlobKey(trackId)
+        val protocol: IProtocol = ensureActiveProtocol()
+        val streamResponse: AudioStreamResponse = protocol.openAudioStream(trackId)
+        val temporaryHandle: ThumpBlobStore.TemporaryBlobHandle = withContext(Dispatchers.IO) {
+            blobStore.createTemporaryBlobFile(cacheKey)
+        }
+        try {
+            val totalBytesWritten: Long = withContext(Dispatchers.IO) {
+                copyNetworkStreamToTemporaryFile(
+                    networkInputStream = streamResponse.inputStream,
+                    expectedBytes = streamResponse.totalBytesAvailable,
+                    temporaryFile = temporaryHandle.temporaryFile,
+                )
+            }
+            withContext(Dispatchers.IO) {
+                blobStore.commitTemporaryBlobFile(
+                    handle = temporaryHandle,
+                    sizeBytes = totalBytesWritten,
+                    contentType = streamResponse.contentType,
+                )
+            }
+        } catch (downloadThrowable: Throwable) {
+            withContext(NonCancellable + Dispatchers.IO) {
+                blobStore.discardTemporaryBlobFile(temporaryHandle)
+            }
+            throw downloadThrowable
+        }
+    }
+
+    private fun copyNetworkStreamToTemporaryFile(
+        networkInputStream: InputStream,
+        expectedBytes: Long,
+        temporaryFile: File,
+    ): Long {
+        val bufferSize: Int = AUDIO_PREFETCH_COPY_BUFFER_BYTES
+        val copyBuffer: ByteArray = ByteArray(bufferSize)
+        val maxIterations: Int = computeCopyLoopUpperBound(expectedBytes, bufferSize)
+        var totalBytesWritten: Long = 0L
+        val fileOutputStream: FileOutputStream = FileOutputStream(temporaryFile)
+        try {
+            try {
+                for (copyIteration in 0 until maxIterations) {
+                    val bytesReadThisChunk: Int = networkInputStream.read(copyBuffer, 0, bufferSize)
+                    if (bytesReadThisChunk < 0) {
+                        break
+                    }
+                    if (bytesReadThisChunk == 0) {
+                        continue
+                    }
+                    fileOutputStream.write(copyBuffer, 0, bytesReadThisChunk)
+                    totalBytesWritten += bytesReadThisChunk.toLong()
+                }
+                fileOutputStream.flush()
+                fileOutputStream.fd.sync()
+            } finally {
+                fileOutputStream.close()
+            }
+        } finally {
+            try {
+                networkInputStream.close()
+            } catch (closeFailure: IOException) {
+                // Best-effort — the body was either drained or aborted; either way the
+                // underlying socket should be released to the pool.
+                val ignoredCloseFailure: IOException = closeFailure
+            }
+        }
+        return totalBytesWritten
+    }
+
+    private fun computeCopyLoopUpperBound(expectedBytes: Long, bufferSize: Int): Int {
+        if (expectedBytes <= 0L) {
+            return AUDIO_PREFETCH_DEFAULT_ITERATION_CAP
+        }
+        val perBufferIterations: Long = (expectedBytes / bufferSize.toLong()) + 2L
+        if (perBufferIterations >= Int.MAX_VALUE.toLong()) {
+            return Int.MAX_VALUE
+        }
+        return perBufferIterations.toInt()
+    }
+
+    private fun removePrefetchDeferredEntry(trackId: String, expectedDeferred: Deferred<Unit>): Unit {
+        // invokeOnCompletion runs synchronously off the completing Deferred — drop the
+        // coalescing entry through an async best-effort path so we do not block the completion
+        // callback on the mutex.
+        prefetchCoroutineScope.launch {
+            prefetchInFlightMutex.withLock {
+                val currentDeferred: Deferred<Unit>? = prefetchInFlightDeferreds[trackId]
+                if (currentDeferred === expectedDeferred) {
+                    prefetchInFlightDeferreds.remove(trackId)
+                }
+            }
+        }
+    }
+
     // -- DataSource (ExoPlayer integration) ----------------------------------------------------
 
     /**
-     * Open a `thump://track/<id>` URI for ExoPlayer. Step-2 implementation: parse the id,
-     * defer to the active IProtocol for an HTTP stream, and hand the bytes through to
-     * ExoPlayer's `read`. The disk write-through and the LRU eviction land in a later step
-     * once the audio path's caller set has been ported.
+     * Open a `thump://track/<id>` URI for ExoPlayer. Cache-only: serves bytes from the audio
+     * blob already on disk. On a miss this throws — the playback service is responsible for
+     * driving `prefetchAudio` before invoking ExoPlayer. There is no network branch here, no
+     * tee/pass-through, no write-through. ExoPlayer reads from disk and only from disk.
      *
-     * Blocking by Media3 contract — bridges into the coroutine world via `runBlocking`.
+     * Blocking by Media3 contract — but the implementation is pure synchronous file IO so no
+     * coroutine bridge is required.
      */
     override fun open(dataSpec: DataSpec): Long {
         val parsedTrackId: String = parseTrackIdFromUri(dataSpec.uri)
         notifyTransferListenersOnTransferInitializing(dataSpec)
-        val protocol: IProtocol = runBlocking {
-            ensureActiveProtocol()
+        val cacheKey: String = ThumpBlobStore.trackBlobKey(parsedTrackId)
+        val cachedFile: File? = blobStore.openBlobFile(cacheKey)
+        if (cachedFile == null) {
+            throw IOException(
+                "ThumpData: audio blob not cached for trackId=" + parsedTrackId
+                    + " — playback service must prefetchAudio before invoking ExoPlayer"
+            )
         }
-        val streamResponse: AudioStreamResponse = runBlocking {
-            protocol.openAudioStream(parsedTrackId)
+        val totalFileBytes: Long = cachedFile.length()
+        val seekPosition: Long = dataSpec.position
+        if (seekPosition < 0L) {
+            throw IOException(
+                "ThumpData: dataSpec.position=" + seekPosition + " is negative for trackId="
+                    + parsedTrackId
+            )
         }
+        if (seekPosition > totalFileBytes) {
+            throw IOException(
+                "ThumpData: dataSpec.position=" + seekPosition + " past blob end="
+                    + totalFileBytes + " for trackId=" + parsedTrackId
+            )
+        }
+        val bytesAvailableFromPosition: Long = totalFileBytes - seekPosition
+        val requestedLength: Long = dataSpec.length
+        val bytesToServe: Long
+        if (requestedLength == C.LENGTH_UNSET.toLong()) {
+            bytesToServe = bytesAvailableFromPosition
+        } else if (requestedLength > bytesAvailableFromPosition) {
+            bytesToServe = bytesAvailableFromPosition
+        } else {
+            bytesToServe = requestedLength
+        }
+        val cachedFileInputStream: FileInputStream = FileInputStream(cachedFile)
+        seekFileInputStream(cachedFileInputStream, seekPosition, parsedTrackId)
         openDataSpec = dataSpec
-        openInputStream = streamResponse.inputStream
-        openBytesRemaining = streamResponse.totalBytesAvailable
+        openInputStream = cachedFileInputStream
+        openBytesRemaining = bytesToServe
         notifyTransferListenersOnTransferStarted(dataSpec)
-        return streamResponse.totalBytesAvailable
+        return bytesToServe
+    }
+
+    private fun seekFileInputStream(
+        cachedFileInputStream: FileInputStream,
+        seekPosition: Long,
+        trackIdForErrorMessage: String,
+    ): Unit {
+        if (seekPosition <= 0L) {
+            return
+        }
+        var bytesRemainingToSkip: Long = seekPosition
+        val maxSkipIterations: Int = AUDIO_PREFETCH_MAX_SKIP_ITERATIONS
+        for (skipIteration in 0 until maxSkipIterations) {
+            if (bytesRemainingToSkip <= 0L) {
+                return
+            }
+            val skippedThisCall: Long = cachedFileInputStream.skip(bytesRemainingToSkip)
+            if (skippedThisCall <= 0L) {
+                throw IOException(
+                    "ThumpData: could not seek to position=" + seekPosition
+                        + " (remaining=" + bytesRemainingToSkip + ") for trackId="
+                        + trackIdForErrorMessage
+                )
+            }
+            bytesRemainingToSkip -= skippedThisCall
+        }
+        if (bytesRemainingToSkip > 0L) {
+            throw IOException(
+                "ThumpData: exhausted skip iterations seeking to position=" + seekPosition
+                    + " (remaining=" + bytesRemainingToSkip + ") for trackId="
+                    + trackIdForErrorMessage
+            )
+        }
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
@@ -717,13 +948,20 @@ class ThumpData(
         if (length == 0) {
             return 0
         }
-        val bytesRead: Int = activeStream.read(buffer, offset, length)
+        if (openBytesRemaining <= 0L) {
+            return C.RESULT_END_OF_INPUT
+        }
+        val maxBytesToReadThisCall: Int
+        if (length.toLong() > openBytesRemaining) {
+            maxBytesToReadThisCall = openBytesRemaining.toInt()
+        } else {
+            maxBytesToReadThisCall = length
+        }
+        val bytesRead: Int = activeStream.read(buffer, offset, maxBytesToReadThisCall)
         if (bytesRead < 0) {
-            return -1
+            return C.RESULT_END_OF_INPUT
         }
-        if (openBytesRemaining > 0L) {
-            openBytesRemaining -= bytesRead.toLong()
-        }
+        openBytesRemaining -= bytesRead.toLong()
         val activeSpec: DataSpec? = openDataSpec
         if (activeSpec != null) {
             notifyTransferListenersOnBytesTransferred(activeSpec, bytesRead)
@@ -1144,5 +1382,16 @@ class ThumpData(
         private const val LEGACY_PREFS_KEY_USERNAME: String = "username"
         private const val LEGACY_PREFS_KEY_PASSWORD: String = "password"
         private const val LEGACY_PREFS_KEY_USE_TOKEN_AUTH: String = "use_token_auth"
+
+        // 64KiB chunk size for the prefetch copy loop. Matches OkHttp's source-buffer chunking
+        // and keeps per-iteration allocation cheap.
+        private const val AUDIO_PREFETCH_COPY_BUFFER_BYTES: Int = 64 * 1024
+        // Fallback iteration cap when the protocol can't report a content-length up front. The
+        // for-loop needs an explicit upper bound; 2 GiB / 64 KiB = 32768 is a comfortable cap
+        // for any realistic audio file.
+        private const val AUDIO_PREFETCH_DEFAULT_ITERATION_CAP: Int = 32768
+        // FileInputStream.skip on a regular file returns the full requested skip in a single
+        // call on every Android filesystem we ship to, so a small safety bound is plenty.
+        private const val AUDIO_PREFETCH_MAX_SKIP_ITERATIONS: Int = 64
     }
 }

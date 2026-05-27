@@ -5,6 +5,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -13,8 +14,10 @@ import androidx.media3.session.MediaSession
 import com.therobm.thump.data.ThumpData
 import com.therobm.thump.data.ThumpDataNotConfigured
 import com.therobm.thump.settings.ThumpSettings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -62,6 +65,15 @@ class ThumpPlaybackService : MediaLibraryService() {
     // interface ThumpData implements.
     private var serviceThumpData: ThumpData? = null
 
+    // Active prefetch jobs keyed by trackId. Populated when the queue's lookahead window
+    // expands across a track; entries are removed when the underlying Job completes or when
+    // the window shifts off that track. Touched from the main thread (Player.Listener
+    // callbacks) and from the prefetch IO scope (Job.invokeOnCompletion), so all access is
+    // guarded by `prefetchJobsLock`. ThumpData itself coalesces concurrent prefetch calls per
+    // trackId so racing entries here only ever produce one network download.
+    private val prefetchJobsLock: Any = Any()
+    private val prefetchJobsByTrackId: HashMap<String, Job> = HashMap<String, Job>()
+
     override fun onCreate() {
         super.onCreate()
         val thumpDataForProcess: ThumpData = ThumpData(applicationContext)
@@ -84,11 +96,6 @@ class ThumpPlaybackService : MediaLibraryService() {
             .setMediaSourceFactory(mediaSourceFactory)
             .build()
 
-        // TODO: A ThumpData-side prefetch helper can land in a follow-up bug if cold-cache
-        // playback feels noticeably worse than the prior lookahead behaviour. The architecture
-        // spec allows ThumpData to prefetch internally; surfacing it from the service here
-        // would be a no-op until that helper exists.
-
         player.addListener(buildPlayerListener(player))
 
         val callback = ThumpMediaLibraryCallback(
@@ -107,6 +114,7 @@ class ThumpPlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        cancelAllPrefetchJobs()
         val sessionSnapshot = librarySession
         if (sessionSnapshot != null) {
             // Final position write so the next launch starts where this session ended.
@@ -129,6 +137,16 @@ class ThumpPlaybackService : MediaLibraryService() {
                     fireScrobbleNowPlaying(trackId)
                 }
                 persistCurrentPlayerState(player)
+                refreshAudioPrefetchWindow(player)
+            }
+
+            override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                // Catches the queue-set case where the listener is bound after the player
+                // already has items (restore-on-launch) and the case where the queue is
+                // replaced wholesale without the current track changing identity.
+                val ignoredTimeline: Timeline = timeline
+                val ignoredReason: Int = reason
+                refreshAudioPrefetchWindow(player)
             }
         }
     }
@@ -319,6 +337,164 @@ class ThumpPlaybackService : MediaLibraryService() {
                 source = previous.source,
             )
         )
+    }
+
+    /**
+     * Recompute the prefetch lookahead window after the queue or current track changed.
+     *
+     * The window is `[currentIndex, currentIndex + lookahead)` clamped to the queue's bounds,
+     * with `lookahead` read from `ThumpSettings.getPrefetchLookahead()` (default 10). Tracks
+     * inside the window get a supervised prefetch Job launched against the service scope;
+     * any active Jobs for trackIds outside the window get cancelled so we don't keep paying
+     * for downloads the user has skipped past.
+     *
+     * Each prefetch runs as an independent child of the service scope (which is backed by a
+     * `SupervisorJob`) so one failed prefetch never cancels its siblings. Failures are
+     * swallowed inside the Job body — the playback service is not responsible for surfacing
+     * cache-miss errors; `ThumpData.open` does that synchronously when ExoPlayer reaches the
+     * uncached track.
+     */
+    private fun refreshAudioPrefetchWindow(player: Player): Unit {
+        val thumpDataInstance: ThumpData? = serviceThumpData
+        if (thumpDataInstance == null) {
+            return
+        }
+        val itemCount: Int = player.mediaItemCount
+        val currentIndex: Int = player.currentMediaItemIndex
+        if (itemCount <= 0 || currentIndex < 0) {
+            cancelAllPrefetchJobs()
+            return
+        }
+        val lookaheadSetting: Int = settings.getPrefetchLookahead()
+        if (lookaheadSetting <= 0) {
+            cancelAllPrefetchJobs()
+            return
+        }
+        val computedEnd: Long = currentIndex.toLong() + lookaheadSetting.toLong()
+        val windowEndExclusive: Int
+        if (computedEnd >= itemCount.toLong()) {
+            windowEndExclusive = itemCount
+        } else {
+            windowEndExclusive = computedEnd.toInt()
+        }
+        val windowTrackIds: HashSet<String> = collectWindowTrackIds(player, currentIndex, windowEndExclusive)
+        cancelPrefetchJobsOutsideWindow(windowTrackIds)
+        launchPrefetchJobsForWindow(thumpDataInstance, player, currentIndex, windowEndExclusive)
+    }
+
+    private fun collectWindowTrackIds(
+        player: Player,
+        windowStartInclusive: Int,
+        windowEndExclusive: Int,
+    ): HashSet<String> {
+        val windowTrackIds: HashSet<String> = HashSet<String>()
+        for (windowIndex in windowStartInclusive until windowEndExclusive) {
+            val mediaItemAtIndex: MediaItem = player.getMediaItemAt(windowIndex)
+            val trackIdAtIndex: String? = extractTrackId(mediaItemAtIndex)
+            if (trackIdAtIndex != null) {
+                windowTrackIds.add(trackIdAtIndex)
+            }
+        }
+        return windowTrackIds
+    }
+
+    private fun cancelPrefetchJobsOutsideWindow(windowTrackIds: HashSet<String>): Unit {
+        val staleTrackIds: ArrayList<String> = ArrayList<String>()
+        synchronized(prefetchJobsLock) {
+            val activeEntries: Set<Map.Entry<String, Job>> = prefetchJobsByTrackId.entries
+            for (activeEntry in activeEntries) {
+                val activeTrackId: String = activeEntry.key
+                if (!windowTrackIds.contains(activeTrackId)) {
+                    staleTrackIds.add(activeTrackId)
+                }
+            }
+        }
+        val staleCount: Int = staleTrackIds.size
+        for (staleIndex in 0 until staleCount) {
+            val staleTrackId: String = staleTrackIds[staleIndex]
+            val jobToCancel: Job?
+            synchronized(prefetchJobsLock) {
+                jobToCancel = prefetchJobsByTrackId.remove(staleTrackId)
+            }
+            if (jobToCancel != null) {
+                jobToCancel.cancel()
+            }
+        }
+    }
+
+    private fun cancelAllPrefetchJobs(): Unit {
+        val drainedJobs: ArrayList<Job> = ArrayList<Job>()
+        synchronized(prefetchJobsLock) {
+            val activeJobs: Collection<Job> = prefetchJobsByTrackId.values
+            drainedJobs.addAll(activeJobs)
+            prefetchJobsByTrackId.clear()
+        }
+        val drainedCount: Int = drainedJobs.size
+        for (drainedIndex in 0 until drainedCount) {
+            drainedJobs[drainedIndex].cancel()
+        }
+    }
+
+    private fun launchPrefetchJobsForWindow(
+        thumpDataInstance: ThumpData,
+        player: Player,
+        windowStartInclusive: Int,
+        windowEndExclusive: Int,
+    ): Unit {
+        for (windowIndex in windowStartInclusive until windowEndExclusive) {
+            val mediaItemAtIndex: MediaItem = player.getMediaItemAt(windowIndex)
+            val trackIdAtIndex: String? = extractTrackId(mediaItemAtIndex)
+            if (trackIdAtIndex == null) {
+                continue
+            }
+            launchPrefetchJobForTrackIfAbsent(thumpDataInstance, trackIdAtIndex)
+        }
+    }
+
+    private fun launchPrefetchJobForTrackIfAbsent(
+        thumpDataInstance: ThumpData,
+        trackId: String,
+    ): Unit {
+        synchronized(prefetchJobsLock) {
+            if (prefetchJobsByTrackId.containsKey(trackId)) {
+                return
+            }
+        }
+        val prefetchJob: Job = serviceCoroutineScope.launch {
+            try {
+                thumpDataInstance.prefetchAudio(trackId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (notConfigured: ThumpDataNotConfigured) {
+                // No active protocol — nothing to prefetch from. Siblings are unaffected.
+                val ignoredNotConfigured: ThumpDataNotConfigured = notConfigured
+            } catch (transportFailure: IOException) {
+                // Network or disk failure for this one track. Sibling prefetches continue;
+                // the playback path surfaces a cache miss to the user through ExoPlayer's
+                // existing error path when (and only when) it actually tries to play this id.
+                val ignoredTransportFailure: IOException = transportFailure
+            }
+        }
+        var didInstallJob: Boolean = false
+        synchronized(prefetchJobsLock) {
+            if (!prefetchJobsByTrackId.containsKey(trackId)) {
+                prefetchJobsByTrackId[trackId] = prefetchJob
+                didInstallJob = true
+            }
+        }
+        if (!didInstallJob) {
+            prefetchJob.cancel()
+            return
+        }
+        prefetchJob.invokeOnCompletion { completionThrowable: Throwable? ->
+            val ignoredCompletionThrowable: Throwable? = completionThrowable
+            synchronized(prefetchJobsLock) {
+                val currentJob: Job? = prefetchJobsByTrackId[trackId]
+                if (currentJob === prefetchJob) {
+                    prefetchJobsByTrackId.remove(trackId)
+                }
+            }
+        }
     }
 
     private fun extractTrackId(mediaItem: MediaItem?): String? {

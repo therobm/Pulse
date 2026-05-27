@@ -161,6 +161,133 @@ class ThumpBlobStore(
     }
 
     /**
+     * Look up an existing blob's File without reading its bytes. Returns null when the row
+     * is missing or its file has been removed out from under us; in the latter case the stale
+     * row is dropped so future lookups miss cleanly. Bumps `last_accessed_at_epoch_millis` so
+     * the LRU sweep treats this as a fresh touch — the audio path uses this on every
+     * DataSource.open call.
+     */
+    fun openBlobFile(blobKey: String): File? {
+        val writableDatabase: SQLiteDatabase = database.writableDatabase
+        val cursor: Cursor = writableDatabase.rawQuery(
+            "SELECT file_path FROM blobs WHERE blob_key = ?",
+            arrayOf<String>(blobKey),
+        )
+        val filePath: String?
+        try {
+            if (!cursor.moveToFirst()) {
+                return null
+            }
+            filePath = cursor.getString(0)
+        } finally {
+            cursor.close()
+        }
+        if (filePath == null) {
+            return null
+        }
+        val blobFile: File = File(filePath)
+        if (!blobFile.exists()) {
+            writableDatabase.delete(
+                "blobs",
+                "blob_key = ?",
+                arrayOf<String>(blobKey),
+            )
+            return null
+        }
+        val touchedRow: ContentValues = ContentValues()
+        touchedRow.put("last_accessed_at_epoch_millis", System.currentTimeMillis())
+        writableDatabase.update(
+            "blobs",
+            touchedRow,
+            "blob_key = ?",
+            arrayOf<String>(blobKey),
+        )
+        return blobFile
+    }
+
+    /**
+     * Reserve a temporary file path inside the blob directory for a streamed write. The
+     * returned handle exposes the temporary File for the caller to write into; on success the
+     * caller hands it to `commitTemporaryBlobFile` for the atomic rename + index insert. On
+     * failure the caller must call `discardTemporaryBlobFile` to remove the partial write.
+     *
+     * Used by the audio prefetch path so large bodies stream straight to disk instead of going
+     * through a `ByteArray`.
+     */
+    fun createTemporaryBlobFile(blobKey: String): TemporaryBlobHandle {
+        val finalFile: File = File(blobDirectory, deriveFileName(blobKey))
+        val temporaryFile: File = File(
+            blobDirectory,
+            finalFile.name + "." + UUID.randomUUID().toString() + ".tmp",
+        )
+        return TemporaryBlobHandle(
+            blobKey = blobKey,
+            temporaryFile = temporaryFile,
+            finalFile = finalFile,
+        )
+    }
+
+    /**
+     * Atomically promote a temporary blob file into the on-disk store and index it in SQLite.
+     * Mirrors the in-memory `writeBlobBytes` write path: replace any existing final file,
+     * rename the temp file into place, then insert/replace the row and run the LRU sweep
+     * inside one SQLite transaction.
+     */
+    fun commitTemporaryBlobFile(
+        handle: TemporaryBlobHandle,
+        sizeBytes: Long,
+        contentType: String?,
+    ): Unit {
+        if (handle.finalFile.exists()) {
+            val deleted: Boolean = handle.finalFile.delete()
+            if (!deleted) {
+                throw IllegalStateException(
+                    "ThumpBlobStore could not replace existing blob file: " + handle.finalFile.absolutePath
+                )
+            }
+        }
+        val renamed: Boolean = handle.temporaryFile.renameTo(handle.finalFile)
+        if (!renamed) {
+            throw IllegalStateException(
+                "ThumpBlobStore atomic rename failed: " + handle.temporaryFile.absolutePath
+                    + " -> " + handle.finalFile.absolutePath
+            )
+        }
+        val writableDatabase: SQLiteDatabase = database.writableDatabase
+        writableDatabase.beginTransaction()
+        try {
+            val now: Long = System.currentTimeMillis()
+            val row: ContentValues = ContentValues()
+            row.put("blob_key", handle.blobKey)
+            row.put("file_path", handle.finalFile.absolutePath)
+            row.put("size_bytes", sizeBytes)
+            row.put("content_type", contentType)
+            row.put("fetched_at_epoch_millis", now)
+            row.put("last_accessed_at_epoch_millis", now)
+            writableDatabase.insertWithOnConflict(
+                "blobs",
+                null,
+                row,
+                SQLiteDatabase.CONFLICT_REPLACE,
+            )
+            enforceLruCap(writableDatabase)
+            writableDatabase.setTransactionSuccessful()
+        } finally {
+            writableDatabase.endTransaction()
+        }
+    }
+
+    /**
+     * Remove a temporary file produced by `createTemporaryBlobFile` when its write failed or
+     * was cancelled. Idempotent — a missing file is not an error.
+     */
+    fun discardTemporaryBlobFile(handle: TemporaryBlobHandle): Unit {
+        if (handle.temporaryFile.exists()) {
+            handle.temporaryFile.delete()
+        }
+    }
+
+    /**
      * Delete a single blob (file + index row). Idempotent — missing files and rows are not
      * errors. Used by `invalidate` and by the eviction sweep when it lands.
      */
@@ -358,4 +485,15 @@ class ThumpBlobStore(
             return "track:" + trackId
         }
     }
+
+    /**
+     * Handle returned by `createTemporaryBlobFile`. The caller writes into `temporaryFile`,
+     * then hands the handle back to `commitTemporaryBlobFile` for the atomic rename + index
+     * insert (or to `discardTemporaryBlobFile` to clean up on failure).
+     */
+    class TemporaryBlobHandle internal constructor(
+        internal val blobKey: String,
+        val temporaryFile: File,
+        internal val finalFile: File,
+    )
 }
