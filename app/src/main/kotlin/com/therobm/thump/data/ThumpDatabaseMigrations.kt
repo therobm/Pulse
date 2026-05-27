@@ -130,5 +130,20 @@ internal object ThumpDatabaseMigrations {
                 """.trimIndent(),
             ),
         ),
+        ThumpDatabaseMigration(
+            targetVersion = 2,
+            statements = listOf(
+                // The genres table mirrors the wire shape of getGenres so the cache loader can
+                // reconstruct a List<Genre> identically to a fresh network read. Bug #245.
+                """
+                CREATE TABLE IF NOT EXISTS genres (
+                    name TEXT PRIMARY KEY NOT NULL,
+                    song_count INTEGER,
+                    album_count INTEGER,
+                    fetched_at_epoch_millis INTEGER NOT NULL
+                )
+                """.trimIndent(),
+            ),
+        ),
     )
 }

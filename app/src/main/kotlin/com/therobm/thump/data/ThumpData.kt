@@ -59,6 +59,11 @@ class ThumpData(
         ignoreUnknownKeys = true
     }
 
+    private val metadataCache: ThumpMetadataCache = ThumpMetadataCache(
+        database = database,
+        jsonCodec = jsonDecoder,
+    )
+
     private val credentialsLock: Any = Any()
     private var cachedServerConfig: ServerConfig? = null
     private var activeProtocol: IProtocol? = null
@@ -190,68 +195,269 @@ class ThumpData(
     // -- Browsing ------------------------------------------------------------------------------
 
     suspend fun getAllArtists(): List<Artist> {
+        if (offlineModeEnabled) {
+            val cachedArtists: List<Artist> = withContext(Dispatchers.IO) {
+                metadataCache.loadArtistList()
+            }
+            if (cachedArtists.isEmpty()) {
+                throw IOException("ThumpData offline mode: no cached artists")
+            }
+            return cachedArtists
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstList(
-            networkCall = { protocol.getAllArtists() },
-        )
+        try {
+            val freshArtists: List<Artist> = protocol.getAllArtists()
+            withContext(Dispatchers.IO) {
+                metadataCache.writeArtistList(freshArtists)
+            }
+            return freshArtists
+        } catch (networkFailure: IOException) {
+            val cachedArtists: List<Artist> = withContext(Dispatchers.IO) {
+                metadataCache.loadArtistList()
+            }
+            if (cachedArtists.isEmpty()) {
+                throw networkFailure
+            }
+            return cachedArtists
+        }
     }
 
     suspend fun getArtist(artistId: String): Artist {
+        if (offlineModeEnabled) {
+            val cachedArtist: Artist? = withContext(Dispatchers.IO) {
+                metadataCache.loadArtist(artistId)
+            }
+            if (cachedArtist == null) {
+                throw IOException(
+                    "ThumpData offline mode: no cached artist for id=" + artistId
+                )
+            }
+            return cachedArtist
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstSingle(
-            networkCall = { protocol.getArtist(artistId) },
-        )
+        try {
+            val freshArtist: Artist = protocol.getArtist(artistId)
+            withContext(Dispatchers.IO) {
+                metadataCache.writeArtistWithAlbums(freshArtist)
+            }
+            return freshArtist
+        } catch (networkFailure: IOException) {
+            val cachedArtist: Artist? = withContext(Dispatchers.IO) {
+                metadataCache.loadArtist(artistId)
+            }
+            if (cachedArtist == null) {
+                throw networkFailure
+            }
+            return cachedArtist
+        }
     }
 
     suspend fun getArtistTracks(artistId: String): List<Track> {
+        if (offlineModeEnabled) {
+            val cachedTracks: List<Track> = withContext(Dispatchers.IO) {
+                metadataCache.loadArtistTracks(artistId)
+            }
+            if (cachedTracks.isEmpty()) {
+                throw IOException(
+                    "ThumpData offline mode: no cached tracks for artist id=" + artistId
+                )
+            }
+            return cachedTracks
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstList(
-            networkCall = { protocol.getArtistTracks(artistId) },
-        )
+        try {
+            val freshTracks: List<Track> = protocol.getArtistTracks(artistId)
+            withContext(Dispatchers.IO) {
+                metadataCache.writeArtistTracks(artistId, freshTracks)
+            }
+            return freshTracks
+        } catch (networkFailure: IOException) {
+            val cachedTracks: List<Track> = withContext(Dispatchers.IO) {
+                metadataCache.loadArtistTracks(artistId)
+            }
+            if (cachedTracks.isEmpty()) {
+                throw networkFailure
+            }
+            return cachedTracks
+        }
     }
 
     suspend fun getAlbum(albumId: String): Album {
+        if (offlineModeEnabled) {
+            val cachedAlbum: Album? = withContext(Dispatchers.IO) {
+                metadataCache.loadAlbum(albumId)
+            }
+            if (cachedAlbum == null) {
+                throw IOException(
+                    "ThumpData offline mode: no cached album for id=" + albumId
+                )
+            }
+            return cachedAlbum
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstSingle(
-            networkCall = { protocol.getAlbum(albumId) },
-        )
+        try {
+            val freshAlbum: Album = protocol.getAlbum(albumId)
+            withContext(Dispatchers.IO) {
+                metadataCache.writeAlbumWithTracks(freshAlbum)
+            }
+            return freshAlbum
+        } catch (networkFailure: IOException) {
+            val cachedAlbum: Album? = withContext(Dispatchers.IO) {
+                metadataCache.loadAlbum(albumId)
+            }
+            if (cachedAlbum == null) {
+                throw networkFailure
+            }
+            return cachedAlbum
+        }
     }
 
     suspend fun getAllAlbums(sort: AlbumSort, limit: Int, offset: Int): List<Album> {
+        if (offlineModeEnabled) {
+            val cachedAlbums: List<Album> = withContext(Dispatchers.IO) {
+                metadataCache.loadAlbumList(sort, limit, offset)
+            }
+            if (cachedAlbums.isEmpty()) {
+                throw IOException(
+                    "ThumpData offline mode: no cached albums for sort=" + sort.name
+                )
+            }
+            return cachedAlbums
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstList(
-            networkCall = { protocol.getAllAlbums(sort, limit, offset) },
-        )
+        try {
+            val freshAlbums: List<Album> = protocol.getAllAlbums(sort, limit, offset)
+            withContext(Dispatchers.IO) {
+                metadataCache.writeAlbumList(freshAlbums)
+            }
+            return freshAlbums
+        } catch (networkFailure: IOException) {
+            val cachedAlbums: List<Album> = withContext(Dispatchers.IO) {
+                metadataCache.loadAlbumList(sort, limit, offset)
+            }
+            if (cachedAlbums.isEmpty()) {
+                throw networkFailure
+            }
+            return cachedAlbums
+        }
     }
 
     suspend fun getGenres(): List<Genre> {
+        if (offlineModeEnabled) {
+            val cachedGenres: List<Genre> = withContext(Dispatchers.IO) {
+                metadataCache.loadGenreList()
+            }
+            if (cachedGenres.isEmpty()) {
+                throw IOException("ThumpData offline mode: no cached genres")
+            }
+            return cachedGenres
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstList(
-            networkCall = { protocol.getGenres() },
-        )
+        try {
+            val freshGenres: List<Genre> = protocol.getGenres()
+            withContext(Dispatchers.IO) {
+                metadataCache.writeGenreList(freshGenres)
+            }
+            return freshGenres
+        } catch (networkFailure: IOException) {
+            val cachedGenres: List<Genre> = withContext(Dispatchers.IO) {
+                metadataCache.loadGenreList()
+            }
+            if (cachedGenres.isEmpty()) {
+                throw networkFailure
+            }
+            return cachedGenres
+        }
     }
 
     suspend fun getTracksByGenre(genre: String, limit: Int, offset: Int): List<Track> {
+        if (offlineModeEnabled) {
+            val cachedTracks: List<Track> = withContext(Dispatchers.IO) {
+                metadataCache.loadTracksByGenre(genre, limit, offset)
+            }
+            if (cachedTracks.isEmpty()) {
+                throw IOException(
+                    "ThumpData offline mode: no cached tracks for genre=" + genre
+                )
+            }
+            return cachedTracks
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstList(
-            networkCall = { protocol.getTracksByGenre(genre, limit, offset) },
-        )
+        try {
+            val freshTracks: List<Track> = protocol.getTracksByGenre(genre, limit, offset)
+            withContext(Dispatchers.IO) {
+                metadataCache.writeTrackList(freshTracks)
+            }
+            return freshTracks
+        } catch (networkFailure: IOException) {
+            val cachedTracks: List<Track> = withContext(Dispatchers.IO) {
+                metadataCache.loadTracksByGenre(genre, limit, offset)
+            }
+            if (cachedTracks.isEmpty()) {
+                throw networkFailure
+            }
+            return cachedTracks
+        }
     }
 
     // -- Playlists -----------------------------------------------------------------------------
 
     suspend fun getAllPlaylists(): List<Playlist> {
+        if (offlineModeEnabled) {
+            val cachedPlaylists: List<Playlist> = withContext(Dispatchers.IO) {
+                metadataCache.loadPlaylistList()
+            }
+            if (cachedPlaylists.isEmpty()) {
+                throw IOException("ThumpData offline mode: no cached playlists")
+            }
+            return cachedPlaylists
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstList(
-            networkCall = { protocol.getAllPlaylists() },
-        )
+        try {
+            val freshPlaylists: List<Playlist> = protocol.getAllPlaylists()
+            withContext(Dispatchers.IO) {
+                metadataCache.writePlaylistList(freshPlaylists)
+            }
+            return freshPlaylists
+        } catch (networkFailure: IOException) {
+            val cachedPlaylists: List<Playlist> = withContext(Dispatchers.IO) {
+                metadataCache.loadPlaylistList()
+            }
+            if (cachedPlaylists.isEmpty()) {
+                throw networkFailure
+            }
+            return cachedPlaylists
+        }
     }
 
     suspend fun getPlaylist(playlistId: String): Playlist {
+        if (offlineModeEnabled) {
+            val cachedPlaylist: Playlist? = withContext(Dispatchers.IO) {
+                metadataCache.loadPlaylist(playlistId)
+            }
+            if (cachedPlaylist == null) {
+                throw IOException(
+                    "ThumpData offline mode: no cached playlist for id=" + playlistId
+                )
+            }
+            return cachedPlaylist
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstSingle(
-            networkCall = { protocol.getPlaylist(playlistId) },
-        )
+        try {
+            val freshPlaylist: Playlist = protocol.getPlaylist(playlistId)
+            withContext(Dispatchers.IO) {
+                metadataCache.writePlaylistWithTracks(freshPlaylist)
+            }
+            return freshPlaylist
+        } catch (networkFailure: IOException) {
+            val cachedPlaylist: Playlist? = withContext(Dispatchers.IO) {
+                metadataCache.loadPlaylist(playlistId)
+            }
+            if (cachedPlaylist == null) {
+                throw networkFailure
+            }
+            return cachedPlaylist
+        }
     }
 
     suspend fun createPlaylist(name: String, trackIds: List<String>): Playlist {
@@ -284,10 +490,31 @@ class ThumpData(
     // -- Favourites ----------------------------------------------------------------------------
 
     suspend fun getStarred(): StarredCollection {
+        if (offlineModeEnabled) {
+            val cachedStarred: StarredCollection? = withContext(Dispatchers.IO) {
+                metadataCache.loadStarred()
+            }
+            if (cachedStarred == null) {
+                throw IOException("ThumpData offline mode: no cached starred collection")
+            }
+            return cachedStarred
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstSingle(
-            networkCall = { protocol.getStarred() },
-        )
+        try {
+            val freshStarred: StarredCollection = protocol.getStarred()
+            withContext(Dispatchers.IO) {
+                metadataCache.writeStarred(freshStarred)
+            }
+            return freshStarred
+        } catch (networkFailure: IOException) {
+            val cachedStarred: StarredCollection? = withContext(Dispatchers.IO) {
+                metadataCache.loadStarred()
+            }
+            if (cachedStarred == null) {
+                throw networkFailure
+            }
+            return cachedStarred
+        }
     }
 
     suspend fun star(kind: StarKind, id: String) {
@@ -311,24 +538,92 @@ class ThumpData(
     // -- Home shelves --------------------------------------------------------------------------
 
     suspend fun getRecentlyPlayed(limit: Int, types: Set<HomeItemKind>): List<HomeItem> {
+        val sectionKey: String = ThumpMetadataCache.recentlyPlayedSectionKey(types)
+        if (offlineModeEnabled) {
+            val cachedItems: List<HomeItem>? = withContext(Dispatchers.IO) {
+                metadataCache.loadHomeShelf(sectionKey)
+            }
+            if (cachedItems == null) {
+                throw IOException(
+                    "ThumpData offline mode: no cached recents for key=" + sectionKey
+                )
+            }
+            return cachedItems
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstList(
-            networkCall = { protocol.getRecentlyPlayed(limit, types) },
-        )
+        try {
+            val freshItems: List<HomeItem> = protocol.getRecentlyPlayed(limit, types)
+            withContext(Dispatchers.IO) {
+                metadataCache.writeHomeShelf(sectionKey, freshItems)
+            }
+            return freshItems
+        } catch (networkFailure: IOException) {
+            val cachedItems: List<HomeItem>? = withContext(Dispatchers.IO) {
+                metadataCache.loadHomeShelf(sectionKey)
+            }
+            if (cachedItems == null) {
+                throw networkFailure
+            }
+            return cachedItems
+        }
     }
 
     suspend fun getPopularArtists(limit: Int): List<HomeItem> {
+        val sectionKey: String = ThumpMetadataCache.SECTION_KEY_POPULAR_ARTISTS
+        if (offlineModeEnabled) {
+            val cachedItems: List<HomeItem>? = withContext(Dispatchers.IO) {
+                metadataCache.loadHomeShelf(sectionKey)
+            }
+            if (cachedItems == null) {
+                throw IOException("ThumpData offline mode: no cached popular artists")
+            }
+            return cachedItems
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstList(
-            networkCall = { protocol.getPopularArtists(limit) },
-        )
+        try {
+            val freshItems: List<HomeItem> = protocol.getPopularArtists(limit)
+            withContext(Dispatchers.IO) {
+                metadataCache.writeHomeShelf(sectionKey, freshItems)
+            }
+            return freshItems
+        } catch (networkFailure: IOException) {
+            val cachedItems: List<HomeItem>? = withContext(Dispatchers.IO) {
+                metadataCache.loadHomeShelf(sectionKey)
+            }
+            if (cachedItems == null) {
+                throw networkFailure
+            }
+            return cachedItems
+        }
     }
 
     suspend fun getTopPlaylists(limit: Int): List<HomeItem> {
+        val sectionKey: String = ThumpMetadataCache.SECTION_KEY_TOP_PLAYLISTS
+        if (offlineModeEnabled) {
+            val cachedItems: List<HomeItem>? = withContext(Dispatchers.IO) {
+                metadataCache.loadHomeShelf(sectionKey)
+            }
+            if (cachedItems == null) {
+                throw IOException("ThumpData offline mode: no cached top playlists")
+            }
+            return cachedItems
+        }
         val protocol: IProtocol = ensureActiveProtocol()
-        return executeNetworkFirstList(
-            networkCall = { protocol.getTopPlaylists(limit) },
-        )
+        try {
+            val freshItems: List<HomeItem> = protocol.getTopPlaylists(limit)
+            withContext(Dispatchers.IO) {
+                metadataCache.writeHomeShelf(sectionKey, freshItems)
+            }
+            return freshItems
+        } catch (networkFailure: IOException) {
+            val cachedItems: List<HomeItem>? = withContext(Dispatchers.IO) {
+                metadataCache.loadHomeShelf(sectionKey)
+            }
+            if (cachedItems == null) {
+                throw networkFailure
+            }
+            return cachedItems
+        }
     }
 
     // -- Scrobble ------------------------------------------------------------------------------
@@ -538,29 +833,12 @@ class ThumpData(
         }
     }
 
-    private suspend fun <T> executeNetworkFirstList(
-        networkCall: suspend () -> List<T>,
-    ): List<T> {
-        if (offlineModeEnabled) {
-            // Skeleton step has no on-disk metadata cache wired into the read path; offline
-            // mode for metadata yields empty lists until later steps populate the SQLite mirror.
-            return emptyList<T>()
-        }
-        try {
-            return networkCall()
-        } catch (networkFailure: IOException) {
-            // NetworkFirst falls back to cache. Skeleton step has no metadata cache hooked up
-            // to the read path yet, so the fallback returns empty rather than throwing.
-            return emptyList<T>()
-        }
-    }
-
     private suspend fun <T> executeNetworkFirstSingle(
         networkCall: suspend () -> T,
     ): T {
         if (offlineModeEnabled) {
             throw IOException(
-                "ThumpData offline mode: skeleton step has no metadata cache for single-record reads"
+                "ThumpData offline mode: no cache available for this call"
             )
         }
         return networkCall()
