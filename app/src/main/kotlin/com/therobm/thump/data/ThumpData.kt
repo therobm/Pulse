@@ -770,6 +770,7 @@ class ThumpData(
                     networkInputStream = streamResponse.inputStream,
                     expectedBytes = streamResponse.totalBytesAvailable,
                     temporaryFile = temporaryHandle.temporaryFile,
+                    trackId = trackId,
                 )
             }
             withContext(Dispatchers.IO) {
@@ -791,24 +792,72 @@ class ThumpData(
         networkInputStream: InputStream,
         expectedBytes: Long,
         temporaryFile: File,
+        trackId: String,
     ): Long {
+        // Bytes drive termination, not iteration count. Network reads usually return one TCP
+        // segment at a time (1–8 KiB), so an iteration cap derived from (expectedBytes / bufferSize)
+        // truncates downloads long before EOF. The for-loop here carries an absolute structural
+        // ceiling so the Vibratron "no while loops" rule still holds, while the real exit is the
+        // explicit break/throw inside the loop body.
         val bufferSize: Int = AUDIO_PREFETCH_COPY_BUFFER_BYTES
         val copyBuffer: ByteArray = ByteArray(bufferSize)
-        val maxIterations: Int = computeCopyLoopUpperBound(expectedBytes, bufferSize)
+        val unknownLengthByteCap: Long = AUDIO_PREFETCH_MAX_UNKNOWN_LENGTH_BYTES
         var totalBytesWritten: Long = 0L
         val fileOutputStream: FileOutputStream = FileOutputStream(temporaryFile)
         try {
             try {
-                for (copyIteration in 0 until maxIterations) {
-                    val bytesReadThisChunk: Int = networkInputStream.read(copyBuffer, 0, bufferSize)
-                    if (bytesReadThisChunk < 0) {
-                        break
+                if (expectedBytes > 0L) {
+                    for (chunkIndex in 0 until AUDIO_PREFETCH_ABSOLUTE_ITERATION_CEILING) {
+                        if (totalBytesWritten >= expectedBytes) {
+                            break
+                        }
+                        val remainingBytes: Long = expectedBytes - totalBytesWritten
+                        val bytesToRequestThisChunk: Int
+                        if (remainingBytes < bufferSize.toLong()) {
+                            bytesToRequestThisChunk = remainingBytes.toInt()
+                        } else {
+                            bytesToRequestThisChunk = bufferSize
+                        }
+                        val bytesReadThisChunk: Int = networkInputStream.read(
+                            copyBuffer,
+                            0,
+                            bytesToRequestThisChunk,
+                        )
+                        if (bytesReadThisChunk < 0) {
+                            throw IOException(
+                                "Audio stream ended at " + totalBytesWritten + " of "
+                                    + expectedBytes + " bytes for trackId=" + trackId
+                            )
+                        }
+                        if (bytesReadThisChunk == 0) {
+                            continue
+                        }
+                        fileOutputStream.write(copyBuffer, 0, bytesReadThisChunk)
+                        totalBytesWritten += bytesReadThisChunk.toLong()
                     }
-                    if (bytesReadThisChunk == 0) {
-                        continue
+                } else {
+                    for (chunkIndex in 0 until AUDIO_PREFETCH_ABSOLUTE_ITERATION_CEILING) {
+                        if (totalBytesWritten > unknownLengthByteCap) {
+                            throw IOException(
+                                "Audio stream exceeded " + unknownLengthByteCap
+                                    + "-byte unknown-length cap at " + totalBytesWritten
+                                    + " bytes for trackId=" + trackId
+                            )
+                        }
+                        val bytesReadThisChunk: Int = networkInputStream.read(
+                            copyBuffer,
+                            0,
+                            bufferSize,
+                        )
+                        if (bytesReadThisChunk < 0) {
+                            break
+                        }
+                        if (bytesReadThisChunk == 0) {
+                            continue
+                        }
+                        fileOutputStream.write(copyBuffer, 0, bytesReadThisChunk)
+                        totalBytesWritten += bytesReadThisChunk.toLong()
                     }
-                    fileOutputStream.write(copyBuffer, 0, bytesReadThisChunk)
-                    totalBytesWritten += bytesReadThisChunk.toLong()
                 }
                 fileOutputStream.flush()
                 fileOutputStream.fd.sync()
@@ -824,18 +873,13 @@ class ThumpData(
                 val ignoredCloseFailure: IOException = closeFailure
             }
         }
+        if (expectedBytes > 0L && totalBytesWritten != expectedBytes) {
+            throw IOException(
+                "Audio stream wrote " + totalBytesWritten + " bytes but expected "
+                    + expectedBytes + " for trackId=" + trackId
+            )
+        }
         return totalBytesWritten
-    }
-
-    private fun computeCopyLoopUpperBound(expectedBytes: Long, bufferSize: Int): Int {
-        if (expectedBytes <= 0L) {
-            return AUDIO_PREFETCH_DEFAULT_ITERATION_CAP
-        }
-        val perBufferIterations: Long = (expectedBytes / bufferSize.toLong()) + 2L
-        if (perBufferIterations >= Int.MAX_VALUE.toLong()) {
-            return Int.MAX_VALUE
-        }
-        return perBufferIterations.toInt()
     }
 
     private fun removePrefetchDeferredEntry(trackId: String, expectedDeferred: Deferred<Unit>): Unit {
@@ -1386,10 +1430,15 @@ class ThumpData(
         // 64KiB chunk size for the prefetch copy loop. Matches OkHttp's source-buffer chunking
         // and keeps per-iteration allocation cheap.
         private const val AUDIO_PREFETCH_COPY_BUFFER_BYTES: Int = 64 * 1024
-        // Fallback iteration cap when the protocol can't report a content-length up front. The
-        // for-loop needs an explicit upper bound; 2 GiB / 64 KiB = 32768 is a comfortable cap
-        // for any realistic audio file.
-        private const val AUDIO_PREFETCH_DEFAULT_ITERATION_CAP: Int = 32768
+        // Hard byte ceiling for unknown-length downloads (no Content-Length from the server).
+        // 512 MiB is far above any realistic audio file but bounds a runaway response so it can't
+        // fill the disk.
+        private const val AUDIO_PREFETCH_MAX_UNKNOWN_LENGTH_BYTES: Long = 512L * 1024L * 1024L
+        // Structural upper bound on the copy for-loop so the "no while loops" rule still holds.
+        // The actual termination is byte-driven (totalBytesWritten reaching expectedBytes, or
+        // read() returning -1 for unknown-length downloads); this ceiling is set high enough that
+        // it can never be reached at the 64 KiB chunk size on any realistic stream.
+        private const val AUDIO_PREFETCH_ABSOLUTE_ITERATION_CEILING: Int = Int.MAX_VALUE / 2
         // FileInputStream.skip on a regular file returns the full requested skip in a single
         // call on every Android filesystem we ship to, so a small safety bound is plenty.
         private const val AUDIO_PREFETCH_MAX_SKIP_ITERATIONS: Int = 64
