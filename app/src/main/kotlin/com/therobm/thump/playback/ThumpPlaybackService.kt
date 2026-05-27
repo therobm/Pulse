@@ -249,16 +249,20 @@ class ThumpPlaybackService : MediaLibraryService() {
             withContext(Dispatchers.Main) {
                 if (prefetchSucceeded) {
                     toastedFailureTrackIds.remove(resolvedTrackId)
+                    // The blob is on disk now — regardless of whether the user is still on this
+                    // track, the LOADING state for this trackId is no longer valid. Clear it.
+                    broadcastUnavailableReasonClear(resolvedTrackId)
                     val stillCurrentTrackId: String? = extractTrackId(player.currentMediaItem)
-                    if (stillCurrentTrackId != null && stillCurrentTrackId == resolvedTrackId) {
-                        // Bytes are on disk now — re-trigger the load. Re-assert playWhenReady so
-                        // the player actually resumes instead of sitting in a prepared-but-paused
-                        // state, then clear the loading banner so the UI returns to normal.
-                        Log.d("ThumpRecovery", "calling player.prepare() trackId=" + resolvedTrackId + " stillCurrent=" + (stillCurrentTrackId == resolvedTrackId))
+                    val stillSameTrack: Boolean = stillCurrentTrackId != null
+                        && stillCurrentTrackId == resolvedTrackId
+                    Log.d("ThumpRecovery", "post-prefetch trackId=" + resolvedTrackId
+                        + " stillCurrent=" + stillSameTrack
+                        + " playbackState=" + player.playbackState
+                        + " currentMediaItemTrackId=" + stillCurrentTrackId)
+                    if (stillSameTrack) {
                         player.prepare()
                         player.playWhenReady = true
-                        Log.d("ThumpRecovery", "set playWhenReady=true trackId=" + resolvedTrackId)
-                        broadcastUnavailableReasonClear(resolvedTrackId)
+                        Log.d("ThumpRecovery", "called prepare() + playWhenReady=true trackId=" + resolvedTrackId)
                     }
                 } else {
                     val failureMessage: String
