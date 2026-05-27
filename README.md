@@ -7,6 +7,12 @@ https://github.com/therobm/Pulse
 
 See `Docs/spec.md` for the full specification.
 
+## Screenshots
+
+| Phone home | Android Auto |
+| --- | --- |
+| ![Phone home screen](Docs/homeScreen.png) | ![Android Auto browse](Docs/androidAudio.png) |
+
 ## Build
 
 Requires JDK 17+ and the Android SDK (compileSdk 34, minSdk 26).
