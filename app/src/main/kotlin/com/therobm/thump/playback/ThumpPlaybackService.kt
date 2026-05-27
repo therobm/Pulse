@@ -23,6 +23,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.IOException
 
 private const val POSITION_TICK_INTERVAL_MS: Long = 5000L
@@ -151,18 +152,39 @@ class ThumpPlaybackService : MediaLibraryService() {
         }
     }
 
+    /**
+     * Restore the persisted queue + position into the player on service startup.
+     *
+     * The function itself stays non-suspending — `onCreate` cannot wait — but it kicks off a
+     * coroutine on the service scope that:
+     *
+     *  1. Awaits `thumpData.prefetchAudio(currentTrackId)` for the saved index.
+     *  2. Hops to Main and calls `player.setMediaItems` + `prepare` + `playWhenReady = false`.
+     *
+     * On prefetch failure (offline + not cached, no protocol configured, transport error) the
+     * queue is still installed via `setMediaItems` so the queue UI is restored, but `prepare`
+     * is skipped. Skipping `prepare` is the whole point — `prepare` would trigger ExoPlayer's
+     * first `open()` against ThumpData's cache-only DataSource and synchronously throw
+     * IOException on the miss. Without `prepare` the user sees the queue restored but tapping
+     * play surfaces the cache-miss through ExoPlayer's normal error path. `playWhenReady` is
+     * still forced to `false` so we don't auto-play the broken track when prepare eventually
+     * does run (e.g. the user comes back online and taps play).
+     *
+     * Reactive prefetch for indices > currentIndex continues to fire from
+     * `refreshAudioPrefetchWindow` once the player listener picks up the timeline change.
+     */
     private fun restorePersistedStateInto(player: Player) {
-        val persisted = persistence.load()
+        val persisted: PersistedPlaybackState? = persistence.load()
         if (persisted == null) {
             return
         }
         if (persisted.items.isEmpty()) {
             return
         }
-        val mediaItems = ArrayList<MediaItem>(persisted.items.size)
-        val itemCount = persisted.items.size
+        val mediaItems: ArrayList<MediaItem> = ArrayList<MediaItem>(persisted.items.size)
+        val itemCount: Int = persisted.items.size
         for (itemIndex in 0 until itemCount) {
-            val item = persisted.items[itemIndex]
+            val item: PersistedItem = persisted.items[itemIndex]
             mediaItems.add(buildMediaItemFromPersisted(item))
         }
         val safeIndex: Int
@@ -173,11 +195,39 @@ class ThumpPlaybackService : MediaLibraryService() {
         } else {
             safeIndex = persisted.currentIndex
         }
-        player.setMediaItems(mediaItems, safeIndex, persisted.positionMs)
-        player.prepare()
-        player.playWhenReady = false
-        currentScrobbleTrackId = persisted.items[safeIndex].trackId
-        hasSubmittedCurrent = false
+        val currentTrackId: String = persisted.items[safeIndex].trackId
+        val restorePositionMs: Long = persisted.positionMs
+        val thumpDataInstance: ThumpData? = serviceThumpData
+        if (thumpDataInstance == null) {
+            return
+        }
+        serviceCoroutineScope.launch {
+            var prefetchSucceeded: Boolean = false
+            try {
+                thumpDataInstance.prefetchAudio(currentTrackId)
+                prefetchSucceeded = true
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (notConfigured: ThumpDataNotConfigured) {
+                // No active protocol — fall through to the queue-only restore branch.
+                val ignoredNotConfigured: ThumpDataNotConfigured = notConfigured
+            } catch (cacheMissOrTransport: IOException) {
+                // Offline + not cached, or download failure — fall through likewise.
+                val ignoredCacheMissOrTransport: IOException = cacheMissOrTransport
+            }
+            withContext(Dispatchers.Main) {
+                if (prefetchSucceeded) {
+                    player.setMediaItems(mediaItems, safeIndex, restorePositionMs)
+                    player.prepare()
+                    player.playWhenReady = false
+                } else {
+                    player.setMediaItems(mediaItems, safeIndex, restorePositionMs)
+                    player.playWhenReady = false
+                }
+                currentScrobbleTrackId = currentTrackId
+                hasSubmittedCurrent = false
+            }
+        }
     }
 
     private fun buildMediaItemFromPersisted(item: PersistedItem): MediaItem {

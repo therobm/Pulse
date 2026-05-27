@@ -8,8 +8,17 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import com.therobm.thump.data.ThumpData
+import com.therobm.thump.data.ThumpDataNotConfigured
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import java.io.IOException
 
 /**
  * Owns the app-side MediaController that drives the playback service.
@@ -19,10 +28,11 @@ import kotlinx.coroutines.flow.StateFlow
  * them in response to user input that happens after the activity is alive, by which point the
  * async connect has almost always completed.
  */
-class PlaybackController(applicationContext: Context) {
+class PlaybackController(applicationContext: Context, thumpData: ThumpData) {
 
     private val resolvedApplicationContext: Context = applicationContext.applicationContext
     private val persistence: PlaybackPersistence = PlaybackPersistence(resolvedApplicationContext)
+    private val thumpDataForPrefetch: ThumpData = thumpData
 
     private val nowPlayingFlow: MutableStateFlow<NowPlaying?> = MutableStateFlow(null)
     val nowPlaying: StateFlow<NowPlaying?> = nowPlayingFlow
@@ -32,6 +42,17 @@ class PlaybackController(applicationContext: Context) {
 
     private var currentQueueMetadata: List<PlaybackQueueItem> = emptyList()
     private var currentQueueSource: PlaybackSource? = null
+
+    // Dedicated scope for the prefetch-then-load handoff in playQueue. Lives on Main.immediate
+    // because the MediaController calls inside the coroutine (setMediaItems / prepare /
+    // playWhenReady) all require the MediaController's application looper, which is Main, and
+    // we want the synchronous portion before the first suspension to stay on the caller's
+    // (Compose lambda) thread without an extra dispatch hop. SupervisorJob so one failed
+    // playQueue does not poison subsequent launches. Cancelled in release() so an in-flight
+    // prefetch never resolves into a released controller.
+    private val playbackCoroutineScope: CoroutineScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate,
+    )
 
     private val playerListener: Player.Listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -120,9 +141,22 @@ class PlaybackController(applicationContext: Context) {
     /**
      * Replace the current queue with the given items and start playback at startIndex. No-op if
      * the controller has not connected yet.
+     *
+     * Public surface stays non-suspending so Compose lambdas can call it directly. Internally
+     * the function persists the new queue state, then launches a coroutine that awaits the
+     * current track's prefetch into ThumpData's on-disk store before handing the items to the
+     * MediaController. ThumpData's DataSource is cache-only — if we let ExoPlayer's first
+     * `open()` run on an uncached track it would throw IOException synchronously and crash the
+     * playback path. The prefetch await closes that window. Lookahead for tracks 2..N is still
+     * driven reactively by the playback service's `onMediaItemTransition` / `onTimelineChanged`
+     * listener; this gating is only for the very first track of a new queue.
+     *
+     * Persistence happens BEFORE the prefetch await so a cold relaunch on the same queue picks
+     * up the right state even if the await is cancelled (release() called mid-prefetch) before
+     * setMediaItems runs.
      */
     fun playQueue(items: List<PlaybackQueueItem>, startIndex: Int, source: PlaybackSource?) {
-        val controller = mediaController
+        val controller: MediaController? = mediaController
         if (controller == null) {
             return
         }
@@ -141,23 +175,43 @@ class PlaybackController(applicationContext: Context) {
         currentQueueMetadata = items
         currentQueueSource = source
 
-        val mediaItems = ArrayList<MediaItem>(items.size)
-        val itemCount = items.size
+        val mediaItems: ArrayList<MediaItem> = ArrayList<MediaItem>(items.size)
+        val itemCount: Int = items.size
         for (itemIndex in 0 until itemCount) {
             val trackUri: String = "thump://track/" + items[itemIndex].trackId
             mediaItems.add(MediaItem.fromUri(trackUri))
         }
 
-        controller.setMediaItems(mediaItems, safeStartIndex, 0L)
-
-        // Persist the new queue immediately so a cold launch on Auto picks up the same state,
-        // even if no track has played yet. Subsequent transitions and position ticks are
-        // persisted by the service.
+        // Persist immediately so a cold launch on Auto picks up the same state, even if the
+        // prefetch await never resolves into the player. Subsequent transitions and position
+        // ticks are persisted by the service.
         persistCurrentQueueState(safeStartIndex, positionMs = 0L)
-        controller.prepare()
-        controller.playWhenReady = true
 
-        publishNowPlayingFor(safeStartIndex, isPlayingHint = true)
+        val currentTrackId: String = items[safeStartIndex].trackId
+        playbackCoroutineScope.launch {
+            var prefetchSucceeded: Boolean = false
+            try {
+                thumpDataForPrefetch.prefetchAudio(currentTrackId)
+                prefetchSucceeded = true
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (notConfigured: ThumpDataNotConfigured) {
+                // No active protocol — surface a non-playing state so the UI shows the track
+                // selection but does not pretend playback started.
+                val ignoredNotConfigured: ThumpDataNotConfigured = notConfigured
+            } catch (cacheMissOrTransport: IOException) {
+                // Offline + not cached, or download failure. Same UX as above.
+                val ignoredCacheMissOrTransport: IOException = cacheMissOrTransport
+            }
+            if (prefetchSucceeded) {
+                controller.setMediaItems(mediaItems, safeStartIndex, 0L)
+                controller.prepare()
+                controller.playWhenReady = true
+                publishNowPlayingFor(safeStartIndex, isPlayingHint = true)
+            } else {
+                publishNowPlayingFor(safeStartIndex, isPlayingHint = false)
+            }
+        }
     }
 
     fun pause() {
@@ -260,13 +314,16 @@ class PlaybackController(applicationContext: Context) {
     }
 
     fun release() {
-        val controller = mediaController
+        // Cancel any in-flight prefetch-then-load so it cannot resume into a released
+        // MediaController and try to drive a dead session.
+        playbackCoroutineScope.cancel()
+        val controller: MediaController? = mediaController
         if (controller != null) {
             controller.removeListener(playerListener)
             controller.release()
             mediaController = null
         }
-        val pending = pendingControllerFuture
+        val pending: ListenableFuture<MediaController>? = pendingControllerFuture
         if (pending != null) {
             pending.cancel(false)
             pendingControllerFuture = null
