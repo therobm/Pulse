@@ -16,6 +16,9 @@ namespace Thump.Playback
 		private const int s_stateBuffering = 2;
 		private const int s_stateReady = 3;
 		private const int s_stateEnded = 4;
+		private const int s_repeatOff = 0;
+		private const int s_repeatOne = 1;
+		private const int s_repeatAll = 2;
 		private const double s_tickIntervalMs = 500;
 
 		private MainView m_mainView;
@@ -30,6 +33,8 @@ namespace Thump.Playback
 		private ePlaybackState m_lastState = ePlaybackState.Idle;
 		private string m_lastMediaId;
 		private bool m_endHandled;
+		private bool m_shuffleEnabled;
+		private eRepeatMode m_repeatMode = eRepeatMode.Off;
 		private ThumpData m_data;
 
 		public AndroidThumpPlayer(MainView mainView, ThumpData thumpData)
@@ -63,6 +68,8 @@ namespace Thump.Playback
 				Log.Exception(ex);
 				return;
 			}
+			ApplyShuffleMode();
+			ApplyRepeatMode();
 			if (m_pendingPlay)
 			{
 				m_pendingPlay = false;
@@ -229,6 +236,129 @@ namespace Thump.Playback
 				return;
 			}
 			m_controller.SeekToPreviousMediaItem();
+		}
+
+		public void SetShuffleEnabled(bool enabled)
+		{
+			m_shuffleEnabled = enabled;
+			if (m_controller == null)
+			{
+				return;
+			}
+			ApplyShuffleMode();
+		}
+
+		private void ApplyShuffleMode()
+		{
+			m_controller.ShuffleModeEnabled = m_shuffleEnabled;
+		}
+
+		public void SetRepeatMode(eRepeatMode mode)
+		{
+			m_repeatMode = mode;
+			if (m_controller == null)
+			{
+				return;
+			}
+			ApplyRepeatMode();
+		}
+
+		private void ApplyRepeatMode()
+		{
+			int mapped;
+			if (m_repeatMode == eRepeatMode.One)
+			{
+				mapped = s_repeatOne;
+			}
+			else if (m_repeatMode == eRepeatMode.All)
+			{
+				mapped = s_repeatAll;
+			}
+			else
+			{
+				mapped = s_repeatOff;
+			}
+			m_controller.RepeatMode = mapped;
+		}
+
+		public void AddToQueue(List<PulseTrack> tracks)
+		{
+			if (m_controller == null || tracks == null || tracks.Count == 0)
+			{
+				return;
+			}
+			int generation = m_generation;
+			AppendQueueItem(tracks, 0, generation);
+		}
+
+		private void AppendQueueItem(List<PulseTrack> tracks, int index, int generation)
+		{
+			if (generation != m_generation || index >= tracks.Count)
+			{
+				return;
+			}
+			PulseTrack track = tracks[index];
+			m_data.GetTrackAudioFile(track, (localPath) =>
+			{
+				if (generation != m_generation)
+				{
+					return;
+				}
+				if (!string.IsNullOrEmpty(localPath))
+				{
+					m_controller.AddMediaItem(BuildMediaItem(track, localPath));
+				}
+				AppendQueueItem(tracks, index + 1, generation);
+			});
+		}
+
+		public void PlayNext(List<PulseTrack> tracks)
+		{
+			if (m_controller == null || tracks == null || tracks.Count == 0)
+			{
+				return;
+			}
+			int generation = m_generation;
+			int insertAt = m_controller.CurrentMediaItemIndex + 1;
+			int count = m_controller.MediaItemCount;
+			if (insertAt > count)
+			{
+				insertAt = count;
+			}
+			InsertQueueItem(tracks, 0, insertAt, generation);
+		}
+
+		private void InsertQueueItem(List<PulseTrack> tracks, int index, int insertAt, int generation)
+		{
+			if (generation != m_generation || index >= tracks.Count)
+			{
+				return;
+			}
+			PulseTrack track = tracks[index];
+			m_data.GetTrackAudioFile(track, (localPath) =>
+			{
+				if (generation != m_generation)
+				{
+					return;
+				}
+				if (!string.IsNullOrEmpty(localPath))
+				{
+					m_controller.AddMediaItem(insertAt, BuildMediaItem(track, localPath));
+				}
+				InsertQueueItem(tracks, index + 1, insertAt + 1, generation);
+			});
+		}
+
+		public void SeekToQueueItem(int index)
+		{
+			if (m_controller == null || index < 0)
+			{
+				return;
+			}
+			m_endHandled = false;
+			m_controller.SeekTo(index, 0L);
+			m_controller.Play();
+			m_ticker.Start();
 		}
 
 		public void Stop()
