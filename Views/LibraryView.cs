@@ -20,7 +20,6 @@ namespace Thump.Views
 	public enum eLibrarySort
 	{
 		Alphabetical,
-		DateAdded,
 		DateReleased,
 	}
 
@@ -49,8 +48,8 @@ namespace Thump.Views
 		private Button m_buttonGenres;
 
 		private Button m_sortAlphabetical;
-		private Button m_sortDateAdded;
 		private Button m_sortDateReleased;
+		private HorizontalStackLayout m_sortStack;
 		private Button m_layoutToggle;
 		private Button m_jumpButton;
 
@@ -166,27 +165,20 @@ namespace Thump.Views
 			sortGrid.ColumnDefinitions.Add(sortColumn);
 			sortGrid.ColumnDefinitions.Add(toggleColumn);
 
-			HorizontalStackLayout sortStack = new HorizontalStackLayout();
-			sortStack.Spacing = 4;
-			sortStack.VerticalOptions = LayoutOptions.Center;
+			m_sortStack = new HorizontalStackLayout();
+			m_sortStack.Spacing = 4;
+			m_sortStack.VerticalOptions = LayoutOptions.Center;
 
 			m_sortAlphabetical = BuildSortButton("A–Z");
 			m_sortAlphabetical.Clicked += OnSortAlphabeticalClicked;
-			sortStack.Children.Add(m_sortAlphabetical);
+			m_sortStack.Children.Add(m_sortAlphabetical);
 
 			m_sortDateReleased = BuildSortButton("Released");
 			m_sortDateReleased.Clicked += OnSortDateReleasedClicked;
-			sortStack.Children.Add(m_sortDateReleased);
+			m_sortStack.Children.Add(m_sortDateReleased);
 
-			m_sortDateAdded = BuildSortButton("Added");
-			m_sortDateAdded.Clicked += OnSortDateAddedClicked;
-			// No "date added" field exists on the data model yet, so this sort stays disabled.
-			m_sortDateAdded.IsEnabled = false;
-			m_sortDateAdded.Opacity = 0.4;
-			sortStack.Children.Add(m_sortDateAdded);
-
-			Grid.SetColumn(sortStack, 0);
-			sortGrid.Children.Add(sortStack);
+			Grid.SetColumn(m_sortStack, 0);
+			sortGrid.Children.Add(m_sortStack);
 
 			HorizontalStackLayout rightStack = new HorizontalStackLayout();
 			rightStack.Spacing = 8;
@@ -502,6 +494,14 @@ namespace Thump.Views
 				m_buttonGenres.TextColor = s_buttonActiveText;
 				m_genresList.IsVisible = true;
 			}
+
+			// Released sort only applies to albums (only albums carry a year).
+			bool albumsActive = button == eLibraryButton.Albums;
+			m_sortStack.IsVisible = albumsActive;
+			if (!albumsActive && m_activeSort != eLibrarySort.Alphabetical)
+			{
+				SetActiveSort(eLibrarySort.Alphabetical);
+			}
 		}
 
 		private void SetActiveSort(eLibrarySort sort)
@@ -510,7 +510,6 @@ namespace Thump.Views
 
 			m_sortAlphabetical.TextColor = ThumpColors.TextSecondary;
 			m_sortDateReleased.TextColor = ThumpColors.TextSecondary;
-			m_sortDateAdded.TextColor = ThumpColors.TextSecondary;
 
 			if (sort == eLibrarySort.Alphabetical)
 			{
@@ -519,10 +518,6 @@ namespace Thump.Views
 			else if (sort == eLibrarySort.DateReleased)
 			{
 				m_sortDateReleased.TextColor = ThumpColors.Accent;
-			}
-			else if (sort == eLibrarySort.DateAdded)
-			{
-				m_sortDateAdded.TextColor = ThumpColors.Accent;
 			}
 
 			m_jumpButton.IsVisible = sort == eLibrarySort.Alphabetical;
@@ -706,11 +701,6 @@ namespace Thump.Views
 		private void OnSortDateReleasedClicked(object sender, EventArgs e)
 		{
 			SetActiveSort(eLibrarySort.DateReleased);
-		}
-
-		private void OnSortDateAddedClicked(object sender, EventArgs e)
-		{
-			SetActiveSort(eLibrarySort.DateAdded);
 		}
 
 		private void OnLayoutToggleClicked(object sender, EventArgs e)
