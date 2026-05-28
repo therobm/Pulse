@@ -122,6 +122,38 @@ namespace Thump.Pulse
 		}
 	}
 
+	public class PulsePodcastEpisode : PulseObject
+	{
+		public string Title { get; set; }
+		public string Description { get; set; }
+		public string StreamId { get; set; }
+		public string CoverArt { get; set; }
+		public string PublishDate { get; set; }
+		public string Status { get; set; }
+		public int Duration { get; set; }
+
+		public PulsePodcastEpisode()
+		{
+			Kind = eDataType.PodcastEpisode;
+		}
+	}
+
+	public class PulsePodcastChannel : PulseObject
+	{
+		public string Title { get; set; }
+		public string Description { get; set; }
+		public string CoverArt { get; set; }
+		public string Url { get; set; }
+		public string Status { get; set; }
+		public List<PulsePodcastEpisode> Episodes { get; set; }
+
+		public PulsePodcastChannel()
+		{
+			Episodes = new List<PulsePodcastEpisode>();
+			Kind = eDataType.Podcast;
+		}
+	}
+
 	public class PulseClient
 	{
 		public enum eSubSonicAuthType
@@ -251,6 +283,70 @@ namespace Thump.Pulse
 				}
 				MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
 			});
+		}
+
+		public void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete)
+		{
+			Task.Run(() =>
+			{
+				List<PulsePodcastChannel> results = new List<PulsePodcastChannel>();
+				try
+				{
+					if (SubsonicGet("getPodcasts", out JsonElement response, "includeEpisodes=true"))
+					{
+						if (response.TryGetProperty("podcasts", out JsonElement podcasts) &&
+							podcasts.TryGetProperty("channel", out JsonElement channelArray) &&
+							channelArray.ValueKind == JsonValueKind.Array)
+						{
+							foreach (JsonElement element in channelArray.EnumerateArray())
+							{
+								results.Add(ParsePodcastChannel(element));
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+					System.Diagnostics.Debugger.Break();
+				}
+				List<PulsePodcastChannel> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		private PulsePodcastChannel ParsePodcastChannel(JsonElement element)
+		{
+			PulsePodcastChannel channel = new PulsePodcastChannel();
+			channel.Id = JsonHelper.GetString(element, "id");
+			channel.Title = JsonHelper.GetString(element, "title");
+			channel.Description = JsonHelper.GetString(element, "description");
+			channel.CoverArt = JsonHelper.GetString(element, "coverArt");
+			channel.Url = JsonHelper.GetString(element, "url");
+			channel.Status = JsonHelper.GetString(element, "status");
+			if (element.TryGetProperty("episode", out JsonElement episodeArray) &&
+				episodeArray.ValueKind == JsonValueKind.Array)
+			{
+				foreach (JsonElement episodeElement in episodeArray.EnumerateArray())
+				{
+					channel.Episodes.Add(ParsePodcastEpisode(episodeElement));
+				}
+			}
+			return channel;
+		}
+
+		private PulsePodcastEpisode ParsePodcastEpisode(JsonElement element)
+		{
+			PulsePodcastEpisode episode = new PulsePodcastEpisode();
+			episode.Id = JsonHelper.GetString(element, "id");
+			episode.StreamId = JsonHelper.GetString(element, "streamId");
+			episode.Title = JsonHelper.GetString(element, "title");
+			episode.Description = JsonHelper.GetString(element, "description");
+			episode.CoverArt = JsonHelper.GetString(element, "coverArt");
+			episode.PublishDate = JsonHelper.GetString(element, "publishDate");
+			episode.Status = JsonHelper.GetString(element, "status");
+			episode.Duration = JsonHelper.GetInt(element, "duration");
+			return episode;
 		}
 
 		public void Search(string query, Action<PulseSearchData> onComplete)

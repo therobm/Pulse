@@ -15,7 +15,9 @@ namespace Thump.Data
 		Artist,
 		CoverArt,
 		SongData,
-		Genre
+		Genre,
+		Podcast,
+		PodcastEpisode
 	}
 
 
@@ -331,6 +333,15 @@ namespace Thump.Data
 				return;
 			}
 			m_pulseClient.Search(query, callback);
+		}
+
+		public void GetPodcasts(Action<List<PulsePodcastChannel>> callback)
+		{
+			if (callback == null)
+			{
+				return;
+			}
+			m_pulseClient.GetPodcasts(callback);
 		}
 
 		public void StarTrack(string trackId, Action<bool> callback)
