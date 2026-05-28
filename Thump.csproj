@@ -71,4 +71,10 @@
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
 	</ItemGroup>
 
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<PackageReference Include="Xamarin.AndroidX.Media3.Common" Version="1.10.0" />
+		<PackageReference Include="Xamarin.AndroidX.Media3.ExoPlayer" Version="1.10.0" />
+		<PackageReference Include="Xamarin.AndroidX.Media3.Session" Version="1.10.0" />
+	</ItemGroup>
+
 </Project>
