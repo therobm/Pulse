@@ -66,6 +66,16 @@ namespace Thump.Playback
 			return ImmediateFuture(LibraryResult.OfItem(item, null));
 		}
 
+		public IListenableFuture OnSubscribe(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string parentId, MediaLibraryService.LibraryParams libraryParams)
+		{
+			return ImmediateFuture(LibraryResult.OfVoid(libraryParams));
+		}
+
+		public IListenableFuture OnUnsubscribe(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string parentId)
+		{
+			return ImmediateFuture(LibraryResult.OfVoid(null));
+		}
+
 		public IListenableFuture OnGetChildren(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string parentId, int page, int pageSize, MediaLibraryService.LibraryParams libraryParams)
 		{
 			if (parentId == s_rootId)
