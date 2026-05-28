@@ -13,9 +13,11 @@ namespace Thump.Views
 		private Label m_artistsHeader;
 		private Label m_albumsHeader;
 		private Label m_songsHeader;
+		private Label m_playlistsHeader;
 		private CollectionView m_artistResults;
 		private CollectionView m_albumResults;
 		private CollectionView m_songResults;
+		private CollectionView m_playlistResults;
 
 		public SearchView(MainView mainView) : base(mainView)
 		{
@@ -112,12 +114,25 @@ namespace Thump.Views
 			m_songResults.ItemTemplate = new DataTemplate(typeof(TrackRowTile));
 			stack.Children.Add(m_songResults);
 
+			m_playlistsHeader = new Label();
+			m_playlistsHeader.Text = "Playlists";
+			m_playlistsHeader.FontSize = 16;
+			m_playlistsHeader.TextColor = ThumpColors.OnBackground;
+			m_playlistsHeader.Padding = new Thickness(16, 0);
+			stack.Children.Add(m_playlistsHeader);
+
+			m_playlistResults = new CollectionView();
+			m_playlistResults.ItemTemplate = new DataTemplate(typeof(PlaylistRowTile));
+			stack.Children.Add(m_playlistResults);
+
 			m_artistsHeader.IsVisible = false;
 			m_artistResults.IsVisible = false;
 			m_albumsHeader.IsVisible = false;
 			m_albumResults.IsVisible = false;
 			m_songsHeader.IsVisible = false;
 			m_songResults.IsVisible = false;
+			m_playlistsHeader.IsVisible = false;
+			m_playlistResults.IsVisible = false;
 
 			scroll.Content = stack;
 
@@ -153,6 +168,9 @@ namespace Thump.Views
 				m_songResults.ItemsSource = null;
 				m_songResults.IsVisible = false;
 				m_songsHeader.IsVisible = false;
+				m_playlistResults.ItemsSource = null;
+				m_playlistResults.IsVisible = false;
+				m_playlistsHeader.IsVisible = false;
 				return;
 			}
 			if (results.Artists != null && results.Artists.Count > 0)
@@ -190,6 +208,18 @@ namespace Thump.Views
 				m_songResults.ItemsSource = null;
 				m_songResults.IsVisible = false;
 				m_songsHeader.IsVisible = false;
+			}
+			if (results.Playlists != null && results.Playlists.Count > 0)
+			{
+				m_playlistResults.ItemsSource = results.Playlists;
+				m_playlistResults.IsVisible = true;
+				m_playlistsHeader.IsVisible = true;
+			}
+			else
+			{
+				m_playlistResults.ItemsSource = null;
+				m_playlistResults.IsVisible = false;
+				m_playlistsHeader.IsVisible = false;
 			}
 		}
 	}

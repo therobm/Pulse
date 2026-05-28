@@ -15,12 +15,14 @@ namespace Thump.Pulse
 		public List<PulseArtist> Artists;
 		public List<PulseAlbum> Albums;
 		public List<PulseTrack> Songs;
+		public List<PulsePlaylist> Playlists;
 
 		public PulseSearchData()
 		{
 			Artists = new List<PulseArtist>();
 			Albums = new List<PulseAlbum>();
 			Songs = new List<PulseTrack>();
+			Playlists = new List<PulsePlaylist>();
 		}
 	}
 
@@ -389,6 +391,24 @@ namespace Thump.Pulse
 								foreach (JsonElement element in songArray.EnumerateArray())
 								{
 									result.Songs.Add(ParseSong(element));
+								}
+							}
+						}
+					}
+
+					if (SubsonicGet("getPlaylists", out JsonElement playlistResponse))
+					{
+						if (playlistResponse.TryGetProperty("playlists", out JsonElement playlists) &&
+							playlists.TryGetProperty("playlist", out JsonElement playlistArray) &&
+							playlistArray.ValueKind == JsonValueKind.Array)
+						{
+							string lowerQuery = query.ToLowerInvariant();
+							foreach (JsonElement element in playlistArray.EnumerateArray())
+							{
+								PulsePlaylist playlist = ParsePlaylist(element);
+								if (playlist.Name != null && playlist.Name.ToLowerInvariant().Contains(lowerQuery))
+								{
+									result.Playlists.Add(playlist);
 								}
 							}
 						}
