@@ -690,8 +690,25 @@ namespace Pulse.Data
 		// via CASCADE / explicit cleanup).
 		public override bool RemoveTrack(string trackId)
 		{
+			// Capture the parent ids before base.RemoveTrack mutates the in-memory
+			// maps. base removes the album from m_albums when its last track goes,
+			// and the artist from m_artists when its last album goes -- mirror that
+			// into SQL so orphaned album/artist rows (and their starred rows) don't
+			// survive and reappear on the next Load (#302).
+			string albumId = null;
+			string artistId = null;
+			TrackInfo existing;
+			if (m_tracks.TryGetValue(trackId, out existing))
+			{
+				albumId = existing.AlbumId;
+				artistId = existing.ArtistId;
+			}
+
 			bool removed = base.RemoveTrack(trackId);
 			if (!removed) { return false; }
+
+			bool albumEmptied = !string.IsNullOrEmpty(albumId) && !m_albums.ContainsKey(albumId);
+			bool artistEmptied = !string.IsNullOrEmpty(artistId) && !m_artists.ContainsKey(artistId);
 
 			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
 			try
@@ -717,6 +734,36 @@ namespace Pulse.Data
 					delTrack.Parameters.AddWithValue("$id", trackId);
 					delTrack.ExecuteNonQuery();
 
+					if (albumEmptied)
+					{
+						SqliteCommand delAlbum = connection.CreateCommand();
+						delAlbum.Transaction = transaction;
+						delAlbum.CommandText = "DELETE FROM albums WHERE id = $id;";
+						delAlbum.Parameters.AddWithValue("$id", albumId);
+						delAlbum.ExecuteNonQuery();
+
+						SqliteCommand delAlbumStar = connection.CreateCommand();
+						delAlbumStar.Transaction = transaction;
+						delAlbumStar.CommandText = "DELETE FROM starred WHERE entity_kind = 'album' AND entity_id = $id;";
+						delAlbumStar.Parameters.AddWithValue("$id", albumId);
+						delAlbumStar.ExecuteNonQuery();
+					}
+
+					if (artistEmptied)
+					{
+						SqliteCommand delArtist = connection.CreateCommand();
+						delArtist.Transaction = transaction;
+						delArtist.CommandText = "DELETE FROM artists WHERE id = $id;";
+						delArtist.Parameters.AddWithValue("$id", artistId);
+						delArtist.ExecuteNonQuery();
+
+						SqliteCommand delArtistStar = connection.CreateCommand();
+						delArtistStar.Transaction = transaction;
+						delArtistStar.CommandText = "DELETE FROM starred WHERE entity_kind = 'artist' AND entity_id = $id;";
+						delArtistStar.Parameters.AddWithValue("$id", artistId);
+						delArtistStar.ExecuteNonQuery();
+					}
+
 					transaction.Commit();
 				}
 				catch
@@ -740,7 +787,14 @@ namespace Pulse.Data
 			try
 			{
 				// playlist_tracks has FK with ON DELETE CASCADE, so deleting the
-				// playlist row clears the join rows too.
+				// playlist row clears the join rows too. playlist_user_last_played
+				// (v3) has no FK, so its rows must be removed explicitly or they
+				// orphan and resurface if the id is reused (#303).
+				SqliteCommand delLastPlayed = connection.CreateCommand();
+				delLastPlayed.CommandText = "DELETE FROM playlist_user_last_played WHERE playlist_id = $id;";
+				delLastPlayed.Parameters.AddWithValue("$id", playlistId);
+				delLastPlayed.ExecuteNonQuery();
+
 				SqliteCommand command = connection.CreateCommand();
 				command.CommandText = "DELETE FROM playlists WHERE id = $id;";
 				command.Parameters.AddWithValue("$id", playlistId);
