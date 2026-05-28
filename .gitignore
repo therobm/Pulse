@@ -1,34 +1,29 @@
-# Gradle
-.gradle/
-build/
-!gradle-wrapper.jar
-!gradle-wrapper.properties
+# Build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
 
-# Android
-*.apk
-*.aab
-*.ap_
-*.dex
-local.properties
-.cxx/
-captures/
-output.json
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
 
-# IntelliJ / Android Studio
+# Rider / JetBrains
 .idea/
-*.iml
-*.iws
-*.ipr
-out/
 
-# Kotlin
-.kotlin/
+# MAUI / .NET
+*.binlog
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Keys
-*.jks
-*.keystore
-keystore.properties

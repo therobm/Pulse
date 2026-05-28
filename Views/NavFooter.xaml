@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<views:ThumpView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                 xmlns:views="clr-namespace:Thump.Views"
+                 x:Class="Thump.Views.NavFooter"
+                 BackgroundColor="#060606"
+                 HeightRequest="72">
+
+	<Grid ColumnDefinitions="*,*,*,*">
+		<Button x:Name="m_homeButton"
+		        Grid.Column="0"
+		        Text="Home"
+		        TextColor="#3b82f6"
+		        BackgroundColor="Transparent"
+		        FontSize="13"
+		        Clicked="OnHomeClicked" />
+
+		<Button x:Name="m_libraryButton"
+		        Grid.Column="1"
+		        Text="Library"
+		        TextColor="#555568"
+		        BackgroundColor="Transparent"
+		        FontSize="13"
+		        Clicked="OnLibraryClicked" />
+
+		<Button x:Name="m_searchButton"
+		        Grid.Column="2"
+		        Text="Search"
+		        TextColor="#555568"
+		        BackgroundColor="Transparent"
+		        FontSize="13"
+		        Clicked="OnSearchClicked" />
+
+		<Button x:Name="m_settingsButton"
+		        Grid.Column="3"
+		        Text="Settings"
+		        TextColor="#555568"
+		        BackgroundColor="Transparent"
+		        FontSize="13"
+		        Clicked="OnSettingsClicked" />
+	</Grid>
+
+</views:ThumpView>
