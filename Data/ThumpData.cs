@@ -313,7 +313,7 @@ namespace Thump.Data
 				{
 					if (data == null || data.Length == 0)
 					{
-						callback(null);
+						MainThread.BeginInvokeOnMainThread(() => { callback(null); });
 						return;
 					}
 					m_cache.Enqueue(() =>
