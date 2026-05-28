@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<views:ThumpView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                 xmlns:views="clr-namespace:Thump.Views"
+                 xmlns:tiles="clr-namespace:Thump.Views.Tiles"
+                 x:Class="Thump.Views.ArtistDetailView"
+                 BackgroundColor="#0a0a0c">
+
+	<Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+
+		<HorizontalStackLayout Grid.Row="0" Padding="8,8,8,0">
+			<Button Text="‹"
+			        FontSize="22"
+			        TextColor="#e8e8ec"
+			        BackgroundColor="Transparent"
+			        WidthRequest="44"
+			        HeightRequest="44"
+			        Clicked="OnBackClicked" />
+		</HorizontalStackLayout>
+
+		<views:ArtImage x:Name="m_art"
+		                Grid.Row="1"
+		                HeightRequest="180"
+		                WidthRequest="180"
+		                HorizontalOptions="Center"
+		                Margin="0,12,0,16" />
+
+		<StackLayout Grid.Row="2" Spacing="4" Padding="16,0,16,12">
+			<Label x:Name="m_titleLabel"
+			       Text="Artist"
+			       FontSize="22"
+			       TextColor="#e8e8ec"
+			       HorizontalOptions="Center" />
+			<Label x:Name="m_metaLabel"
+			       Text=""
+			       FontSize="12"
+			       TextColor="#555568"
+			       HorizontalOptions="Center" />
+		</StackLayout>
+
+		<HorizontalStackLayout Grid.Row="3" Spacing="12" Padding="16,0,16,12" HorizontalOptions="Center">
+			<Button Text="▶  Play"
+			        TextColor="#0a0a0c"
+			        BackgroundColor="#3b82f6"
+			        CornerRadius="8"
+			        FontSize="14"
+			        Padding="20,8"
+			        Clicked="OnPlayClicked" />
+			<Button Text="⇋  Shuffle"
+			        TextColor="#e8e8ec"
+			        BackgroundColor="#101014"
+			        CornerRadius="8"
+			        FontSize="14"
+			        Padding="20,8"
+			        Clicked="OnShuffleClicked" />
+		</HorizontalStackLayout>
+
+		<CollectionView Grid.Row="4" x:Name="m_albumList">
+			<CollectionView.ItemTemplate>
+				<DataTemplate>
+					<tiles:AlbumRowTile />
+				</DataTemplate>
+			</CollectionView.ItemTemplate>
+		</CollectionView>
+
+	</Grid>
+
+</views:ThumpView>
