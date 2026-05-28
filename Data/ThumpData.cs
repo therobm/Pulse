@@ -193,6 +193,11 @@ namespace Thump.Data
 			}
 			GetAlbum(album.Id, (fullAlbum) =>
 			{
+				if (fullAlbum == null)
+				{
+					callback(new List<PulseTrack>());
+					return;
+				}
 				callback(fullAlbum.Songs);
 			});
 		}
