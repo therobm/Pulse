@@ -26,6 +26,20 @@ namespace Pulse.Protocols
 			m_defaultCoverArt = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png"));
 		}
 
+		// Reads an integer query param, returning defaultValue when the param
+		// is missing OR present-but-non-numeric (Flatline #307). int.Parse threw
+		// a FormatException on bad client input, surfacing as a 500.
+		private static int ParseQueryInt(HttpContext context, string name, int defaultValue)
+		{
+			string raw = context.Request.Query[name].FirstOrDefault();
+			int value;
+			if (string.IsNullOrEmpty(raw) || !int.TryParse(raw, out value))
+			{
+				return defaultValue;
+			}
+			return value;
+		}
+
 	
 
 		// Mixed-kind recents shelf (Flatline #223). Accepts a comma-separated
@@ -39,7 +53,7 @@ namespace Pulse.Protocols
 		// until #228 retires it.
 		public IResult HandleRecentlyPlayed(HttpContext context)
 		{
-			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
+			int count = ParseQueryInt(context, "count", 10);
 			string user = context.Request.Query["u"].FirstOrDefault();
 			string typesParam = context.Request.Query["types"].FirstOrDefault();
 
@@ -424,7 +438,7 @@ namespace Pulse.Protocols
 
 		public IResult HandlePopularArtists(HttpContext context)
 		{
-			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
+			int count = ParseQueryInt(context, "count", 10);
 			string user = context.Request.Query["u"].FirstOrDefault();
 
 			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
@@ -471,7 +485,7 @@ namespace Pulse.Protocols
 
 		private IResult RankAndEmitPlaylists(HttpContext context, bool sortByRecency)
 		{
-			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
+			int count = ParseQueryInt(context, "count", 10);
 			string user = context.Request.Query["u"].FirstOrDefault();
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
