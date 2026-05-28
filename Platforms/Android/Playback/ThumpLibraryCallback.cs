@@ -159,7 +159,16 @@ namespace Thump.Playback
 			{
 				m_serviceData.GetAlbum(value, (album) =>
 				{
-					completer.Set(LibraryResult.OfItemList(BuildTrackItems(album.Songs), libraryParams));
+					List<PulseTrack> songs;
+					if (album == null)
+					{
+						songs = new List<PulseTrack>();
+					}
+					else
+					{
+						songs = album.Songs;
+					}
+					completer.Set(LibraryResult.OfItemList(BuildTrackItems(songs), libraryParams));
 				});
 				return;
 			}
@@ -167,7 +176,16 @@ namespace Thump.Playback
 			{
 				m_serviceData.GetPlaylist(value, (playlist) =>
 				{
-					completer.Set(LibraryResult.OfItemList(BuildTrackItems(playlist.Songs), libraryParams));
+					List<PulseTrack> songs;
+					if (playlist == null)
+					{
+						songs = new List<PulseTrack>();
+					}
+					else
+					{
+						songs = playlist.Songs;
+					}
+					completer.Set(LibraryResult.OfItemList(BuildTrackItems(songs), libraryParams));
 				});
 				return;
 			}
