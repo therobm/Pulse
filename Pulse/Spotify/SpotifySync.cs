@@ -74,32 +74,36 @@ namespace Pulse.Spotify
 				+ "&code=" + Uri.EscapeDataString(code)
 				+ "&redirect_uri=" + Uri.EscapeDataString(m_redirectUri);
 
-			HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, "https://accounts.spotify.com/api/token");
-			request.Content = new StringContent(body, Encoding.UTF8, "application/x-www-form-urlencoded");
-
-			string authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes(m_clientId + ":" + m_clientSecret));
-			request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authHeader);
-
-			HttpResponseMessage response = m_httpClient.Send(request);
-			if (!response.IsSuccessStatusCode)
+			using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, "https://accounts.spotify.com/api/token"))
 			{
-				string errorBody = ReadResponseBody(response);
-				Log.Error(-1, "Spotify: Token exchange failed - " + response.StatusCode + " - " + errorBody);
-				return false;
+				request.Content = new StringContent(body, Encoding.UTF8, "application/x-www-form-urlencoded");
+
+				string authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes(m_clientId + ":" + m_clientSecret));
+				request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authHeader);
+
+				using (HttpResponseMessage response = m_httpClient.Send(request))
+				{
+					if (!response.IsSuccessStatusCode)
+					{
+						string errorBody = ReadResponseBody(response);
+						Log.Error(-1, "Spotify: Token exchange failed - " + response.StatusCode + " - " + errorBody);
+						return false;
+					}
+
+					string json = ReadResponseBody(response);
+					JsonDocument doc = JsonDocument.Parse(json);
+					JsonElement root = doc.RootElement;
+
+					m_accessToken = root.GetProperty("access_token").GetString();
+					m_refreshToken = root.GetProperty("refresh_token").GetString();
+					int expiresIn = root.GetProperty("expires_in").GetInt32();
+					m_tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
+
+					SaveCredentials();
+					Log.Info(-1, "Spotify: Authorization complete");
+					return true;
+				}
 			}
-
-			string json = ReadResponseBody(response);
-			JsonDocument doc = JsonDocument.Parse(json);
-			JsonElement root = doc.RootElement;
-
-			m_accessToken = root.GetProperty("access_token").GetString();
-			m_refreshToken = root.GetProperty("refresh_token").GetString();
-			int expiresIn = root.GetProperty("expires_in").GetInt32();
-			m_tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
-
-			SaveCredentials();
-			Log.Info(-1, "Spotify: Authorization complete");
-			return true;
 		}
 
 		/// <summary>
@@ -299,18 +303,22 @@ namespace Pulse.Spotify
 				return null;
 			}
 
-			HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url);
-			request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", m_accessToken);
-
-			HttpResponseMessage response = m_httpClient.Send(request);
-			if (!response.IsSuccessStatusCode)
+			using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
 			{
-				string errorBody = ReadResponseBody(response);
-				Log.Error(-1, "Spotify: GET failed " + response.StatusCode + " - " + url + " - " + errorBody);
-				return null;
-			}
+				request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", m_accessToken);
 
-			return ReadResponseBody(response);
+				using (HttpResponseMessage response = m_httpClient.Send(request))
+				{
+					if (!response.IsSuccessStatusCode)
+					{
+						string errorBody = ReadResponseBody(response);
+						Log.Error(-1, "Spotify: GET failed " + response.StatusCode + " - " + url + " - " + errorBody);
+						return null;
+					}
+
+					return ReadResponseBody(response);
+				}
+			}
 		}
 
 		private bool EnsureToken()
@@ -328,38 +336,42 @@ namespace Pulse.Spotify
 			string body = "grant_type=refresh_token"
 				+ "&refresh_token=" + Uri.EscapeDataString(m_refreshToken);
 
-			HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, "https://accounts.spotify.com/api/token");
-			request.Content = new StringContent(body, Encoding.UTF8, "application/x-www-form-urlencoded");
-
-			string authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes(m_clientId + ":" + m_clientSecret));
-			request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authHeader);
-
-			HttpResponseMessage response = m_httpClient.Send(request);
-			if (!response.IsSuccessStatusCode)
+			using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, "https://accounts.spotify.com/api/token"))
 			{
-				string errorBody = ReadResponseBody(response);
-				Log.Error(-1, "Spotify: Token refresh failed - " + response.StatusCode + " - " + errorBody);
-				return false;
+				request.Content = new StringContent(body, Encoding.UTF8, "application/x-www-form-urlencoded");
+
+				string authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes(m_clientId + ":" + m_clientSecret));
+				request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authHeader);
+
+				using (HttpResponseMessage response = m_httpClient.Send(request))
+				{
+					if (!response.IsSuccessStatusCode)
+					{
+						string errorBody = ReadResponseBody(response);
+						Log.Error(-1, "Spotify: Token refresh failed - " + response.StatusCode + " - " + errorBody);
+						return false;
+					}
+
+					string json = ReadResponseBody(response);
+					JsonDocument doc = JsonDocument.Parse(json);
+					JsonElement root = doc.RootElement;
+
+					m_accessToken = root.GetProperty("access_token").GetString();
+					int expiresIn = root.GetProperty("expires_in").GetInt32();
+					m_tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
+
+					// Spotify sometimes rotates the refresh token
+					JsonElement newRefreshToken;
+					if (root.TryGetProperty("refresh_token", out newRefreshToken))
+					{
+						m_refreshToken = newRefreshToken.GetString();
+					}
+
+					SaveCredentials();
+					doc.Dispose();
+					return true;
+				}
 			}
-
-			string json = ReadResponseBody(response);
-			JsonDocument doc = JsonDocument.Parse(json);
-			JsonElement root = doc.RootElement;
-
-			m_accessToken = root.GetProperty("access_token").GetString();
-			int expiresIn = root.GetProperty("expires_in").GetInt32();
-			m_tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
-
-			// Spotify sometimes rotates the refresh token
-			JsonElement newRefreshToken;
-			if (root.TryGetProperty("refresh_token", out newRefreshToken))
-			{
-				m_refreshToken = newRefreshToken.GetString();
-			}
-
-			SaveCredentials();
-			doc.Dispose();
-			return true;
 		}
 		public static string GetCredentialBasePath()
 		{

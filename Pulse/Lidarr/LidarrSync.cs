@@ -286,18 +286,19 @@ namespace Pulse.Lidarr
 				url = url + "?apikey=" + m_apiKey;
 			}
 
-			HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url);
-
 			try
 			{
-				HttpResponseMessage response = m_httpClient.Send(request);
-				if (!response.IsSuccessStatusCode)
+				using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
+				using (HttpResponseMessage response = m_httpClient.Send(request))
 				{
-					string errorBody = ReadResponseBody(response);
-					Log.Error(-1, "LidarrSync: GET " + endpoint + " failed - " + response.StatusCode + " - " + errorBody);
-					return null;
+					if (!response.IsSuccessStatusCode)
+					{
+						string errorBody = ReadResponseBody(response);
+						Log.Error(-1, "LidarrSync: GET " + endpoint + " failed - " + response.StatusCode + " - " + errorBody);
+						return null;
+					}
+					return ReadResponseBody(response);
 				}
-				return ReadResponseBody(response);
 			}
 			catch (Exception ex)
 			{
@@ -309,19 +310,23 @@ namespace Pulse.Lidarr
 		private string LidarrPost(string endpoint, string body)
 		{
 			string url = m_lidarrUrl + "/api/v1/" + endpoint + "?apikey=" + m_apiKey;
-			HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url);
-			request.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
 			try
 			{
-				HttpResponseMessage response = m_httpClient.Send(request);
-				if (!response.IsSuccessStatusCode)
+				using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url))
 				{
-					string errorBody = ReadResponseBody(response);
-					Log.Error(-1, "LidarrSync: POST " + endpoint + " failed - " + response.StatusCode + " - " + errorBody);
-					return null;
+					request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+					using (HttpResponseMessage response = m_httpClient.Send(request))
+					{
+						if (!response.IsSuccessStatusCode)
+						{
+							string errorBody = ReadResponseBody(response);
+							Log.Error(-1, "LidarrSync: POST " + endpoint + " failed - " + response.StatusCode + " - " + errorBody);
+							return null;
+						}
+						return ReadResponseBody(response);
+					}
 				}
-				return ReadResponseBody(response);
 			}
 			catch (Exception ex)
 			{
