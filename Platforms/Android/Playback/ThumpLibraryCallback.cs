@@ -929,6 +929,7 @@ namespace Thump.Playback
 		{
 			Android.OS.Bundle extras = new Android.OS.Bundle();
 			extras.PutString(MediaConstants.ExtrasKeyContentStyleGroupTitle, groupTitle);
+			extras.PutInt(MediaConstants.ExtrasKeyContentStyleSingleItem, MediaConstants.ExtrasValueContentStyleGridItem);
 			return extras;
 		}
 
