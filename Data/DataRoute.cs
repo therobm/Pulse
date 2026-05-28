@@ -13,7 +13,7 @@ namespace Thump.Data
 
 	public class DataRoute
 	{
-		public static bool s_bCacheEnabled = false;
+		public static bool s_bCacheEnabled = true;
 
 		public eRouteCachingMethod m_cacheType = eRouteCachingMethod.NetworkFirst;
 		protected ThumpData m_dataProvider;
@@ -21,6 +21,15 @@ namespace Thump.Data
 		{
 			m_dataProvider = dataProvider;
 			m_cacheType = cacheType;
+		}
+
+		protected void QueryDB(Action dataFunction)
+		{
+			m_dataProvider.Cache.Enqueue(dataFunction);
+		}
+		protected bool IsOnline()
+		{
+			return m_dataProvider.Pulse.IsOnline();
 		}
 	}
 
@@ -41,9 +50,9 @@ namespace Thump.Data
 
 		public void GetData(Action<T> callback)
 		{
-			if (!m_dataProvider.Pulse.IsOnline())
+			if (!IsOnline())
 			{
-				m_dataProvider.Cache.Enqueue(() =>
+                QueryDB(() =>
 				{
 					T cached = null;
 					if (s_bCacheEnabled)
@@ -59,17 +68,26 @@ namespace Thump.Data
 				{
 					T retVal = netData;
 
-					if (m_dataValidator(netData))
-					{
-						m_storeDatabase(netData);
-					}
+					if (m_dataValidator(retVal))
+                    {
+                        if (s_bCacheEnabled)
+						{
+							QueryDB(() => { m_storeDatabase(retVal); });
+                        }
+                        MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
+                    }
 					else
 					{
 						if (s_bCacheEnabled)
-							retVal = m_queryDatabase();
-					}
+						{	
+							QueryDB(()=>
+							{
+								retVal = m_queryDatabase();
+                                MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
+                            });
+                        }
+                    }
 
-					MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
 				});
 				return;
 			}
@@ -77,19 +95,37 @@ namespace Thump.Data
 			{
 				T cacheData = null;
 				if (s_bCacheEnabled)
-					cacheData = m_queryDatabase();
-
-				if (m_dataValidator(cacheData))
-				{
-					MainThread.BeginInvokeOnMainThread(() => { callback(cacheData); });
+				{ 
+				    QueryDB(() => 
+					{ 
+						cacheData = m_queryDatabase();
+                        if (m_dataValidator(cacheData))
+                        {
+                            MainThread.BeginInvokeOnMainThread(() => { callback(cacheData); });
+                        }
+                        else
+                        {
+                            m_queryNetwork((netData) =>
+                            {
+                                if (m_dataValidator(netData))
+                                {
+                                    QueryDB(() => { m_storeDatabase(netData); });
+                                }
+                                MainThread.BeginInvokeOnMainThread(() => { callback(netData); });
+                            });
+                        }
+                    }); 
+					return;
 				}
 				else
 				{
 					m_queryNetwork((netData) =>
 					{
 						if (m_dataValidator(netData))
-							m_storeDatabase(netData);
-						MainThread.BeginInvokeOnMainThread(() => { callback(netData); });
+						{   
+							QueryDB(() => { m_storeDatabase(netData); });
+						}
+                        MainThread.BeginInvokeOnMainThread(() => { callback(netData); });
 					});
 				}
 			}
@@ -119,7 +155,9 @@ namespace Thump.Data
 				{
 					T cached = null;
 					if (s_bCacheEnabled)
+					{	
 						cached = m_queryDatabase(id);
+					}
 					MainThread.BeginInvokeOnMainThread(() => { callback(cached); });
 				});
 				return;
@@ -131,39 +169,66 @@ namespace Thump.Data
 				{
 					T retVal = netData;
 
-					if (m_dataValidator(netData))
-					{
-						m_storeDatabase(id, netData);
-					}
+					if (m_dataValidator(retVal))
+                    {
+                        if (s_bCacheEnabled)
+						{ 
+							QueryDB(() => { m_storeDatabase(id, retVal); });
+						}
+                        MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
+                    }
 					else
 					{
 						if (s_bCacheEnabled)
-							retVal = m_queryDatabase(id);
+						{
+                            QueryDB(() =>
+							{ 
+								retVal = m_queryDatabase(id);
+                                MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
+                            });
+						}
 					}
 
-					MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
 				});
 				return;
 			}
-			else
-			{
-				T cacheData = null;
-				if (s_bCacheEnabled)
-					cacheData = m_queryDatabase(id);
-				if (m_dataValidator(cacheData))
-				{
-					MainThread.BeginInvokeOnMainThread(() => { callback(cacheData); });
-				}
-				else
-				{
-					m_queryNetwork(id, (netData) =>
-					{
-						if (m_dataValidator(netData))
-							m_storeDatabase(id, netData);
-						MainThread.BeginInvokeOnMainThread(() => { callback(netData); });
-					});
-				}
-			}
-		}
+            else
+            {
+                if (s_bCacheEnabled)
+                {
+                    QueryDB(() =>
+                    {
+                        T cacheData = m_queryDatabase(id);
+                        if (m_dataValidator(cacheData))
+                        {
+                            MainThread.BeginInvokeOnMainThread(() => { callback(cacheData); });
+                        }
+                        else
+                        {
+                            m_queryNetwork(id, (netData) =>
+                            {
+                                if (m_dataValidator(netData))
+                                {
+                                    QueryDB(() => { m_storeDatabase(id, netData); });
+                                }
+                                MainThread.BeginInvokeOnMainThread(() => { callback(netData); });
+                            });
+                        }
+                    });
+                    return;
+                }
+                else
+                {
+                    m_queryNetwork(id, (netData) =>
+                    {
+                        if (m_dataValidator(netData))
+                        {
+                            QueryDB(() => { m_storeDatabase(id, netData); });
+                        }
+                        MainThread.BeginInvokeOnMainThread(() => { callback(netData); });
+                    });
+                }
+            }
+        }
 	}
 }
