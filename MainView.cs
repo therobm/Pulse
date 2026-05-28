@@ -20,6 +20,9 @@ namespace Thump
 
 	public class MainView : ContentPage
 	{
+		public const string ServerUrl = "https://192.168.5.5:32458";
+		public const string ServerUser = "Rob";
+
 		public static MainView Self { get { return s_self; } }
 		public static ThumpData Data { get { return Self.m_data; } }
 
@@ -72,7 +75,7 @@ namespace Thump
 
 			Content = m_rootGrid;
 
-			m_pulseClient = new PulseClient("https://192.168.5.5:32458", "Rob");
+			m_pulseClient = new PulseClient(ServerUrl, ServerUser);
 			string cacheRoot = FileSystem.CacheDirectory;
 			string databasePath = Path.Combine(cacheRoot, "thump.db");
 			string blobDirectory = Path.Combine(cacheRoot, "blobs");

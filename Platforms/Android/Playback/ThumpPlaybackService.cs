@@ -7,12 +7,12 @@ using AndroidX.Media3.Session;
 
 namespace Thump.Playback
 {
-	[Service(Exported = false, Enabled = true, Name = "com.companyname.thump.ThumpPlaybackService", ForegroundServiceType = ForegroundService.TypeMediaPlayback)]
-	[IntentFilter(new string[] { "androidx.media3.session.MediaSessionService" })]
-	public class ThumpPlaybackService : MediaSessionService
+	[Service(Exported = true, Enabled = true, Name = "com.companyname.thump.ThumpPlaybackService", ForegroundServiceType = ForegroundService.TypeMediaPlayback)]
+	[IntentFilter(new string[] { "androidx.media3.session.MediaLibraryService", "android.media.browse.MediaBrowserService" })]
+	public class ThumpPlaybackService : MediaLibraryService
 	{
 		private IExoPlayer m_player;
-		private MediaSession m_session;
+		private MediaLibraryService.MediaLibrarySession m_session;
 
 		public override void OnCreate()
 		{
@@ -22,7 +22,7 @@ namespace Thump.Playback
 			builder.SetHandleAudioBecomingNoisy(true);
 			m_player = builder.Build();
 
-			MediaSession.Builder sessionBuilder = new MediaSession.Builder(this, m_player);
+			MediaLibraryService.MediaLibrarySession.Builder sessionBuilder = new MediaLibraryService.MediaLibrarySession.Builder(this, m_player, new ThumpLibraryCallback());
 			PendingIntent sessionActivity = BuildSessionActivity();
 			if (sessionActivity != null)
 			{
@@ -41,7 +41,7 @@ namespace Thump.Playback
 			return PendingIntent.GetActivity(this, 0, intent, PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
 		}
 
-		public override MediaSession OnGetSession(MediaSession.ControllerInfo controllerInfo)
+		public override MediaLibraryService.MediaLibrarySession OnGetSession(MediaSession.ControllerInfo controllerInfo)
 		{
 			return m_session;
 		}
