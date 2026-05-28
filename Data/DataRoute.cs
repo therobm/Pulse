@@ -63,20 +63,6 @@ namespace Thump.Data
 
 			if (m_cacheType == eRouteCachingMethod.NetworkAuthorative)
 			{
-                bool networkResolved = false;
-                QueryDB(()=>
-				{
-					//fast cache path for quicker loading
-                    T cacheData = m_queryDatabase();
-                    if (m_dataValidator(cacheData))
-                    {
-	                    MainThread.BeginInvokeOnMainThread(() => 
-						{
-                            if (!networkResolved)
-                                callback(cacheData); 
-						});
-                    }
-                });
 				m_queryNetwork((netData) =>
 				{
 					T retVal = netData;
@@ -89,7 +75,6 @@ namespace Thump.Data
                         }
                         MainThread.BeginInvokeOnMainThread(() =>
                         {
-                            networkResolved = true;
                             callback(retVal);
                         });
                     }
@@ -186,21 +171,6 @@ namespace Thump.Data
 
 			if (m_cacheType == eRouteCachingMethod.NetworkAuthorative)
 			{
-                bool networkResolved = false;
-                QueryDB(() =>
-                {
-                    //fast cache path for quicker loading
-                    T cacheData = m_queryDatabase(id);
-                    if (m_dataValidator(cacheData))
-                    {
-                        MainThread.BeginInvokeOnMainThread(() => 
-						{
-                            if (!networkResolved)
-	                            callback(cacheData); 
-						});
-                    }
-                });
-
                 m_queryNetwork(id, (netData) =>
 				{
 					T retVal = netData;
@@ -214,7 +184,6 @@ namespace Thump.Data
 						}
                         MainThread.BeginInvokeOnMainThread(() => 
 						{
-                            networkResolved = true;
                             callback(retVal); 
 						});
                     }

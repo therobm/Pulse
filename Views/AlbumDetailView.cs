@@ -193,6 +193,7 @@ namespace Thump.Views
 
 		private void OnTracksLoaded(List<PulseTrack> tracks)
 		{
+			Log.Info("OnTracksLoaded");
 			m_tracks = tracks;
 			m_trackList.ItemsSource = tracks;
 		}
@@ -204,6 +205,7 @@ namespace Thump.Views
 
 		private void OnPlayClicked(object sender, EventArgs e)
 		{
+			Log.Info("OnPlayClicked");
 			m_mainView.OnPlayTracks(m_tracks, 0);
 		}
 
