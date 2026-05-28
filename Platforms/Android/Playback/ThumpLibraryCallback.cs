@@ -13,6 +13,7 @@ namespace Thump.Playback
 		private const string s_rootId = "root";
 		private const string s_homeId = "home";
 		private const string s_libraryId = "library";
+		private const string s_podcastsId = "podcasts";
 		private const string s_albumsId = "albums";
 		private const string s_playlistsId = "playlists";
 		private const string s_artistsId = "artists";
@@ -90,6 +91,7 @@ namespace Thump.Playback
 				categories.Add(BuildBrowsableItem(s_homeId, "Home"));
 				categories.Add(BuildBrowsableItem(s_playlistsId, "Playlists"));
 				categories.Add(BuildBrowsableItem(s_libraryId, "Library"));
+				categories.Add(BuildBrowsableItem(s_podcastsId, "Podcasts"));
 				return ImmediateFuture(LibraryResult.OfItemList(categories, BuildContentStyleParams()));
 			}
 
@@ -102,12 +104,103 @@ namespace Thump.Playback
 			MediaLibraryService.LibraryParams styleParams = BuildContentStyleParams();
 			if (parentId == s_homeId)
 			{
-				List<MediaItem> shelves = new List<MediaItem>();
-				shelves.Add(BuildBrowsableItem(s_recentlyPlayedId, "Recently Played"));
-				shelves.Add(BuildBrowsableItem(s_recentlyAddedId, "Recently Added"));
-				shelves.Add(BuildBrowsableItem(s_topPlaylistsId, "Top Playlists"));
-				shelves.Add(BuildBrowsableItem(s_popularArtistsId, "Popular Artists"));
-				completer.Set(LibraryResult.OfItemList(shelves, styleParams));
+				List<MediaItem> combined = new List<MediaItem>();
+				object gate = new object();
+				int pendingShelves = 4;
+				bool recentlyPlayedDelivered = false;
+				bool recentlyAddedDelivered = false;
+				bool topPlaylistsDelivered = false;
+				bool popularArtistsDelivered = false;
+
+				m_serviceData.GetRecentlyPlayed((objects) =>
+				{
+					lock (gate)
+					{
+						if (recentlyPlayedDelivered)
+						{
+							return;
+						}
+						recentlyPlayedDelivered = true;
+						combined.AddRange(BuildMixedItemsGrouped(objects, "Recently Played"));
+						pendingShelves = pendingShelves - 1;
+						if (pendingShelves == 0)
+						{
+							completer.Set(LibraryResult.OfItemList(combined, styleParams));
+						}
+					}
+				});
+				m_serviceData.GetRecentlyAdded((objects) =>
+				{
+					lock (gate)
+					{
+						if (recentlyAddedDelivered)
+						{
+							return;
+						}
+						recentlyAddedDelivered = true;
+						combined.AddRange(BuildMixedItemsGrouped(objects, "Recently Added"));
+						pendingShelves = pendingShelves - 1;
+						if (pendingShelves == 0)
+						{
+							completer.Set(LibraryResult.OfItemList(combined, styleParams));
+						}
+					}
+				});
+				m_serviceData.GetTopPlaylists((playlists) =>
+				{
+					lock (gate)
+					{
+						if (topPlaylistsDelivered)
+						{
+							return;
+						}
+						topPlaylistsDelivered = true;
+						if (playlists != null)
+						{
+							for (int idx = 0; idx < playlists.Count; idx++)
+							{
+								PulsePlaylist playlist = playlists[idx];
+								combined.Add(BuildBrowsableItemGrouped("playlist/" + playlist.Id, playlist.Name, playlist.CoverArt, "Top Playlists"));
+							}
+						}
+						pendingShelves = pendingShelves - 1;
+						if (pendingShelves == 0)
+						{
+							completer.Set(LibraryResult.OfItemList(combined, styleParams));
+						}
+					}
+				});
+				m_serviceData.GetPopularArtists((artists) =>
+				{
+					lock (gate)
+					{
+						if (popularArtistsDelivered)
+						{
+							return;
+						}
+						popularArtistsDelivered = true;
+						if (artists != null)
+						{
+							for (int idx = 0; idx < artists.Count; idx++)
+							{
+								PulseArtist artist = artists[idx];
+								combined.Add(BuildBrowsableItemGrouped("artist/" + artist.Id, artist.Name, artist.CoverArt, "Popular Artists"));
+							}
+						}
+						pendingShelves = pendingShelves - 1;
+						if (pendingShelves == 0)
+						{
+							completer.Set(LibraryResult.OfItemList(combined, styleParams));
+						}
+					}
+				});
+				return;
+			}
+			if (parentId == s_podcastsId)
+			{
+				List<MediaItem> items = new List<MediaItem>();
+				items.Add(BuildBrowsableItem("podcasts_soon", "Coming soon"));
+				completer.Set(LibraryResult.OfItemList(items, styleParams));
 				return;
 			}
 			if (parentId == s_libraryId)
@@ -474,6 +567,113 @@ namespace Thump.Playback
 				}
 			}
 			return items;
+		}
+
+		private static List<MediaItem> BuildMixedItemsGrouped(List<PulseObject> objects, string groupTitle)
+		{
+			List<MediaItem> items = new List<MediaItem>();
+			if (objects == null)
+			{
+				return items;
+			}
+			for (int idx = 0; idx < objects.Count; idx++)
+			{
+				PulseObject pulseObject = objects[idx];
+				switch (pulseObject.Kind)
+				{
+					case eDataType.Album:
+					{
+						PulseAlbum album = (PulseAlbum)pulseObject;
+						items.Add(BuildAlbumItemGrouped("album/" + album.Id, album.Name, album.Artist, album.CoverArt, groupTitle));
+						break;
+					}
+					case eDataType.Artist:
+					{
+						PulseArtist artist = (PulseArtist)pulseObject;
+						items.Add(BuildBrowsableItemGrouped("artist/" + artist.Id, artist.Name, artist.CoverArt, groupTitle));
+						break;
+					}
+					case eDataType.Playlist:
+					{
+						PulsePlaylist playlist = (PulsePlaylist)pulseObject;
+						items.Add(BuildBrowsableItemGrouped("playlist/" + playlist.Id, playlist.Name, playlist.CoverArt, groupTitle));
+						break;
+					}
+					case eDataType.Track:
+					{
+						PulseTrack track = (PulseTrack)pulseObject;
+						items.Add(BuildPlayableItemGrouped("track/" + track.Id, track.Title, track.Artist, track.ImageID, groupTitle));
+						break;
+					}
+				}
+			}
+			return items;
+		}
+
+		private static Android.OS.Bundle BuildGroupTitleExtras(string groupTitle)
+		{
+			Android.OS.Bundle extras = new Android.OS.Bundle();
+			extras.PutString(MediaConstants.ExtrasKeyContentStyleGroupTitle, groupTitle);
+			return extras;
+		}
+
+		private static MediaItem BuildBrowsableItemGrouped(string mediaId, string title, string coverArtId, string groupTitle)
+		{
+			MediaMetadata.Builder metadata = new MediaMetadata.Builder();
+			metadata.SetTitle(title);
+			metadata.SetIsBrowsable(Java.Lang.Boolean.True);
+			metadata.SetIsPlayable(Java.Lang.Boolean.False);
+			metadata.SetExtras(BuildGroupTitleExtras(groupTitle));
+			Android.Net.Uri artworkUri = BuildArtworkUri(coverArtId);
+			if (artworkUri != null)
+			{
+				metadata.SetArtworkUri(artworkUri);
+			}
+
+			MediaItem.Builder builder = new MediaItem.Builder();
+			builder.SetMediaId(mediaId);
+			builder.SetMediaMetadata(metadata.Build());
+			return builder.Build();
+		}
+
+		private static MediaItem BuildAlbumItemGrouped(string mediaId, string title, string subtitle, string coverArtId, string groupTitle)
+		{
+			MediaMetadata.Builder metadata = new MediaMetadata.Builder();
+			metadata.SetTitle(title);
+			metadata.SetSubtitle(subtitle);
+			metadata.SetIsBrowsable(Java.Lang.Boolean.True);
+			metadata.SetIsPlayable(Java.Lang.Boolean.False);
+			metadata.SetExtras(BuildGroupTitleExtras(groupTitle));
+			Android.Net.Uri artworkUri = BuildArtworkUri(coverArtId);
+			if (artworkUri != null)
+			{
+				metadata.SetArtworkUri(artworkUri);
+			}
+
+			MediaItem.Builder builder = new MediaItem.Builder();
+			builder.SetMediaId(mediaId);
+			builder.SetMediaMetadata(metadata.Build());
+			return builder.Build();
+		}
+
+		private static MediaItem BuildPlayableItemGrouped(string mediaId, string title, string subtitle, string coverArtId, string groupTitle)
+		{
+			MediaMetadata.Builder metadata = new MediaMetadata.Builder();
+			metadata.SetTitle(title);
+			metadata.SetArtist(subtitle);
+			metadata.SetIsBrowsable(Java.Lang.Boolean.False);
+			metadata.SetIsPlayable(Java.Lang.Boolean.True);
+			metadata.SetExtras(BuildGroupTitleExtras(groupTitle));
+			Android.Net.Uri artworkUri = BuildArtworkUri(coverArtId);
+			if (artworkUri != null)
+			{
+				metadata.SetArtworkUri(artworkUri);
+			}
+
+			MediaItem.Builder builder = new MediaItem.Builder();
+			builder.SetMediaId(mediaId);
+			builder.SetMediaMetadata(metadata.Build());
+			return builder.Build();
 		}
 
 		private static MediaItem BuildItemForId(string mediaId)
