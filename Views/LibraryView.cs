@@ -673,7 +673,9 @@ namespace Thump.Views
 				return;
 			}
 			CollectionView list = GetVisibleList();
-			list.ScrollTo(index, -1, ScrollToPosition.Start, true);
+			// Jump without animating: animating scrolls through every intermediate
+			// tile, realizing them all and firing a cover-art request per row.
+			list.ScrollTo(index, -1, ScrollToPosition.Start, false);
 		}
 
 		private void OnButtonArtistsClicked(object sender, EventArgs e)
