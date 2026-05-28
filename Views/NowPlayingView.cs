@@ -67,10 +67,10 @@ namespace Thump.Views
 		private View BuildArt()
 		{
 			m_art = new ArtImage();
-			m_art.HeightRequest = 340;
-			m_art.Margin = new Thickness(16, 8, 16, 0);
+			m_art.SetAspect(Aspect.AspectFit);
+			m_art.Margin = new Thickness(24, 16, 24, 8);
 			m_art.HorizontalOptions = LayoutOptions.Fill;
-			m_art.VerticalOptions = LayoutOptions.Start;
+			m_art.VerticalOptions = LayoutOptions.Fill;
 
 			Grid.SetRow(m_art, 1);
 			return m_art;
@@ -181,11 +181,11 @@ namespace Thump.Views
 
 			Button shuffleButton = new Button();
 			shuffleButton.Text = "⇋";
-			shuffleButton.FontSize = 22;
+			shuffleButton.FontSize = 26;
 			shuffleButton.TextColor = ThumpColors.TextSecondary;
 			shuffleButton.BackgroundColor = Colors.Transparent;
-			shuffleButton.WidthRequest = 52;
-			shuffleButton.HeightRequest = 52;
+			shuffleButton.WidthRequest = 56;
+			shuffleButton.HeightRequest = 56;
 			shuffleButton.VerticalOptions = LayoutOptions.Center;
 			shuffleButton.Clicked += OnShuffleClicked;
 			controlsStack.Children.Add(shuffleButton);
@@ -226,11 +226,11 @@ namespace Thump.Views
 
 			Button repeatButton = new Button();
 			repeatButton.Text = "↻";
-			repeatButton.FontSize = 22;
+			repeatButton.FontSize = 26;
 			repeatButton.TextColor = ThumpColors.TextSecondary;
 			repeatButton.BackgroundColor = Colors.Transparent;
-			repeatButton.WidthRequest = 52;
-			repeatButton.HeightRequest = 52;
+			repeatButton.WidthRequest = 56;
+			repeatButton.HeightRequest = 56;
 			repeatButton.VerticalOptions = LayoutOptions.Center;
 			repeatButton.Clicked += OnRepeatClicked;
 			controlsStack.Children.Add(repeatButton);
@@ -249,7 +249,9 @@ namespace Thump.Views
 			favoriteButton.Text = "♡  Favorite";
 			favoriteButton.TextColor = ThumpColors.TextSecondary;
 			favoriteButton.BackgroundColor = Colors.Transparent;
-			favoriteButton.FontSize = 13;
+			favoriteButton.FontSize = 16;
+			favoriteButton.HeightRequest = 48;
+			favoriteButton.Padding = new Thickness(16, 8);
 			favoriteButton.Clicked += OnFavoriteClicked;
 			actionsStack.Children.Add(favoriteButton);
 
@@ -257,7 +259,9 @@ namespace Thump.Views
 			queueButton.Text = "≣  Queue";
 			queueButton.TextColor = ThumpColors.TextSecondary;
 			queueButton.BackgroundColor = Colors.Transparent;
-			queueButton.FontSize = 13;
+			queueButton.FontSize = 16;
+			queueButton.HeightRequest = 48;
+			queueButton.Padding = new Thickness(16, 8);
 			queueButton.Clicked += OnQueueClicked;
 			actionsStack.Children.Add(queueButton);
 

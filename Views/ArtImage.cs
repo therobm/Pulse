@@ -55,6 +55,11 @@ namespace Thump.Views
 			ApplyShape();
 		}
 
+		public void SetAspect(Aspect aspect)
+		{
+			m_image.Aspect = aspect;
+		}
+
 		private void ApplyShape()
 		{
 			if (m_shape == eArtShape.Circle)

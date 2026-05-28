@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
+using Microsoft.Maui.Controls.Shapes;
 using Microsoft.Maui.Graphics;
 using Thump.Pulse;
 using Thump.Views.Tiles;
@@ -51,12 +52,13 @@ namespace Thump.Views
 		private Button m_sortDateAdded;
 		private Button m_sortDateReleased;
 		private Button m_layoutToggle;
+		private Button m_jumpButton;
 
 		private CollectionView m_artistsList;
 		private CollectionView m_albumsList;
 		private CollectionView m_playlistsList;
 		private CollectionView m_genresList;
-		private VerticalStackLayout m_letterStrip;
+		private Grid m_letterOverlay;
 
 		private List<PulseArtist> m_artists;
 		private List<PulseAlbum> m_albums;
@@ -91,6 +93,11 @@ namespace Thump.Views
 			grid.Children.Add(BuildButtons());
 			grid.Children.Add(BuildSortRow());
 			grid.Children.Add(BuildListArea());
+
+			View overlay = BuildLetterOverlay();
+			Grid.SetRow(overlay, 0);
+			Grid.SetRowSpan(overlay, 4);
+			grid.Children.Add(overlay);
 
 			Content = grid;
 		}
@@ -181,6 +188,22 @@ namespace Thump.Views
 			Grid.SetColumn(sortStack, 0);
 			sortGrid.Children.Add(sortStack);
 
+			HorizontalStackLayout rightStack = new HorizontalStackLayout();
+			rightStack.Spacing = 8;
+			rightStack.VerticalOptions = LayoutOptions.Center;
+
+			m_jumpButton = new Button();
+			m_jumpButton.Text = "A–Z ▾";
+			m_jumpButton.TextColor = s_buttonInactiveText;
+			m_jumpButton.BackgroundColor = s_buttonInactiveBackground;
+			m_jumpButton.CornerRadius = 16;
+			m_jumpButton.FontSize = 13;
+			m_jumpButton.Padding = new Thickness(14, 4);
+			m_jumpButton.HeightRequest = 32;
+			m_jumpButton.VerticalOptions = LayoutOptions.Center;
+			m_jumpButton.Clicked += OnJumpButtonClicked;
+			rightStack.Children.Add(m_jumpButton);
+
 			m_layoutToggle = new Button();
 			m_layoutToggle.Text = "Grid";
 			m_layoutToggle.TextColor = s_buttonInactiveText;
@@ -191,8 +214,10 @@ namespace Thump.Views
 			m_layoutToggle.HeightRequest = 32;
 			m_layoutToggle.VerticalOptions = LayoutOptions.Center;
 			m_layoutToggle.Clicked += OnLayoutToggleClicked;
-			Grid.SetColumn(m_layoutToggle, 1);
-			sortGrid.Children.Add(m_layoutToggle);
+			rightStack.Children.Add(m_layoutToggle);
+
+			Grid.SetColumn(rightStack, 1);
+			sortGrid.Children.Add(rightStack);
 
 			Grid.SetRow(sortGrid, 2);
 			return sortGrid;
@@ -212,25 +237,9 @@ namespace Thump.Views
 
 		private View BuildListArea()
 		{
-			Grid listArea = new Grid();
-
-			ColumnDefinition listColumn = new ColumnDefinition();
-			listColumn.Width = GridLength.Star;
-			ColumnDefinition stripColumn = new ColumnDefinition();
-			stripColumn.Width = GridLength.Auto;
-			listArea.ColumnDefinitions.Add(listColumn);
-			listArea.ColumnDefinitions.Add(stripColumn);
-
 			View lists = BuildLists();
-			Grid.SetColumn(lists, 0);
-			listArea.Children.Add(lists);
-
-			View strip = BuildLetterStrip();
-			Grid.SetColumn(strip, 1);
-			listArea.Children.Add(strip);
-
-			Grid.SetRow(listArea, 3);
-			return listArea;
+			Grid.SetRow(lists, 3);
+			return lists;
 		}
 
 		private View BuildLists()
@@ -260,30 +269,83 @@ namespace Thump.Views
 			return listContainer;
 		}
 
-		private View BuildLetterStrip()
+		private View BuildLetterOverlay()
 		{
-			m_letterStrip = new VerticalStackLayout();
-			m_letterStrip.Spacing = 0;
-			m_letterStrip.Padding = new Thickness(6, 0);
-			m_letterStrip.VerticalOptions = LayoutOptions.Center;
+			m_letterOverlay = new Grid();
+			m_letterOverlay.BackgroundColor = Color.FromArgb("#CC000000");
+			m_letterOverlay.IsVisible = false;
 
-			for (char letter = 'A'; letter <= 'Z'; letter++)
+			TapGestureRecognizer backdropTap = new TapGestureRecognizer();
+			backdropTap.Tapped += OnLetterOverlayBackdropTapped;
+			m_letterOverlay.GestureRecognizers.Add(backdropTap);
+
+			Border panel = new Border();
+			panel.BackgroundColor = ThumpColors.Surface;
+			panel.Stroke = new SolidColorBrush(ThumpColors.Divider);
+			panel.StrokeThickness = 1;
+			panel.Padding = new Thickness(16);
+			panel.HorizontalOptions = LayoutOptions.Center;
+			panel.VerticalOptions = LayoutOptions.Center;
+
+			RoundRectangle panelShape = new RoundRectangle();
+			panelShape.CornerRadius = new CornerRadius(16);
+			panel.StrokeShape = panelShape;
+
+			// Swallow taps on the panel so they don't reach the dismiss backdrop.
+			TapGestureRecognizer panelTap = new TapGestureRecognizer();
+			panelTap.Tapped += OnLetterPanelTapped;
+			panel.GestureRecognizers.Add(panelTap);
+
+			panel.Content = BuildLetterGrid();
+			m_letterOverlay.Children.Add(panel);
+
+			return m_letterOverlay;
+		}
+
+		private View BuildLetterGrid()
+		{
+			Grid letterGrid = new Grid();
+			letterGrid.RowSpacing = 6;
+			letterGrid.ColumnSpacing = 6;
+
+			int columns = 6;
+			for (int column = 0; column < columns; column++)
 			{
-				Label letterLabel = new Label();
-				letterLabel.Text = letter.ToString();
-				letterLabel.FontSize = 10;
-				letterLabel.TextColor = ThumpColors.TextSecondary;
-				letterLabel.HorizontalTextAlignment = TextAlignment.Center;
-				letterLabel.WidthRequest = 18;
-
-				TapGestureRecognizer tap = new TapGestureRecognizer();
-				tap.Tapped += OnLetterTapped;
-				letterLabel.GestureRecognizers.Add(tap);
-
-				m_letterStrip.Children.Add(letterLabel);
+				ColumnDefinition columnDefinition = new ColumnDefinition();
+				columnDefinition.Width = GridLength.Auto;
+				letterGrid.ColumnDefinitions.Add(columnDefinition);
 			}
 
-			return m_letterStrip;
+			int totalLetters = 26;
+			int rows = (totalLetters + columns - 1) / columns;
+			for (int row = 0; row < rows; row++)
+			{
+				RowDefinition rowDefinition = new RowDefinition();
+				rowDefinition.Height = GridLength.Auto;
+				letterGrid.RowDefinitions.Add(rowDefinition);
+			}
+
+			for (int index = 0; index < totalLetters; index++)
+			{
+				char letter = (char)('A' + index);
+				Button letterButton = new Button();
+				letterButton.Text = letter.ToString();
+				letterButton.FontSize = 16;
+				letterButton.FontFamily = "PoppinsSemiBold";
+				letterButton.TextColor = ThumpColors.OnBackground;
+				letterButton.BackgroundColor = ThumpColors.SurfaceElevated;
+				letterButton.CornerRadius = 8;
+				letterButton.Padding = new Thickness(0);
+				letterButton.WidthRequest = 44;
+				letterButton.HeightRequest = 44;
+				letterButton.Clicked += OnLetterButtonClicked;
+
+				Grid.SetRow(letterButton, index / columns);
+				Grid.SetColumn(letterButton, index % columns);
+				letterGrid.Children.Add(letterButton);
+			}
+
+			return letterGrid;
 		}
 
 		public override void Initialize()
@@ -463,7 +525,7 @@ namespace Thump.Views
 				m_sortDateAdded.TextColor = ThumpColors.Accent;
 			}
 
-			m_letterStrip.IsVisible = sort == eLibrarySort.Alphabetical;
+			m_jumpButton.IsVisible = sort == eLibrarySort.Alphabetical;
 
 			BindArtists();
 			BindAlbums();
@@ -583,14 +645,29 @@ namespace Thump.Views
 			return names;
 		}
 
-		private void OnLetterTapped(object sender, EventArgs e)
+		private void OnJumpButtonClicked(object sender, EventArgs e)
 		{
-			Label label = sender as Label;
-			if (label == null)
+			m_letterOverlay.IsVisible = true;
+		}
+
+		private void OnLetterOverlayBackdropTapped(object sender, EventArgs e)
+		{
+			m_letterOverlay.IsVisible = false;
+		}
+
+		private void OnLetterPanelTapped(object sender, EventArgs e)
+		{
+		}
+
+		private void OnLetterButtonClicked(object sender, EventArgs e)
+		{
+			Button button = sender as Button;
+			if (button == null)
 			{
 				return;
 			}
-			int index = FindFirstIndexForLetter(label.Text);
+			m_letterOverlay.IsVisible = false;
+			int index = FindFirstIndexForLetter(button.Text);
 			if (index < 0)
 			{
 				return;
