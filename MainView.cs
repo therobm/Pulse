@@ -39,7 +39,7 @@ namespace Thump
 		private NavFooter m_navFooter;
 
 		private eTab m_activeTab = eTab.Home;
-		private bool m_inDetailView;
+		private List<View> m_detailStack = new List<View>();
 
 		private List<PulseTrack> m_currentQueue = new List<PulseTrack>();
 		private int m_currentQueueIndex;
@@ -130,7 +130,7 @@ namespace Thump
 		public void NavigateToHome()
 		{
 			m_activeTab = eTab.Home;
-			m_inDetailView = false;
+			m_detailStack.Clear();
 			m_contentHost.Content = m_homeView;
 			m_navFooter.SetActiveTab(eTab.Home);
 		}
@@ -138,7 +138,7 @@ namespace Thump
 		public void NavigateToLibrary()
 		{
 			m_activeTab = eTab.Library;
-			m_inDetailView = false;
+			m_detailStack.Clear();
 			m_contentHost.Content = m_libraryView;
 			m_navFooter.SetActiveTab(eTab.Library);
 		}
@@ -146,7 +146,7 @@ namespace Thump
 		public void NavigateToSearch()
 		{
 			m_activeTab = eTab.Search;
-			m_inDetailView = false;
+			m_detailStack.Clear();
 			m_contentHost.Content = m_searchView;
 			m_navFooter.SetActiveTab(eTab.Search);
 		}
@@ -154,24 +154,29 @@ namespace Thump
 		public void NavigateToSettings()
 		{
 			m_activeTab = eTab.Settings;
-			m_inDetailView = false;
+			m_detailStack.Clear();
 			m_contentHost.Content = m_settingsView;
 			m_navFooter.SetActiveTab(eTab.Settings);
 		}
 
 		private void PushDetail(View detail)
 		{
-			m_inDetailView = true;
+			m_detailStack.Add(detail);
 			m_contentHost.Content = detail;
 		}
 
 		public void OnBackPressed()
 		{
-			if (!m_inDetailView)
+			if (m_detailStack.Count == 0)
 			{
 				return;
 			}
-			m_inDetailView = false;
+			m_detailStack.RemoveAt(m_detailStack.Count - 1);
+			if (m_detailStack.Count > 0)
+			{
+				m_contentHost.Content = m_detailStack[m_detailStack.Count - 1];
+				return;
+			}
 			if (m_activeTab == eTab.Home)
 			{
 				m_contentHost.Content = m_homeView;
@@ -192,7 +197,7 @@ namespace Thump
 
 		protected override bool OnBackButtonPressed()
 		{
-			if (m_inDetailView)
+			if (m_detailStack.Count > 0)
 			{
 				OnBackPressed();
 				return true;
