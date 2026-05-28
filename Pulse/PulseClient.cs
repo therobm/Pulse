@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Maui.ApplicationModel;
 using Thump.Data;
@@ -124,31 +123,78 @@ namespace Thump.Pulse
 
 	public class PulseClient
 	{
-		private readonly HttpClient m_httpClient;
-		private readonly string m_baseUrl;
-		private readonly string m_user;
-		private readonly string m_apiParams;
-		private readonly ConcurrentDictionary<string, byte[]> m_imageCache = new ConcurrentDictionary<string, byte[]>();
-
-		public PulseClient(string baseUrl, string user)
+		public enum eSubSonicAuthType
 		{
-			m_baseUrl = baseUrl.TrimEnd('/');
-			m_user = user;
-			m_apiParams = "u=" + m_user + "&p=enc:&v=1.13.0&c=PulseMaui&f=json";
+			Token,
+			Legacy
+		}
+		
+		private HttpClient m_httpClient;
+		private string m_baseUrl;
+		private string m_user;
+		private string m_apiParams;
+		private eSubSonicAuthType m_authType;
+
+		private bool m_bIsOnline = false;
+		/// <summary>
+		/// todo this seems dumb now that we have a real cache
+		/// </summary>
+		private ConcurrentDictionary<string, byte[]> m_imageCache = new ConcurrentDictionary<string, byte[]>();
+
+		public PulseClient()
+		{
+		}
+
+		public void SetServerParams(string ip, string port, string username, string password, eSubSonicAuthType authType, bool enableSSL)
+		{
+			//todo validate these strings
+
+			string prefix = "http://";
+			if (enableSSL)
+				prefix = "https://";
+
+			m_baseUrl = prefix + ip + ":" + port;
+			m_user = username;
+			m_apiParams = "u=" + m_user + "&p=enc:"+ password + "&v=1.13.0&c=PulseMaui&f=json";
+			m_authType = authType;
+
+			if (m_httpClient != null)
+				m_httpClient.Dispose();
+
 			HttpClientHandler handler = new HttpClientHandler();
 			handler.ServerCertificateCustomValidationCallback = AcceptAnyServerCertificate;
 			m_httpClient = new HttpClient(handler);
 			m_httpClient.Timeout = TimeSpan.FromSeconds(10);
+			TestConnection(out JsonElement discard);
 		}
 
+		public bool TestConnection(out JsonElement response)
+		{
+			try
+			{
+				if (SubsonicGet("ping", out response))
+				{
+					m_bIsOnline = true;
+					return true;
+				}
+			}
+			catch (Exception ex)
+			{
+				Log.Exception(ex);
+			}
+			m_bIsOnline = false;
+			response = default;
+			return false;
+		}
 		private static bool AcceptAnyServerCertificate(HttpRequestMessage request, System.Security.Cryptography.X509Certificates.X509Certificate2 certificate, System.Security.Cryptography.X509Certificates.X509Chain chain, System.Net.Security.SslPolicyErrors errors)
 		{
+
 			return true;
 		}
 
 		public bool IsOnline()
 		{
-			return true;
+			return m_bIsOnline;
 		}
 		public string BuildStreamUrl(string trackId)
 		{
@@ -332,7 +378,39 @@ namespace Thump.Pulse
 
 		public void GetAlbums(Action<List<PulseAlbum>> onComplete)
 		{
-			MainThread.BeginInvokeOnMainThread(() => { onComplete(null); });
+			// Placeholder preview data: no library-albums route exists yet.
+			List<PulseAlbum> results = BuildPlaceholderAlbums();
+			MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
+		}
+
+		private List<PulseAlbum> BuildPlaceholderAlbums()
+		{
+			List<PulseAlbum> albums = new List<PulseAlbum>();
+			albums.Add(MakePlaceholderAlbum("ph-album-1", "Midnight Geometry", "Aurora Sky", 2023, 11));
+			albums.Add(MakePlaceholderAlbum("ph-album-2", "Coastlines", "The Pale Hours", 2021, 9));
+			albums.Add(MakePlaceholderAlbum("ph-album-3", "Neon Cartography", "Vector Field", 2024, 13));
+			albums.Add(MakePlaceholderAlbum("ph-album-4", "Slow Tide", "Marigold", 2019, 8));
+			albums.Add(MakePlaceholderAlbum("ph-album-5", "Paper Cities", "North Bell", 2022, 10));
+			albums.Add(MakePlaceholderAlbum("ph-album-6", "Quiet Engines", "Halcyon Drift", 2020, 12));
+			albums.Add(MakePlaceholderAlbum("ph-album-7", "Glass Apartments", "Saffron", 2023, 7));
+			albums.Add(MakePlaceholderAlbum("ph-album-8", "Borrowed Light", "Evening Standard", 2018, 14));
+			albums.Add(MakePlaceholderAlbum("ph-album-9", "Threshold", "Cobalt Lake", 2024, 10));
+			albums.Add(MakePlaceholderAlbum("ph-album-10", "Wildflower Static", "Junewren", 2021, 9));
+			albums.Add(MakePlaceholderAlbum("ph-album-11", "Afterimage", "The Lyon Set", 2022, 11));
+			albums.Add(MakePlaceholderAlbum("ph-album-12", "Long Division", "Pacific Theory", 2017, 13));
+			return albums;
+		}
+
+		private PulseAlbum MakePlaceholderAlbum(string id, string name, string artist, int year, int songCount)
+		{
+			PulseAlbum album = new PulseAlbum();
+			album.Id = id;
+			album.Name = name;
+			album.Artist = artist;
+			album.Year = year;
+			album.SongCount = songCount;
+			album.Duration = songCount * 215;
+			return album;
 		}
 
 		public void CreatePlaylist(string name, Action<PulsePlaylist> onComplete)
@@ -749,12 +827,76 @@ namespace Thump.Pulse
 	
 		public void GetRecentlyAdded(Action<List<PulseObject>> onComplete)
 		{
-			MainThread.BeginInvokeOnMainThread(() => { onComplete(null); });
+			// Placeholder preview data: no recently-added route exists yet.
+			List<PulseObject> results = new List<PulseObject>();
+			results.Add(MakePlaceholderAlbum("ph-recent-1", "Ember Season", "Lantern Field", 2024, 10));
+			results.Add(MakePlaceholderAlbum("ph-recent-2", "Static Bloom", "Tidewell", 2024, 8));
+			results.Add(MakePlaceholderAlbum("ph-recent-3", "Cassette Sun", "Maple & Wren", 2024, 12));
+			results.Add(MakePlaceholderAlbum("ph-recent-4", "Soft Machinery", "The Hollows", 2023, 9));
+			results.Add(MakePlaceholderAlbum("ph-recent-5", "Driftwood Radio", "Otto Grey", 2023, 11));
+			results.Add(MakePlaceholderAlbum("ph-recent-6", "Northern Letters", "Sable Coast", 2024, 7));
+			results.Add(MakePlaceholderAlbum("ph-recent-7", "Velvet Antenna", "Cinder Lane", 2023, 13));
+			results.Add(MakePlaceholderAlbum("ph-recent-8", "Gentle Riot", "Postcard Town", 2024, 10));
+			MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
 		}
 
 		public void GetGenres(Action<List<PulseGenre>> onComplete)
 		{
-			MainThread.BeginInvokeOnMainThread(() => { onComplete(null); });
+			// Placeholder preview data: no genres route exists yet.
+			List<PulseGenre> results = new List<PulseGenre>();
+			results.Add(MakePlaceholderGenre("Indie Rock", 482, 53));
+			results.Add(MakePlaceholderGenre("Electronic", 671, 74));
+			results.Add(MakePlaceholderGenre("Jazz", 318, 41));
+			results.Add(MakePlaceholderGenre("Ambient", 207, 29));
+			results.Add(MakePlaceholderGenre("Hip-Hop", 540, 62));
+			results.Add(MakePlaceholderGenre("Classical", 396, 47));
+			results.Add(MakePlaceholderGenre("Folk", 245, 33));
+			results.Add(MakePlaceholderGenre("Synthwave", 168, 22));
+			MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
+		}
+
+		private PulseGenre MakePlaceholderGenre(string name, int songCount, int albumCount)
+		{
+			PulseGenre genre = new PulseGenre();
+			genre.Id = name;
+			genre.Name = name;
+			genre.SongCount = songCount;
+			genre.AlbumCount = albumCount;
+			return genre;
+		}
+
+		public void GetTopItems(Action<List<PulseObject>> onComplete)
+		{
+			// Placeholder preview data for the home top-8 panel: backing route is TBD.
+			List<PulseObject> results = new List<PulseObject>();
+			results.Add(MakePlaceholderAlbum("ph-top-1", "Midnight Geometry", "Aurora Sky", 2023, 11));
+			results.Add(MakePlaceholderPlaylist("ph-top-2", "Late Night Drive", 64));
+			results.Add(MakePlaceholderArtist("ph-top-3", "Vector Field", 6));
+			results.Add(MakePlaceholderAlbum("ph-top-4", "Coastlines", "The Pale Hours", 2021, 9));
+			results.Add(MakePlaceholderPlaylist("ph-top-5", "Focus Flow", 88));
+			results.Add(MakePlaceholderArtist("ph-top-6", "Halcyon Drift", 4));
+			results.Add(MakePlaceholderAlbum("ph-top-7", "Paper Cities", "North Bell", 2022, 10));
+			results.Add(MakePlaceholderPlaylist("ph-top-8", "Weekend Anthems", 52));
+			MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
+		}
+
+		private PulsePlaylist MakePlaceholderPlaylist(string id, string name, int songCount)
+		{
+			PulsePlaylist playlist = new PulsePlaylist();
+			playlist.Id = id;
+			playlist.Name = name;
+			playlist.SongCount = songCount;
+			playlist.Duration = songCount * 210;
+			return playlist;
+		}
+
+		private PulseArtist MakePlaceholderArtist(string id, string name, int albumCount)
+		{
+			PulseArtist artist = new PulseArtist();
+			artist.Id = id;
+			artist.Name = name;
+			artist.AlbumCount = albumCount;
+			return artist;
 		}
 
 		public void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete)

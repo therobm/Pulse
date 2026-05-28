@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Storage;
 using Thump.Data;
@@ -16,14 +17,16 @@ namespace Thump
 		Settings,
 	}
 
-	public partial class MainView : ContentPage
+	public class MainView : ContentPage
 	{
-        public static MainView Self { get { return s_self; } }
-        public static ThumpData Data { get { return Self.m_data; } }
-
-        private static MainView s_self;
+		public static MainView Self { get { return s_self; } }
+		public static ThumpData Data { get { return Self.m_data; } }
+		
+		private static MainView s_self;
 		private PulseClient m_pulseClient;
 		private ThumpCache m_cache;
+		private Grid m_rootGrid;
+		private ContentView m_contentHost;
 		private HomeView m_homeView;
 		private LibraryView m_libraryView;
 		private SearchView m_searchView;
@@ -37,15 +40,36 @@ namespace Thump
 		private List<PulseTrack> m_currentQueue = new List<PulseTrack>();
 		private int m_currentQueueIndex;
 		private PulseTrack m_currentTrack;
-        private ThumpData m_data;
+		private ThumpData m_data;
 
 		public MainView()
 		{
-            s_self = this;
+			s_self = this;
 
-			InitializeComponent();
+			Shell.SetNavBarIsVisible(this, false);
+			Shell.SetTabBarIsVisible(this, false);
+			BackgroundColor = ThumpColors.Background;
 
-			m_pulseClient = new PulseClient("https://192.168.5.5:32458", "Rob");
+			m_rootGrid = new Grid();
+			RowDefinition contentRow = new RowDefinition();
+			contentRow.Height = GridLength.Star;
+			m_rootGrid.RowDefinitions.Add(contentRow);
+			RowDefinition miniPlayerRow = new RowDefinition();
+			miniPlayerRow.Height = GridLength.Auto;
+			m_rootGrid.RowDefinitions.Add(miniPlayerRow);
+			RowDefinition navFooterRow = new RowDefinition();
+			navFooterRow.Height = GridLength.Auto;
+			m_rootGrid.RowDefinitions.Add(navFooterRow);
+
+			m_contentHost = new ContentView();
+			Grid.SetRow(m_contentHost, 0);
+			m_rootGrid.Children.Add(m_contentHost);
+
+			Content = m_rootGrid;
+
+			m_pulseClient = new PulseClient();
+			m_pulseClient.SetServerParams("192.168.5.5","32458", "Rob", "asdf", PulseClient.eSubSonicAuthType.Token, true);
+
 			string cacheRoot = FileSystem.CacheDirectory;
 			string databasePath = Path.Combine(cacheRoot, "thump.db");
 			string blobDirectory = Path.Combine(cacheRoot, "blobs");
@@ -76,7 +100,10 @@ namespace Thump
 			NavigateToHome();
 		}
 
-
+		public ThumpCache GetCache()
+		{
+			return m_cache;
+		}
 		public void NavigateToHome()
 		{
 			m_activeTab = eTab.Home;
@@ -109,7 +136,6 @@ namespace Thump
 			m_navFooter.SetActiveTab(eTab.Settings);
 		}
 
-
 		private void PushDetail(View detail)
 		{
 			m_inDetailView = true;
@@ -140,7 +166,6 @@ namespace Thump
 				m_contentHost.Content = m_settingsView;
 			}
 		}
-
 
 		public void OnArtistSelected(PulseArtist artist)
 		{
@@ -175,30 +200,36 @@ namespace Thump
 			if (item.Kind == eDataType.Album)
 			{
 				PulseAlbum album = item as PulseAlbum;
-                if (album != null)
-    				OnAlbumSelected(album);
+				if (album != null)
+				{
+					OnAlbumSelected(album);
+				}
 			}
 			else if (item.Kind == eDataType.Playlist)
 			{
 				PulsePlaylist playlist = item as PulsePlaylist;
-                if (playlist != null)
-    				OnPlaylistSelected(playlist);
+				if (playlist != null)
+				{
+					OnPlaylistSelected(playlist);
+				}
 			}
 			else if (item.Kind == eDataType.Artist)
 			{
 				PulseArtist artist = item as PulseArtist;
-                if (artist != null)
-    				OnArtistSelected(artist);
+				if (artist != null)
+				{
+					OnArtistSelected(artist);
+				}
 			}
 			else if (item.Kind == eDataType.Track)
 			{
 				PulseTrack song = item as PulseTrack;
-                if (song != null)
-                {
-				    List<PulseTrack> oneShotQueue = new List<PulseTrack>();
-				    oneShotQueue.Add(song);
-				    OnPlayTracks(oneShotQueue, 0);
-                }
+				if (song != null)
+				{
+					List<PulseTrack> oneShotQueue = new List<PulseTrack>();
+					oneShotQueue.Add(song);
+					OnPlayTracks(oneShotQueue, 0);
+				}
 			}
 		}
 
@@ -251,7 +282,6 @@ namespace Thump
 			}
 			PushDetail(nowPlaying);
 		}
-
 
 		public void ShowMiniPlayer()
 		{
