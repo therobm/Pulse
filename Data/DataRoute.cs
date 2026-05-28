@@ -68,23 +68,30 @@ namespace Thump.Data
 				{
 					//fast cache path for quicker loading
                     T cacheData = m_queryDatabase();
-                    if (!networkResolved && m_dataValidator(cacheData))
+                    if (m_dataValidator(cacheData))
                     {
-                        MainThread.BeginInvokeOnMainThread(() => { callback(cacheData); });
+	                    MainThread.BeginInvokeOnMainThread(() => 
+						{
+                            if (!networkResolved)
+                                callback(cacheData); 
+						});
                     }
                 });
 				m_queryNetwork((netData) =>
 				{
 					T retVal = netData;
 
-                    networkResolved = true;
                     if (m_dataValidator(retVal))
                     {
                         if (s_bCacheEnabled)
 						{
 							QueryDB(() => { m_storeDatabase(retVal); });
                         }
-                        MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
+                        MainThread.BeginInvokeOnMainThread(() =>
+                        {
+                            networkResolved = true;
+                            callback(retVal);
+                        });
                     }
 					else
 					{
@@ -95,6 +102,10 @@ namespace Thump.Data
 								retVal = m_queryDatabase();
                                 MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
                             });
+                        }
+                        else
+                        {
+                            MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
                         }
                     }
 
@@ -180,16 +191,20 @@ namespace Thump.Data
                 {
                     //fast cache path for quicker loading
                     T cacheData = m_queryDatabase(id);
-                    if (!networkResolved && m_dataValidator(cacheData))
+                    if (m_dataValidator(cacheData))
                     {
-                        MainThread.BeginInvokeOnMainThread(() => { callback(cacheData); });
+                        MainThread.BeginInvokeOnMainThread(() => 
+						{
+                            if (!networkResolved)
+	                            callback(cacheData); 
+						});
                     }
                 });
 
                 m_queryNetwork(id, (netData) =>
 				{
 					T retVal = netData;
-                    networkResolved = true;
+                  
 
                     if (m_dataValidator(retVal))
                     {
@@ -197,7 +212,11 @@ namespace Thump.Data
 						{ 
 							QueryDB(() => { m_storeDatabase(id, retVal); });
 						}
-                        MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
+                        MainThread.BeginInvokeOnMainThread(() => 
+						{
+                            networkResolved = true;
+                            callback(retVal); 
+						});
                     }
 					else
 					{
@@ -209,6 +228,10 @@ namespace Thump.Data
                                 MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
                             });
 						}
+						else
+                        {
+                            MainThread.BeginInvokeOnMainThread(() => { callback(retVal); });
+                        }
 					}
 
 				});
