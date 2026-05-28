@@ -4,7 +4,7 @@ using Thump.Data;
 
 namespace Thump.Playback
 {
-	[Android.Content.ContentProvider(new string[] { "com.therobm.thump.coverart" })]
+	[Android.Content.ContentProvider(new string[] { "com.therobm.thump.coverart" }, Exported = true)]
 	public class ThumpCoverArtProvider : Android.Content.ContentProvider
 	{
 		private const string s_authority = "com.therobm.thump.coverart";
