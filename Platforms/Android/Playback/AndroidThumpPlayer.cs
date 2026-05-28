@@ -1,8 +1,9 @@
-using System;
 using System.Collections.Generic;
 using System.Timers;
+using Android.Content;
+using Android.Runtime;
 using AndroidX.Media3.Common;
-using AndroidX.Media3.ExoPlayer;
+using AndroidX.Media3.Session;
 using Microsoft.Maui.ApplicationModel;
 using Thump.Pulse;
 
@@ -17,25 +18,51 @@ namespace Thump.Playback
 		private const double s_tickIntervalMs = 500;
 
 		private MainView m_hub;
-		private IExoPlayer m_player;
+		private MediaController m_controller;
+		private Com.Google.Common.Util.Concurrent.IListenableFuture m_controllerFuture;
 		private Timer m_ticker;
 
 		private List<PulseTrack> m_queue = new List<PulseTrack>();
-		private int m_index;
-		private int m_requestToken;
+		private int m_startIndex;
+		private int m_generation;
+		private bool m_pendingPlay;
 		private ePlaybackState m_lastState = ePlaybackState.Idle;
+		private string m_lastMediaId;
 		private bool m_endHandled;
 
 		public AndroidThumpPlayer(MainView hub)
 		{
 			m_hub = hub;
 
-			ExoPlayer.Builder builder = new ExoPlayer.Builder(Android.App.Application.Context);
-			m_player = builder.Build();
+			Context context = Android.App.Application.Context;
+			ComponentName componentName = new ComponentName(context, Java.Lang.Class.FromType(typeof(ThumpPlaybackService)));
+			SessionToken token = new SessionToken(context, componentName);
+			MediaController.Builder controllerBuilder = new MediaController.Builder(context, token);
+			m_controllerFuture = controllerBuilder.BuildAsync();
+			m_controllerFuture.AddListener(new Java.Lang.Runnable(OnControllerConnected), AndroidX.Core.Content.ContextCompat.GetMainExecutor(context));
 
 			m_ticker = new Timer(s_tickIntervalMs);
 			m_ticker.AutoReset = true;
 			m_ticker.Elapsed += OnTickerElapsed;
+		}
+
+		private void OnControllerConnected()
+		{
+			try
+			{
+				Java.Lang.Object result = m_controllerFuture.Get();
+				m_controller = result.JavaCast<MediaController>();
+			}
+			catch (System.Exception ex)
+			{
+				Log.Exception(ex);
+				return;
+			}
+			if (m_pendingPlay)
+			{
+				m_pendingPlay = false;
+				StartQueue();
+			}
 		}
 
 		public void Play(List<PulseTrack> tracks, int startIndex)
@@ -45,109 +72,179 @@ namespace Thump.Playback
 				return;
 			}
 			m_queue = tracks;
-			PlayIndex(startIndex);
+			m_startIndex = startIndex;
+			m_generation = m_generation + 1;
+			m_endHandled = false;
+			m_lastMediaId = null;
+
+			if (m_controller == null)
+			{
+				m_pendingPlay = true;
+				return;
+			}
+			StartQueue();
 		}
 
-		private void PlayIndex(int index)
+		private void StartQueue()
 		{
-			if (index < 0 || index >= m_queue.Count)
+			if (m_startIndex < 0 || m_startIndex >= m_queue.Count)
 			{
 				return;
 			}
-			m_index = index;
-			m_endHandled = false;
-			m_requestToken = m_requestToken + 1;
-			int token = m_requestToken;
+			int generation = m_generation;
+			m_controller.ClearMediaItems();
 
-			PulseTrack track = m_queue[index];
-			m_hub.OnCurrentTrackChanged(track);
-			ReportState(ePlaybackState.Buffering);
-
-			MainView.Data.GetTrackAudioFile(track, (localPath) =>
+			PulseTrack startTrack = m_queue[m_startIndex];
+			MainView.Data.GetTrackAudioFile(startTrack, (localPath) =>
 			{
-				OnTrackFileReady(token, localPath);
+				if (generation != m_generation)
+				{
+					return;
+				}
+				if (string.IsNullOrEmpty(localPath))
+				{
+					Log.Error("AndroidThumpPlayer: failed to obtain audio file for start track.");
+					ReportState(ePlaybackState.Idle);
+					return;
+				}
+				MediaItem item = BuildMediaItem(startTrack, localPath);
+				m_controller.SetMediaItem(item);
+				m_controller.Prepare();
+				m_controller.Play();
+				m_ticker.Start();
+
+				m_lastMediaId = startTrack.Id;
+				m_hub.OnCurrentTrackChanged(startTrack);
+
+				FillForward(m_startIndex + 1, generation);
+				FillBackward(m_startIndex - 1, generation);
 			});
 		}
 
-		private void OnTrackFileReady(int token, string localPath)
+		private void FillForward(int index, int generation)
 		{
-			if (token != m_requestToken)
+			if (generation != m_generation || index >= m_queue.Count)
 			{
 				return;
 			}
-			if (string.IsNullOrEmpty(localPath))
+			PulseTrack track = m_queue[index];
+			MainView.Data.GetTrackAudioFile(track, (localPath) =>
 			{
-				Log.Error("AndroidThumpPlayer: failed to obtain audio file for current track.");
-				ReportState(ePlaybackState.Idle);
+				if (generation != m_generation)
+				{
+					return;
+				}
+				if (!string.IsNullOrEmpty(localPath))
+				{
+					m_controller.AddMediaItem(BuildMediaItem(track, localPath));
+				}
+				FillForward(index + 1, generation);
+			});
+		}
+
+		private void FillBackward(int index, int generation)
+		{
+			if (generation != m_generation || index < 0)
+			{
 				return;
+			}
+			PulseTrack track = m_queue[index];
+			MainView.Data.GetTrackAudioFile(track, (localPath) =>
+			{
+				if (generation != m_generation)
+				{
+					return;
+				}
+				if (!string.IsNullOrEmpty(localPath))
+				{
+					m_controller.AddMediaItem(0, BuildMediaItem(track, localPath));
+				}
+				FillBackward(index - 1, generation);
+			});
+		}
+
+		private static MediaItem BuildMediaItem(PulseTrack track, string localPath)
+		{
+			MediaMetadata.Builder metadata = new MediaMetadata.Builder();
+			metadata.SetTitle(track.Title);
+			metadata.SetArtist(track.Artist);
+			if (!string.IsNullOrEmpty(track.Album))
+			{
+				metadata.SetAlbumTitle(track.Album);
 			}
 
 			Android.Net.Uri uri = Android.Net.Uri.FromFile(new Java.IO.File(localPath));
-			MediaItem item = MediaItem.FromUri(uri);
-			m_player.SetMediaItem(item);
-			m_player.Prepare();
-			m_player.PlayWhenReady = true;
-
-			m_ticker.Start();
+			MediaItem.Builder builder = new MediaItem.Builder();
+			builder.SetMediaId(track.Id);
+			builder.SetUri(uri);
+			builder.SetMediaMetadata(metadata.Build());
+			return builder.Build();
 		}
 
 		public void Pause()
 		{
-			if (m_player == null)
+			if (m_controller == null)
 			{
 				return;
 			}
-			m_player.Pause();
+			m_controller.Pause();
 		}
 
 		public void Resume()
 		{
-			if (m_player == null)
+			if (m_controller == null)
 			{
 				return;
 			}
-			m_player.Play();
+			m_controller.Play();
 		}
 
 		public void SeekTo(long positionMilliseconds)
 		{
-			if (m_player == null)
+			if (m_controller == null)
 			{
 				return;
 			}
-			m_player.SeekTo(positionMilliseconds);
+			m_controller.SeekTo(positionMilliseconds);
 		}
 
 		public void Next()
 		{
-			PlayIndex(m_index + 1);
+			if (m_controller == null)
+			{
+				return;
+			}
+			m_controller.SeekToNextMediaItem();
 		}
 
 		public void Previous()
 		{
-			PlayIndex(m_index - 1);
+			if (m_controller == null)
+			{
+				return;
+			}
+			m_controller.SeekToPreviousMediaItem();
 		}
 
 		public void Stop()
 		{
 			m_ticker.Stop();
-			if (m_player == null)
+			if (m_controller == null)
 			{
 				return;
 			}
-			m_player.Stop();
+			m_controller.Stop();
 			ReportState(ePlaybackState.Idle);
 		}
 
 		public void Release()
 		{
 			m_ticker.Stop();
-			if (m_player == null)
+			if (m_controller != null)
 			{
-				return;
+				m_controller.Release();
+				m_controller = null;
 			}
-			m_player.Release();
-			m_player = null;
 		}
 
 		private void OnTickerElapsed(object sender, ElapsedEventArgs e)
@@ -160,13 +257,13 @@ namespace Thump.Playback
 
 		private void Tick()
 		{
-			if (m_player == null)
+			if (m_controller == null)
 			{
 				return;
 			}
 
-			int playbackState = m_player.PlaybackState;
-			bool isPlaying = m_player.IsPlaying;
+			int playbackState = m_controller.PlaybackState;
+			bool isPlaying = m_controller.IsPlaying;
 
 			ePlaybackState mapped;
 			if (playbackState == s_stateEnded)
@@ -192,40 +289,71 @@ namespace Thump.Playback
 			{
 				mapped = ePlaybackState.Idle;
 			}
-
 			ReportState(mapped);
 
-			long position = m_player.CurrentPosition;
-			long duration = m_player.Duration;
-			if (duration < 0)
-			{
-				duration = 0;
-			}
+			long position = m_controller.CurrentPosition;
+			long duration = m_controller.Duration;
 			if (position < 0)
 			{
 				position = 0;
 			}
+			if (duration < 0)
+			{
+				duration = 0;
+			}
 			m_hub.OnPlaybackPositionChanged(position, duration);
+
+			DetectTrackChange();
 
 			if (playbackState == s_stateEnded)
 			{
-				HandleTrackEnded();
+				HandleQueueEnded();
 			}
 		}
 
-		private void HandleTrackEnded()
+		private void DetectTrackChange()
+		{
+			MediaItem current = m_controller.CurrentMediaItem;
+			if (current == null)
+			{
+				return;
+			}
+			string mediaId = current.MediaId;
+			if (string.IsNullOrEmpty(mediaId))
+			{
+				return;
+			}
+			if (mediaId == m_lastMediaId)
+			{
+				return;
+			}
+			m_lastMediaId = mediaId;
+			PulseTrack track = FindTrackById(mediaId);
+			if (track != null)
+			{
+				m_hub.OnCurrentTrackChanged(track);
+			}
+		}
+
+		private PulseTrack FindTrackById(string trackId)
+		{
+			for (int idx = 0; idx < m_queue.Count; idx++)
+			{
+				if (m_queue[idx].Id == trackId)
+				{
+					return m_queue[idx];
+				}
+			}
+			return null;
+		}
+
+		private void HandleQueueEnded()
 		{
 			if (m_endHandled)
 			{
 				return;
 			}
 			m_endHandled = true;
-
-			if (m_index < m_queue.Count - 1)
-			{
-				PlayIndex(m_index + 1);
-				return;
-			}
 			m_ticker.Stop();
 			m_hub.OnTrackEnded();
 		}
