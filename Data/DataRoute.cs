@@ -1,13 +1,12 @@
+
 using Microsoft.Maui.ApplicationModel;
 using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Thump.Data
 {
 	public enum eRouteCachingMethod
 	{
-		NetworkFirst,
+		NetworkAuthorative,
 		LocalFirst,
 	}
 
@@ -15,7 +14,7 @@ namespace Thump.Data
 	{
 		public static bool s_bCacheEnabled = true;
 
-		public eRouteCachingMethod m_cacheType = eRouteCachingMethod.NetworkFirst;
+		public eRouteCachingMethod m_cacheType = eRouteCachingMethod.NetworkAuthorative;
 		protected ThumpData m_dataProvider;
 		public DataRoute(ThumpData dataProvider, eRouteCachingMethod cacheType)
 		{
@@ -62,13 +61,24 @@ namespace Thump.Data
 				return;
 			}
 
-			if (m_cacheType == eRouteCachingMethod.NetworkFirst)
+			if (m_cacheType == eRouteCachingMethod.NetworkAuthorative)
 			{
+                bool networkResolved = false;
+                QueryDB(()=>
+				{
+					//fast cache path for quicker loading
+                    T cacheData = m_queryDatabase();
+                    if (!networkResolved && m_dataValidator(cacheData))
+                    {
+                        MainThread.BeginInvokeOnMainThread(() => { callback(cacheData); });
+                    }
+                });
 				m_queryNetwork((netData) =>
 				{
 					T retVal = netData;
 
-					if (m_dataValidator(retVal))
+                    networkResolved = true;
+                    if (m_dataValidator(retVal))
                     {
                         if (s_bCacheEnabled)
 						{
@@ -163,13 +173,25 @@ namespace Thump.Data
 				return;
 			}
 
-			if (m_cacheType == eRouteCachingMethod.NetworkFirst)
+			if (m_cacheType == eRouteCachingMethod.NetworkAuthorative)
 			{
-				m_queryNetwork(id, (netData) =>
+                bool networkResolved = false;
+                QueryDB(() =>
+                {
+                    //fast cache path for quicker loading
+                    T cacheData = m_queryDatabase(id);
+                    if (!networkResolved && m_dataValidator(cacheData))
+                    {
+                        MainThread.BeginInvokeOnMainThread(() => { callback(cacheData); });
+                    }
+                });
+
+                m_queryNetwork(id, (netData) =>
 				{
 					T retVal = netData;
+                    networkResolved = true;
 
-					if (m_dataValidator(retVal))
+                    if (m_dataValidator(retVal))
                     {
                         if (s_bCacheEnabled)
 						{ 
