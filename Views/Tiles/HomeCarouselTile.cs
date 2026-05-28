@@ -1,16 +1,73 @@
 using System;
+using Microsoft.Maui;
+using Microsoft.Maui.Controls;
 using Thump.Data;
 using Thump.Pulse;
+using Thump.Views;
 
 namespace Thump.Views.Tiles
 {
-	public partial class HomeCarouselTile : ThumpView
+	public class HomeCarouselTile : ThumpView
 	{
+		private ArtImage m_art;
+		private Label m_titleLabel;
+		private Label m_subtitleLabel;
 		private ThumpDataOb m_item;
 
 		public HomeCarouselTile() : base(MainView.Self)
 		{
-			InitializeComponent();
+			
+		}
+
+		protected override void BuildLayout()
+		{
+			WidthRequest = 140;
+
+			StackLayout stack = new StackLayout();
+			stack.Spacing = 6;
+			stack.Padding = new Thickness(6, 0);
+
+			stack.Children.Add(BuildArt());
+			stack.Children.Add(BuildLabels());
+
+			TapGestureRecognizer tap = new TapGestureRecognizer();
+			tap.Tapped += OnTapped;
+			stack.GestureRecognizers.Add(tap);
+
+			Content = stack;
+		}
+
+		private View BuildArt()
+		{
+			m_art = new ArtImage();
+			m_art.WidthRequest = 128;
+			m_art.HeightRequest = 128;
+
+			return m_art;
+		}
+
+		private View BuildLabels()
+		{
+			StackLayout labelStack = new StackLayout();
+			labelStack.Spacing = 6;
+
+			m_titleLabel = new Label();
+			m_titleLabel.Text = "Title";
+			m_titleLabel.TextColor = ThumpColors.OnBackground;
+			m_titleLabel.FontSize = 13;
+			m_titleLabel.LineBreakMode = LineBreakMode.TailTruncation;
+			m_titleLabel.MaxLines = 1;
+			labelStack.Children.Add(m_titleLabel);
+
+			m_subtitleLabel = new Label();
+			m_subtitleLabel.Text = "Subtitle";
+			m_subtitleLabel.TextColor = ThumpColors.TextSecondary;
+			m_subtitleLabel.FontSize = 11;
+			m_subtitleLabel.LineBreakMode = LineBreakMode.TailTruncation;
+			m_subtitleLabel.MaxLines = 1;
+			labelStack.Children.Add(m_subtitleLabel);
+
+			return labelStack;
 		}
 
 		public override void Initialize()

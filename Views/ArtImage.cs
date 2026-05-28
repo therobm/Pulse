@@ -1,18 +1,39 @@
+using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
 
 namespace Thump.Views
 {
-	public partial class ArtImage : ThumpView
+	public class ArtImage : ThumpView
 	{
+		private Border m_border;
+		private Image m_image;
+
 		public ArtImage() : base(MainView.Self)
 		{
-			InitializeComponent();
+			
 		}
 
 		public ArtImage(MainView mainView) : base(mainView)
 		{
-			InitializeComponent();
+			
+		}
+
+		protected override void BuildLayout()
+		{
+			m_image = new Image();
+			m_image.Aspect = Aspect.AspectFill;
+			m_image.IsVisible = false;
+
+			m_border = new Border();
+			m_border.StrokeThickness = 0;
+			m_border.BackgroundColor = ThumpColors.PlaceholderArt;
+			RoundRectangle shape = new RoundRectangle();
+			shape.CornerRadius = new CornerRadius(6);
+			m_border.StrokeShape = shape;
+			m_border.Content = m_image;
+
+			Content = m_border;
 		}
 
 		public override void Initialize()
