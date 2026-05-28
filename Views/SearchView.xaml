@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<views:ThumpView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                 xmlns:views="clr-namespace:Thump.Views"
+                 xmlns:tiles="clr-namespace:Thump.Views.Tiles"
+                 x:Class="Thump.Views.SearchView"
+                 BackgroundColor="#0a0a0c">
+
+	<Grid RowDefinitions="Auto,Auto,*">
+
+		<Label Grid.Row="0"
+		       Text="Search"
+		       FontSize="24"
+		       TextColor="#e8e8ec"
+		       Padding="16,12" />
+
+		<Entry x:Name="m_searchEntry"
+		       Grid.Row="1"
+		       Placeholder="Search artists, albums, songs"
+		       PlaceholderColor="#555568"
+		       TextColor="#e8e8ec"
+		       BackgroundColor="#101014"
+		       FontSize="15"
+		       Margin="16,0,16,12"
+		       Completed="OnSearchCompleted" />
+
+		<ScrollView Grid.Row="2">
+			<StackLayout Spacing="16">
+
+				<Label Text="Artists"
+				       FontSize="16"
+				       TextColor="#e8e8ec"
+				       Padding="16,0" />
+				<CollectionView x:Name="m_artistResults">
+					<CollectionView.ItemTemplate>
+						<DataTemplate>
+							<tiles:ArtistRowTile />
+						</DataTemplate>
+					</CollectionView.ItemTemplate>
+				</CollectionView>
+
+				<Label Text="Albums"
+				       FontSize="16"
+				       TextColor="#e8e8ec"
+				       Padding="16,0" />
+				<CollectionView x:Name="m_albumResults">
+					<CollectionView.ItemTemplate>
+						<DataTemplate>
+							<tiles:AlbumRowTile />
+						</DataTemplate>
+					</CollectionView.ItemTemplate>
+				</CollectionView>
+
+				<Label Text="Songs"
+				       FontSize="16"
+				       TextColor="#e8e8ec"
+				       Padding="16,0" />
+				<CollectionView x:Name="m_songResults">
+					<CollectionView.ItemTemplate>
+						<DataTemplate>
+							<tiles:TrackRowTile />
+						</DataTemplate>
+					</CollectionView.ItemTemplate>
+				</CollectionView>
+
+			</StackLayout>
+		</ScrollView>
+
+	</Grid>
+
+</views:ThumpView>
