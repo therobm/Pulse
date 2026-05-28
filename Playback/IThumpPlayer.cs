@@ -12,6 +12,13 @@ namespace Thump.Playback
 		Ended,
 	}
 
+	public enum eRepeatMode
+	{
+		Off,
+		One,
+		All,
+	}
+
 	public interface IThumpPlayer
 	{
 		void Play(List<PulseTrack> tracks, int startIndex);
@@ -22,5 +29,10 @@ namespace Thump.Playback
 		void Previous();
 		void Stop();
 		void Release();
+		void SetShuffleEnabled(bool enabled);
+		void SetRepeatMode(eRepeatMode mode);
+		void AddToQueue(List<PulseTrack> tracks);
+		void PlayNext(List<PulseTrack> tracks);
+		void SeekToQueueItem(int index);
 	}
 }

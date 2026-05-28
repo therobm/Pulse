@@ -1,4 +1,5 @@
 using Microsoft.Maui.Storage;
+using Thump.Playback;
 using Thump.Pulse;
 
 namespace Thump.Data
@@ -14,6 +15,8 @@ namespace Thump.Data
 	{
 		private const string s_keyScrobble = "thump.playback.scrobble";
 		private const string s_keyNormalize = "thump.playback.normalize";
+		private const string s_keyShuffle = "thump.playback.shuffle";
+		private const string s_keyRepeat = "thump.playback.repeat";
 		private const string s_keyPrefetchCount = "thump.cache.prefetch";
 		private const string s_keyCacheLimitBytes = "thump.cache.limitBytes";
 		private const string s_keyServerIp = "thump.login.ip";
@@ -39,6 +42,25 @@ namespace Thump.Data
 		public static void SetNormalizeVolume(eNormalizeVolume value)
 		{
 			Preferences.Set(s_keyNormalize, (int)value);
+		}
+
+		public static bool GetShuffleEnabled()
+		{
+			return Preferences.Get(s_keyShuffle, false);
+		}
+		public static void SetShuffleEnabled(bool value)
+		{
+			Preferences.Set(s_keyShuffle, value);
+		}
+
+		public static eRepeatMode GetRepeatMode()
+		{
+			int stored = Preferences.Get(s_keyRepeat, (int)eRepeatMode.Off);
+			return (eRepeatMode)stored;
+		}
+		public static void SetRepeatMode(eRepeatMode value)
+		{
+			Preferences.Set(s_keyRepeat, (int)value);
 		}
 
 		public static int GetPrefetchCount()
