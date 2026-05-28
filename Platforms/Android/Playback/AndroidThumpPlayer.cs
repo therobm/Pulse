@@ -5,6 +5,7 @@ using Android.Runtime;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.Session;
 using Microsoft.Maui.ApplicationModel;
+using Thump.Data;
 using Thump.Pulse;
 
 namespace Thump.Playback
@@ -17,9 +18,9 @@ namespace Thump.Playback
 		private const int s_stateEnded = 4;
 		private const double s_tickIntervalMs = 500;
 
-		private MainView m_hub;
+		private MainView m_mainView;
 		private MediaController m_controller;
-		private Com.Google.Common.Util.Concurrent.IListenableFuture m_controllerFuture;
+		private Google.Common.Util.Concurrent.IListenableFuture m_controllerFuture;
 		private Timer m_ticker;
 
 		private List<PulseTrack> m_queue = new List<PulseTrack>();
@@ -29,10 +30,14 @@ namespace Thump.Playback
 		private ePlaybackState m_lastState = ePlaybackState.Idle;
 		private string m_lastMediaId;
 		private bool m_endHandled;
+		private ThumpData m_data;
 
-		public AndroidThumpPlayer(MainView hub)
+		public AndroidThumpPlayer(MainView mainView, ThumpData thumpData)
 		{
-			m_hub = hub;
+			m_mainView = mainView;
+			m_data = thumpData;
+
+			ThumpPlaybackService.s_ThumpData = m_data;
 
 			Context context = Android.App.Application.Context;
 			ComponentName componentName = new ComponentName(context, Java.Lang.Class.FromType(typeof(ThumpPlaybackService)));
@@ -95,7 +100,7 @@ namespace Thump.Playback
 			m_controller.ClearMediaItems();
 
 			PulseTrack startTrack = m_queue[m_startIndex];
-			MainView.Data.GetTrackAudioFile(startTrack, (localPath) =>
+			m_data.GetTrackAudioFile(startTrack, (localPath) =>
 			{
 				if (generation != m_generation)
 				{
@@ -114,7 +119,7 @@ namespace Thump.Playback
 				m_ticker.Start();
 
 				m_lastMediaId = startTrack.Id;
-				m_hub.OnCurrentTrackChanged(startTrack);
+				m_mainView.OnCurrentTrackChanged(startTrack);
 
 				FillForward(m_startIndex + 1, generation);
 				FillBackward(m_startIndex - 1, generation);
@@ -128,7 +133,7 @@ namespace Thump.Playback
 				return;
 			}
 			PulseTrack track = m_queue[index];
-			MainView.Data.GetTrackAudioFile(track, (localPath) =>
+			m_data.GetTrackAudioFile(track, (localPath) =>
 			{
 				if (generation != m_generation)
 				{
@@ -149,7 +154,7 @@ namespace Thump.Playback
 				return;
 			}
 			PulseTrack track = m_queue[index];
-			MainView.Data.GetTrackAudioFile(track, (localPath) =>
+			m_data.GetTrackAudioFile(track, (localPath) =>
 			{
 				if (generation != m_generation)
 				{
@@ -301,7 +306,7 @@ namespace Thump.Playback
 			{
 				duration = 0;
 			}
-			m_hub.OnPlaybackPositionChanged(position, duration);
+			m_mainView.OnPlaybackPositionChanged(position, duration);
 
 			DetectTrackChange();
 
@@ -331,7 +336,7 @@ namespace Thump.Playback
 			PulseTrack track = FindTrackById(mediaId);
 			if (track != null)
 			{
-				m_hub.OnCurrentTrackChanged(track);
+				m_mainView.OnCurrentTrackChanged(track);
 			}
 		}
 
@@ -355,7 +360,7 @@ namespace Thump.Playback
 			}
 			m_endHandled = true;
 			m_ticker.Stop();
-			m_hub.OnTrackEnded();
+			m_mainView.OnTrackEnded();
 		}
 
 		private void ReportState(ePlaybackState state)
@@ -365,7 +370,7 @@ namespace Thump.Playback
 				return;
 			}
 			m_lastState = state;
-			m_hub.OnPlaybackStateChanged(state);
+			m_mainView.OnPlaybackStateChanged(state);
 		}
 	}
 }

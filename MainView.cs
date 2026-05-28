@@ -83,7 +83,7 @@ namespace Thump
 			m_data = new ThumpData(m_pulseClient, m_cache);
 
 #if ANDROID
-			m_player = new AndroidThumpPlayer(this);
+			m_player = new AndroidThumpPlayer(this, m_data);
 #else
 			m_player = new StubThumpPlayer();
 #endif

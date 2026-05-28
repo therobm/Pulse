@@ -1,7 +1,8 @@
 using System.Collections.Generic;
+using AndroidX.Concurrent.Futures;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.Session;
-using Com.Google.Common.Util.Concurrent;
+using Google.Common.Util.Concurrent;
 using Thump.Data;
 using Thump.Pulse;
 
@@ -15,34 +16,47 @@ namespace Thump.Playback
 		private const string s_artistsId = "artists";
 		private const string s_genresId = "genres";
 
-		private static ThumpData s_serviceData;
+		private ThumpData m_serviceData;
 
-		private ThumpData GetData()
+		public ThumpLibraryCallback(ThumpData data)
 		{
-			if (MainView.Self != null)
-			{
-				return MainView.Data;
-			}
-			if (s_serviceData == null)
-			{
-				string cacheRoot = Microsoft.Maui.Storage.FileSystem.CacheDirectory;
-				PulseClient client = new PulseClient(MainView.ServerUrl, MainView.ServerUser);
-				ThumpCache cache = new ThumpCache(System.IO.Path.Combine(cacheRoot, "thump.db"), System.IO.Path.Combine(cacheRoot, "blobs"));
-				s_serviceData = new ThumpData(client, cache);
-			}
-			return s_serviceData;
+			m_serviceData = data;
 		}
+
+		public MediaSession.ConnectionResult OnConnect(MediaSession session, MediaSession.ControllerInfo controller)
+		{
+			return MediaSession.ConnectionResult.Accept(MediaSession.ConnectionResult.DefaultSessionAndLibraryCommands, MediaSession.ConnectionResult.DefaultPlayerCommands);
+		}
+
+		public void OnPostConnect(MediaSession session, MediaSession.ControllerInfo controller)
+		{
+		}
+
+		public void OnDisconnected(MediaSession session, MediaSession.ControllerInfo controller)
+		{
+		}
+
+		public int OnPlayerCommandRequest(MediaSession session, MediaSession.ControllerInfo controller, int playerCommand)
+		{
+			// 0 == SessionResult.RESULT_SUCCESS: allow every player command.
+			return 0;
+		}
+
+		public void OnPlayerInteractionFinished(MediaSession session, MediaSession.ControllerInfo controller, PlayerCommands playerCommands)
+		{
+		}
+
 
 		public IListenableFuture OnGetLibraryRoot(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, MediaLibraryService.LibraryParams libraryParams)
 		{
 			MediaItem root = BuildBrowsableItem(s_rootId, "Thump");
-			return Futures.ImmediateFuture(LibraryResult.OfItem(root, libraryParams));
+			return ImmediateFuture(LibraryResult.OfItem(root, libraryParams));
 		}
 
 		public IListenableFuture OnGetItem(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string mediaId)
 		{
 			MediaItem item = BuildItemForId(mediaId);
-			return Futures.ImmediateFuture(LibraryResult.OfItem(item, null));
+			return ImmediateFuture(LibraryResult.OfItem(item, null));
 		}
 
 		public IListenableFuture OnGetChildren(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string parentId, int page, int pageSize, MediaLibraryService.LibraryParams libraryParams)
@@ -54,19 +68,18 @@ namespace Thump.Playback
 				categories.Add(BuildBrowsableItem(s_playlistsId, "Playlists"));
 				categories.Add(BuildBrowsableItem(s_artistsId, "Artists"));
 				categories.Add(BuildBrowsableItem(s_genresId, "Genres"));
-				return Futures.ImmediateFuture(LibraryResult.OfItemList(categories, libraryParams));
+				return ImmediateFuture(LibraryResult.OfItemList(categories, libraryParams));
 			}
 
-			SettableFuture future = SettableFuture.Create();
-			LoadChildren(parentId, libraryParams, future);
-			return future;
+			ChildrenResolver resolver = new ChildrenResolver(this, parentId, libraryParams);
+			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(resolver);
 		}
 
-		private void LoadChildren(string parentId, MediaLibraryService.LibraryParams libraryParams, SettableFuture future)
+		private void LoadChildren(string parentId, MediaLibraryService.LibraryParams libraryParams, CallbackToFutureAdapter.Completer completer)
 		{
 			if (parentId == s_albumsId)
 			{
-				GetData().GetAlbums((albums) =>
+				m_serviceData.GetAlbums((albums) =>
 				{
 					List<MediaItem> items = new List<MediaItem>();
 					if (albums != null)
@@ -77,13 +90,13 @@ namespace Thump.Playback
 							items.Add(BuildBrowsableItem("album/" + album.Id, album.Name));
 						}
 					}
-					future.Set(LibraryResult.OfItemList(items, libraryParams));
+					completer.Set(LibraryResult.OfItemList(items, libraryParams));
 				});
 				return;
 			}
 			if (parentId == s_playlistsId)
 			{
-				GetData().GetPlaylists((playlists) =>
+				m_serviceData.GetPlaylists((playlists) =>
 				{
 					List<MediaItem> items = new List<MediaItem>();
 					if (playlists != null)
@@ -94,13 +107,13 @@ namespace Thump.Playback
 							items.Add(BuildBrowsableItem("playlist/" + playlist.Id, playlist.Name));
 						}
 					}
-					future.Set(LibraryResult.OfItemList(items, libraryParams));
+					completer.Set(LibraryResult.OfItemList(items, libraryParams));
 				});
 				return;
 			}
 			if (parentId == s_artistsId)
 			{
-				GetData().GetArtists((artists) =>
+				m_serviceData.GetArtists((artists) =>
 				{
 					List<MediaItem> items = new List<MediaItem>();
 					if (artists != null)
@@ -111,13 +124,13 @@ namespace Thump.Playback
 							items.Add(BuildBrowsableItem("artist/" + artist.Id, artist.Name));
 						}
 					}
-					future.Set(LibraryResult.OfItemList(items, libraryParams));
+					completer.Set(LibraryResult.OfItemList(items, libraryParams));
 				});
 				return;
 			}
 			if (parentId == s_genresId)
 			{
-				GetData().GetGenres((genres) =>
+				m_serviceData.GetGenres((genres) =>
 				{
 					List<MediaItem> items = new List<MediaItem>();
 					if (genres != null)
@@ -128,7 +141,7 @@ namespace Thump.Playback
 							items.Add(BuildBrowsableItem("genre/" + genre.Name, genre.Name));
 						}
 					}
-					future.Set(LibraryResult.OfItemList(items, libraryParams));
+					completer.Set(LibraryResult.OfItemList(items, libraryParams));
 				});
 				return;
 			}
@@ -137,17 +150,17 @@ namespace Thump.Playback
 			string value = ParseValue(parentId);
 			if (prefix == "album")
 			{
-				GetData().GetAlbum(value, (album) =>
+				m_serviceData.GetAlbum(value, (album) =>
 				{
-					future.Set(LibraryResult.OfItemList(BuildTrackItems(album.Songs), libraryParams));
+					completer.Set(LibraryResult.OfItemList(BuildTrackItems(album.Songs), libraryParams));
 				});
 				return;
 			}
 			if (prefix == "playlist")
 			{
-				GetData().GetPlaylist(value, (playlist) =>
+				m_serviceData.GetPlaylist(value, (playlist) =>
 				{
-					future.Set(LibraryResult.OfItemList(BuildTrackItems(playlist.Songs), libraryParams));
+					completer.Set(LibraryResult.OfItemList(BuildTrackItems(playlist.Songs), libraryParams));
 				});
 				return;
 			}
@@ -155,7 +168,7 @@ namespace Thump.Playback
 			{
 				PulseArtist artist = new PulseArtist();
 				artist.Id = value;
-				GetData().GetAlbumsForArtist(artist, (albums) =>
+				m_serviceData.GetAlbumsForArtist(artist, (albums) =>
 				{
 					List<MediaItem> items = new List<MediaItem>();
 					if (albums != null)
@@ -166,7 +179,7 @@ namespace Thump.Playback
 							items.Add(BuildBrowsableItem("album/" + album.Id, album.Name));
 						}
 					}
-					future.Set(LibraryResult.OfItemList(items, libraryParams));
+					completer.Set(LibraryResult.OfItemList(items, libraryParams));
 				});
 				return;
 			}
@@ -174,29 +187,27 @@ namespace Thump.Playback
 			{
 				PulseGenre genre = new PulseGenre();
 				genre.Name = value;
-				GetData().GetTracksForGenre(genre, (tracks) =>
+				m_serviceData.GetTracksForGenre(genre, (tracks) =>
 				{
-					future.Set(LibraryResult.OfItemList(BuildTrackItems(tracks), libraryParams));
+					completer.Set(LibraryResult.OfItemList(BuildTrackItems(tracks), libraryParams));
 				});
 				return;
 			}
 
-			future.Set(LibraryResult.OfItemList(new List<MediaItem>(), libraryParams));
+			completer.Set(LibraryResult.OfItemList(new List<MediaItem>(), libraryParams));
 		}
 
 		public IListenableFuture OnAddMediaItems(MediaSession session, MediaSession.ControllerInfo controller, IList<MediaItem> mediaItems)
 		{
-			SettableFuture future = SettableFuture.Create();
-			Java.Util.ArrayList resolved = new Java.Util.ArrayList();
-			ResolveItems(mediaItems, 0, resolved, future);
-			return future;
+			AddItemsResolver resolver = new AddItemsResolver(this, mediaItems);
+			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(resolver);
 		}
 
-		private void ResolveItems(IList<MediaItem> items, int index, Java.Util.ArrayList resolved, SettableFuture future)
+		private void ResolveItems(IList<MediaItem> items, int index, Java.Util.ArrayList resolved, CallbackToFutureAdapter.Completer completer)
 		{
 			if (index >= items.Count)
 			{
-				future.Set(resolved);
+				completer.Set(resolved);
 				return;
 			}
 			MediaItem item = items[index];
@@ -204,12 +215,12 @@ namespace Thump.Playback
 			if (string.IsNullOrEmpty(trackId))
 			{
 				resolved.Add(item);
-				ResolveItems(items, index + 1, resolved, future);
+				ResolveItems(items, index + 1, resolved, completer);
 				return;
 			}
 			PulseTrack track = new PulseTrack();
 			track.Id = trackId;
-			GetData().GetTrackAudioFile(track, (localPath) =>
+			m_serviceData.GetTrackAudioFile(track, (localPath) =>
 			{
 				MediaItem resolvedItem = item;
 				if (!string.IsNullOrEmpty(localPath))
@@ -218,8 +229,51 @@ namespace Thump.Playback
 					resolvedItem = item.BuildUpon().SetUri(uri).Build();
 				}
 				resolved.Add(resolvedItem);
-				ResolveItems(items, index + 1, resolved, future);
+				ResolveItems(items, index + 1, resolved, completer);
 			});
+		}
+
+		public IListenableFuture OnSetMediaItems(MediaSession session, MediaSession.ControllerInfo controller, IList<MediaItem> mediaItems, int startIndex, long startPositionMs)
+		{
+			SetItemsResolver resolver = new SetItemsResolver(this, mediaItems, startIndex, startPositionMs);
+			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(resolver);
+		}
+
+		private void ResolveSetItems(IList<MediaItem> items, int index, List<MediaItem> resolved, int startIndex, long startPositionMs, CallbackToFutureAdapter.Completer completer)
+		{
+			if (index >= items.Count)
+			{
+				MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(resolved, startIndex, startPositionMs);
+				completer.Set(result);
+				return;
+			}
+			MediaItem item = items[index];
+			string trackId = StripTrackPrefix(item.MediaId);
+			if (string.IsNullOrEmpty(trackId))
+			{
+				resolved.Add(item);
+				ResolveSetItems(items, index + 1, resolved, startIndex, startPositionMs, completer);
+				return;
+			}
+			PulseTrack track = new PulseTrack();
+			track.Id = trackId;
+			m_serviceData.GetTrackAudioFile(track, (localPath) =>
+			{
+				MediaItem resolvedItem = item;
+				if (!string.IsNullOrEmpty(localPath))
+				{
+					Android.Net.Uri uri = Android.Net.Uri.FromFile(new Java.IO.File(localPath));
+					resolvedItem = item.BuildUpon().SetUri(uri).Build();
+				}
+				resolved.Add(resolvedItem);
+				ResolveSetItems(items, index + 1, resolved, startIndex, startPositionMs, completer);
+			});
+		}
+
+		private static IListenableFuture ImmediateFuture(Java.Lang.Object value)
+		{
+			ImmediateResolver resolver = new ImmediateResolver(value);
+			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(resolver);
 		}
 
 		private static List<MediaItem> BuildTrackItems(List<PulseTrack> tracks)
@@ -305,6 +359,84 @@ namespace Thump.Playback
 				return null;
 			}
 			return mediaId.Substring("track/".Length);
+		}
+
+		private class ImmediateResolver : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+		{
+			private Java.Lang.Object m_value;
+
+			public ImmediateResolver(Java.Lang.Object value)
+			{
+				m_value = value;
+			}
+
+			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
+			{
+				completer.Set(m_value);
+				return null;
+			}
+		}
+
+		private class ChildrenResolver : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+		{
+			private ThumpLibraryCallback m_owner;
+			private string m_parentId;
+			private MediaLibraryService.LibraryParams m_params;
+
+			public ChildrenResolver(ThumpLibraryCallback owner, string parentId, MediaLibraryService.LibraryParams libraryParams)
+			{
+				m_owner = owner;
+				m_parentId = parentId;
+				m_params = libraryParams;
+			}
+
+			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
+			{
+				m_owner.LoadChildren(m_parentId, m_params, completer);
+				return null;
+			}
+		}
+
+		private class AddItemsResolver : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+		{
+			private ThumpLibraryCallback m_owner;
+			private IList<MediaItem> m_items;
+
+			public AddItemsResolver(ThumpLibraryCallback owner, IList<MediaItem> items)
+			{
+				m_owner = owner;
+				m_items = items;
+			}
+
+			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
+			{
+				Java.Util.ArrayList resolved = new Java.Util.ArrayList();
+				m_owner.ResolveItems(m_items, 0, resolved, completer);
+				return null;
+			}
+		}
+
+		private class SetItemsResolver : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+		{
+			private ThumpLibraryCallback m_owner;
+			private IList<MediaItem> m_items;
+			private int m_startIndex;
+			private long m_startPositionMs;
+
+			public SetItemsResolver(ThumpLibraryCallback owner, IList<MediaItem> items, int startIndex, long startPositionMs)
+			{
+				m_owner = owner;
+				m_items = items;
+				m_startIndex = startIndex;
+				m_startPositionMs = startPositionMs;
+			}
+
+			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
+			{
+				List<MediaItem> resolved = new List<MediaItem>();
+				m_owner.ResolveSetItems(m_items, 0, resolved, m_startIndex, m_startPositionMs, completer);
+				return null;
+			}
 		}
 	}
 }

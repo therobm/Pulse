@@ -4,6 +4,7 @@ using Android.Content.PM;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.ExoPlayer;
 using AndroidX.Media3.Session;
+using Thump.Data;
 
 namespace Thump.Playback
 {
@@ -11,6 +12,11 @@ namespace Thump.Playback
 	[IntentFilter(new string[] { "androidx.media3.session.MediaLibraryService", "android.media.browse.MediaBrowserService" })]
 	public class ThumpPlaybackService : MediaLibraryService
 	{
+		/// <summary>
+		/// A special sneaky global so the media service can access our data
+		/// </summary>
+		public static ThumpData s_ThumpData;
+
 		private IExoPlayer m_player;
 		private MediaLibraryService.MediaLibrarySession m_session;
 
@@ -22,7 +28,7 @@ namespace Thump.Playback
 			builder.SetHandleAudioBecomingNoisy(true);
 			m_player = builder.Build();
 
-			MediaLibraryService.MediaLibrarySession.Builder sessionBuilder = new MediaLibraryService.MediaLibrarySession.Builder(this, m_player, new ThumpLibraryCallback());
+			MediaLibraryService.MediaLibrarySession.Builder sessionBuilder = new MediaLibraryService.MediaLibrarySession.Builder(this, m_player, new ThumpLibraryCallback(s_ThumpData));
 			PendingIntent sessionActivity = BuildSessionActivity();
 			if (sessionActivity != null)
 			{
@@ -41,6 +47,10 @@ namespace Thump.Playback
 			return PendingIntent.GetActivity(this, 0, intent, PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
 		}
 
+		public override MediaLibrarySession OnGetSessionFromMediaLibraryService(MediaSession.ControllerInfo p0)
+		{
+			return m_session;
+		}
 		public override MediaLibraryService.MediaLibrarySession OnGetSession(MediaSession.ControllerInfo controllerInfo)
 		{
 			return m_session;
