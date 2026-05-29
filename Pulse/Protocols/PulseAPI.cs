@@ -39,7 +39,7 @@ namespace Pulse.Protocols
 		// until #228 retires it.
 		public IResult HandleRecentlyPlayed(HttpContext context)
 		{
-			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
+			int count = QueryParameters.GetInt(context, "count", 10);
 			string user = context.Request.Query["u"].FirstOrDefault();
 			string typesParam = context.Request.Query["types"].FirstOrDefault();
 
@@ -424,7 +424,7 @@ namespace Pulse.Protocols
 
 		public IResult HandlePopularArtists(HttpContext context)
 		{
-			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
+			int count = QueryParameters.GetInt(context, "count", 10);
 			string user = context.Request.Query["u"].FirstOrDefault();
 
 			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
@@ -471,7 +471,7 @@ namespace Pulse.Protocols
 
 		private IResult RankAndEmitPlaylists(HttpContext context, bool sortByRecency)
 		{
-			int count = int.Parse(context.Request.Query["count"].FirstOrDefault() ?? "10");
+			int count = QueryParameters.GetInt(context, "count", 10);
 			string user = context.Request.Query["u"].FirstOrDefault();
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
