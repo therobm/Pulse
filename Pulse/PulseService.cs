@@ -75,6 +75,7 @@ namespace Pulse
 		private PulseAPI m_pulseAPI;
 		private MusicManager m_musicManager;
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
+		private object m_spotifySyncsLock = new object();
 
 
 		public bool IsRunning { get; private set; }
@@ -352,18 +353,24 @@ namespace Pulse
 		}
 		private SpotifySync GetOrCreateSpotifySync(string userName)
 		{
-			SpotifySync sync;
-			if (m_spotifySyncs.TryGetValue(userName, out sync))
+			// Invoked from concurrent request threads (spotify/callback,
+			// spotify/authorize) as well as startup. Guard the get-or-add so two
+			// concurrent first-time requests for the same user can't both miss the
+			// lookup and then race on Dictionary.Add (throws / corrupts state) (#312).
+			lock (m_spotifySyncsLock)
 			{
+				SpotifySync sync;
+				if (m_spotifySyncs.TryGetValue(userName, out sync))
+				{
+					return sync;
+				}
+
+				string credentialPath = Path.Combine(SpotifySync.GetCredentialBasePath(), "spotify_" + userName + ".json");
+
+				sync = new SpotifySync(userName, m_musicManager, m_config.SpotifyClient, m_config.SpotifySecret, m_config.SpotifyRedirectURI, credentialPath);
+				m_spotifySyncs.Add(userName, sync);
 				return sync;
 			}
-
-		
-			string credentialPath = Path.Combine(SpotifySync.GetCredentialBasePath(), "spotify_" + userName + ".json");
-			
-			sync = new SpotifySync(userName, m_musicManager, m_config.SpotifyClient, m_config.SpotifySecret, m_config.SpotifyRedirectURI, credentialPath);
-			m_spotifySyncs.Add(userName, sync);
-			return sync;
 		}
 
 		private IResult HandlePlay(HttpContext context)
