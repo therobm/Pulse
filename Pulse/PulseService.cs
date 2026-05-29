@@ -15,6 +15,7 @@ using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Threading;
 
 
@@ -76,6 +77,12 @@ namespace Pulse
 		private MusicManager m_musicManager;
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 		private object m_spotifySyncsLock = new object();
+		// Pending Spotify OAuth attempts, keyed by a server-issued random state
+		// nonce -> the user the flow was started for, with an expiry. The callback
+		// validates the returned state against this instead of trusting it as the
+		// username (FL#310).
+		private Dictionary<string, PendingSpotifyAuth> m_spotifyAuthStates = new Dictionary<string, PendingSpotifyAuth>();
+		private object m_spotifyAuthStatesLock = new object();
 
 
 		public bool IsRunning { get; private set; }
@@ -218,16 +225,44 @@ namespace Pulse
 			host.RegisterRoute("spotify/authorize", HandleSpotifyAuthorize);
 		}
 
+		private class PendingSpotifyAuth
+		{
+			public string UserName;
+			public DateTime ExpiresUtc;
+		}
+
 		private void HandleSpotifyCallback(HttpContext context)
 		{
 			string code = context.Request.Query["code"].FirstOrDefault();
-			string userName = context.Request.Query["state"].FirstOrDefault();
+			string state = context.Request.Query["state"].FirstOrDefault();
 
-			if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(userName))
+			if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
 			{
 				context.Response.StatusCode = 400;
 				byte[] errorBytes = System.Text.Encoding.UTF8.GetBytes("Missing code or state parameter");
 				context.Response.Body.Write(errorBytes, 0, errorBytes.Length);
+				return;
+			}
+
+			// Validate the state against a server-issued nonce instead of trusting
+			// it as the username. Single-use: consume it on lookup (FL#310).
+			string userName = null;
+			lock (m_spotifyAuthStatesLock)
+			{
+				PruneExpiredAuthStates();
+				PendingSpotifyAuth pending;
+				if (m_spotifyAuthStates.TryGetValue(state, out pending))
+				{
+					m_spotifyAuthStates.Remove(state);
+					userName = pending.UserName;
+				}
+			}
+
+			if (string.IsNullOrEmpty(userName))
+			{
+				context.Response.StatusCode = 400;
+				byte[] badState = System.Text.Encoding.UTF8.GetBytes("Invalid or expired authorization state. Start the Spotify connection again.");
+				context.Response.Body.Write(badState, 0, badState.Length);
 				return;
 			}
 
@@ -250,9 +285,56 @@ namespace Pulse
 		private void HandleSpotifyAuthorize(HttpContext context)
 		{
 			string userName = context.Request.Path.Value.Split('/').Last();
+			if (string.IsNullOrEmpty(userName))
+			{
+				context.Response.StatusCode = 400;
+				return;
+			}
+
+			// Issue a random state nonce and remember which user it belongs to, so
+			// the callback can't be tricked into binding tokens to another account
+			// by supplying an arbitrary state (FL#310).
+			string nonce = GenerateStateNonce();
+			PendingSpotifyAuth pending = new PendingSpotifyAuth();
+			pending.UserName = userName;
+			pending.ExpiresUtc = DateTime.UtcNow.AddMinutes(10);
+			lock (m_spotifyAuthStatesLock)
+			{
+				PruneExpiredAuthStates();
+				m_spotifyAuthStates[nonce] = pending;
+			}
+
 			SpotifySync sync = GetOrCreateSpotifySync(userName);
-			string url = sync.GetAuthorizationUrl(userName);
+			string url = sync.GetAuthorizationUrl(nonce);
 			context.Response.Redirect(url);
+		}
+
+		private static string GenerateStateNonce()
+		{
+			byte[] bytes = new byte[32];
+			using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
+			{
+				rng.GetBytes(bytes);
+			}
+			return Convert.ToHexString(bytes).ToLowerInvariant();
+		}
+
+		// Caller must hold m_spotifyAuthStatesLock.
+		private void PruneExpiredAuthStates()
+		{
+			DateTime now = DateTime.UtcNow;
+			List<string> expired = new List<string>();
+			foreach (KeyValuePair<string, PendingSpotifyAuth> entry in m_spotifyAuthStates)
+			{
+				if (entry.Value.ExpiresUtc <= now)
+				{
+					expired.Add(entry.Key);
+				}
+			}
+			for (int idx = 0; idx < expired.Count; idx++)
+			{
+				m_spotifyAuthStates.Remove(expired[idx]);
+			}
 		}
 
 		private IResult HandleStats(HttpContext context)

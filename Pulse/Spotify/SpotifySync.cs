@@ -53,7 +53,7 @@ namespace Pulse.Spotify
 		/// <summary>
 		/// Returns the Spotify authorization URL. Shannon opens this in a browser once.
 		/// </summary>
-		public string GetAuthorizationUrl(string userName)
+		public string GetAuthorizationUrl(string state)
 		{
 			string scopes = "playlist-read-private playlist-read-collaborative";
 			string url = "https://accounts.spotify.com/authorize"
@@ -61,7 +61,7 @@ namespace Pulse.Spotify
 				+ "&response_type=code"
 				+ "&redirect_uri=" + Uri.EscapeDataString(m_redirectUri)
 				+ "&scope=" + Uri.EscapeDataString(scopes)
-				+ "&state=" + Uri.EscapeDataString(userName);
+				+ "&state=" + Uri.EscapeDataString(state);
 			return url;
 		}
 
