@@ -1,0 +1,69 @@
+name: Build and Release
+
+# Unified build strategy (shared with Flatline): a merge to master builds a
+# self-contained win-x64 single-file exe, versions it Major.Minor.Build, and
+# publishes a GitHub Release. Major.Minor live in the VERSION file (edited by
+# hand); Build is derived from git history by .github/version.sh. The
+# self-contained/single-file publish settings live in Pulse/Pulse.csproj.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so the build number (commits since the VERSION bump)
+          # can be computed.
+          fetch-depth: 0
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Compute version
+        id: version
+        shell: bash
+        run: |
+          version=$(bash .github/version.sh)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${version}"
+
+      - name: Publish
+        shell: bash
+        run: |
+          dotnet publish Pulse/Pulse.csproj \
+            -c Release \
+            -p:Version="${{ steps.version.outputs.version }}" \
+            -o publish
+
+      - name: Stage release artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          mv publish/Pulse.exe "artifacts/Pulse-${{ steps.version.outputs.version }}-win-x64.exe"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          files: artifacts/Pulse-${{ steps.version.outputs.version }}-win-x64.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: false
