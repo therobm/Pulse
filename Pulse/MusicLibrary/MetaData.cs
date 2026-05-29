@@ -8,15 +8,10 @@ namespace Pulse.MusicLibrary
 	/// <summary>
 	/// Runtime in-memory shape. Subtypes carry parent references
 	/// (e.g. <c>TrackInfo.ParentArtist</c>), the
-	/// <see cref="m_bIsDirty"/> flag, transient scoring/analytics state,
-	/// and are wired together at startup by
-	/// <c>PulseFileDatabase.WireUpReferences</c>. Intentionally distinct
-	/// from the <c>*Record</c> types in
-	/// <c>Data/PulseFileDataTypes.cs</c> (the on-disk shape) and must
-	/// stay that way: in-memory shape is independent of persistence
-	/// shape. Cross the boundary via <c>TrackRecord.ToTrackInfo()</c> /
-	/// <c>TrackRecord.FromTrackInfo()</c> and the equivalents. Do not
-	/// unify the pairs into single classes.
+	/// <see cref="m_bIsDirty"/> flag, and transient scoring/analytics state,
+	/// and are wired together at startup by <c>WireUpReferences</c> after the
+	/// SQLite load. <c>PulseSqliteDatabase</c> reads and writes these directly,
+	/// column by column; there is no separate on-disk record shape.
 	/// </summary>
 	public abstract class PulseInfo
 	{

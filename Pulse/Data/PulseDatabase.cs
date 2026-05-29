@@ -42,9 +42,9 @@ namespace Pulse.Data
 
 		// Subsonic getPlayQueue / savePlayQueue / getBookmarks support (Flatline
 		// #168). Written through directly to the persistence layer -- not cached
-		// in memory and not part of the per-PulseInfo dirty flow. PulseFileDatabase
-		// is now legacy (post-#141) and stubs these as no-ops; PulseSqliteDatabase
-		// implements them against the v4 schema.
+		// in memory and not part of the per-PulseInfo dirty flow. PulseSqliteDatabase
+		// implements them against the v4 schema; PulseDatabaseBase keeps no-op
+		// defaults.
 		PlayQueueInfo GetPlayQueue(string userName);
 		void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy);
 		List<BookmarkInfo> GetBookmarks(string userName);
@@ -53,8 +53,7 @@ namespace Pulse.Data
 
 		// Settings-page CRUD over the v5 `users` table plus the per-user rows in
 		// every other table (Flatline #201). PulseSqliteDatabase is the real
-		// implementation; PulseDatabaseBase keeps an in-memory fallback for the
-		// legacy PulseFileDatabase, which is no longer used at runtime.
+		// implementation; PulseDatabaseBase keeps in-memory no-op defaults.
 		List<UserRecord> GetAllUsers();
 		UserRecord GetUser(string name);
 		string CreateUser(string name, string displayName, bool isAdmin);
@@ -349,10 +348,8 @@ namespace Pulse.Data
 
 		public abstract void Save();
 
-		// Default no-op implementations (#168). Overridden in PulseSqliteDatabase.
-		// Existing PulseFileDatabase callers go through these stubs -- legacy file
-		// DB is not used at runtime (post-#141), only by the importer for cold
-		// migration, so returning empty / accepting writes silently is fine.
+		// Default no-op implementations (#168). PulseSqliteDatabase overrides them;
+		// these remain as harmless base defaults.
 		public virtual PlayQueueInfo GetPlayQueue(string userName)
 		{
 			return new PlayQueueInfo();
@@ -376,9 +373,9 @@ namespace Pulse.Data
 		}
 
 		// Base implementation walks the in-memory stores to synthesize a record
-		// per observed name -- legacy PulseFileDatabase fallback only. The
-		// SQLite backend overrides this to read the real users table and
-		// layers the in-memory counts on top via PopulateUserCounts.
+		// per observed name -- a base default only. PulseSqliteDatabase overrides
+		// this to read the real users table and layers the in-memory counts on
+		// top via PopulateUserCounts.
 		public virtual List<UserRecord> GetAllUsers()
 		{
 			Dictionary<string, UserRecord> byName = new Dictionary<string, UserRecord>();

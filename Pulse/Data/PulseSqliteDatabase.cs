@@ -8,10 +8,9 @@ using System.Diagnostics;
 namespace Pulse.Data
 {
 	/// <summary>
-	/// SQLite-backed implementation of IPulseDatabase. Replaces the file-per-record
-	/// approach in PulseFileDatabase. Same in-memory model (PulseDatabaseBase
-	/// dictionaries) as before -- SQLite is the persistence layer only. Reads
-	/// hit the dicts; writes flip m_bIsDirty and are flushed to SQLite on Save().
+	/// SQLite-backed implementation of IPulseDatabase. In-memory model lives in
+	/// PulseDatabaseBase (dictionaries) -- SQLite is the persistence layer only.
+	/// Reads hit the dicts; writes flip m_bIsDirty and are flushed to SQLite on Save().
 	///
 	/// Migration path: see Database/Migrations.cs. Add a new MigrationStep to
 	/// evolve the schema; never edit a shipped one.
@@ -257,8 +256,7 @@ namespace Pulse.Data
 
 		/// <summary>
 		/// Wire AlbumInfo.Tracks and ArtistInfo.Albums lists from the foreign-key
-		/// columns now that all rows are loaded. Mirrors PulseFileDatabase's
-		/// post-load wireup.
+		/// columns now that all rows are loaded.
 		/// </summary>
 		private void WireUpReferences()
 		{
@@ -290,8 +288,8 @@ namespace Pulse.Data
 		/// Roll the per-track WeightedScore up into per-artist WeightedScore and
 		/// per-user UserWeightedScore -- ArtistInfo's score fields are runtime
 		/// derived state, not persisted, so they need to be recomputed at load.
-		/// Mirrors PulseFileDatabase.CalculateArtistScores; without this the
-		/// popular-artists sort and the popular carousel see all zeros.
+		/// Without this the popular-artists sort and the popular carousel see all
+		/// zeros.
 		/// </summary>
 		private void CalculateArtistScores()
 		{
