@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Microsoft.Maui.ApplicationModel;
 using Thump.Pulse;
 
@@ -289,7 +290,39 @@ namespace Thump.Data
 			}
 		}
 
-		public void GetTrackAudioFile(PulseTrack track, Action<string> callback)
+		public byte[] GetTrackAudioData(PulseTrack track)
+		{
+			if (track == null || string.IsNullOrEmpty(track.Id))
+			{
+				return null;
+			}
+			string blobKey = "track:" + track.Id;
+
+			byte[] cached = null;
+			m_cache.ExecuteSync(() => { cached = m_cache.ReadBlob(blobKey); });
+			if (cached != null && cached.Length > 0)
+			{
+				return cached;
+			}
+
+			ManualResetEventSlim wait = new ManualResetEventSlim(false);
+			byte[] fetched = null;
+			m_pulseClient.GetTrackAudio(track.Id, (data) =>
+			{
+				fetched = data;
+				wait.Set();
+			});
+			wait.Wait();
+
+			if (fetched == null || fetched.Length == 0)
+			{
+				return null;
+			}
+			m_cache.ExecuteSync(() => { m_cache.WriteBlob(blobKey, fetched, "audio"); });
+			return fetched;
+		}
+
+		public void EnsureTrackAvailability(PulseTrack track, Action<bool> callback)
 		{
 			if (callback == null)
 			{
@@ -297,32 +330,28 @@ namespace Thump.Data
 			}
 			if (track == null || string.IsNullOrEmpty(track.Id))
 			{
-				callback(null);
+				callback(false);
 				return;
 			}
 			string blobKey = "track:" + track.Id;
-			m_cache.Enqueue(() =>
+
+			string existingPath = null;
+			m_cache.ExecuteSync(() => { existingPath = m_cache.GetBlobFilePath(blobKey); });
+			if (!string.IsNullOrEmpty(existingPath))
 			{
-				string existingPath = m_cache.GetBlobFilePath(blobKey);
-				if (!string.IsNullOrEmpty(existingPath))
+				MainThread.BeginInvokeOnMainThread(() => { callback(true); });
+				return;
+			}
+
+			m_pulseClient.GetTrackAudio(track.Id, (data) =>
+			{
+				if (data == null || data.Length == 0)
 				{
-					MainThread.BeginInvokeOnMainThread(() => { callback(existingPath); });
+					MainThread.BeginInvokeOnMainThread(() => { callback(false); });
 					return;
 				}
-				m_pulseClient.GetTrackAudio(track.Id, (data) =>
-				{
-					if (data == null || data.Length == 0)
-					{
-						MainThread.BeginInvokeOnMainThread(() => { callback(null); });
-						return;
-					}
-					m_cache.Enqueue(() =>
-					{
-						m_cache.WriteBlob(blobKey, data, "audio");
-						string storedPath = m_cache.GetBlobFilePath(blobKey);
-						MainThread.BeginInvokeOnMainThread(() => { callback(storedPath); });
-					});
-				});
+				m_cache.ExecuteSync(() => { m_cache.WriteBlob(blobKey, data, "audio"); });
+				MainThread.BeginInvokeOnMainThread(() => { callback(true); });
 			});
 		}
 

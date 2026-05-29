@@ -425,7 +425,7 @@ namespace Thump.Views
 		private void OnClearCacheClicked(object sender, EventArgs e)
 		{
 			ThumpCache cache = MainView.Self.GetCache();
-			cache.Enqueue(() =>
+			cache.ExecuteSync(() =>
 			{
 				cache.ClearCache();
 			});
@@ -547,7 +547,7 @@ namespace Thump.Views
 		private void RefreshCacheStats()
 		{
 			ThumpCache cache = MainView.Self.GetCache();
-			cache.Enqueue(() =>
+			cache.ExecuteSync(() =>
 			{
 				ThumpCacheStats stats = cache.GetCacheStats();
 				MainThread.BeginInvokeOnMainThread(() =>
