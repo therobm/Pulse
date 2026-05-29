@@ -148,7 +148,7 @@ namespace Assistant.Services
 
 				if (path.ToLower().Contains("web"))
 				{
-					string pulseDir = Path.Combine(AppContext.BaseDirectory, "Content", "web");
+					string pulseDir = Path.Combine(AppContext.BaseDirectory, "Content", "Web");
 					string fileName = Path.GetFileName(path);
 					if (string.IsNullOrEmpty(fileName))
 					{
