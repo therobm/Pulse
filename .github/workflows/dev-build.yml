@@ -1,34 +1,57 @@
 name: Dev Build
 
+# Manual, on-demand build of a test exe off any branch. Produces the same
+# self-contained win-x64 single-file exe as the release workflow but uploads
+# it as a build artifact instead of cutting a GitHub Release. The version is
+# the same Major.Minor.Build with a -dev suffix.
+
 on:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
+      - name: Compute version
+        id: version
+        shell: bash
+        run: |
+          version="$(bash .github/version.sh)-dev"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${version}"
+
       - name: Publish
         shell: bash
-        env:
-          VERSION: 0.0.0-dev.${{ github.run_number }}
         run: |
-          dotnet publish Pulse/Pulse.csproj --configuration Release --output publish -p:Version="${VERSION}"
-          # Compact version tag for the exe filename: drop dots, keep
-          # everything else (e.g. 0.0.0-dev.45 -> 000-dev45).
-          EXE_NAME="pulse_${VERSION//./}.exe"
-          mv publish/Pulse.exe "publish/${EXE_NAME}"
-          echo "EXE_NAME=${EXE_NAME}" >> "${GITHUB_ENV}"
+          dotnet publish Pulse/Pulse.csproj \
+            -c Release \
+            -p:Version="${{ steps.version.outputs.version }}" \
+            -o publish
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          mv publish/Pulse.exe "artifacts/Pulse-${{ steps.version.outputs.version }}-win-x64.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Pulse-dev-${{ github.sha }}
-          path: publish/${{ env.EXE_NAME }}
+          path: artifacts/Pulse-${{ steps.version.outputs.version }}-win-x64.exe
           retention-days: 14
           if-no-files-found: error
