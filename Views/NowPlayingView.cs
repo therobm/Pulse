@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
+using Thump.Playback;
 using Thump.Pulse;
+using Thump.Views.Tiles;
 
 namespace Thump.Views
 {
@@ -16,6 +19,14 @@ namespace Thump.Views
 		private Slider m_seekSlider;
 		private Label m_totalTimeLabel;
 		private Button m_playPauseButton;
+		private Button m_prevButton;
+		private Button m_nextButton;
+		private Button m_shuffleButton;
+		private Button m_repeatButton;
+		private CollectionView m_queueList;
+		private Button m_favoriteButton;
+		private PulseTrack m_currentSong;
+		private bool m_showingQueue;
 		private bool m_userSeeking;
 
 		public NowPlayingView(MainView mainView) : base(mainView)
@@ -41,6 +52,7 @@ namespace Thump.Views
 
 			grid.Children.Add(BuildHeader());
 			grid.Children.Add(BuildArt());
+			grid.Children.Add(BuildQueuePanel());
 			grid.Children.Add(BuildBottomBlock());
 
 			Content = grid;
@@ -75,6 +87,17 @@ namespace Thump.Views
 
 			Grid.SetRow(m_art, 1);
 			return m_art;
+		}
+
+		private View BuildQueuePanel()
+		{
+			m_queueList = new CollectionView();
+			m_queueList.ItemTemplate = new DataTemplate(typeof(QueueRowTile));
+			m_queueList.Margin = new Thickness(0, 8, 0, 8);
+			m_queueList.IsVisible = false;
+
+			Grid.SetRow(m_queueList, 1);
+			return m_queueList;
 		}
 
 		private View BuildBottomBlock()
@@ -182,61 +205,60 @@ namespace Thump.Views
 			controlsStack.HorizontalOptions = LayoutOptions.Center;
 			controlsStack.Padding = new Thickness(0, 8, 0, 8);
 
-			Button shuffleButton = new Button();
-			shuffleButton.Text = "⇋";
-			shuffleButton.FontSize = 26;
-			shuffleButton.TextColor = ThumpColors.TextSecondary;
-			shuffleButton.BackgroundColor = Colors.Transparent;
-			shuffleButton.WidthRequest = 56;
-			shuffleButton.HeightRequest = 56;
-			shuffleButton.VerticalOptions = LayoutOptions.Center;
-			shuffleButton.Clicked += OnShuffleClicked;
-			controlsStack.Children.Add(shuffleButton);
+			m_shuffleButton = new Button();
+			m_shuffleButton.Text = "⇋";
+			m_shuffleButton.FontSize = 26;
+			m_shuffleButton.TextColor = ThumpColors.TextSecondary;
+			m_shuffleButton.BackgroundColor = Colors.Transparent;
+			m_shuffleButton.WidthRequest = 56;
+			m_shuffleButton.HeightRequest = 56;
+			m_shuffleButton.VerticalOptions = LayoutOptions.Center;
+			m_shuffleButton.Clicked += OnShuffleClicked;
+			controlsStack.Children.Add(m_shuffleButton);
 
-			Button prevButton = new Button();
-			prevButton.Text = "⏮";
-			prevButton.FontSize = 30;
-			prevButton.TextColor = ThumpColors.OnBackground;
-			prevButton.BackgroundColor = Colors.Transparent;
-			prevButton.WidthRequest = 60;
-			prevButton.HeightRequest = 60;
-			prevButton.VerticalOptions = LayoutOptions.Center;
-			prevButton.Clicked += OnPrevClicked;
-			controlsStack.Children.Add(prevButton);
+			m_prevButton = new Button();
+			m_prevButton.Text = "⏮";
+			m_prevButton.FontSize = 30;
+			m_prevButton.TextColor = ThumpColors.OnBackground;
+			m_prevButton.BackgroundColor = Colors.Transparent;
+			m_prevButton.WidthRequest = 60;
+			m_prevButton.HeightRequest = 60;
+			m_prevButton.VerticalOptions = LayoutOptions.Center;
+			m_prevButton.Clicked += OnPrevClicked;
+			controlsStack.Children.Add(m_prevButton);
 
 			m_playPauseButton = new Button();
-			m_playPauseButton.Text = "▶";
+			m_playPauseButton.Text = "\u25B6\uFE0E";
 			m_playPauseButton.FontSize = 32;
-			m_playPauseButton.TextColor = ThumpColors.Background;
-			m_playPauseButton.BackgroundColor = ThumpColors.Accent;
-			m_playPauseButton.CornerRadius = 38;
+			m_playPauseButton.TextColor = ThumpColors.OnBackground;
+			m_playPauseButton.BackgroundColor = Colors.Transparent;
 			m_playPauseButton.WidthRequest = 76;
 			m_playPauseButton.HeightRequest = 76;
 			m_playPauseButton.VerticalOptions = LayoutOptions.Center;
 			m_playPauseButton.Clicked += OnPlayPauseClicked;
 			controlsStack.Children.Add(m_playPauseButton);
 
-			Button nextButton = new Button();
-			nextButton.Text = "⏭";
-			nextButton.FontSize = 30;
-			nextButton.TextColor = ThumpColors.OnBackground;
-			nextButton.BackgroundColor = Colors.Transparent;
-			nextButton.WidthRequest = 60;
-			nextButton.HeightRequest = 60;
-			nextButton.VerticalOptions = LayoutOptions.Center;
-			nextButton.Clicked += OnNextClicked;
-			controlsStack.Children.Add(nextButton);
+			m_nextButton = new Button();
+			m_nextButton.Text = "⏭";
+			m_nextButton.FontSize = 30;
+			m_nextButton.TextColor = ThumpColors.OnBackground;
+			m_nextButton.BackgroundColor = Colors.Transparent;
+			m_nextButton.WidthRequest = 60;
+			m_nextButton.HeightRequest = 60;
+			m_nextButton.VerticalOptions = LayoutOptions.Center;
+			m_nextButton.Clicked += OnNextClicked;
+			controlsStack.Children.Add(m_nextButton);
 
-			Button repeatButton = new Button();
-			repeatButton.Text = "↻";
-			repeatButton.FontSize = 26;
-			repeatButton.TextColor = ThumpColors.TextSecondary;
-			repeatButton.BackgroundColor = Colors.Transparent;
-			repeatButton.WidthRequest = 56;
-			repeatButton.HeightRequest = 56;
-			repeatButton.VerticalOptions = LayoutOptions.Center;
-			repeatButton.Clicked += OnRepeatClicked;
-			controlsStack.Children.Add(repeatButton);
+			m_repeatButton = new Button();
+			m_repeatButton.Text = "↻";
+			m_repeatButton.FontSize = 26;
+			m_repeatButton.TextColor = ThumpColors.TextSecondary;
+			m_repeatButton.BackgroundColor = Colors.Transparent;
+			m_repeatButton.WidthRequest = 56;
+			m_repeatButton.HeightRequest = 56;
+			m_repeatButton.VerticalOptions = LayoutOptions.Center;
+			m_repeatButton.Clicked += OnRepeatClicked;
+			controlsStack.Children.Add(m_repeatButton);
 
 			return controlsStack;
 		}
@@ -248,15 +270,15 @@ namespace Thump.Views
 			actionsStack.HorizontalOptions = LayoutOptions.Center;
 			actionsStack.Padding = new Thickness(0, 0, 0, 16);
 
-			Button favoriteButton = new Button();
-			favoriteButton.Text = "♡  Favorite";
-			favoriteButton.TextColor = ThumpColors.TextSecondary;
-			favoriteButton.BackgroundColor = Colors.Transparent;
-			favoriteButton.FontSize = 16;
-			favoriteButton.HeightRequest = 48;
-			favoriteButton.Padding = new Thickness(16, 8);
-			favoriteButton.Clicked += OnFavoriteClicked;
-			actionsStack.Children.Add(favoriteButton);
+			m_favoriteButton = new Button();
+			m_favoriteButton.Text = "♡  Favorite";
+			m_favoriteButton.TextColor = ThumpColors.TextSecondary;
+			m_favoriteButton.BackgroundColor = Colors.Transparent;
+			m_favoriteButton.FontSize = 16;
+			m_favoriteButton.HeightRequest = 48;
+			m_favoriteButton.Padding = new Thickness(16, 8);
+			m_favoriteButton.Clicked += OnFavoriteClicked;
+			actionsStack.Children.Add(m_favoriteButton);
 
 			Button queueButton = new Button();
 			queueButton.Text = "≣  Queue";
@@ -274,12 +296,16 @@ namespace Thump.Views
 		public override void Initialize()
 		{
 			base.Initialize();
-			PulseTrack song = MainView.Self.GetCurrentTrack();
+			PulseTrack song = m_mainView.GetCurrentTrack();
 			SetTrack(song);
+			SetShuffleState(m_mainView.GetShuffleEnabled());
+			SetRepeatState(m_mainView.GetRepeatMode());
 		}
 
 		public void SetTrack(PulseTrack song)
 		{
+			m_currentSong = song;
+			UpdateFavoriteButton();
 			if (song == null)
 			{
 				m_titleLabel.Text = "Nothing playing";
@@ -288,6 +314,7 @@ namespace Thump.Views
 				m_currentTimeLabel.Text = "0:00";
 				m_totalTimeLabel.Text = "0:00";
 				m_seekSlider.Value = 0;
+				UpdateSkipButtons();
 				return;
 			}
 			m_titleLabel.Text = song.Title;
@@ -297,17 +324,51 @@ namespace Thump.Views
 			m_totalTimeLabel.Text = FormatDuration(song.Duration);
 			m_seekSlider.Value = 0;
 			m_art.SetCoverArt(song.ImageID);
+			RefreshQueue();
+			UpdateSkipButtons();
+		}
+
+		public void RefreshSkipButtons()
+		{
+			UpdateSkipButtons();
+		}
+
+		private void UpdateSkipButtons()
+		{
+			if (m_prevButton == null || m_nextButton == null)
+			{
+				return;
+			}
+			int index = m_mainView.GetQueueIndex();
+			int count = m_mainView.GetQueue().Count;
+			bool canPrevious = index > 0;
+			bool canNext = index < count - 1;
+			SetSkipButtonState(m_prevButton, canPrevious);
+			SetSkipButtonState(m_nextButton, canNext);
+		}
+
+		private void SetSkipButtonState(Button button, bool enabled)
+		{
+			button.IsEnabled = enabled;
+			if (enabled)
+			{
+				button.TextColor = ThumpColors.OnBackground;
+			}
+			else
+			{
+				button.TextColor = ThumpColors.TextDim;
+			}
 		}
 
 		public void SetPlaying(bool playing)
 		{
 			if (playing)
 			{
-				m_playPauseButton.Text = "⏸";
+				m_playPauseButton.Text = "\u23F8\uFE0E";
 			}
 			else
 			{
-				m_playPauseButton.Text = "▶";
+				m_playPauseButton.Text = "\u25B6\uFE0E";
 			}
 		}
 
@@ -385,18 +446,122 @@ namespace Thump.Views
 
 		private void OnShuffleClicked(object sender, EventArgs e)
 		{
+			m_mainView.OnToggleShuffle();
 		}
 
 		private void OnRepeatClicked(object sender, EventArgs e)
 		{
+			m_mainView.OnCycleRepeat();
 		}
 
 		private void OnFavoriteClicked(object sender, EventArgs e)
 		{
+			if (m_currentSong == null || string.IsNullOrEmpty(m_currentSong.Id))
+			{
+				return;
+			}
+			PulseTrack song = m_currentSong;
+			if (song.Starred)
+			{
+				MainView.Data.UnstarTrack(song.Id, (success) =>
+				{
+					if (success)
+					{
+						song.Starred = false;
+						UpdateFavoriteButton();
+					}
+				});
+			}
+			else
+			{
+				MainView.Data.StarTrack(song.Id, (success) =>
+				{
+					if (success)
+					{
+						song.Starred = true;
+						UpdateFavoriteButton();
+					}
+				});
+			}
+		}
+
+		private void UpdateFavoriteButton()
+		{
+			if (m_favoriteButton == null)
+			{
+				return;
+			}
+			if (m_currentSong != null && m_currentSong.Starred)
+			{
+				m_favoriteButton.Text = "♥  Favorite";
+				m_favoriteButton.TextColor = ThumpColors.Accent;
+			}
+			else
+			{
+				m_favoriteButton.Text = "♡  Favorite";
+				m_favoriteButton.TextColor = ThumpColors.TextSecondary;
+			}
 		}
 
 		private void OnQueueClicked(object sender, EventArgs e)
 		{
+			m_showingQueue = !m_showingQueue;
+			m_art.IsVisible = !m_showingQueue;
+			m_queueList.IsVisible = m_showingQueue;
+			if (m_showingQueue)
+			{
+				RefreshQueue();
+			}
+		}
+
+		public void SetShuffleState(bool enabled)
+		{
+			if (m_shuffleButton == null)
+			{
+				return;
+			}
+			if (enabled)
+			{
+				m_shuffleButton.TextColor = ThumpColors.Accent;
+			}
+			else
+			{
+				m_shuffleButton.TextColor = ThumpColors.TextSecondary;
+			}
+		}
+
+		public void SetRepeatState(eRepeatMode mode)
+		{
+			if (m_repeatButton == null)
+			{
+				return;
+			}
+			if (mode == eRepeatMode.One)
+			{
+				m_repeatButton.Text = "↻¹";
+				m_repeatButton.TextColor = ThumpColors.Accent;
+			}
+			else if (mode == eRepeatMode.All)
+			{
+				m_repeatButton.Text = "↻";
+				m_repeatButton.TextColor = ThumpColors.Accent;
+			}
+			else
+			{
+				m_repeatButton.Text = "↻";
+				m_repeatButton.TextColor = ThumpColors.TextSecondary;
+			}
+		}
+
+		public void RefreshQueue()
+		{
+			if (m_queueList == null || !m_showingQueue)
+			{
+				return;
+			}
+			List<PulseTrack> queue = m_mainView.GetQueue();
+			m_queueList.ItemsSource = null;
+			m_queueList.ItemsSource = queue;
 		}
 	}
 }

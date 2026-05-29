@@ -15,12 +15,14 @@ namespace Thump.Pulse
 		public List<PulseArtist> Artists;
 		public List<PulseAlbum> Albums;
 		public List<PulseTrack> Songs;
+		public List<PulsePlaylist> Playlists;
 
 		public PulseSearchData()
 		{
 			Artists = new List<PulseArtist>();
 			Albums = new List<PulseAlbum>();
 			Songs = new List<PulseTrack>();
+			Playlists = new List<PulsePlaylist>();
 		}
 	}
 
@@ -37,6 +39,7 @@ namespace Thump.Pulse
 		public string AlbumId { get; set; }
 		public string CoverArt { private get; set; }
 		public int Duration { get; set; }
+		public bool Starred { get; set; }
 
 		public PulseTrack()
 		{
@@ -121,6 +124,38 @@ namespace Thump.Pulse
 		}
 	}
 
+	public class PulsePodcastEpisode : PulseObject
+	{
+		public string Title { get; set; }
+		public string Description { get; set; }
+		public string StreamId { get; set; }
+		public string CoverArt { get; set; }
+		public string PublishDate { get; set; }
+		public string Status { get; set; }
+		public int Duration { get; set; }
+
+		public PulsePodcastEpisode()
+		{
+			Kind = eDataType.PodcastEpisode;
+		}
+	}
+
+	public class PulsePodcastChannel : PulseObject
+	{
+		public string Title { get; set; }
+		public string Description { get; set; }
+		public string CoverArt { get; set; }
+		public string Url { get; set; }
+		public string Status { get; set; }
+		public List<PulsePodcastEpisode> Episodes { get; set; }
+
+		public PulsePodcastChannel()
+		{
+			Episodes = new List<PulsePodcastEpisode>();
+			Kind = eDataType.Podcast;
+		}
+	}
+
 	public class PulseClient
 	{
 		public enum eSubSonicAuthType
@@ -147,7 +182,11 @@ namespace Thump.Pulse
 
 		public void SetServerParams(string ip, string port, string username, string password, eSubSonicAuthType authType, bool enableSSL)
 		{
-			//todo validate these strings
+			// Accept an IP/host that may have been entered (or stored) with a
+			// scheme and/or trailing slash; strip them so the prefix derived from
+			// enableSSL is authoritative. Otherwise a value like "https://host"
+			// produced "http://https://host:port".
+			ip = ip.Trim().Replace("http://", "").Replace("https://", "").TrimEnd('/');
 
 			string prefix = "http://";
 			if (enableSSL)
@@ -155,7 +194,7 @@ namespace Thump.Pulse
 
 			m_baseUrl = prefix + ip + ":" + port;
 			m_user = username;
-			m_apiParams = "u=" + m_user + "&p=enc:"+ password + "&v=1.13.0&c=PulseMaui&f=json";
+			m_apiParams = "u=" + Uri.EscapeDataString(m_user) + "&p=enc:" + Uri.EscapeDataString(password) + "&v=1.13.0&c=PulseMaui&f=json";
 			m_authType = authType;
 
 			if (m_httpClient != null)
@@ -252,6 +291,70 @@ namespace Thump.Pulse
 			});
 		}
 
+		public void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete)
+		{
+			Task.Run(() =>
+			{
+				List<PulsePodcastChannel> results = new List<PulsePodcastChannel>();
+				try
+				{
+					if (SubsonicGet("getPodcasts", out JsonElement response, "includeEpisodes=true"))
+					{
+						if (response.TryGetProperty("podcasts", out JsonElement podcasts) &&
+							podcasts.TryGetProperty("channel", out JsonElement channelArray) &&
+							channelArray.ValueKind == JsonValueKind.Array)
+						{
+							foreach (JsonElement element in channelArray.EnumerateArray())
+							{
+								results.Add(ParsePodcastChannel(element));
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+					System.Diagnostics.Debugger.Break();
+				}
+				List<PulsePodcastChannel> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		private PulsePodcastChannel ParsePodcastChannel(JsonElement element)
+		{
+			PulsePodcastChannel channel = new PulsePodcastChannel();
+			channel.Id = JsonHelper.GetString(element, "id");
+			channel.Title = JsonHelper.GetString(element, "title");
+			channel.Description = JsonHelper.GetString(element, "description");
+			channel.CoverArt = JsonHelper.GetString(element, "coverArt");
+			channel.Url = JsonHelper.GetString(element, "url");
+			channel.Status = JsonHelper.GetString(element, "status");
+			if (element.TryGetProperty("episode", out JsonElement episodeArray) &&
+				episodeArray.ValueKind == JsonValueKind.Array)
+			{
+				foreach (JsonElement episodeElement in episodeArray.EnumerateArray())
+				{
+					channel.Episodes.Add(ParsePodcastEpisode(episodeElement));
+				}
+			}
+			return channel;
+		}
+
+		private PulsePodcastEpisode ParsePodcastEpisode(JsonElement element)
+		{
+			PulsePodcastEpisode episode = new PulsePodcastEpisode();
+			episode.Id = JsonHelper.GetString(element, "id");
+			episode.StreamId = JsonHelper.GetString(element, "streamId");
+			episode.Title = JsonHelper.GetString(element, "title");
+			episode.Description = JsonHelper.GetString(element, "description");
+			episode.CoverArt = JsonHelper.GetString(element, "coverArt");
+			episode.PublishDate = JsonHelper.GetString(element, "publishDate");
+			episode.Status = JsonHelper.GetString(element, "status");
+			episode.Duration = JsonHelper.GetInt(element, "duration");
+			return episode;
+		}
+
 		public void Search(string query, Action<PulseSearchData> onComplete)
 		{
 			Task.Run(() =>
@@ -292,6 +395,24 @@ namespace Thump.Pulse
 								foreach (JsonElement element in songArray.EnumerateArray())
 								{
 									result.Songs.Add(ParseSong(element));
+								}
+							}
+						}
+					}
+
+					if (SubsonicGet("getPlaylists", out JsonElement playlistResponse))
+					{
+						if (playlistResponse.TryGetProperty("playlists", out JsonElement playlists) &&
+							playlists.TryGetProperty("playlist", out JsonElement playlistArray) &&
+							playlistArray.ValueKind == JsonValueKind.Array)
+						{
+							string lowerQuery = query.ToLowerInvariant();
+							foreach (JsonElement element in playlistArray.EnumerateArray())
+							{
+								PulsePlaylist playlist = ParsePlaylist(element);
+								if (playlist.Name != null && playlist.Name.ToLowerInvariant().Contains(lowerQuery))
+								{
+									result.Playlists.Add(playlist);
 								}
 							}
 						}
@@ -378,39 +499,43 @@ namespace Thump.Pulse
 
 		public void GetAlbums(Action<List<PulseAlbum>> onComplete)
 		{
-			// Placeholder preview data: no library-albums route exists yet.
-			List<PulseAlbum> results = BuildPlaceholderAlbums();
-			MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
-		}
-
-		private List<PulseAlbum> BuildPlaceholderAlbums()
-		{
-			List<PulseAlbum> albums = new List<PulseAlbum>();
-			albums.Add(MakePlaceholderAlbum("ph-album-1", "Midnight Geometry", "Aurora Sky", 2023, 11));
-			albums.Add(MakePlaceholderAlbum("ph-album-2", "Coastlines", "The Pale Hours", 2021, 9));
-			albums.Add(MakePlaceholderAlbum("ph-album-3", "Neon Cartography", "Vector Field", 2024, 13));
-			albums.Add(MakePlaceholderAlbum("ph-album-4", "Slow Tide", "Marigold", 2019, 8));
-			albums.Add(MakePlaceholderAlbum("ph-album-5", "Paper Cities", "North Bell", 2022, 10));
-			albums.Add(MakePlaceholderAlbum("ph-album-6", "Quiet Engines", "Halcyon Drift", 2020, 12));
-			albums.Add(MakePlaceholderAlbum("ph-album-7", "Glass Apartments", "Saffron", 2023, 7));
-			albums.Add(MakePlaceholderAlbum("ph-album-8", "Borrowed Light", "Evening Standard", 2018, 14));
-			albums.Add(MakePlaceholderAlbum("ph-album-9", "Threshold", "Cobalt Lake", 2024, 10));
-			albums.Add(MakePlaceholderAlbum("ph-album-10", "Wildflower Static", "Junewren", 2021, 9));
-			albums.Add(MakePlaceholderAlbum("ph-album-11", "Afterimage", "The Lyon Set", 2022, 11));
-			albums.Add(MakePlaceholderAlbum("ph-album-12", "Long Division", "Pacific Theory", 2017, 13));
-			return albums;
-		}
-
-		private PulseAlbum MakePlaceholderAlbum(string id, string name, string artist, int year, int songCount)
-		{
-			PulseAlbum album = new PulseAlbum();
-			album.Id = id;
-			album.Name = name;
-			album.Artist = artist;
-			album.Year = year;
-			album.SongCount = songCount;
-			album.Duration = songCount * 215;
-			return album;
+			Task.Run(() =>
+			{
+				List<PulseAlbum> results = new List<PulseAlbum>();
+				try
+				{
+					for (int page = 0; page < 200; page++)
+					{
+						int offset = page * 500;
+						if (!SubsonicGet("getAlbumList2", out JsonElement response, "type=alphabeticalByName&size=500&offset=" + offset))
+						{
+							break;
+						}
+						int pageCount = 0;
+						if (response.TryGetProperty("albumList2", out JsonElement albumList) &&
+							albumList.TryGetProperty("album", out JsonElement albumArray) &&
+							albumArray.ValueKind == JsonValueKind.Array)
+						{
+							foreach (JsonElement element in albumArray.EnumerateArray())
+							{
+								results.Add(ParseAlbum(element));
+								pageCount++;
+							}
+						}
+						if (pageCount < 500)
+						{
+							break;
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+					System.Diagnostics.Debugger.Break();
+				}
+				List<PulseAlbum> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
 		}
 
 		public void CreatePlaylist(string name, Action<PulsePlaylist> onComplete)
@@ -449,6 +574,46 @@ namespace Thump.Pulse
 					string param = "playlistId=" + Uri.EscapeDataString(playlistId)
 						+ "&name=" + Uri.EscapeDataString(newName);
 					ok = SubsonicGet("updatePlaylist", out JsonElement response, param);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+					System.Diagnostics.Debugger.Break();
+				}
+				bool result = ok;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(result); });
+			});
+		}
+
+		public void Star(string trackId, Action<bool> onComplete)
+		{
+			Task.Run(() =>
+			{
+				bool ok = false;
+				try
+				{
+					string param = "id=" + Uri.EscapeDataString(trackId);
+					ok = SubsonicGet("star", out JsonElement response, param);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+					System.Diagnostics.Debugger.Break();
+				}
+				bool result = ok;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(result); });
+			});
+		}
+
+		public void Unstar(string trackId, Action<bool> onComplete)
+		{
+			Task.Run(() =>
+			{
+				bool ok = false;
+				try
+				{
+					string param = "id=" + Uri.EscapeDataString(trackId);
+					ok = SubsonicGet("unstar", out JsonElement response, param);
 				}
 				catch (Exception ex)
 				{
@@ -563,7 +728,7 @@ namespace Thump.Pulse
 				bool ok = false;
 				try
 				{
-					string url = m_baseUrl + "/pulse/markPlaylistPlayed?id=" + Uri.EscapeDataString(playlistId) + "&u=" + m_user;
+					string url = m_baseUrl + "/pulse/markPlaylistPlayed?id=" + Uri.EscapeDataString(playlistId) + "&u=" + Uri.EscapeDataString(m_user);
 					string json = HttpGet(url);
 					ok = json != null;
 				}
@@ -670,6 +835,8 @@ namespace Thump.Pulse
 			song.AlbumId = JsonHelper.GetString(element, "albumId");
 			song.CoverArt = JsonHelper.GetString(element, "coverArt");
 			song.Duration = JsonHelper.GetInt(element, "duration");
+			string starredValue = JsonHelper.GetString(element, "starred");
+			song.Starred = !string.IsNullOrEmpty(starredValue);
 			return song;
 		}
 
@@ -693,6 +860,12 @@ namespace Thump.Pulse
 				try
 				{
 					HttpResponseMessage response = m_httpClient.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
+					if (!response.IsSuccessStatusCode)
+					{
+						Log.Error("Cover art fetch failed: " + url + " status: " + response.StatusCode);
+						MainThread.BeginInvokeOnMainThread(() => { onComplete(null); });
+						return;
+					}
 					byte[] data = response.Content.ReadAsByteArrayAsync().Result;
 					m_imageCache[url] = data;
 					MainThread.BeginInvokeOnMainThread(() => { onComplete(data); });
@@ -743,6 +916,12 @@ namespace Thump.Pulse
 			jsonElement = default;
 			string url = BuildRestUrl(endpoint, extraParams);
 			HttpResponseMessage httpResponse = m_httpClient.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
+			if (!httpResponse.IsSuccessStatusCode)
+			{
+				Log.Error("Subsonic request failed: " + url + " status: " + httpResponse.StatusCode);
+				jsonElement = default;
+				return false;
+			}
 			string json = httpResponse.Content.ReadAsStringAsync().Result;
 			JsonDocument doc = JsonDocument.Parse(json);
 			JsonElement root = doc.RootElement;
@@ -782,7 +961,7 @@ namespace Thump.Pulse
 				try
 				{
 					int count = 50;
-					string url = m_baseUrl + "/pulse/recentlyPlayed?count=" + count + "&u=" + m_user;
+					string url = m_baseUrl + "/pulse/recentlyPlayed?count=" + count + "&u=" + Uri.EscapeDataString(m_user);
 					string json = HttpGet(url);
 					if (json != null)
 					{
@@ -814,7 +993,7 @@ namespace Thump.Pulse
 				try
 				{
 					int count = 50;
-					string url = m_baseUrl + "/pulse/popularArtists?count=" + count + "&u=" + m_user;
+					string url = m_baseUrl + "/pulse/popularArtists?count=" + count + "&u=" + Uri.EscapeDataString(m_user);
 					string json = HttpGet(url);
 					if (json != null)
 					{
@@ -858,81 +1037,132 @@ namespace Thump.Pulse
 	
 		public void GetRecentlyAdded(Action<List<PulseObject>> onComplete)
 		{
-			// Placeholder preview data: no recently-added route exists yet.
-			List<PulseObject> results = new List<PulseObject>();
-			results.Add(MakePlaceholderAlbum("ph-recent-1", "Ember Season", "Lantern Field", 2024, 10));
-			results.Add(MakePlaceholderAlbum("ph-recent-2", "Static Bloom", "Tidewell", 2024, 8));
-			results.Add(MakePlaceholderAlbum("ph-recent-3", "Cassette Sun", "Maple & Wren", 2024, 12));
-			results.Add(MakePlaceholderAlbum("ph-recent-4", "Soft Machinery", "The Hollows", 2023, 9));
-			results.Add(MakePlaceholderAlbum("ph-recent-5", "Driftwood Radio", "Otto Grey", 2023, 11));
-			results.Add(MakePlaceholderAlbum("ph-recent-6", "Northern Letters", "Sable Coast", 2024, 7));
-			results.Add(MakePlaceholderAlbum("ph-recent-7", "Velvet Antenna", "Cinder Lane", 2023, 13));
-			results.Add(MakePlaceholderAlbum("ph-recent-8", "Gentle Riot", "Postcard Town", 2024, 10));
-			MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
+			Task.Run(() =>
+			{
+				List<PulseObject> results = new List<PulseObject>();
+				try
+				{
+					if (SubsonicGet("getAlbumList2", out JsonElement response, "type=newest&size=50"))
+					{
+						if (response.TryGetProperty("albumList2", out JsonElement albumList) &&
+							albumList.TryGetProperty("album", out JsonElement albumArray) &&
+							albumArray.ValueKind == JsonValueKind.Array)
+						{
+							foreach (JsonElement element in albumArray.EnumerateArray())
+							{
+								results.Add(ParseAlbum(element));
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+					System.Diagnostics.Debugger.Break();
+				}
+				List<PulseObject> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
 		}
 
 		public void GetGenres(Action<List<PulseGenre>> onComplete)
 		{
-			// Placeholder preview data: no genres route exists yet.
-			List<PulseGenre> results = new List<PulseGenre>();
-			results.Add(MakePlaceholderGenre("Indie Rock", 482, 53));
-			results.Add(MakePlaceholderGenre("Electronic", 671, 74));
-			results.Add(MakePlaceholderGenre("Jazz", 318, 41));
-			results.Add(MakePlaceholderGenre("Ambient", 207, 29));
-			results.Add(MakePlaceholderGenre("Hip-Hop", 540, 62));
-			results.Add(MakePlaceholderGenre("Classical", 396, 47));
-			results.Add(MakePlaceholderGenre("Folk", 245, 33));
-			results.Add(MakePlaceholderGenre("Synthwave", 168, 22));
-			MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
-		}
-
-		private PulseGenre MakePlaceholderGenre(string name, int songCount, int albumCount)
-		{
-			PulseGenre genre = new PulseGenre();
-			genre.Id = name;
-			genre.Name = name;
-			genre.SongCount = songCount;
-			genre.AlbumCount = albumCount;
-			return genre;
+			Task.Run(() =>
+			{
+				List<PulseGenre> results = new List<PulseGenre>();
+				try
+				{
+					if (SubsonicGet("getGenres", out JsonElement response))
+					{
+						if (response.TryGetProperty("genres", out JsonElement genres) &&
+							genres.TryGetProperty("genre", out JsonElement genreArray) &&
+							genreArray.ValueKind == JsonValueKind.Array)
+						{
+							foreach (JsonElement element in genreArray.EnumerateArray())
+							{
+								string value = JsonHelper.GetString(element, "value");
+								PulseGenre genre = new PulseGenre();
+								genre.Id = value;
+								genre.Name = value;
+								genre.SongCount = JsonHelper.GetInt(element, "songCount");
+								genre.AlbumCount = JsonHelper.GetInt(element, "albumCount");
+								results.Add(genre);
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+					System.Diagnostics.Debugger.Break();
+				}
+				List<PulseGenre> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
 		}
 
 		public void GetTopItems(Action<List<PulseObject>> onComplete)
 		{
-			// Placeholder preview data for the home top-8 panel: backing route is TBD.
-			List<PulseObject> results = new List<PulseObject>();
-			results.Add(MakePlaceholderAlbum("ph-top-1", "Midnight Geometry", "Aurora Sky", 2023, 11));
-			results.Add(MakePlaceholderPlaylist("ph-top-2", "Late Night Drive", 64));
-			results.Add(MakePlaceholderArtist("ph-top-3", "Vector Field", 6));
-			results.Add(MakePlaceholderAlbum("ph-top-4", "Coastlines", "The Pale Hours", 2021, 9));
-			results.Add(MakePlaceholderPlaylist("ph-top-5", "Focus Flow", 88));
-			results.Add(MakePlaceholderArtist("ph-top-6", "Halcyon Drift", 4));
-			results.Add(MakePlaceholderAlbum("ph-top-7", "Paper Cities", "North Bell", 2022, 10));
-			results.Add(MakePlaceholderPlaylist("ph-top-8", "Weekend Anthems", 52));
-			MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
-		}
-
-		private PulsePlaylist MakePlaceholderPlaylist(string id, string name, int songCount)
-		{
-			PulsePlaylist playlist = new PulsePlaylist();
-			playlist.Id = id;
-			playlist.Name = name;
-			playlist.SongCount = songCount;
-			playlist.Duration = songCount * 210;
-			return playlist;
-		}
-
-		private PulseArtist MakePlaceholderArtist(string id, string name, int albumCount)
-		{
-			PulseArtist artist = new PulseArtist();
-			artist.Id = id;
-			artist.Name = name;
-			artist.AlbumCount = albumCount;
-			return artist;
+			Task.Run(() =>
+			{
+				List<PulseObject> results = new List<PulseObject>();
+				try
+				{
+					int count = 50;
+					string url = m_baseUrl + "/pulse/topPlaylists?count=" + count + "&u=" + Uri.EscapeDataString(m_user);
+					string json = HttpGet(url);
+					if (json != null)
+					{
+						JsonDocument doc = JsonDocument.Parse(json);
+						if (doc.RootElement.TryGetProperty("playlists", out JsonElement playlists) && playlists.ValueKind == JsonValueKind.Array)
+						{
+							foreach (JsonElement element in playlists.EnumerateArray())
+							{
+								PulsePlaylist playlist = ParsePlaylist(element);
+								results.Add(playlist);
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+					System.Diagnostics.Debugger.Break();
+				}
+				List<PulseObject> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
 		}
 
 		public void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete)
 		{
-			MainThread.BeginInvokeOnMainThread(() => { onComplete(null); });
+			Task.Run(() =>
+			{
+				List<PulseTrack> results = new List<PulseTrack>();
+				try
+				{
+					string param = "genre=" + Uri.EscapeDataString(genre) + "&count=500&offset=0";
+					if (SubsonicGet("getSongsByGenre", out JsonElement response, param))
+					{
+						if (response.TryGetProperty("songsByGenre", out JsonElement songsByGenre) &&
+							songsByGenre.TryGetProperty("song", out JsonElement songArray) &&
+							songArray.ValueKind == JsonValueKind.Array)
+						{
+							foreach (JsonElement element in songArray.EnumerateArray())
+							{
+								results.Add(ParseSong(element));
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+					System.Diagnostics.Debugger.Break();
+				}
+				List<PulseTrack> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
 		}
 
 		public void GetFavorites(Action<List<PulseTrack>> onComplete)
@@ -947,7 +1177,7 @@ namespace Thump.Pulse
 				List<PulsePlaylist> results = new List<PulsePlaylist>();
 				try
 				{
-					string url = m_baseUrl + "/pulse/" + endpoint + "?count=" + count + "&u=" + m_user;
+					string url = m_baseUrl + "/pulse/" + endpoint + "?count=" + count + "&u=" + Uri.EscapeDataString(m_user);
 					string json = HttpGet(url);
 					if (json != null)
 					{

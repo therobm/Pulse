@@ -15,7 +15,9 @@ namespace Thump.Data
 		Artist,
 		CoverArt,
 		SongData,
-		Genre
+		Genre,
+		Podcast,
+		PodcastEpisode
 	}
 
 
@@ -193,6 +195,11 @@ namespace Thump.Data
 			}
 			GetAlbum(album.Id, (fullAlbum) =>
 			{
+				if (fullAlbum == null)
+				{
+					callback(new List<PulseTrack>());
+					return;
+				}
 				callback(fullAlbum.Songs);
 			});
 		}
@@ -306,7 +313,7 @@ namespace Thump.Data
 				{
 					if (data == null || data.Length == 0)
 					{
-						callback(null);
+						MainThread.BeginInvokeOnMainThread(() => { callback(null); });
 						return;
 					}
 					m_cache.Enqueue(() =>
@@ -325,8 +332,34 @@ namespace Thump.Data
 			{
 				return;
 			}
-			//todo search support, we'll think about local vs network before doing anything here
-			callback(null);
+			m_pulseClient.Search(query, callback);
+		}
+
+		public void GetPodcasts(Action<List<PulsePodcastChannel>> callback)
+		{
+			if (callback == null)
+			{
+				return;
+			}
+			m_pulseClient.GetPodcasts(callback);
+		}
+
+		public void StarTrack(string trackId, Action<bool> callback)
+		{
+			if (callback == null)
+			{
+				return;
+			}
+			m_pulseClient.Star(trackId, callback);
+		}
+
+		public void UnstarTrack(string trackId, Action<bool> callback)
+		{
+			if (callback == null)
+			{
+				return;
+			}
+			m_pulseClient.Unstar(trackId, callback);
 		}
 
 		public void GetCoverArt(string coverArtId, Action<byte[]> callback)

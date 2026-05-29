@@ -39,7 +39,7 @@ namespace Thump
 		private NavFooter m_navFooter;
 
 		private eTab m_activeTab = eTab.Home;
-		private bool m_inDetailView;
+		private List<View> m_detailStack = new List<View>();
 
 		private List<PulseTrack> m_currentQueue = new List<PulseTrack>();
 		private int m_currentQueueIndex;
@@ -49,6 +49,8 @@ namespace Thump
 		private ePlaybackState m_playbackState = ePlaybackState.Idle;
 		private long m_currentDurationMs;
 		private NowPlayingView m_nowPlayingView;
+		private bool m_shuffleEnabled;
+		private eRepeatMode m_repeatMode = eRepeatMode.Off;
 
 		public MainView()
 		{
@@ -77,7 +79,7 @@ namespace Thump
 
 
 			m_pulseClient = new PulseClient();
-			m_pulseClient.SetServerParams("192.168.5.5","32458", "Rob", "asdf", PulseClient.eSubSonicAuthType.Token, true);
+			m_pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), true);
 
 
 			string cacheRoot = FileSystem.CacheDirectory;
@@ -91,6 +93,11 @@ namespace Thump
 #else
 			m_player = new StubThumpPlayer();
 #endif
+
+			m_shuffleEnabled = ThumpSettings.GetShuffleEnabled();
+			m_repeatMode = ThumpSettings.GetRepeatMode();
+			m_player.SetShuffleEnabled(m_shuffleEnabled);
+			m_player.SetRepeatMode(m_repeatMode);
 
 			m_homeView = new HomeView(this);
 			m_libraryView = new LibraryView(this);
@@ -123,48 +130,61 @@ namespace Thump
 		public void NavigateToHome()
 		{
 			m_activeTab = eTab.Home;
-			m_inDetailView = false;
+			m_detailStack.Clear();
 			m_contentHost.Content = m_homeView;
 			m_navFooter.SetActiveTab(eTab.Home);
+			RestoreMiniPlayerIfActive();
 		}
 
 		public void NavigateToLibrary()
 		{
 			m_activeTab = eTab.Library;
-			m_inDetailView = false;
+			m_detailStack.Clear();
 			m_contentHost.Content = m_libraryView;
 			m_navFooter.SetActiveTab(eTab.Library);
+			RestoreMiniPlayerIfActive();
 		}
 
 		public void NavigateToSearch()
 		{
 			m_activeTab = eTab.Search;
-			m_inDetailView = false;
+			m_detailStack.Clear();
 			m_contentHost.Content = m_searchView;
 			m_navFooter.SetActiveTab(eTab.Search);
+			RestoreMiniPlayerIfActive();
 		}
 
 		public void NavigateToSettings()
 		{
 			m_activeTab = eTab.Settings;
-			m_inDetailView = false;
+			m_detailStack.Clear();
 			m_contentHost.Content = m_settingsView;
 			m_navFooter.SetActiveTab(eTab.Settings);
+			RestoreMiniPlayerIfActive();
 		}
 
 		private void PushDetail(View detail)
 		{
-			m_inDetailView = true;
+			m_detailStack.Add(detail);
 			m_contentHost.Content = detail;
 		}
 
 		public void OnBackPressed()
 		{
-			if (!m_inDetailView)
+			if (m_detailStack.Count == 0)
 			{
 				return;
 			}
-			m_inDetailView = false;
+			m_detailStack.RemoveAt(m_detailStack.Count - 1);
+			if (m_detailStack.Count > 0)
+			{
+				m_contentHost.Content = m_detailStack[m_detailStack.Count - 1];
+				if (m_contentHost.Content != m_nowPlayingView)
+				{
+					RestoreMiniPlayerIfActive();
+				}
+				return;
+			}
 			if (m_activeTab == eTab.Home)
 			{
 				m_contentHost.Content = m_homeView;
@@ -181,6 +201,25 @@ namespace Thump
 			{
 				m_contentHost.Content = m_settingsView;
 			}
+			if (m_contentHost.Content != m_nowPlayingView)
+			{
+				RestoreMiniPlayerIfActive();
+			}
+		}
+
+		protected override bool OnBackButtonPressed()
+		{
+			if (m_detailStack.Count > 0)
+			{
+				OnBackPressed();
+				return true;
+			}
+			if (m_activeTab != eTab.Home)
+			{
+				NavigateToHome();
+				return true;
+			}
+			return base.OnBackButtonPressed();
 		}
 
 		public void OnArtistSelected(PulseArtist artist)
@@ -262,12 +301,27 @@ namespace Thump
 			{
 				return;
 			}
-			m_currentQueue = tracks;
-			m_currentQueueIndex = startIndex;
-			m_currentTrack = tracks[startIndex];
+			int clampedIndex = startIndex;
+			if (clampedIndex < 0 || clampedIndex >= tracks.Count)
+			{
+				clampedIndex = 0;
+			}
+			m_currentQueue = new List<PulseTrack>(tracks);
+			m_currentQueueIndex = clampedIndex;
+			m_currentTrack = m_currentQueue[clampedIndex];
 			m_miniPlayer.SetTrack(m_currentTrack);
 			ShowMiniPlayer();
-			m_player.Play(tracks, startIndex);
+			m_player.Play(m_currentQueue, clampedIndex);
+		}
+
+		public void OnPlayTracksShuffled(List<PulseTrack> tracks)
+		{
+			if (tracks == null || tracks.Count == 0)
+			{
+				return;
+			}
+			SetShuffleState(true);
+			OnPlayTracks(tracks, 0);
 		}
 
 		public void OnTogglePlayPause()
@@ -296,6 +350,166 @@ namespace Thump
 		{
 			long position = (long)(fraction * m_currentDurationMs);
 			m_player.SeekTo(position);
+		}
+
+		public void OnToggleShuffle()
+		{
+			SetShuffleState(!m_shuffleEnabled);
+		}
+
+		private void SetShuffleState(bool enabled)
+		{
+			m_shuffleEnabled = enabled;
+			ThumpSettings.SetShuffleEnabled(enabled);
+			m_player.SetShuffleEnabled(enabled);
+			if (m_nowPlayingView != null)
+			{
+				m_nowPlayingView.SetShuffleState(enabled);
+			}
+		}
+
+		public void OnCycleRepeat()
+		{
+			eRepeatMode next;
+			if (m_repeatMode == eRepeatMode.Off)
+			{
+				next = eRepeatMode.All;
+			}
+			else if (m_repeatMode == eRepeatMode.All)
+			{
+				next = eRepeatMode.One;
+			}
+			else
+			{
+				next = eRepeatMode.Off;
+			}
+			SetRepeatState(next);
+		}
+
+		private void SetRepeatState(eRepeatMode mode)
+		{
+			m_repeatMode = mode;
+			ThumpSettings.SetRepeatMode(mode);
+			m_player.SetRepeatMode(mode);
+			if (m_nowPlayingView != null)
+			{
+				m_nowPlayingView.SetRepeatState(mode);
+			}
+		}
+
+		public bool GetShuffleEnabled()
+		{
+			return m_shuffleEnabled;
+		}
+
+		public eRepeatMode GetRepeatMode()
+		{
+			return m_repeatMode;
+		}
+
+		public void OnAddToQueue(List<PulseTrack> tracks)
+		{
+			if (tracks == null || tracks.Count == 0)
+			{
+				return;
+			}
+			if (m_currentQueue.Count == 0)
+			{
+				OnPlayTracks(tracks, 0);
+				return;
+			}
+			m_currentQueue.AddRange(tracks);
+			m_player.AddToQueue(tracks);
+			m_miniPlayer.RefreshSkipButtons();
+			if (m_nowPlayingView != null)
+			{
+				m_nowPlayingView.RefreshQueue();
+				m_nowPlayingView.RefreshSkipButtons();
+			}
+		}
+
+		public void OnPlayNext(List<PulseTrack> tracks)
+		{
+			if (tracks == null || tracks.Count == 0)
+			{
+				return;
+			}
+			if (m_currentQueue.Count == 0)
+			{
+				OnPlayTracks(tracks, 0);
+				return;
+			}
+			int insertAt = m_currentQueueIndex + 1;
+			if (insertAt > m_currentQueue.Count)
+			{
+				insertAt = m_currentQueue.Count;
+			}
+			m_currentQueue.InsertRange(insertAt, tracks);
+			m_player.PlayNext(tracks);
+			m_miniPlayer.RefreshSkipButtons();
+			if (m_nowPlayingView != null)
+			{
+				m_nowPlayingView.RefreshQueue();
+				m_nowPlayingView.RefreshSkipButtons();
+			}
+		}
+
+		public void OnSeekToQueueItem(int index)
+		{
+			if (index < 0 || index >= m_currentQueue.Count)
+			{
+				return;
+			}
+			m_currentQueueIndex = index;
+			m_currentTrack = m_currentQueue[index];
+			m_miniPlayer.SetTrack(m_currentTrack);
+			ShowMiniPlayer();
+			if (m_nowPlayingView != null)
+			{
+				m_nowPlayingView.SetTrack(m_currentTrack);
+			}
+			m_player.SeekToQueueItem(index);
+		}
+
+		public List<PulseTrack> GetQueue()
+		{
+			return m_currentQueue;
+		}
+
+		public int GetQueueIndex()
+		{
+			return m_currentQueueIndex;
+		}
+
+		public void OnQueueTrackSelected(PulseTrack track)
+		{
+			int index = m_currentQueue.IndexOf(track);
+			if (index < 0)
+			{
+				return;
+			}
+			OnSeekToQueueItem(index);
+		}
+
+		public async void OnTrackOptions(PulseTrack track)
+		{
+			if (track == null)
+			{
+				return;
+			}
+			string playNext = "Play Next";
+			string addToQueue = "Add to Queue";
+			string choice = await DisplayActionSheet(track.Title, "Cancel", null, playNext, addToQueue);
+			List<PulseTrack> single = new List<PulseTrack>();
+			single.Add(track);
+			if (choice == playNext)
+			{
+				OnPlayNext(single);
+			}
+			else if (choice == addToQueue)
+			{
+				OnAddToQueue(single);
+			}
 		}
 
 		public void OnPlaybackStateChanged(ePlaybackState state)
@@ -356,16 +570,63 @@ namespace Thump
 
 		public void OnPlayArtist(PulseArtist artist, bool shuffle)
 		{
-			// TODO: real impl walks albums and concatenates tracks via async callbacks.
-			// For prototype, queue a single placeholder track tagged with the artist name
-			// so the mini-player reacts to the action.
-			PulseTrack stub = new PulseTrack();
-			stub.Title = artist.Name;
-			stub.Artist = "Various albums";
-			stub.Duration = 240;
-			List<PulseTrack> queue = new List<PulseTrack>();
-			queue.Add(stub);
-			OnPlayTracks(queue, 0);
+			if (artist == null)
+			{
+				return;
+			}
+			bool started = false;
+			m_data.GetAlbumsForArtist(artist, (albums) =>
+			{
+				// The data route can fire its callback more than once (cache fast-path
+				// then network); start the walk only once.
+				if (started)
+				{
+					return;
+				}
+				started = true;
+				if (albums == null || albums.Count == 0)
+				{
+					return;
+				}
+				List<PulseTrack> combined = new List<PulseTrack>();
+				AccumulateArtistTracks(albums, 0, combined, shuffle);
+			});
+		}
+
+		private void AccumulateArtistTracks(List<PulseAlbum> albums, int index, List<PulseTrack> combined, bool shuffle)
+		{
+			if (index >= albums.Count)
+			{
+				if (combined.Count == 0)
+				{
+					return;
+				}
+				if (shuffle)
+				{
+					OnPlayTracksShuffled(combined);
+				}
+				else
+				{
+					OnPlayTracks(combined, 0);
+				}
+				return;
+			}
+			bool advanced = false;
+			m_data.GetTracksForAlbum(albums[index], (tracks) =>
+			{
+				// Guard against the route's double callback: advancing twice here would
+				// branch the recursion and flood requests / duplicate the queue.
+				if (advanced)
+				{
+					return;
+				}
+				advanced = true;
+				if (tracks != null)
+				{
+					combined.AddRange(tracks);
+				}
+				AccumulateArtistTracks(albums, index + 1, combined, shuffle);
+			});
 		}
 
 		public PulseTrack GetCurrentTrack()
@@ -386,6 +647,7 @@ namespace Thump
 			}
 			m_nowPlayingView.SetPlaying(m_playbackState == ePlaybackState.Playing);
 			PushDetail(m_nowPlayingView);
+			HideMiniPlayer();
 		}
 
 		public void ShowMiniPlayer()
@@ -396,6 +658,15 @@ namespace Thump
 		public void HideMiniPlayer()
 		{
 			m_miniPlayer.IsVisible = false;
+		}
+
+		private void RestoreMiniPlayerIfActive()
+		{
+			if (m_currentTrack == null)
+			{
+				return;
+			}
+			ShowMiniPlayer();
 		}
 	}
 }

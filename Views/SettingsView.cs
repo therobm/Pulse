@@ -1,7 +1,9 @@
 using System;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.Maui;
 using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.ApplicationModel.DataTransfer;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using Thump.Data;
@@ -58,6 +60,7 @@ namespace Thump.Views
 			stack.Children.Add(BuildTitle());
 			stack.Children.Add(BuildPlaybackSection());
 			stack.Children.Add(BuildCachingSection());
+			stack.Children.Add(BuildDiagnosticsSection());
 			stack.Children.Add(BuildLoginSection());
 
 			scroll.Content = stack;
@@ -210,6 +213,27 @@ namespace Thump.Views
 			clearButton.Margin = new Thickness(0, 4, 0, 0);
 			clearButton.Clicked += OnClearCacheClicked;
 			section.Children.Add(clearButton);
+
+			return section;
+		}
+
+		private View BuildDiagnosticsSection()
+		{
+			VerticalStackLayout section = new VerticalStackLayout();
+			section.Spacing = 12;
+			section.Children.Add(BuildSectionHeader("Diagnostics"));
+			section.Children.Add(BuildFieldLabel("Export the app log file to share when reporting a problem."));
+
+			Button exportButton = new Button();
+			exportButton.Text = "Export Logs";
+			exportButton.TextColor = ThumpColors.OnBackground;
+			exportButton.BackgroundColor = ThumpColors.Surface;
+			exportButton.CornerRadius = 8;
+			exportButton.FontSize = 15;
+			exportButton.HeightRequest = 44;
+			exportButton.Margin = new Thickness(0, 4, 0, 0);
+			exportButton.Clicked += OnExportLogsClicked;
+			section.Children.Add(exportButton);
 
 			return section;
 		}
@@ -387,12 +411,79 @@ namespace Thump.Views
 			RefreshCacheStats();
 		}
 
+		private async void OnExportLogsClicked(object sender, EventArgs e)
+		{
+			try
+			{
+				ShareFileRequest request = new ShareFileRequest();
+				request.Title = "Thump logs";
+				request.File = new ShareFile(Log.GetLogFilePath());
+				await Share.Default.RequestAsync(request);
+			}
+			catch (Exception ex)
+			{
+				Log.Exception(ex);
+			}
+		}
+
+		private static string ValidateAndNormalizeServer(string ip, string port, out string normalizedIp)
+		{
+			normalizedIp = "";
+			if (string.IsNullOrWhiteSpace(ip))
+			{
+				return "Server IP is required.";
+			}
+			if (string.IsNullOrWhiteSpace(port))
+			{
+				return "Server port is required.";
+			}
+			int portNumber;
+			if (!int.TryParse(port.Trim(), out portNumber) || portNumber < 1 || portNumber > 65535)
+			{
+				return "Server port must be a number between 1 and 65535.";
+			}
+			string host = ip.Trim();
+			if (host.IndexOf(' ') >= 0)
+			{
+				return "Server IP cannot contain spaces.";
+			}
+			if (!host.StartsWith("http://") && !host.StartsWith("https://"))
+			{
+				host = "https://" + host;
+			}
+			Uri parsed;
+			if (!Uri.TryCreate(host + ":" + portNumber, UriKind.Absolute, out parsed))
+			{
+				return "Server IP is not a valid address.";
+			}
+			if (parsed.Scheme != "http" && parsed.Scheme != "https")
+			{
+				return "Server address must be http or https.";
+			}
+			if (string.IsNullOrEmpty(parsed.Host))
+			{
+				return "Server IP is not a valid address.";
+			}
+			normalizedIp = host;
+			return "";
+		}
+
 		private void OnConnectClicked(object sender, EventArgs e)
 		{
 			string ip = m_serverIpEntry.Text;
 			string port = m_serverPortEntry.Text;
 			string user = m_usernameEntry.Text;
 			string password = m_passwordEntry.Text;
+
+			string normalizedIp;
+			string validationError = ValidateAndNormalizeServer(ip, port, out normalizedIp);
+			if (!string.IsNullOrEmpty(validationError))
+			{
+				m_connectStatusLabel.Text = validationError;
+				m_connectStatusLabel.TextColor = s_failColor;
+				return;
+			}
+			ip = normalizedIp;
 
 			ThumpSettings.SetServerIp(ip);
 			ThumpSettings.SetServerPort(port);
@@ -404,28 +495,32 @@ namespace Thump.Views
 			m_connectStatusLabel.TextColor = ThumpColors.TextSecondary;
 
 			PulseClient pulse = MainView.Data.Pulse;
-			pulse.SetServerParams(ip, port, user, password, m_authType, true);
-	
-			bool success = pulse.TestConnection(out JsonElement response);
-
-			string message = "Unknown";
-			if (!success && response.TryGetProperty("error", out JsonElement error))
-				message = JsonHelper.GetString(error, "message");
-
-			MainThread.BeginInvokeOnMainThread(() =>
+			PulseClient.eSubSonicAuthType authType = m_authType;
+			Task.Run(() =>
 			{
-				if (success)
+				pulse.SetServerParams(ip, port, user, password, authType, true);
+				bool success = pulse.TestConnection(out JsonElement response);
+				string message = "Unknown";
+				if (!success && response.TryGetProperty("error", out JsonElement error))
 				{
-					m_connectStatusLabel.Text = "Connected";
-					m_connectStatusLabel.TextColor = s_successColor;
+					message = JsonHelper.GetString(error, "message");
 				}
-				else
+				bool capturedSuccess = success;
+				string capturedMessage = message;
+				MainThread.BeginInvokeOnMainThread(() =>
 				{
-					m_connectStatusLabel.Text = "Failed: " + message;
-					m_connectStatusLabel.TextColor = s_failColor;
-				}
+					if (capturedSuccess)
+					{
+						m_connectStatusLabel.Text = "Connected";
+						m_connectStatusLabel.TextColor = s_successColor;
+					}
+					else
+					{
+						m_connectStatusLabel.Text = "Failed: " + capturedMessage;
+						m_connectStatusLabel.TextColor = s_failColor;
+					}
+				});
 			});
-			
 		}
 
 		private void RefreshCacheStats()

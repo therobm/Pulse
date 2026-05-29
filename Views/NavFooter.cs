@@ -8,17 +8,18 @@ namespace Thump.Views
 {
 	public class NavFooter : ThumpView
 	{
-		private static readonly Color s_activeColor = Color.FromArgb("#3b82f6");
-		private static readonly Color s_inactiveColor = Color.FromArgb("#555568");
-
-		private Button m_homeButton;
-		private Button m_libraryButton;
-		private Button m_searchButton;
-		private Button m_settingsButton;
+		private Label m_homeIcon;
+		private Label m_homeLabel;
+		private Label m_libraryIcon;
+		private Label m_libraryLabel;
+		private Label m_searchIcon;
+		private Label m_searchLabel;
+		private Label m_settingsIcon;
+		private Label m_settingsLabel;
 
 		public NavFooter(MainView mainView) : base(mainView)
 		{
-			
+
 		}
 
 		protected override void BuildLayout()
@@ -51,58 +52,126 @@ namespace Thump.Views
 
 		private View BuildHomeTab()
 		{
-			m_homeButton = new Button();
-			m_homeButton.Text = "Home";
-			m_homeButton.TextColor = s_activeColor;
-			m_homeButton.BackgroundColor = Colors.Transparent;
-			m_homeButton.FontSize = 13;
-			m_homeButton.FontFamily = "PoppinsSemiBold";
-			m_homeButton.Clicked += OnHomeClicked;
+			m_homeIcon = new Label();
+			m_homeIcon.FontFamily = "MaterialIcons";
+			m_homeIcon.FontSize = 22;
+			m_homeIcon.Text = "\uE88A";
+			m_homeIcon.TextColor = ThumpColors.TextDim;
+			m_homeIcon.HorizontalOptions = LayoutOptions.Center;
 
-			Grid.SetColumn(m_homeButton, 0);
-			return m_homeButton;
+			m_homeLabel = new Label();
+			m_homeLabel.Text = "Home";
+			m_homeLabel.FontFamily = "PoppinsSemiBold";
+			m_homeLabel.FontSize = 11;
+			m_homeLabel.TextColor = ThumpColors.TextDim;
+			m_homeLabel.HorizontalOptions = LayoutOptions.Center;
+
+			StackLayout stack = new StackLayout();
+			stack.Orientation = StackOrientation.Vertical;
+			stack.HorizontalOptions = LayoutOptions.Center;
+			stack.Spacing = 2;
+			stack.Children.Add(m_homeIcon);
+			stack.Children.Add(m_homeLabel);
+
+			TapGestureRecognizer tap = new TapGestureRecognizer();
+			tap.Tapped += OnHomeClicked;
+			stack.GestureRecognizers.Add(tap);
+
+			Grid.SetColumn(stack, 0);
+			return stack;
 		}
 
 		private View BuildLibraryTab()
 		{
-			m_libraryButton = new Button();
-			m_libraryButton.Text = "Library";
-			m_libraryButton.TextColor = s_inactiveColor;
-			m_libraryButton.BackgroundColor = Colors.Transparent;
-			m_libraryButton.FontSize = 13;
-			m_libraryButton.FontFamily = "PoppinsSemiBold";
-			m_libraryButton.Clicked += OnLibraryClicked;
+			m_libraryIcon = new Label();
+			m_libraryIcon.FontFamily = "MaterialIcons";
+			m_libraryIcon.FontSize = 22;
+			m_libraryIcon.Text = "\uE030";
+			m_libraryIcon.TextColor = ThumpColors.TextDim;
+			m_libraryIcon.HorizontalOptions = LayoutOptions.Center;
 
-			Grid.SetColumn(m_libraryButton, 1);
-			return m_libraryButton;
+			m_libraryLabel = new Label();
+			m_libraryLabel.Text = "Library";
+			m_libraryLabel.FontFamily = "PoppinsSemiBold";
+			m_libraryLabel.FontSize = 11;
+			m_libraryLabel.TextColor = ThumpColors.TextDim;
+			m_libraryLabel.HorizontalOptions = LayoutOptions.Center;
+
+			StackLayout stack = new StackLayout();
+			stack.Orientation = StackOrientation.Vertical;
+			stack.HorizontalOptions = LayoutOptions.Center;
+			stack.Spacing = 2;
+			stack.Children.Add(m_libraryIcon);
+			stack.Children.Add(m_libraryLabel);
+
+			TapGestureRecognizer tap = new TapGestureRecognizer();
+			tap.Tapped += OnLibraryClicked;
+			stack.GestureRecognizers.Add(tap);
+
+			Grid.SetColumn(stack, 1);
+			return stack;
 		}
 
 		private View BuildSearchTab()
 		{
-			m_searchButton = new Button();
-			m_searchButton.Text = "Search";
-			m_searchButton.TextColor = s_inactiveColor;
-			m_searchButton.BackgroundColor = Colors.Transparent;
-			m_searchButton.FontSize = 13;
-			m_searchButton.FontFamily = "PoppinsSemiBold";
-			m_searchButton.Clicked += OnSearchClicked;
+			m_searchIcon = new Label();
+			m_searchIcon.FontFamily = "MaterialIcons";
+			m_searchIcon.FontSize = 22;
+			m_searchIcon.Text = "\uE8B6";
+			m_searchIcon.TextColor = ThumpColors.TextDim;
+			m_searchIcon.HorizontalOptions = LayoutOptions.Center;
 
-			Grid.SetColumn(m_searchButton, 2);
-			return m_searchButton;
+			m_searchLabel = new Label();
+			m_searchLabel.Text = "Search";
+			m_searchLabel.FontFamily = "PoppinsSemiBold";
+			m_searchLabel.FontSize = 11;
+			m_searchLabel.TextColor = ThumpColors.TextDim;
+			m_searchLabel.HorizontalOptions = LayoutOptions.Center;
+
+			StackLayout stack = new StackLayout();
+			stack.Orientation = StackOrientation.Vertical;
+			stack.HorizontalOptions = LayoutOptions.Center;
+			stack.Spacing = 2;
+			stack.Children.Add(m_searchIcon);
+			stack.Children.Add(m_searchLabel);
+
+			TapGestureRecognizer tap = new TapGestureRecognizer();
+			tap.Tapped += OnSearchClicked;
+			stack.GestureRecognizers.Add(tap);
+
+			Grid.SetColumn(stack, 2);
+			return stack;
 		}
 
 		private View BuildSettingsTab()
 		{
-			m_settingsButton = new Button();
-			m_settingsButton.Text = "Settings";
-			m_settingsButton.TextColor = s_inactiveColor;
-			m_settingsButton.BackgroundColor = Colors.Transparent;
-			m_settingsButton.FontSize = 13;
-			m_settingsButton.FontFamily = "PoppinsSemiBold";
-			m_settingsButton.Clicked += OnSettingsClicked;
+			m_settingsIcon = new Label();
+			m_settingsIcon.FontFamily = "MaterialIcons";
+			m_settingsIcon.FontSize = 22;
+			m_settingsIcon.Text = "\uE8B8";
+			m_settingsIcon.TextColor = ThumpColors.TextDim;
+			m_settingsIcon.HorizontalOptions = LayoutOptions.Center;
 
-			Grid.SetColumn(m_settingsButton, 3);
-			return m_settingsButton;
+			m_settingsLabel = new Label();
+			m_settingsLabel.Text = "Settings";
+			m_settingsLabel.FontFamily = "PoppinsSemiBold";
+			m_settingsLabel.FontSize = 11;
+			m_settingsLabel.TextColor = ThumpColors.TextDim;
+			m_settingsLabel.HorizontalOptions = LayoutOptions.Center;
+
+			StackLayout stack = new StackLayout();
+			stack.Orientation = StackOrientation.Vertical;
+			stack.HorizontalOptions = LayoutOptions.Center;
+			stack.Spacing = 2;
+			stack.Children.Add(m_settingsIcon);
+			stack.Children.Add(m_settingsLabel);
+
+			TapGestureRecognizer tap = new TapGestureRecognizer();
+			tap.Tapped += OnSettingsClicked;
+			stack.GestureRecognizers.Add(tap);
+
+			Grid.SetColumn(stack, 3);
+			return stack;
 		}
 
 		public override void Initialize()
@@ -112,26 +181,34 @@ namespace Thump.Views
 
 		public void SetActiveTab(eTab tab)
 		{
-			m_homeButton.TextColor = s_inactiveColor;
-			m_libraryButton.TextColor = s_inactiveColor;
-			m_searchButton.TextColor = s_inactiveColor;
-			m_settingsButton.TextColor = s_inactiveColor;
+			m_homeIcon.TextColor = ThumpColors.TextDim;
+			m_homeLabel.TextColor = ThumpColors.TextDim;
+			m_libraryIcon.TextColor = ThumpColors.TextDim;
+			m_libraryLabel.TextColor = ThumpColors.TextDim;
+			m_searchIcon.TextColor = ThumpColors.TextDim;
+			m_searchLabel.TextColor = ThumpColors.TextDim;
+			m_settingsIcon.TextColor = ThumpColors.TextDim;
+			m_settingsLabel.TextColor = ThumpColors.TextDim;
 
 			if (tab == eTab.Home)
 			{
-				m_homeButton.TextColor = s_activeColor;
+				m_homeIcon.TextColor = ThumpColors.OnBackground;
+				m_homeLabel.TextColor = ThumpColors.OnBackground;
 			}
 			else if (tab == eTab.Library)
 			{
-				m_libraryButton.TextColor = s_activeColor;
+				m_libraryIcon.TextColor = ThumpColors.OnBackground;
+				m_libraryLabel.TextColor = ThumpColors.OnBackground;
 			}
 			else if (tab == eTab.Search)
 			{
-				m_searchButton.TextColor = s_activeColor;
+				m_searchIcon.TextColor = ThumpColors.OnBackground;
+				m_searchLabel.TextColor = ThumpColors.OnBackground;
 			}
 			else if (tab == eTab.Settings)
 			{
-				m_settingsButton.TextColor = s_activeColor;
+				m_settingsIcon.TextColor = ThumpColors.OnBackground;
+				m_settingsLabel.TextColor = ThumpColors.OnBackground;
 			}
 		}
 

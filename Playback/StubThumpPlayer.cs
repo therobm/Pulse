@@ -37,5 +37,25 @@ namespace Thump.Playback
 		public void Release()
 		{
 		}
+
+		public void SetShuffleEnabled(bool enabled)
+		{
+		}
+
+		public void SetRepeatMode(eRepeatMode mode)
+		{
+		}
+
+		public void AddToQueue(List<PulseTrack> tracks)
+		{
+		}
+
+		public void PlayNext(List<PulseTrack> tracks)
+		{
+		}
+
+		public void SeekToQueueItem(int index)
+		{
+		}
 	}
 }

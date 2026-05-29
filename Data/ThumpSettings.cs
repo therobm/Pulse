@@ -1,4 +1,5 @@
 using Microsoft.Maui.Storage;
+using Thump.Playback;
 using Thump.Pulse;
 
 namespace Thump.Data
@@ -14,6 +15,8 @@ namespace Thump.Data
 	{
 		private const string s_keyScrobble = "thump.playback.scrobble";
 		private const string s_keyNormalize = "thump.playback.normalize";
+		private const string s_keyShuffle = "thump.playback.shuffle";
+		private const string s_keyRepeat = "thump.playback.repeat";
 		private const string s_keyPrefetchCount = "thump.cache.prefetch";
 		private const string s_keyCacheLimitBytes = "thump.cache.limitBytes";
 		private const string s_keyServerIp = "thump.login.ip";
@@ -41,6 +44,25 @@ namespace Thump.Data
 			Preferences.Set(s_keyNormalize, (int)value);
 		}
 
+		public static bool GetShuffleEnabled()
+		{
+			return Preferences.Get(s_keyShuffle, false);
+		}
+		public static void SetShuffleEnabled(bool value)
+		{
+			Preferences.Set(s_keyShuffle, value);
+		}
+
+		public static eRepeatMode GetRepeatMode()
+		{
+			int stored = Preferences.Get(s_keyRepeat, (int)eRepeatMode.Off);
+			return (eRepeatMode)stored;
+		}
+		public static void SetRepeatMode(eRepeatMode value)
+		{
+			Preferences.Set(s_keyRepeat, (int)value);
+		}
+
 		public static int GetPrefetchCount()
 		{
 			return Preferences.Get(s_keyPrefetchCount, 10);
@@ -61,7 +83,7 @@ namespace Thump.Data
 
 		public static string GetServerIp()
 		{
-			return Preferences.Get(s_keyServerIp, "https://192.168.5.5");
+			return Preferences.Get(s_keyServerIp, "192.168.5.5");
 		}
 		public static void SetServerIp(string value)
 		{
@@ -86,14 +108,25 @@ namespace Thump.Data
 			Preferences.Set(s_keyUsername, value);
 		}
 
-		// TODO: move the password to SecureStorage before shipping; Preferences is plaintext.
 		public static string GetPassword()
 		{
-			return Preferences.Get(s_keyPassword, "");
+			string secureValue = SecureStorage.Default.GetAsync(s_keyPassword).GetAwaiter().GetResult();
+			if (!string.IsNullOrEmpty(secureValue))
+			{
+				return secureValue;
+			}
+			string legacyValue = Preferences.Get(s_keyPassword, "");
+			if (!string.IsNullOrEmpty(legacyValue))
+			{
+				SecureStorage.Default.SetAsync(s_keyPassword, legacyValue).GetAwaiter().GetResult();
+				Preferences.Remove(s_keyPassword);
+				return legacyValue;
+			}
+			return "";
 		}
 		public static void SetPassword(string value)
 		{
-			Preferences.Set(s_keyPassword, value);
+			SecureStorage.Default.SetAsync(s_keyPassword, value).GetAwaiter().GetResult();
 		}
 
 		public static PulseClient.eSubSonicAuthType GetAuthType()

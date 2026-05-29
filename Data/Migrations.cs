@@ -38,6 +38,7 @@ namespace Thump.Data
 		{
 			List<Migration> list = new List<Migration>();
 			list.Add(new Migration(1, INITIAL_SCHEMA));
+			list.Add(new Migration(2, MIGRATION_V2));
 			return list;
 		}
 
@@ -177,6 +178,68 @@ namespace Thump.Data
 				content_type TEXT,
 				fetched_at INTEGER NOT NULL,
 				last_accessed INTEGER NOT NULL
+			);
+		";
+
+		private const string MIGRATION_V2 = @"
+			CREATE TABLE recently_added (
+				position INTEGER PRIMARY KEY,
+				id TEXT,
+				name TEXT,
+				artist TEXT,
+				artist_id TEXT,
+				cover_art TEXT,
+				year INTEGER NOT NULL DEFAULT 0,
+				song_count INTEGER NOT NULL DEFAULT 0,
+				duration INTEGER NOT NULL DEFAULT 0
+			);
+
+			CREATE TABLE recently_played (
+				position INTEGER PRIMARY KEY,
+				id TEXT,
+				title TEXT,
+				artist TEXT,
+				artist_id TEXT,
+				album TEXT,
+				album_id TEXT,
+				cover_art TEXT,
+				duration INTEGER NOT NULL DEFAULT 0
+			);
+
+			CREATE TABLE popular_artists (
+				position INTEGER PRIMARY KEY,
+				id TEXT,
+				name TEXT,
+				cover_art TEXT,
+				album_count INTEGER NOT NULL DEFAULT 0,
+				play_count INTEGER NOT NULL DEFAULT 0,
+				score REAL NOT NULL DEFAULT 0,
+				last_played INTEGER NOT NULL DEFAULT 0
+			);
+
+			CREATE TABLE top_playlists (
+				position INTEGER PRIMARY KEY,
+				id TEXT,
+				name TEXT,
+				cover_art TEXT,
+				song_count INTEGER NOT NULL DEFAULT 0,
+				duration INTEGER NOT NULL DEFAULT 0,
+				score REAL NOT NULL DEFAULT 0,
+				last_played INTEGER NOT NULL DEFAULT 0
+			);
+
+			CREATE TABLE genre_tracks (
+				genre TEXT NOT NULL,
+				position INTEGER NOT NULL,
+				id TEXT,
+				title TEXT,
+				artist TEXT,
+				artist_id TEXT,
+				album TEXT,
+				album_id TEXT,
+				cover_art TEXT,
+				duration INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (genre, position)
 			);
 		";
 	}
