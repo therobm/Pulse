@@ -69,20 +69,6 @@ namespace Pulse.SubsonicService
 			string xml = JsonSerializer.Serialize(wrapper, s_jsonOptions);
 			return Results.Text(xml, "application/json");
 		}
-
-		// Reads an integer query param, returning defaultValue when the param
-		// is missing OR present-but-non-numeric (Flatline #307). int.Parse threw
-		// a FormatException on bad client input, surfacing as a 500.
-		private static int ParseQueryInt(HttpContext context, string name, int defaultValue)
-		{
-			string raw = context.Request.Query[name].FirstOrDefault();
-			int value;
-			if (string.IsNullOrEmpty(raw) || !int.TryParse(raw, out value))
-			{
-				return defaultValue;
-			}
-			return value;
-		}
 		// ========================================
 		// Endpoints
 		// ========================================
@@ -579,13 +565,13 @@ namespace Pulse.SubsonicService
 
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			int artistCount = ParseQueryInt(context, "artistCount", 20);
-			int albumCount = ParseQueryInt(context, "albumCount", 20);
-			int songCount = ParseQueryInt(context, "songCount", 20);
+			int artistCount = QueryParameters.GetInt(context, "artistCount", 20);
+			int albumCount = QueryParameters.GetInt(context, "albumCount", 20);
+			int songCount = QueryParameters.GetInt(context, "songCount", 20);
 
-			int artistOffset = ParseQueryInt(context, "artistOffset", 0);
-			int albumOffset = ParseQueryInt(context, "albumOffset", 0);
-			int songOffset = ParseQueryInt(context, "songOffset", 0);
+			int artistOffset = QueryParameters.GetInt(context, "artistOffset", 0);
+			int albumOffset = QueryParameters.GetInt(context, "albumOffset", 0);
+			int songOffset = QueryParameters.GetInt(context, "songOffset", 0);
 
 			SubsonicResponseBody body = CreateResponse();
 			body.searchResult3 = new SearchResult3();
@@ -775,7 +761,7 @@ namespace Pulse.SubsonicService
 			// PlayCount desc as the tiebreaker. Previously returned an empty
 			// container regardless of input (Flatline #157).
 			string artistName = context.Request.Query["artist"].FirstOrDefault();
-			int count = ParseQueryInt(context, "count", 50);
+			int count = QueryParameters.GetInt(context, "count", 50);
 			if (count < 1) { count = 1; }
 			if (count > 500) { count = 500; }
 			string user = context.Request.Query["u"].FirstOrDefault();
@@ -845,7 +831,7 @@ namespace Pulse.SubsonicService
 			// other artists whose albums overlap on genre with this one,
 			// sorted by WeightedScore desc.
 			string id = context.Request.Query["id"].FirstOrDefault();
-			int count = ParseQueryInt(context, "count", 20);
+			int count = QueryParameters.GetInt(context, "count", 20);
 			if (count < 1) { count = 1; }
 			if (count > 100) { count = 100; }
 
@@ -914,7 +900,7 @@ namespace Pulse.SubsonicService
 		public IResult HandleSetRating(HttpContext context)
 		{
 			string id = context.Request.Query["id"].FirstOrDefault();
-			int rating = ParseQueryInt(context, "rating", 0);
+			int rating = QueryParameters.GetInt(context, "rating", 0);
 
 			if (string.IsNullOrEmpty(id))
 			{
@@ -1155,8 +1141,8 @@ namespace Pulse.SubsonicService
 			// through to "whatever order we had". Each branch derives its
 			// ranking on the fly from in-memory state -- no schema changes.
 			string type = context.Request.Query["type"].FirstOrDefault() ?? "random";
-			int size = ParseQueryInt(context, "size", 20);
-			int offset = ParseQueryInt(context, "offset", 0);
+			int size = QueryParameters.GetInt(context, "size", 20);
+			int offset = QueryParameters.GetInt(context, "offset", 0);
 			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
 
 			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
@@ -1423,8 +1409,8 @@ namespace Pulse.SubsonicService
 				return Respond(context, CreateErrorResponse(10, "Missing required parameter: genre"));
 			}
 
-			int count = ParseQueryInt(context, "count", 10);
-			int offset = ParseQueryInt(context, "offset", 0);
+			int count = QueryParameters.GetInt(context, "count", 10);
+			int offset = QueryParameters.GetInt(context, "offset", 0);
 
 			List<TrackInfo> matches = new List<TrackInfo>();
 			List<TrackInfo> allTracks = m_musicManager.GetAllTracks();
@@ -1455,7 +1441,7 @@ namespace Pulse.SubsonicService
 		// folder. Brand new endpoint; doesn't touch any existing read path.
 		public IResult HandleGetRandomSongs(HttpContext context)
 		{
-			int size = ParseQueryInt(context, "size", 10);
+			int size = QueryParameters.GetInt(context, "size", 10);
 			if (size < 1) { size = 1; }
 			if (size > 500) { size = 500; }
 			string genre = context.Request.Query["genre"].FirstOrDefault();
@@ -1592,7 +1578,7 @@ namespace Pulse.SubsonicService
 		public IResult HandleGetSimilarSongs2(HttpContext context)
 		{
 			string id = context.Request.Query["id"].FirstOrDefault();
-			int count = ParseQueryInt(context, "count", 50);
+			int count = QueryParameters.GetInt(context, "count", 50);
 			if (count < 1) { count = 1; }
 			if (count > 500) { count = 500; }
 			string user = context.Request.Query["u"].FirstOrDefault();
