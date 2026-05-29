@@ -573,12 +573,6 @@ namespace Pulse.MusicLibrary
 			Pulse.Database.Migrations.RunMigrations();
 			Log.Info(-1, "Pulse DB: env=" + environmentName + " path=" + sqlitePath);
 
-			// One-time migration: if the legacy JSON tree exists at the matching
-			// PulseData/{Environment}/ folder and SQLite is empty, import then
-			// rename the JSON tree aside.
-			string legacyJsonPath = Path.Combine(pulseDataRoot, environmentName);
-			Pulse.Data.PulseSqliteImporter.ImportIfNeeded(legacyJsonPath, this);
-
 			PulseSqliteDatabase sqliteDb = new PulseSqliteDatabase();
 			m_database = sqliteDb;
 			sqliteDb.Load();
