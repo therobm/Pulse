@@ -1760,19 +1760,26 @@
 		function navigateWithHistory(viewName) { navStack.push(currentView); showView(viewName); }
 		function goBack()
 		{
-			showView('home');
-			/*if (navStack.length === 0) {
+			if (navStack.length === 0) {
 				showView('home');
 				return;
 			}
-			showView(navStack.pop());*/
+			showView(navStack.pop());
 		}
 
 		function formatDuration(seconds) {
-			let mins = Math.floor(seconds / 60);
+			if (!seconds || isNaN(seconds) || seconds < 0) { seconds = 0; }
+			seconds = Math.floor(seconds);
+			let hours = Math.floor(seconds / 3600);
+			let mins = Math.floor((seconds % 3600) / 60);
 			let secs = seconds % 60;
 			let secsPad = '';
 			if (secs < 10) { secsPad = '0'; }
+			if (hours > 0) {
+				let minsPad = '';
+				if (mins < 10) { minsPad = '0'; }
+				return hours + ':' + minsPad + mins + ':' + secsPad + secs;
+			}
 			return mins + ':' + secsPad + secs;
 		}
 		function makeArtistInitials(name) { let words = name.split(' '); if (words.length === 1) { return name.substring(0, 2).toUpperCase(); } return (words[0][0] + words[words.length - 1][0]).toUpperCase(); }

@@ -397,6 +397,7 @@
 			}
 
 			function formatBytes(bytes) {
+				if (!bytes || isNaN(bytes) || bytes < 0) { bytes = 0; }
 				if (bytes < 1024) return bytes + ' B';
 				if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
 				if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
@@ -404,6 +405,7 @@
 			}
 
 			function formatDuration(totalSeconds) {
+				if (!totalSeconds || isNaN(totalSeconds) || totalSeconds < 0) { totalSeconds = 0; }
 				let days = Math.floor(totalSeconds / 86400);
 				let hours = Math.floor((totalSeconds % 86400) / 3600);
 				let mins = Math.floor((totalSeconds % 3600) / 60);
@@ -412,8 +414,8 @@
 				return mins + 'm';
 			}
 
-			function pct(val) { return val.toFixed(1) + '%'; }
-			function commas(num) { return num.toLocaleString(); }
+			function pct(val) { if (!val || isNaN(val)) { val = 0; } return val.toFixed(1) + '%'; }
+			function commas(num) { if (!num || isNaN(num)) { num = 0; } return num.toLocaleString(); }
 
 			// ── SVG builders ──
 
@@ -422,7 +424,10 @@
 				let circ = 2 * Math.PI * radius;
 				let offset = 0;
 				let paths = '';
-				for (let i = 0; i < segments.length; i++) {
+				// Guard against an empty/fresh library (total == 0): a zero or NaN
+				// segment length produces stroke-dasharray="NaN NaN" and a broken
+				// donut. With no total, render just the background ring (#315).
+				for (let i = 0; total > 0 && i < segments.length; i++) {
 					let segLen = (segments[i].value / total) * circ;
 					paths += '<circle cx="' + cx + '" cy="' + cy + '" r="' + radius + '" ' +
 						'fill="none" stroke="' + segments[i].color + '" stroke-width="10" ' +
@@ -436,6 +441,7 @@
 			}
 
 			function buildRing(percent, color) {
+				if (!percent || isNaN(percent) || percent < 0) { percent = 0; }
 				let radius = 26, circ = 2 * Math.PI * radius;
 				let filled = (percent / 100) * circ;
 				return '<svg class="pct-ring-svg" viewBox="0 0 68 68">' +
