@@ -322,6 +322,18 @@ namespace Thump.Data
 			return fetched;
 		}
 
+		public bool IsTrackCached(PulseTrack track)
+		{
+			if (track == null || string.IsNullOrEmpty(track.Id))
+			{
+				return false;
+			}
+			string blobKey = "track:" + track.Id;
+			bool cached = false;
+			m_cache.ExecuteSync(() => { cached = !string.IsNullOrEmpty(m_cache.GetBlobFilePath(blobKey)); });
+			return cached;
+		}
+
 		public void EnsureTrackAvailability(PulseTrack track, Action<bool> callback)
 		{
 			if (callback == null)
