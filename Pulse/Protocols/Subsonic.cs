@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Http;
 using Pulse.Data;
 using Pulse.MusicLibrary;
+using Pulse.Protocols;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -24,8 +25,11 @@ namespace Pulse.SubsonicService
 		private byte[] m_defaultCoverArt;
 		PulseService m_pulseService;
 		MusicManager m_musicManager;
-		public Subsonic(PulseService pulse, MusicManager musicManager)
+		PulseAPI m_pulseAPI;
+
+		public Subsonic(PulseAPI pulseAPI, PulseService pulse, MusicManager musicManager)
 		{
+			m_pulseAPI = pulseAPI;
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
 			string pulseLogoPath = Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png");
@@ -1364,32 +1368,20 @@ namespace Pulse.SubsonicService
 
 		public IResult HandleGetGenres(HttpContext context)
 		{
-			Dictionary<string, GenreEntry> genreMap = new Dictionary<string, GenreEntry>();
-
-			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
-			for (int index = 0; index < allAlbums.Count; index++)
-			{
-				AlbumInfo album = allAlbums[index];
-				if (string.IsNullOrEmpty(album.Genre))
-				{
-					continue;
-				}
-
-				GenreEntry entry;
-				if (!genreMap.TryGetValue(album.Genre, out entry))
-				{
-					entry = new GenreEntry();
-					entry.value = album.Genre;
-					genreMap[album.Genre] = entry;
-				}
-				entry.albumCount = entry.albumCount + 1;
-				entry.songCount = entry.songCount + album.Tracks.Count;
-			}
-
+			// Genre aggregation is shared with PulseAPI -- this just maps the
+			// shared (songs, albums) counts into Subsonic's GenreEntry shape.
+			Dictionary<string, (int songs, int albums)> data = m_pulseAPI.GetGenresData();
 			SubsonicResponseBody body = CreateResponse();
 			body.genres = new GenresContainer();
-			body.genres.genre = new List<GenreEntry>(genreMap.Values);
-
+			body.genres.genre = new List<GenreEntry>();
+			foreach (KeyValuePair<string, (int songs, int albums)> entry in data)
+			{
+				GenreEntry shaped = new GenreEntry();
+				shaped.value = entry.Key;
+				shaped.songCount = entry.Value.songs;
+				shaped.albumCount = entry.Value.albums;
+				body.genres.genre.Add(shaped);
+			}
 			return Respond(context, body);
 		}
 
