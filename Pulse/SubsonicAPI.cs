@@ -158,7 +158,7 @@ namespace Thump.Pulse
 		}
 	}
 
-	public class SubsonicAPI
+	public class SubsonicAPI : IMediaClient
 	{
 		public enum eSubSonicAuthType
 		{

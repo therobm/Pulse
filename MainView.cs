@@ -27,7 +27,7 @@ namespace Thump
 		public static ThumpData Data { get { return Self.m_data; } }
 		
 		private static MainView s_self;
-		private PulseAPI m_pulseApi;
+		private IMediaClient m_pulseApi;
 		private ThumpCache m_cache;
 		private Grid m_rootGrid;
 		private ContentView m_contentHost;

@@ -551,7 +551,7 @@ namespace Thump.Views
 			m_connectStatusLabel.Text = "Connecting…";
 			m_connectStatusLabel.TextColor = ThumpColors.TextSecondary;
 
-			PulseAPI pulse = MainView.Data.Pulse;
+			IMediaClient pulse = MainView.Data.Pulse;
 			SubsonicAPI.eSubSonicAuthType authType = m_authType;
 			Task.Run(() =>
 			{

@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace Thump.Pulse
 {
-	public class PulseAPI
+	public class PulseAPI : IMediaClient
 	{
 		public enum eServerType
 		{

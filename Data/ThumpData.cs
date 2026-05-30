@@ -57,15 +57,15 @@ namespace Thump.Data
 
 	public class ThumpData
 	{
-		public PulseAPI Pulse {get {return m_pulseApi; } }
+		public IMediaClient Pulse {get {return m_pulseApi; } }
 		public ThumpCache Cache {get { return m_cache; } }
-		private PulseAPI m_pulseApi;
+		private IMediaClient m_pulseApi;
 		private ThumpCache m_cache;
 
 		private Dictionary<eRoutes, DataRoute> m_dataRoutes;
 
 
-		public ThumpData(PulseAPI pulseApi, ThumpCache cache)
+		public ThumpData(IMediaClient pulseApi, ThumpCache cache)
 		{
 			m_pulseApi = pulseApi;
 			m_cache = cache;
