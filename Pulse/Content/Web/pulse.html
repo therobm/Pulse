@@ -1804,13 +1804,11 @@
 			card.innerHTML = '<div class="carousel-card-art' + roundClass + '">' + artHtml(artId, 300) + '</div><div class="carousel-card-name">' + escapeHtml(name) + '</div>' + subHtml;
 			return card;
 		}
-		function buildCompositeArt(songs, size) { let uniqueArts = []; let seen = {}; for (let idx = 0; idx < songs.length; idx++) { let artId = songs[idx].coverArt; if (artId && !seen[artId]) { seen[artId] = true; uniqueArts.push(artId); if (uniqueArts.length >= 4) { break; } } } if (uniqueArts.length === 0) { return '&#9835;'; } if (uniqueArts.length === 1) { return '<img src="' + coverArtUrl(uniqueArts[0], size) + '" />'; } let html = '<div style="display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; width:100%; height:100%;">'; for (let idx = 0; idx < 4; idx++) { html = html + '<img src="' + coverArtUrl(uniqueArts[idx % uniqueArts.length], Math.floor(size / 2)) + '" style="width:100%; height:100%; object-fit:cover;" />'; } return html + '</div>'; }
-
 		/* Left Panel */
 		function switchLeftTab(tab) { leftTab = tab; let tabs = document.querySelectorAll('.left-tab'); for (let idx = 0; idx < tabs.length; idx++) { tabs[idx].classList.remove('active'); if ((tab === 'playlists' && idx === 0) || (tab === 'artists' && idx === 1)) { tabs[idx].classList.add('active'); } } document.getElementById('left-new-playlist-bar').style.display = (tab === 'playlists') ? 'flex' : 'none'; if (tab !== 'playlists') { hideNewPlaylistForm(); } renderLeftList(); }
 		function setLeftSort(sort) { leftSort = sort; let btns = document.querySelectorAll('.sort-btn'); for (let idx = 0; idx < btns.length; idx++) { btns[idx].classList.remove('active'); if (btns[idx].getAttribute('data-sort') === sort) { btns[idx].classList.add('active'); } } renderLeftList(); }
 		function renderLeftList() { let container = document.getElementById('left-list'); container.innerHTML = ''; if (leftTab === 'playlists') { renderLeftPlaylists(container); } else { renderLeftArtists(container); } }
-		function renderLeftPlaylists(container) { if (!cachedPlaylists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; apiGet('getPlaylists', null, function (resp) { cachedPlaylists = resp.playlists.playlist || []; pulseGet('topPlaylists?count=100000&u=' + API_USER, function (td) { let meta = {}; let tlist = td.playlists || []; for (let tidx = 0; tidx < tlist.length; tidx++) { meta[tlist[tidx].id] = tlist[tidx]; } for (let pidx = 0; pidx < cachedPlaylists.length; pidx++) { let m = meta[cachedPlaylists[pidx].id]; cachedPlaylists[pidx].score = (m && m.score) || 0; cachedPlaylists[pidx].lastPlayed = (m && m.lastPlayed) || ''; } renderLeftPlaylists(container); }); }); return; } let sorted = cachedPlaylists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); } else if (leftSort === 'recent') { sorted.sort(function (left, right) { return (right.lastPlayed || '').localeCompare(left.lastPlayed || ''); }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let playlist = sorted[idx]; let item = document.createElement('div'); item.className = 'left-item'; item.onclick = (function (pid) { return function () { navStack = []; openPlaylist(pid); }; })(playlist.id); item.innerHTML = '<div class="left-item-art">&#9835;</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(playlist.name) + '</div><div class="left-item-sub">' + playlist.songCount + ' tracks</div></div>'; container.appendChild(item); } }
+		function renderLeftPlaylists(container) { if (!cachedPlaylists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; apiGet('getPlaylists', null, function (resp) { cachedPlaylists = resp.playlists.playlist || []; pulseGet('topPlaylists?count=100000&u=' + API_USER, function (td) { let meta = {}; let tlist = (td.item && td.item.Playlists) || []; for (let tidx = 0; tidx < tlist.length; tidx++) { meta[tlist[tidx].Id] = tlist[tidx]; } for (let pidx = 0; pidx < cachedPlaylists.length; pidx++) { let m = meta[cachedPlaylists[pidx].id]; cachedPlaylists[pidx].score = 0; cachedPlaylists[pidx].lastPlayed = extractPlaylistLastPlayed(m, API_USER); } renderLeftPlaylists(container); }); }); return; } let sorted = cachedPlaylists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); } else if (leftSort === 'recent') { sorted.sort(function (left, right) { return (right.lastPlayed || '').localeCompare(left.lastPlayed || ''); }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let playlist = sorted[idx]; let item = document.createElement('div'); item.className = 'left-item'; item.onclick = (function (pid) { return function () { navStack = []; openPlaylist(pid); }; })(playlist.id); item.innerHTML = '<div class="left-item-art">' + artHtml(playlist.coverArt, 80) + '</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(playlist.name) + '</div><div class="left-item-sub">' + playlist.songCount + ' tracks</div></div>'; container.appendChild(item); } }
 		function renderLeftArtists(container) { if (!cachedArtists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; apiGet('getArtists', null, function (resp) { cachedArtists = []; let indexes = resp.artists.index; for (let idx = 0; idx < indexes.length; idx++) { let list = indexes[idx].artist; for (let aidx = 0; aidx < list.length; aidx++) { cachedArtists.push(list[aidx]); } } pulseGet('popularArtists?count=100000&u=' + API_USER, function (sd) { let meta = {}; let scoredList = sd.artists || []; for (let sidx = 0; sidx < scoredList.length; sidx++) { meta[scoredList[sidx].id] = scoredList[sidx]; } for (let aidx = 0; aidx < cachedArtists.length; aidx++) { let m = meta[cachedArtists[aidx].id]; cachedArtists[aidx].score = (m && m.score) || 0; cachedArtists[aidx].lastPlayed = (m && m.lastPlayed) || ''; } renderLeftArtists(container); }); }); return; } let sorted = cachedArtists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); } else if (leftSort === 'recent') { sorted.sort(function (left, right) { return (right.lastPlayed || '').localeCompare(left.lastPlayed || ''); }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let artist = sorted[idx]; let avatarHtml;
 				if (artist.coverArt) { avatarHtml = '<img src="' + coverArtUrl(artist.coverArt, 80) + '" style="border-radius:50%;" />'; }
 				else { avatarHtml = makeArtistInitials(artist.name); } let item = document.createElement('div'); item.className = 'left-item'; item.onclick = (function (aid) { return function () { navStack = []; openArtist(aid); }; })(artist.id); item.innerHTML = '<div class="left-item-art round">' + avatarHtml + '</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(artist.name) + '</div><div class="left-item-sub">' + artist.albumCount + ' albums</div></div>'; container.appendChild(item); } }
@@ -1836,9 +1834,8 @@
 							};
 							let playBtn = '<button class="quick-item-play" data-action="quick-play-playlist" data-playlist-id="' + playlist.id + '" title="Play"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>';
 
-							item.innerHTML = '<div class="quick-item-art">&#9835;</div><div class="quick-item-name">' + escapeHtml(playlist.name) + '</div>' + playBtn;
+							item.innerHTML = '<div class="quick-item-art">' + artHtml(playlist.coverArt, 112) + '</div><div class="quick-item-name">' + escapeHtml(playlist.name) + '</div>' + playBtn;
 							grid.appendChild(item);
-							apiGet('getPlaylist', 'id=' + encodeURIComponent(playlist.id), function (r) { let songs = r.playlist.entry || []; item.querySelector('.quick-item-art').innerHTML = buildCompositeArt(songs, 112); });
 						})(playlists[idx]);
 					}
 				});
@@ -1852,10 +1849,56 @@
 				}
 			});
 		}
-		function loadRecentCarousel() { let scroll = document.getElementById('home-recent-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulseGet('recentlyPlayed?count=10&u=' + API_USER, function (data) { let tracks = data.tracks || []; scroll.innerHTML = ''; if (tracks.length === 0) { scroll.innerHTML = '<div class="loading-text">No recent plays yet</div>'; return; } for (let idx = 0; idx < tracks.length; idx++) { let song = tracks[idx]; let card = buildCarouselCard(song.coverArt, song.title, song.artist, (function (tl, ti) { return function () { playTrackList(tl, ti); }; })(tracks, idx), false); scroll.appendChild(card); } }); }
-		function loadPlaylistCarousel() { let scroll = document.getElementById('home-playlists-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulseGet('recentPlaylists?count=10&u=' + API_USER, function (data) { let playlists = data.playlists || []; scroll.innerHTML = ''; if (playlists.length === 0) { scroll.innerHTML = '<div class="loading-text">No playlists yet</div>'; return; } for (let idx = 0; idx < playlists.length; idx++) { (function (playlist) { let card = buildCarouselCard(null, playlist.name, formatScorePercent(playlist.score), function () { navStack = []; openPlaylist(playlist.id); }, false); scroll.appendChild(card); apiGet('getPlaylist', 'id=' + encodeURIComponent(playlist.id), function (r) { let songs = r.playlist.entry || []; card.querySelector('.carousel-card-art').innerHTML = buildCompositeArt(songs, 300); }); })(playlists[idx]); } }); }
+		function loadRecentCarousel()
+		{
+			let scroll = document.getElementById('home-recent-scroll');
+			scroll.innerHTML = '<div class="loading-text">Loading...</div>';
+			pulseGet('recentlyPlayed?count=10&u=' + API_USER, function (data) {
+				let tracks = data.tracks || []; scroll.innerHTML = '';
+				if (tracks.length === 0)
+				{
+					scroll.innerHTML = '<div class="loading-text">No recent plays yet</div>';
+					return;
+				}
+				for (let idx = 0; idx < tracks.length; idx++)
+				{
+					let song = tracks[idx];
+					let card = buildCarouselCard(song.coverArt, song.title, song.artist, (function (tl, ti) {
+								return function ()
+								{
+									playTrackList(tl, ti);
+								};
+							})(tracks, idx), false); scroll.appendChild(card);
+				}
+			});
+		}
+		function loadPlaylistCarousel()
+		{
+			let scroll = document.getElementById('home-playlists-scroll');
+			scroll.innerHTML = '<div class="loading-text">Loading...</div>';
+			pulseGet('topPlaylists?count=10&u=' + API_USER, function (data)
+			{
+				let playlists = (data.item && data.item.Playlists) || []; scroll.innerHTML = '';
+				if (playlists.length === 0)
+				{
+					scroll.innerHTML = '<div class="loading-text">No playlists yet</div>';
+					return;
+				}
+				for (let idx = 0; idx < playlists.length; idx++)
+				{
+					(function (playlist)
+					{
+						let card = buildCarouselCard('pl-' + playlist.Id, playlist.Name, formatScorePercent(0), function () {
+								navStack = [];
+								openPlaylist(playlist.Id);
+						}, false); scroll.appendChild(card);
+					})(playlists[idx]);
+				}
+			});
+		}
 		function loadPopularArtistsCarousel() { let scroll = document.getElementById('home-artists-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulseGet('popularArtists?count=20&u=' + API_USER, function (data) { let all = data.artists || []; let artists = []; for (let i = 0; i < all.length && artists.length < 10; i++) { if ((all[i].score || 0) > 0) { artists.push(all[i]); } } scroll.innerHTML = ''; if (artists.length === 0) { scroll.innerHTML = '<div class="loading-text">Play some music first</div>'; return; } for (let idx = 0; idx < artists.length; idx++) { let artist = artists[idx]; let card = buildCarouselCard(artist.coverArt || null, artist.name, formatScorePercent(artist.score), (function (aid) { return function () { navStack = []; openArtist(aid); }; })(artist.id), true); scroll.appendChild(card); } }); }
 		function formatScorePercent(score) { let n = Number(score) || 0; if (n <= 0) { return '—'; } return Math.round(n * 100) + '%'; }
+		function extractPlaylistLastPlayed(playlist, user) { if (!playlist) { return ''; } let raw = ''; if (playlist.UserLastPlayed && user && playlist.UserLastPlayed[user]) { raw = playlist.UserLastPlayed[user]; } else if (playlist.LastPlayed) { raw = playlist.LastPlayed; } if (raw && raw.indexOf('0001-') === 0) { return ''; } return raw; }
 
 		/* Artist Detail */
 		function openArtist(artistId) { currentArtistId = artistId; apiGet('getArtist', 'id=' + encodeURIComponent(artistId), function (resp) { let artist = resp.artist; document.getElementById('artist-detail-name').textContent = artist.name; document.getElementById('artist-detail-count').textContent = artist.albumCount + ' albums'; let grid = document.getElementById('artist-album-grid'); grid.innerHTML = ''; let albums = artist.album || []; for (let idx = 0; idx < albums.length; idx++) { let album = albums[idx]; let card = document.createElement('div'); card.className = 'carousel-card'; card.onclick = (function (aid) { return function () { openAlbum(aid); }; })(album.id); card.innerHTML = '<div class="carousel-card-art">' + artHtml(album.coverArt, 300) + '</div><div class="carousel-card-name">' + escapeHtml(album.name) + '</div><div class="carousel-card-sub">' + (album.year || '') + '</div>'; grid.appendChild(card); } navigateWithHistory('artist-detail'); }); }
@@ -1869,7 +1912,7 @@
 		function shuffleAlbum() { if (currentAlbumDetail && currentAlbumDetail.song) { let shuffled = currentAlbumDetail.song.slice(); shuffleArray(shuffled); playTrackList(shuffled, 0); } }
 
 		/* Playlist Detail */
-		function openPlaylist(playlistId) { apiGet('getPlaylist', 'id=' + encodeURIComponent(playlistId), function (resp) { currentPlaylistDetail = resp.playlist; let playlist = currentPlaylistDetail; document.getElementById('playlist-detail-name').textContent = playlist.name; document.getElementById('playlist-detail-meta').textContent = playlist.songCount + ' tracks \u00b7 ' + Math.floor(playlist.duration / 60) + ' min'; document.getElementById('playlist-detail-comment').textContent = playlist.comment || ''; document.getElementById('playlist-rename-form').style.display = 'none'; document.getElementById('playlist-comment-form').style.display = 'none'; document.getElementById('playlist-detail-art').innerHTML = buildCompositeArt(playlist.entry || [], 400); renderPlaylistTracks(); navigateWithHistory('playlist-detail'); }); }
+		function openPlaylist(playlistId) { apiGet('getPlaylist', 'id=' + encodeURIComponent(playlistId), function (resp) { currentPlaylistDetail = resp.playlist; let playlist = currentPlaylistDetail; document.getElementById('playlist-detail-name').textContent = playlist.name; document.getElementById('playlist-detail-meta').textContent = playlist.songCount + ' tracks \u00b7 ' + Math.floor(playlist.duration / 60) + ' min'; document.getElementById('playlist-detail-comment').textContent = playlist.comment || ''; document.getElementById('playlist-rename-form').style.display = 'none'; document.getElementById('playlist-comment-form').style.display = 'none'; document.getElementById('playlist-detail-art').innerHTML = artHtml(playlist.coverArt, 400); renderPlaylistTracks(); navigateWithHistory('playlist-detail'); }); }
 		function renderPlaylistTracks() {
 			let tracksEl = document.getElementById('playlist-tracks');
 			tracksEl.innerHTML = '';
@@ -1972,7 +2015,6 @@
 			let moved = songs.splice(fromIndex, 1)[0];
 			songs.splice(toIndex, 0, moved);
 			currentPlaylistDetail.entry = songs;
-			document.getElementById('playlist-detail-art').innerHTML = buildCompositeArt(songs, 400);
 			renderPlaylistTracks();
 			persistPlaylistOrder(fromIndex, toIndex, songs);
 		}

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Net.WebSockets;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -61,6 +62,18 @@ namespace Assistant.Services
 			builder.WebHost.ConfigureKestrel(ConfigureKestrelOptions);
 			builder.Logging.ClearProviders();
 			builder.Services.AddCors();
+			// Pulse hands typed objects to Results.Json and expects wire names to
+			// match the C# names exactly. The Web defaults (camelCase + don't
+			// serialize public fields) silently mangle PulseResponse and the
+			// rest of the envelope-shaped payloads, so override both globally:
+			// preserve names verbatim, serialize fields like properties, drop
+			// nulls.
+			builder.Services.ConfigureHttpJsonOptions(options =>
+			{
+				options.SerializerOptions.IncludeFields = true;
+				options.SerializerOptions.PropertyNamingPolicy = null;
+				options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+			});
 
 			m_app = builder.Build();
 			m_app.UseWebSockets();

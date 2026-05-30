@@ -454,129 +454,60 @@ namespace Pulse.Protocols.Pulse
 			return Results.Json(new { artists = artists });
 		}
 
-		public IResult HandleTopPlaylists(HttpContext context)
-		{
-			return RankAndEmitPlaylists(context, false);
-		}
-
-		// Same response shape as topPlaylists, sorted by per-user LastPlayed
-		// descending (never-played falls to the back). Separate route from
-		// topPlaylists so callers can pick the semantic they want without
-		// reading a query param that contradicts the route name (#151).
-		public IResult HandleRecentPlaylists(HttpContext context)
-		{
-			return RankAndEmitPlaylists(context, true);
-		}
-
-		private IResult RankAndEmitPlaylists(HttpContext context, bool sortByRecency)
+		// Score-based ranking is on hold; for now this returns playlists ordered
+		// by per-user last-played, same as HandleRecentPlaylists. The "top"
+		// ranking will get a real definition later.
+		public IResult GetTopPlaylists(HttpContext context)
 		{
 			int count = QueryParameters.GetInt(context, "count", 10);
 			string user = context.Request.Query["u"].FirstOrDefault();
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
 
-			// Playlists don't have their own score; the average of the scores
-			// of the distinct artists whose tracks appear in the playlist is
-			// the tiebreaker. Average (not sum) so a long playlist of mediocre
-			// tracks doesn't outrank a tight playlist of favorites.
-			List<PlaylistRankRow> ranked = new List<PlaylistRankRow>();
-			for (int playlistIndex = 0; playlistIndex < all.Count; playlistIndex++)
+			List<KeyValuePair<PlaylistInfo, DateTime>> ranked = new List<KeyValuePair<PlaylistInfo, DateTime>>();
+			for (int index = 0; index < all.Count; index++)
 			{
-				PlaylistInfo playlist = all[playlistIndex];
-				HashSet<string> seenArtistIds = new HashSet<string>();
-				float total = 0f;
-				int artistCount = 0;
-				for (int trackIndex = 0; trackIndex < playlist.TrackIds.Count; trackIndex++)
-				{
-					TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[trackIndex]);
-					if (track == null || string.IsNullOrEmpty(track.ArtistId))
-					{
-						continue;
-					}
-					if (!seenArtistIds.Add(track.ArtistId))
-					{
-						continue;
-					}
-					ArtistInfo artist = m_musicManager.GetArtist(track.ArtistId);
-					if (artist != null)
-					{
-						total += artist.GetScore(user);
-						artistCount++;
-					}
-				}
-				float average = 0f;
-				if (artistCount > 0)
-				{
-					average = total / artistCount;
-				}
+				ranked.Add(new KeyValuePair<PlaylistInfo, DateTime>(all[index], all[index].GetLastPlayed(user)));
+			}
+			ranked.Sort(ComparePlaylistByLastPlayedDescending);
 
-				PlaylistRankRow row = new PlaylistRankRow();
-				row.Playlist = playlist;
-				row.Score = average;
-				row.LastPlayed = playlist.GetLastPlayed(user);
-				ranked.Add(row);
-			}
-			// Sort key follows the route the caller chose:
-			//  - topPlaylists: score desc, lastPlayed tiebreaker
-			//  - recentPlaylists: lastPlayed desc (never-played to the back),
-			//    score tiebreaker so unplayed users still get something sensible.
-			if (sortByRecency)
-			{
-				ranked.Sort(ComparePlaylistRankRow);
-			}
-			else
-			{
-				ranked.Sort(ComparePlaylistRankRowByScore);
-			}
-
-			List<object> playlists = new List<object>();
+			SearchResult result = new SearchResult();
+			result.Playlists = new List<PlaylistInfo>();
 			int limit = Math.Min(count, ranked.Count);
-			for (int idx = 0; idx < limit; idx++)
+			for (int index = 0; index < limit; index++)
 			{
-				PlaylistInfo playlist = ranked[idx].Playlist;
-				playlists.Add(new
-				{
-					id = playlist.Id,
-					name = playlist.Name,
-					songCount = playlist.GetSongCount(),
-					duration = playlist.DurationSeconds,
-					score = ranked[idx].Score,
-					lastPlayed = FormatLastPlayedForJson(ranked[idx].LastPlayed),
-					// Synthetic cover-art id (#143). Clients pass this to
-					// getCoverArt to fetch a 4-tile composite assembled from
-					// the playlist's first distinct album covers.
-					coverArt = "pl-" + playlist.Id
-				});
+				result.Playlists.Add(ranked[index].Key);
 			}
-
-			return Results.Json(new { playlists = playlists });
+			return CreateResponse(result);
 		}
 
-		private class PlaylistRankRow
+		public IResult GetRecentPlaylists(HttpContext context)
 		{
-			public PlaylistInfo Playlist;
-			public float Score;
-			public DateTime LastPlayed;
+			int count = QueryParameters.GetInt(context, "count", 10);
+			string user = context.Request.Query["u"].FirstOrDefault();
+
+			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
+
+			List<KeyValuePair<PlaylistInfo, DateTime>> ranked = new List<KeyValuePair<PlaylistInfo, DateTime>>();
+			for (int index = 0; index < all.Count; index++)
+			{
+				ranked.Add(new KeyValuePair<PlaylistInfo, DateTime>(all[index], all[index].GetLastPlayed(user)));
+			}
+			ranked.Sort(ComparePlaylistByLastPlayedDescending);
+
+			SearchResult result = new SearchResult();
+			result.Playlists = new List<PlaylistInfo>();
+			int limit = Math.Min(count, ranked.Count);
+			for (int index = 0; index < limit; index++)
+			{
+				result.Playlists.Add(ranked[index].Key);
+			}
+			return CreateResponse(result);
 		}
 
-		private static int ComparePlaylistRankRow(PlaylistRankRow left, PlaylistRankRow right)
+		private static int ComparePlaylistByLastPlayedDescending(KeyValuePair<PlaylistInfo, DateTime> left, KeyValuePair<PlaylistInfo, DateTime> right)
 		{
-			int byLastPlayed = right.LastPlayed.CompareTo(left.LastPlayed);
-			if (byLastPlayed != 0)
-			{
-				return byLastPlayed;
-			}
-			return right.Score.CompareTo(left.Score);
-		}
-
-		private static int ComparePlaylistRankRowByScore(PlaylistRankRow left, PlaylistRankRow right)
-		{
-			int byScore = right.Score.CompareTo(left.Score);
-			if (byScore != 0)
-			{
-				return byScore;
-			}
-			return right.LastPlayed.CompareTo(left.LastPlayed);
+			return right.Value.CompareTo(left.Value);
 		}
 
 		// Round-trip ISO-8601 string for the JS side, empty for "never played"
@@ -594,5 +525,32 @@ namespace Pulse.Protocols.Pulse
 		{
 			return right.Value.CompareTo(left.Value);
 		}
+
+		protected IResult CreateResponse()
+		{
+			PulseResponse response = new PulseResponse();
+			return Results.Json(response);
+		}
+
+		protected IResult CreateResponse(PulseInfo content)
+		{
+			PulseResponse response = new PulseResponse();
+			response.item = content;
+			return Results.Json(response);
+		}
+
+		protected IResult CreateResponse(byte[] data)
+		{
+			PulseResponse response = new PulseResponse();
+			response.data = data;
+			return Results.Json(response);
+		}
+		protected IResult CreateResponse(Error error)
+		{
+			PulseResponse response = new PulseResponse();
+			response.error = error;
+			return Results.Json(response);
+		}
+
 	}
 }

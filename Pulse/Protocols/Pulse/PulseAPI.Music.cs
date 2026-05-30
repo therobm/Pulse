@@ -19,33 +19,6 @@ namespace Pulse.Protocols.Pulse
 			DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 		};
 
-		protected IResult CreateResponse()
-		{
-			PulseResponse response = new PulseResponse();
-			return Results.Json(response);
-		}
-		
-		protected IResult CreateResponse(PulseInfo content)
-		{
-			PulseResponse response = new PulseResponse();
-			response.item = content;
-			return Results.Json(response);
-		}
-	
-		protected IResult CreateResponse(byte[] data)
-		{
-			PulseResponse response = new PulseResponse();
-			response.data = data;
-			return Results.Json(response);
-		}
-		protected IResult CreateResponse(Error error)
-		{
-			PulseResponse response = new PulseResponse();
-			response.error = error;
-			return Results.Json(response);
-		}
-
-
 		public IResult GetUser(HttpContext context)
 		{
 			// I doubt Pulse should support server side user permissions, messy and nearly useless

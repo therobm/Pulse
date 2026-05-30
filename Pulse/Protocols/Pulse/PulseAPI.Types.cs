@@ -6,8 +6,11 @@ namespace Pulse.Protocols.Pulse
 	public class PulseResponse
 	{
 		public Error error;
-		public PulseInfo item;
-		public List<PulseInfo> itemList;
+		// Declared as object (not PulseInfo) so System.Text.Json serializes the
+		// runtime type. With the abstract declared type the only members visible
+		// to the serializer are PulseInfo's own, and the wire becomes `{}`.
+		public object item;
+		public List<object> itemList;
 		public byte[] data;
 	}
 	public class Error
