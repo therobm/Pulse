@@ -51,6 +51,32 @@ namespace Pulse.MusicLibrary
 			return m_database.GetAllAlbums();
 		}
 
+		// Aggregated per-genre stats across the library: one entry per genre
+		// (skipping albums with no genre tag), with song and album counts.
+		public List<GenreInfo> GetAllGenres()
+		{
+			Dictionary<string, GenreInfo> map = new Dictionary<string, GenreInfo>();
+			List<AlbumInfo> allAlbums = m_database.GetAllAlbums();
+			for (int index = 0; index < allAlbums.Count; index++)
+			{
+				AlbumInfo album = allAlbums[index];
+				if (string.IsNullOrEmpty(album.Genre))
+				{
+					continue;
+				}
+				GenreInfo entry;
+				if (!map.TryGetValue(album.Genre, out entry))
+				{
+					entry = new GenreInfo();
+					entry.Name = album.Genre;
+					map[album.Genre] = entry;
+				}
+				entry.AlbumCount = entry.AlbumCount + 1;
+				entry.SongCount = entry.SongCount + album.Tracks.Count;
+			}
+			return new List<GenreInfo>(map.Values);
+		}
+
 		public PlaylistInfo GetPlaylist(string id)
 		{
 			return m_database.GetPlaylist(id);

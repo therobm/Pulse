@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Pulse.MusicLibrary;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -12,24 +11,25 @@ namespace Pulse.Protocols
 		public IResult Ping(HttpContext context)
 		{
 			string u = context.Request.Query["u"].FirstOrDefault();
-			return Results.Json(new { ok = true, serverVersion = PulseService.GetServerVersion() });
+			PulseAPI_Ping response = new PulseAPI_Ping();
+			response.serverVersion = PulseService.GetServerVersion();
+			return Results.Json(response);
 		}
 
 		public IResult GetArtists(HttpContext context)
 		{
 			string u = context.Request.Query["u"].FirstOrDefault();
 			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
-			List<object> result = new List<object>();
+			List<PulseAPI_ArtistSummary> result = new List<PulseAPI_ArtistSummary>();
 			for (int index = 0; index < allArtists.Count; index++)
 			{
 				ArtistInfo artist = allArtists[index];
-				result.Add(new
-				{
-					id = artist.Id,
-					name = artist.Name,
-					albumCount = artist.Albums.Count,
-					coverArt = "ar-" + artist.Id
-				});
+				PulseAPI_ArtistSummary entry = new PulseAPI_ArtistSummary();
+				entry.id = artist.Id;
+				entry.name = artist.Name;
+				entry.albumCount = artist.Albums.Count;
+				entry.coverArt = "ar-" + artist.Id;
+				result.Add(entry);
 			}
 			return Results.Json(result);
 		}
@@ -42,29 +42,25 @@ namespace Pulse.Protocols
 			ArtistInfo source = m_musicManager.GetArtist(id);
 			if (source == null)
 			{
-				return Results.Json(new { error = "artist not found" }, statusCode: 404);
+				return Error("artist not found", 404);
 			}
 
-			List<object> albums = new List<object>();
+			PulseAPI_Artist response = new PulseAPI_Artist();
+			response.id = source.Id;
+			response.name = source.Name;
+			response.coverArt = "ar-" + source.Id;
+			response.albumCount = source.Albums.Count;
 			for (int index = 0; index < source.Albums.Count; index++)
 			{
 				AlbumInfo album = source.Albums[index];
-				albums.Add(new
-				{
-					id = album.Id,
-					name = album.Name,
-					year = album.Year,
-					coverArt = album.CoverArtId
-				});
+				PulseAPI_AlbumSummary entry = new PulseAPI_AlbumSummary();
+				entry.id = album.Id;
+				entry.name = album.Name;
+				entry.year = album.Year;
+				entry.coverArt = album.CoverArtId;
+				response.albums.Add(entry);
 			}
-
-			return Results.Json(new
-			{
-				id = source.Id,
-				name = source.Name,
-				coverArt = "ar-" + source.Id,
-				albums = albums
-			});
+			return Results.Json(response);
 		}
 
 		public IResult GetAlbum(HttpContext context)
@@ -75,34 +71,21 @@ namespace Pulse.Protocols
 			AlbumInfo source = m_musicManager.GetAlbum(id);
 			if (source == null)
 			{
-				return Results.Json(new { error = "album not found" }, statusCode: 404);
+				return Error("album not found", 404);
 			}
 
-			List<object> tracks = new List<object>();
+			PulseAPI_Album response = new PulseAPI_Album();
+			response.id = source.Id;
+			response.name = source.Name;
+			response.artistId = source.ArtistId;
+			response.artistName = source.ArtistName;
+			response.year = source.Year;
+			response.coverArt = source.CoverArtId;
 			for (int index = 0; index < source.Tracks.Count; index++)
 			{
-				TrackInfo track = source.Tracks[index];
-				tracks.Add(new
-				{
-					id = track.Id,
-					title = track.Title,
-					trackNumber = track.TrackNumber,
-					discNumber = track.DiscNumber,
-					duration = track.DurationSeconds,
-					coverArt = track.CoverArtId
-				});
+				response.tracks.Add(BuildTrack(source.Tracks[index]));
 			}
-
-			return Results.Json(new
-			{
-				id = source.Id,
-				name = source.Name,
-				artistId = source.ArtistId,
-				artistName = source.ArtistName,
-				year = source.Year,
-				coverArt = source.CoverArtId,
-				tracks = tracks
-			});
+			return Results.Json(response);
 		}
 
 		public IResult GetAlbums(HttpContext context)
@@ -111,50 +94,24 @@ namespace Pulse.Protocols
 			int size = QueryParameters.GetInt(context, "size", 20);
 			int offset = QueryParameters.GetInt(context, "offset", 0);
 			string u = context.Request.Query["u"].FirstOrDefault();
-			return Results.Json(new { error = "not implemented" }, statusCode: 501);
+			return Error("not implemented", 501);
 		}
 
 		public IResult GetGenres(HttpContext context)
 		{
 			string u = context.Request.Query["u"].FirstOrDefault();
-
-			Dictionary<string, (int songs, int albums)> data = GetGenresData();
-			List<object> result = new List<object>();
-			foreach (KeyValuePair<string, (int songs, int albums)> entry in data)
+			List<GenreInfo> genres = m_musicManager.GetAllGenres();
+			List<PulseAPI_Genre> result = new List<PulseAPI_Genre>();
+			for (int index = 0; index < genres.Count; index++)
 			{
-				result.Add(new
-				{
-					name = entry.Key,
-					songCount = entry.Value.songs,
-					albumCount = entry.Value.albums
-				});
+				GenreInfo g = genres[index];
+				PulseAPI_Genre entry = new PulseAPI_Genre();
+				entry.name = g.Name;
+				entry.songCount = g.SongCount;
+				entry.albumCount = g.AlbumCount;
+				result.Add(entry);
 			}
 			return Results.Json(result);
-		}
-
-		// Genre aggregation shared with Subsonic.HandleGetGenres -- the loop over
-		// every album to count songs and albums per genre lives here so the two
-		// protocol surfaces stay consistent and we only walk the library once
-		// worth of code.
-		internal Dictionary<string, (int songs, int albums)> GetGenresData()
-		{
-			Dictionary<string, (int songs, int albums)> map = new Dictionary<string, (int songs, int albums)>();
-			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
-			for (int index = 0; index < allAlbums.Count; index++)
-			{
-				AlbumInfo album = allAlbums[index];
-				if (string.IsNullOrEmpty(album.Genre))
-				{
-					continue;
-				}
-				(int songs, int albums) entry;
-				if (!map.TryGetValue(album.Genre, out entry))
-				{
-					entry = (0, 0);
-				}
-				map[album.Genre] = (entry.songs + album.Tracks.Count, entry.albums + 1);
-			}
-			return map;
 		}
 
 		public IResult GetGenre(HttpContext context)
@@ -163,7 +120,7 @@ namespace Pulse.Protocols
 			int count = QueryParameters.GetInt(context, "count", 50);
 			int offset = QueryParameters.GetInt(context, "offset", 0);
 			string u = context.Request.Query["u"].FirstOrDefault();
-			return Results.Json(new { error = "not implemented" }, statusCode: 501);
+			return Error("not implemented", 501);
 		}
 
 		public IResult GetTrack(HttpContext context)
@@ -174,23 +131,9 @@ namespace Pulse.Protocols
 			TrackInfo track = m_musicManager.GetTrack(id);
 			if (track == null)
 			{
-				return Results.Json(new { error = "track not found" }, statusCode: 404);
+				return Error("track not found", 404);
 			}
-
-			return Results.Json(new
-			{
-				id = track.Id,
-				title = track.Title,
-				artist = track.Artist,
-				artistId = track.ArtistId,
-				album = track.Album,
-				albumId = track.AlbumId,
-				duration = track.DurationSeconds,
-				coverArt = track.CoverArtId,
-				trackNumber = track.TrackNumber,
-				discNumber = track.DiscNumber,
-				year = track.Year
-			});
+			return Results.Json(BuildTrack(track));
 		}
 
 		public IResult GetTracks(HttpContext context)
@@ -198,7 +141,7 @@ namespace Pulse.Protocols
 			string[] trackIDs = context.Request.Query["trackIDs"].ToArray();
 			string u = context.Request.Query["u"].FirstOrDefault();
 
-			List<object> result = new List<object>();
+			List<PulseAPI_Track> result = new List<PulseAPI_Track>();
 			for (int index = 0; index < trackIDs.Length; index++)
 			{
 				TrackInfo track = m_musicManager.GetTrack(trackIDs[index]);
@@ -206,17 +149,7 @@ namespace Pulse.Protocols
 				{
 					continue;
 				}
-				result.Add(new
-				{
-					id = track.Id,
-					title = track.Title,
-					artist = track.Artist,
-					artistId = track.ArtistId,
-					album = track.Album,
-					albumId = track.AlbumId,
-					duration = track.DurationSeconds,
-					coverArt = track.CoverArtId
-				});
+				result.Add(BuildTrack(track));
 			}
 			return Results.Json(result);
 		}
@@ -229,7 +162,7 @@ namespace Pulse.Protocols
 			int songCount = QueryParameters.GetInt(context, "songCount", 20);
 			int playlistCount = QueryParameters.GetInt(context, "playlistCount", 20);
 			string u = context.Request.Query["u"].FirstOrDefault();
-			return Results.Json(new { error = "not implemented" }, statusCode: 501);
+			return Error("not implemented", 501);
 		}
 
 		public IResult GetPlaylist(HttpContext context)
@@ -240,56 +173,43 @@ namespace Pulse.Protocols
 			PlaylistInfo source = m_musicManager.GetPlaylist(id);
 			if (source == null)
 			{
-				return Results.Json(new { error = "playlist not found" }, statusCode: 404);
+				return Error("playlist not found", 404);
 			}
 
-			List<object> tracks = new List<object>();
+			PulseAPI_Playlist response = new PulseAPI_Playlist();
+			response.id = source.Id;
+			response.name = source.Name;
+			response.comment = source.Comment;
+			response.songCount = source.GetSongCount();
+			response.duration = source.DurationSeconds;
+			response.coverArt = "pl-" + source.Id;
+			response.lastPlayed = source.GetLastPlayed(u);
+
 			List<TrackInfo> entries = m_musicManager.GetPlaylistTracks(id);
 			for (int index = 0; index < entries.Count; index++)
 			{
-				TrackInfo track = entries[index];
-				tracks.Add(new
-				{
-					id = track.Id,
-					title = track.Title,
-					artist = track.Artist,
-					album = track.Album,
-					duration = track.DurationSeconds,
-					coverArt = track.CoverArtId
-				});
+				response.tracks.Add(BuildTrack(entries[index]));
 			}
-
-			return Results.Json(new
-			{
-				id = source.Id,
-				name = source.Name,
-				comment = source.Comment,
-				songCount = source.GetSongCount(),
-				duration = source.DurationSeconds,
-				coverArt = "pl-" + source.Id,
-				lastPlayed = source.GetLastPlayed(u),
-				tracks = tracks
-			});
+			return Results.Json(response);
 		}
 
 		public IResult GetPlaylists(HttpContext context)
 		{
 			string u = context.Request.Query["u"].FirstOrDefault();
 			List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(u);
-			List<object> result = new List<object>();
+			List<PulseAPI_PlaylistSummary> result = new List<PulseAPI_PlaylistSummary>();
 			for (int index = 0; index < allPlaylists.Count; index++)
 			{
 				PlaylistInfo playlist = allPlaylists[index];
-				result.Add(new
-				{
-					id = playlist.Id,
-					name = playlist.Name,
-					comment = playlist.Comment,
-					songCount = playlist.GetSongCount(),
-					duration = playlist.DurationSeconds,
-					coverArt = "pl-" + playlist.Id,
-					lastPlayed = playlist.GetLastPlayed(u)
-				});
+				PulseAPI_PlaylistSummary entry = new PulseAPI_PlaylistSummary();
+				entry.id = playlist.Id;
+				entry.name = playlist.Name;
+				entry.comment = playlist.Comment;
+				entry.songCount = playlist.GetSongCount();
+				entry.duration = playlist.DurationSeconds;
+				entry.coverArt = "pl-" + playlist.Id;
+				entry.lastPlayed = playlist.GetLastPlayed(u);
+				result.Add(entry);
 			}
 			return Results.Json(result);
 		}
@@ -300,7 +220,7 @@ namespace Pulse.Protocols
 			string comment = context.Request.Query["comment"].FirstOrDefault();
 			List<string> songIds = context.Request.Query["songIds"].ToList();
 			string u = context.Request.Query["u"].FirstOrDefault();
-			return Results.Json(new { error = "not implemented" }, statusCode: 501);
+			return Error("not implemented", 501);
 		}
 
 		public IResult UpdatePlaylist(HttpContext context)
@@ -310,7 +230,7 @@ namespace Pulse.Protocols
 			string comment = context.Request.Query["comment"].FirstOrDefault();
 			List<string> tracks = context.Request.Query["tracks"].ToList();
 			string u = context.Request.Query["u"].FirstOrDefault();
-			return Results.Json(new { error = "not implemented" }, statusCode: 501);
+			return Error("not implemented", 501);
 		}
 
 		public IResult DeletePlaylist(HttpContext context)
@@ -320,21 +240,21 @@ namespace Pulse.Protocols
 
 			if (string.IsNullOrEmpty(id))
 			{
-				return Results.Json(new { error = "missing id" }, statusCode: 400);
+				return Error("missing id", 400);
 			}
 			PlaylistInfo existing = m_musicManager.GetPlaylist(id);
 			if (existing == null)
 			{
-				return Results.Json(new { error = "playlist not found" }, statusCode: 404);
+				return Error("playlist not found", 404);
 			}
 			m_musicManager.DeletePlaylist(id);
-			return Results.Json(new { ok = true });
+			return Ok();
 		}
 
 		public IResult GetFavorites(HttpContext context)
 		{
 			string u = context.Request.Query["u"].FirstOrDefault();
-			return Results.Json(new { error = "not implemented" }, statusCode: 501);
+			return Error("not implemented", 501);
 		}
 
 		public IResult Favorite(HttpContext context)
@@ -346,7 +266,7 @@ namespace Pulse.Protocols
 
 			if (string.IsNullOrEmpty(u) || string.IsNullOrEmpty(id) || string.IsNullOrEmpty(kind))
 			{
-				return Results.Json(new { error = "missing u, id, or kind" }, statusCode: 400);
+				return Error("missing u, id, or kind", 400);
 			}
 
 			string trackId = null;
@@ -357,18 +277,18 @@ namespace Pulse.Protocols
 			else if (kind == "artist") { artistId = id; }
 			else
 			{
-				return Results.Json(new { error = "unknown kind (track|album|artist)" }, statusCode: 400);
+				return Error("unknown kind (track|album|artist)", 400);
 			}
 
 			m_musicManager.UpdateStar(u, trackId, albumId, artistId, starred);
-			return Results.Json(new { ok = true });
+			return Ok();
 		}
 
 		public IResult Stream(HttpContext context)
 		{
 			string id = context.Request.Query["id"].FirstOrDefault();
 			string u = context.Request.Query["u"].FirstOrDefault();
-			return Results.Json(new { error = "not implemented" }, statusCode: 501);
+			return Error("not implemented", 501);
 		}
 
 		public IResult GetCoverArt(HttpContext context)
@@ -452,7 +372,7 @@ namespace Pulse.Protocols
 						return Results.Bytes(imageBytes, contentType);
 					}
 				}
-				
+
 			}
 			else
 			{
@@ -470,15 +390,9 @@ namespace Pulse.Protocols
 
 			}
 
-
-
-
-
 			m_coverArtCache[id] = m_defaultCoverArt;
 			return Results.Bytes(m_defaultCoverArt, "image/png");
 		}
-
-
 
 		public IResult TrackAnalytics(HttpContext context)
 		{
@@ -489,13 +403,13 @@ namespace Pulse.Protocols
 
 			if (string.IsNullOrEmpty(trackId) || string.IsNullOrEmpty(u))
 			{
-				return Results.Json(new { error = "missing trackId or u" }, statusCode: 400);
+				return Error("missing trackId or u", 400);
 			}
 
 			TrackInfo track = m_musicManager.GetTrack(trackId);
 			if (track == null)
 			{
-				return Results.Json(new { error = "track not found" }, statusCode: 404);
+				return Error("track not found", 404);
 			}
 
 			// OnTrackStreamed currently only flips the now-playing pointer and
@@ -503,7 +417,37 @@ namespace Pulse.Protocols
 			// track. `phase` and `elapsedSeconds` from the client are accepted on
 			// the wire for the future explicit-phase model but aren't used yet.
 			m_musicManager.OnTrackStreamed(u, trackId);
-			return Results.Json(new { ok = true, phase = phase });
+			return Ok();
+		}
+
+		// Project a TrackInfo into the wire PulseAPI_Track shape.
+		private static PulseAPI_Track BuildTrack(TrackInfo track)
+		{
+			PulseAPI_Track t = new PulseAPI_Track();
+			t.id = track.Id;
+			t.title = track.Title;
+			t.artist = track.Artist;
+			t.artistId = track.ArtistId;
+			t.album = track.Album;
+			t.albumId = track.AlbumId;
+			t.duration = track.DurationSeconds;
+			t.coverArt = track.CoverArtId;
+			t.trackNumber = track.TrackNumber;
+			t.discNumber = track.DiscNumber;
+			t.year = track.Year;
+			return t;
+		}
+
+		private static IResult Ok()
+		{
+			return Results.Json(new PulseAPI_OkResult());
+		}
+
+		private static IResult Error(string message, int statusCode)
+		{
+			PulseAPI_Error body = new PulseAPI_Error();
+			body.error = message;
+			return Results.Json(body, statusCode: statusCode);
 		}
 	}
 }

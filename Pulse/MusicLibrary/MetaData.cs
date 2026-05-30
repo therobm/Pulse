@@ -201,6 +201,15 @@ namespace Pulse.MusicLibrary
 		public List<string> RecentlyPlayed { get; set; } = new List<string>();
 	}
 
+	// Aggregated per-genre stats. Computed on demand from the album list;
+	// not persisted.
+	public class GenreInfo
+	{
+		public string Name = "";
+		public int SongCount;
+		public int AlbumCount;
+	}
+
 	// Persistent per-user play queue (Subsonic getPlayQueue / savePlayQueue).
 	// Written directly to SQLite on save -- no in-memory cache, no dirty flag.
 	public class PlayQueueInfo
