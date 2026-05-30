@@ -188,6 +188,7 @@ namespace Thump.Views.Tiles
 					{
 						opacity = 1.0;
 					}
+					m_art.Opacity = opacity;
 					m_titleLabel.Opacity = opacity;
 					m_artistLabel.Opacity = opacity;
 					bool playable;
