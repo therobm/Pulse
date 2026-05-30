@@ -83,7 +83,7 @@ namespace Pulse.Protocols
 			response.coverArt = source.CoverArtId;
 			for (int index = 0; index < source.Tracks.Count; index++)
 			{
-				response.tracks.Add(BuildTrack(source.Tracks[index]));
+				response.tracks.Add(new PulseAPI_Track(source.Tracks[index]));
 			}
 			return Results.Json(response);
 		}
@@ -133,7 +133,7 @@ namespace Pulse.Protocols
 			{
 				return Error("track not found", 404);
 			}
-			return Results.Json(BuildTrack(track));
+			return Results.Json(new PulseAPI_Track(track));
 		}
 
 		public IResult GetTracks(HttpContext context)
@@ -149,7 +149,7 @@ namespace Pulse.Protocols
 				{
 					continue;
 				}
-				result.Add(BuildTrack(track));
+				result.Add(new PulseAPI_Track(track));
 			}
 			return Results.Json(result);
 		}
@@ -188,7 +188,7 @@ namespace Pulse.Protocols
 			List<TrackInfo> entries = m_musicManager.GetPlaylistTracks(id);
 			for (int index = 0; index < entries.Count; index++)
 			{
-				response.tracks.Add(BuildTrack(entries[index]));
+				response.tracks.Add(new PulseAPI_Track(entries[index]));
 			}
 			return Results.Json(response);
 		}
@@ -420,24 +420,7 @@ namespace Pulse.Protocols
 			return Ok();
 		}
 
-		// Project a TrackInfo into the wire PulseAPI_Track shape.
-		private static PulseAPI_Track BuildTrack(TrackInfo track)
-		{
-			PulseAPI_Track t = new PulseAPI_Track();
-			t.id = track.Id;
-			t.title = track.Title;
-			t.artist = track.Artist;
-			t.artistId = track.ArtistId;
-			t.album = track.Album;
-			t.albumId = track.AlbumId;
-			t.duration = track.DurationSeconds;
-			t.coverArt = track.CoverArtId;
-			t.trackNumber = track.TrackNumber;
-			t.discNumber = track.DiscNumber;
-			t.year = track.Year;
-			return t;
-		}
-
+	
 		private static IResult Ok()
 		{
 			return Results.Json(new PulseAPI_OkResult());

@@ -1,3 +1,4 @@
+using Pulse.MusicLibrary;
 using System;
 using System.Collections.Generic;
 
@@ -45,6 +46,21 @@ namespace Pulse.Protocols
 		public int trackNumber;
 		public int discNumber;
 		public int year;
+
+		public PulseAPI_Track(TrackInfo track)
+		{
+			id = track.Id;
+			title = track.Title;
+			artist = track.Artist;
+			artistId = track.ArtistId;
+			album = track.Album;
+			albumId = track.AlbumId;
+			duration = track.DurationSeconds;
+			coverArt = track.CoverArtId;
+			trackNumber = track.TrackNumber;
+			discNumber = track.DiscNumber;
+			year = track.Year;
+		}
 	}
 
 	// Album entry as it appears nested under an artist's albums list.
