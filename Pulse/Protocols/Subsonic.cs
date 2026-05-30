@@ -1,12 +1,16 @@
 ﻿
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.Extensions.Primitives;
 using Pulse.Data;
 using Pulse.MusicLibrary;
+using Pulse.Protocols;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -24,8 +28,11 @@ namespace Pulse.SubsonicService
 		private byte[] m_defaultCoverArt;
 		PulseService m_pulseService;
 		MusicManager m_musicManager;
-		public Subsonic(PulseService pulse, MusicManager musicManager)
+		PulseAPI m_pulseAPI;
+
+		public Subsonic(PulseAPI pulseAPI, PulseService pulse, MusicManager musicManager)
 		{
+			m_pulseAPI = pulseAPI;
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
 			string pulseLogoPath = Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png");
@@ -179,79 +186,90 @@ namespace Pulse.SubsonicService
 
 		public IResult HandlePing(HttpContext context)
 		{
+			// Ping carries no data either way, but still bounce through PulseAPI
+			// so a future broken pulse stays one bug fix away from breaking both
+			// surfaces consistently. The Subsonic envelope is what clients see.
+			m_pulseAPI.Ping(context);
 			SubsonicResponseBody body = CreateResponse();
 			return Respond(context, body);
 		}
 
 		public IResult HandleGetSong(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
-			TrackInfo track = m_musicManager.GetTrack(id);
-
-			if (track == null)
+			IResult pulseResult = m_pulseAPI.GetTrack(context);
+			JsonHttpResult<PulseAPI_Track> ok = pulseResult as JsonHttpResult<PulseAPI_Track>;
+			if (ok == null)
 			{
 				return Respond(context, CreateErrorResponse(70, "Song not found"));
 			}
 
+			string user = context.Request.Query["u"].FirstOrDefault();
 			SubsonicResponseBody body = CreateResponse();
-			body.song = new SongID3(user, track);
-			
-
+			body.song = BuildSongFromPulseTrack(ok.Value, user);
 			return Respond(context, body);
 		}
 
 		public IResult HandleGetCoverArt(HttpContext context)
 		{
 			string id = context.Request.Query["id"].FirstOrDefault();
-			if (string.IsNullOrEmpty(id))
-			{
-				return Results.Bytes(m_defaultCoverArt, "image/png");
-			}
+			string sType = "album";
 
-			byte[] cached;
-			if (m_coverArtCache.TryGetValue(id, out cached))
-			{
-				if (cached.Length == 0)
-				{
-					return Results.Bytes(m_defaultCoverArt, "image/png");
-				}
-				return Results.Bytes(cached, "image/jpeg");
-			}
-
-			// Playlist composite art -- generated on demand from the first few
-			// distinct album covers in the playlist, served (and cached) like
-			// any other cover. Stable id format is "pl-<playlistId>".
 			if (!string.IsNullOrEmpty(id) && id.StartsWith("pl-"))
 			{
-				return HandlePlaylistCompositeCover(id);
+				id = id.Substring(3);
+				sType = "playlist";
 			}
-
-			// Artist alias (Flatline #224): "ar-<artistId>" resolves to a
-			// representative album's cover so every artist response has a
-			// usable coverArt id even when no portrait is uploaded.
 			if (!string.IsNullOrEmpty(id) && id.StartsWith("ar-"))
 			{
-				return HandleArtistAliasCover(id);
+				id = id.Substring(3);
+				sType = "artist";
 			}
 
-			AlbumInfo album = m_musicManager.GetAlbum(id);
-			byte[] albumBytes;
-			string albumContentType;
-			if (album != null && TryGetAlbumCoverBytes(album, out albumBytes, out albumContentType))
-			{
-				m_coverArtCache[id] = albumBytes;
-				return Results.Bytes(albumBytes, albumContentType);
-			}
 
-			if (album == null)
-			{
-				m_coverArtCache[id] = m_defaultCoverArt;
-				return Results.Bytes(m_defaultCoverArt, "image/png");
-			}
 
-			m_coverArtCache[id] = m_placeholder;
-			return Results.Bytes(m_placeholder, "image/png");
+			Dictionary<string, StringValues> dict = new Dictionary<string, StringValues>();
+			dict["id"] = id;
+			dict["type"] = sType;
+
+			DefaultHttpContext forwarded = new DefaultHttpContext();
+			forwarded.Request.Query = new QueryCollection(dict);
+
+			return m_pulseAPI.GetCoverArt(forwarded);
+		}
+
+		// Pulse -> Subsonic shape adapters. These are part of the compatibility
+		// layer (no data work, just field mapping). Subsonic-specific fields not
+		// carried on the PulseAPI types -- rating, per-user starred, size,
+		// suffix, contentType, etc. -- are left at defaults; the spec containers
+		// already omit them from the wire via JsonIgnore(WhenWritingDefault|Null),
+		// so the JSON stays clean.
+		private static SongID3 BuildSongFromPulseTrack(PulseAPI_Track t, string user)
+		{
+			SongID3 song = new SongID3();
+			song.id = t.id;
+			song.title = t.title;
+			song.album = t.album;
+			song.albumId = t.albumId;
+			song.artist = t.artist;
+			song.artistId = t.artistId;
+			song.track = t.trackNumber;
+			song.discNumber = t.discNumber;
+			song.year = t.year;
+			song.duration = t.duration;
+			song.coverArt = t.coverArt;
+			song.parent = t.albumId;
+			song.displayArtist = t.artist;
+			return song;
+		}
+
+		private static ArtistID3 BuildArtistFromPulseSummary(PulseAPI_ArtistSummary s)
+		{
+			ArtistID3 entry = new ArtistID3();
+			entry.id = s.id;
+			entry.name = s.name;
+			entry.albumCount = s.albumCount;
+			entry.coverArt = s.coverArt;
+			return entry;
 		}
 
 		/// <summary>
@@ -306,203 +324,8 @@ namespace Pulse.SubsonicService
 			return false;
 		}
 
-		/// <summary>
-		/// Resolve a stable "ar-<id>" cover-art alias to a representative
-		/// album cover so every artist response has usable bytes behind it
-		/// (Flatline #224). Picks the album with the most plays, falling back
-		/// to the first album with any embedded/folder art. Cached under the
-		/// alias so repeat fetches don't re-scan the artist's discography.
-		/// </summary>
-		private IResult HandleArtistAliasCover(string coverId)
-		{
-			string artistId = coverId.Substring(3);
-			ArtistInfo artist = m_musicManager.GetArtist(artistId);
-			if (artist == null || artist.Albums.Count == 0)
-			{
-				m_coverArtCache[coverId] = m_defaultCoverArt;
-				return Results.Bytes(m_defaultCoverArt, "image/png");
-			}
+		
 
-			// Score each album by its total play count across tracks and pick the
-			// busiest. Ties go to the order the artist has albums in. New albums
-			// (zero plays) still get a chance through the fallback loop below.
-			AlbumInfo bestAlbum = null;
-			int bestPlays = -1;
-			for (int index = 0; index < artist.Albums.Count; index++)
-			{
-				AlbumInfo album = artist.Albums[index];
-				int plays = 0;
-				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
-				{
-					plays = plays + album.Tracks[trackIndex].Score.PlayCount;
-				}
-				if (plays > bestPlays)
-				{
-					bestPlays = plays;
-					bestAlbum = album;
-				}
-			}
-
-			byte[] bytes;
-			string contentType;
-			if (bestAlbum != null && TryGetAlbumCoverBytes(bestAlbum, out bytes, out contentType))
-			{
-				m_coverArtCache[coverId] = bytes;
-				return Results.Bytes(bytes, contentType);
-			}
-
-			// Fallback: walk every album until we find one with art.
-			for (int index = 0; index < artist.Albums.Count; index++)
-			{
-				if (artist.Albums[index] == bestAlbum) { continue; }
-				if (TryGetAlbumCoverBytes(artist.Albums[index], out bytes, out contentType))
-				{
-					m_coverArtCache[coverId] = bytes;
-					return Results.Bytes(bytes, contentType);
-				}
-			}
-
-			m_coverArtCache[coverId] = m_defaultCoverArt;
-			return Results.Bytes(m_defaultCoverArt, "image/png");
-		}
-
-		/// <summary>
-		/// Build (or return cached) composite cover art for a playlist. Picks
-		/// the first 4 distinct album covers from the playlist's tracks and
-		/// tiles them into a single 600x600 JPEG. Falls back to a single tile
-		/// if fewer covers are available; falls back to the default placeholder
-		/// if none are. Cached under the "pl-<id>" key so subsequent hits are
-		/// the same fast path as album covers.
-		/// </summary>
-		private IResult HandlePlaylistCompositeCover(string coverId)
-		{
-			string playlistId = coverId.Substring(3);
-			PlaylistInfo playlist = m_musicManager.GetPlaylist(playlistId);
-			if (playlist == null || playlist.TrackIds.Count == 0)
-			{
-				m_coverArtCache[coverId] = m_defaultCoverArt;
-				return Results.Bytes(m_defaultCoverArt, "image/png");
-			}
-
-			// Collect up to 4 distinct album covers, in playlist order.
-			List<byte[]> tileBytes = new List<byte[]>();
-			HashSet<string> seenAlbumIds = new HashSet<string>();
-			for (int idx = 0; idx < playlist.TrackIds.Count && tileBytes.Count < 4; idx++)
-			{
-				TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[idx]);
-				if (track == null || string.IsNullOrEmpty(track.AlbumId))
-				{
-					continue;
-				}
-				if (!seenAlbumIds.Add(track.AlbumId))
-				{
-					continue;
-				}
-				AlbumInfo album = m_musicManager.GetAlbum(track.AlbumId);
-				byte[] albumBytes;
-				string albumContentType;
-				if (TryGetAlbumCoverBytes(album, out albumBytes, out albumContentType))
-				{
-					tileBytes.Add(albumBytes);
-				}
-			}
-
-			if (tileBytes.Count == 0)
-			{
-				m_coverArtCache[coverId] = m_defaultCoverArt;
-				return Results.Bytes(m_defaultCoverArt, "image/png");
-			}
-
-			try
-			{
-				byte[] composed = ComposeTiledImage(tileBytes, 600);
-				m_coverArtCache[coverId] = composed;
-				return Results.Bytes(composed, "image/jpeg");
-			}
-			catch (Exception ex)
-			{
-				Log.Error(-1, "HandlePlaylistCompositeCover: failed to compose - " + ex.Message);
-				// Cache the first tile so we don't keep retrying composition.
-				m_coverArtCache[coverId] = tileBytes[0];
-				return Results.Bytes(tileBytes[0], "image/jpeg");
-			}
-		}
-
-		/// <summary>
-		/// Compose 1, 2, or 4 source images into a single square JPEG of the
-		/// requested size. 1 image = full size; 2 = side-by-side halves;
-		/// 3 or 4 = 2x2 grid (with last cell blank if only 3). Source images
-		/// are stretched to fill their cell.
-		/// </summary>
-		private static byte[] ComposeTiledImage(List<byte[]> tiles, int size)
-		{
-			int tileCount = tiles.Count;
-			using (System.Drawing.Bitmap canvas = new System.Drawing.Bitmap(size, size))
-			{
-				using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(canvas))
-				{
-					graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-					graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
-					graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-					graphics.Clear(System.Drawing.Color.Black);
-
-					if (tileCount == 1)
-					{
-						DrawTile(graphics, tiles[0], 0, 0, size, size);
-					}
-					else if (tileCount == 2)
-					{
-						int half = size / 2;
-						DrawTile(graphics, tiles[0], 0, 0, half, size);
-						DrawTile(graphics, tiles[1], half, 0, size - half, size);
-					}
-					else
-					{
-						int half = size / 2;
-						DrawTile(graphics, tiles[0], 0, 0, half, half);
-						DrawTile(graphics, tiles[1], half, 0, size - half, half);
-						DrawTile(graphics, tiles[2], 0, half, half, size - half);
-						if (tileCount >= 4)
-						{
-							DrawTile(graphics, tiles[3], half, half, size - half, size - half);
-						}
-					}
-				}
-
-				using (MemoryStream output = new MemoryStream())
-				{
-					System.Drawing.Imaging.ImageCodecInfo jpegCodec = GetJpegCodec();
-					System.Drawing.Imaging.EncoderParameters encoderParams = new System.Drawing.Imaging.EncoderParameters(1);
-					encoderParams.Param[0] = new System.Drawing.Imaging.EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 85L);
-					canvas.Save(output, jpegCodec, encoderParams);
-					return output.ToArray();
-				}
-			}
-		}
-
-		private static void DrawTile(System.Drawing.Graphics graphics, byte[] imageBytes, int x, int y, int width, int height)
-		{
-			using (MemoryStream source = new MemoryStream(imageBytes))
-			{
-				using (System.Drawing.Image tile = System.Drawing.Image.FromStream(source))
-				{
-					graphics.DrawImage(tile, new System.Drawing.Rectangle(x, y, width, height));
-				}
-			}
-		}
-
-		private static System.Drawing.Imaging.ImageCodecInfo GetJpegCodec()
-		{
-			System.Drawing.Imaging.ImageCodecInfo[] codecs = System.Drawing.Imaging.ImageCodecInfo.GetImageEncoders();
-			for (int idx = 0; idx < codecs.Length; idx++)
-			{
-				if (codecs[idx].FormatID == System.Drawing.Imaging.ImageFormat.Jpeg.Guid)
-				{
-					return codecs[idx];
-				}
-			}
-			return null;
-		}
 
 		public IResult HandleGetIndexes(HttpContext context)
 		{
@@ -920,29 +743,45 @@ namespace Pulse.SubsonicService
 
 		public IResult HandleStar(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string albumId = context.Request.Query["albumId"].FirstOrDefault();
-			string artistId = context.Request.Query["artistId"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
-
-			m_musicManager.UpdateStar(user, id, albumId, artistId, true);
-
-			SubsonicResponseBody body = CreateResponse();
-			return Respond(context, body);
+			return ForwardStar(context, true);
 		}
 
-	
 		public IResult HandleUnstar(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
+			return ForwardStar(context, false);
+		}
+
+		// Subsonic star/unstar take id|albumId|artistId; Pulse Favorite takes a
+		// single (kind, id, starred). Translate and forward, then map the Pulse
+		// ok/error result back into a Subsonic envelope.
+		private IResult ForwardStar(HttpContext context, bool starred)
+		{
+			string trackId = context.Request.Query["id"].FirstOrDefault();
 			string albumId = context.Request.Query["albumId"].FirstOrDefault();
 			string artistId = context.Request.Query["artistId"].FirstOrDefault();
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			m_musicManager.UpdateStar(user, id, albumId, artistId, false);
+			string kind = "track";
+			string id = trackId;
+			if (!string.IsNullOrEmpty(artistId)) { kind = "artist"; id = artistId; }
+			else if (!string.IsNullOrEmpty(albumId)) { kind = "album"; id = albumId; }
 
-			SubsonicResponseBody body = CreateResponse();
-			return Respond(context, body);
+			Dictionary<string, StringValues> dict = new Dictionary<string, StringValues>();
+			dict["kind"] = kind;
+			dict["id"] = id;
+			dict["starred"] = starred ? "true" : "false";
+			dict["u"] = user;
+
+			DefaultHttpContext forwarded = new DefaultHttpContext();
+			forwarded.Request.Query = new QueryCollection(dict);
+			IResult pulseResult = m_pulseAPI.Favorite(forwarded);
+
+			JsonHttpResult<PulseAPI_OkResult> ok = pulseResult as JsonHttpResult<PulseAPI_OkResult>;
+			if (ok == null)
+			{
+				return Respond(context, CreateErrorResponse(10, "Missing or invalid id"));
+			}
+			return Respond(context, CreateResponse());
 		}
 
 		public IResult HandleScrobble(HttpContext context)
@@ -950,23 +789,25 @@ namespace Pulse.SubsonicService
 			string id = context.Request.Query["id"].FirstOrDefault();
 			string user = context.Request.Query["u"].FirstOrDefault();
 			string submissionParam = context.Request.Query["submission"].FirstOrDefault();
-			string timeParam = context.Request.Query["time"].FirstOrDefault();
-			string clientParam = context.Request.Query["c"].FirstOrDefault();
 
 			bool submission = (submissionParam ?? "true") != "false";
 
-			// The Subsonic API's "submission=true" intent (after-play scrobble) doesn't align with Pulse's scoring model.
-			// We intentionally REJECT the explicit submit and use the !submission (track-start) call instead, because that
-			// is the signal 3rd-party clients give us that maps cleanly to Pulse's "served to user" play metric. Do not
-			// flip this condition.
-			if (!submission)//string.IsNullOrEmpty(id) && submission)
+			// Subsonic's submission=true (after-play scrobble) doesn't map onto
+			// Pulse's scoring model -- the !submission (track-start) signal is
+			// what 3rd-party clients give us that lines up with Pulse's
+			// "served to user" play metric. Drop submission=true so it never
+			// reaches the analytics path. Do not flip this condition.
+			if (!submission)
 			{
-				Log.Info(-1, "Scrobble: id=" + id + " user=" + user + " submission=" + submission + " time=" + timeParam + " client=" + clientParam + " raw_submission=" + submissionParam);
-
-				m_musicManager.OnTrackStreamed(user, id);
+				Dictionary<string, StringValues> dict = new Dictionary<string, StringValues>();
+				dict["trackId"] = id;
+				dict["event"] = "start";
+				dict["u"] = user;
+				DefaultHttpContext forwarded = new DefaultHttpContext();
+				forwarded.Request.Query = new QueryCollection(dict);
+				m_pulseAPI.TrackAnalytics(forwarded);
 			}
-			SubsonicResponseBody body = CreateResponse();
-			return Respond(context, body);
+			return Respond(context, CreateResponse());
 		}
 		public IResult HandleGetLicense(HttpContext context)
 		{
@@ -976,20 +817,24 @@ namespace Pulse.SubsonicService
 		}
 		public IResult HandleGetArtists(HttpContext context)
 		{
-			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
-
+			IResult pulseResult = m_pulseAPI.GetArtists(context);
+			JsonHttpResult<List<PulseAPI_ArtistSummary>> ok = pulseResult as JsonHttpResult<List<PulseAPI_ArtistSummary>>;
 			SubsonicResponseBody body = CreateResponse();
 			body.artists = new ArtistsContainer();
-
-			Dictionary<string, ArtistIndex> indexMap = new Dictionary<string, ArtistIndex>();
-
-			for (int index = 0; index < allArtists.Count; index++)
+			if (ok == null)
 			{
-				ArtistInfo source = allArtists[index];
+				return Respond(context, body);
+			}
+
+			// First-letter grouping is Subsonic envelope shape, not domain logic.
+			Dictionary<string, ArtistIndex> indexMap = new Dictionary<string, ArtistIndex>();
+			for (int index = 0; index < ok.Value.Count; index++)
+			{
+				PulseAPI_ArtistSummary source = ok.Value[index];
 				string firstChar = "#";
-				if (source.Name.Length > 0)
+				if (source.name.Length > 0)
 				{
-					firstChar = source.Name.Substring(0, 1).ToUpperInvariant();
+					firstChar = source.name.Substring(0, 1).ToUpperInvariant();
 					if (!char.IsLetter(firstChar[0]))
 					{
 						firstChar = "#";
@@ -1005,133 +850,75 @@ namespace Pulse.SubsonicService
 					body.artists.index.Add(artistIndex);
 				}
 
-				ArtistID3 artistEntry = new ArtistID3(source);
-				artistIndex.artist.Add(artistEntry);
+				ArtistID3 entry = BuildArtistFromPulseSummary(source);
+				artistIndex.artist.Add(entry);
 			}
-
 			return Respond(context, body);
 		}
 
 		public IResult HandleGetArtist(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			ArtistInfo source = m_musicManager.GetArtist(id);
-
-			if (source == null)
+			IResult pulseResult = m_pulseAPI.GetArtist(context);
+			JsonHttpResult<PulseAPI_Artist> ok = pulseResult as JsonHttpResult<PulseAPI_Artist>;
+			if (ok == null)
 			{
 				return Respond(context, CreateErrorResponse(70, "Artist not found"));
 			}
 
-			string artistUser = context.Request.Query["u"].FirstOrDefault();
-
+			PulseAPI_Artist data = ok.Value;
 			SubsonicResponseBody body = CreateResponse();
 			body.artist = new ArtistWithAlbumsID3();
-			body.artist.id = source.Id;
-			body.artist.name = source.Name;
-			body.artist.albumCount = source.Albums.Count;
-			// Spec coverArt for the artist (Flatline #154 / #224). Stable alias
-			// id; HandleGetCoverArt resolves "ar-<id>" to a representative
-			// album cover so the bytes are always available.
-			body.artist.coverArt = "ar-" + source.Id;
-			// OpenSubsonic per-user starred (#159).
-			if (!string.IsNullOrEmpty(artistUser))
+			body.artist.id = data.id;
+			body.artist.name = data.name;
+			body.artist.coverArt = data.coverArt;
+			body.artist.albumCount = data.albumCount;
+			for (int index = 0; index < data.albums.Count; index++)
 			{
-				bool artistStarredFlag = false;
-				bool artistHasStar = source.Starred.TryGetValue(artistUser, out artistStarredFlag);
-				if (artistHasStar && artistStarredFlag)
-				{
-					body.artist.starred = DateTime.UtcNow.ToString("o");
-				}
+				PulseAPI_AlbumSummary album = data.albums[index];
+				AlbumID3 entry = new AlbumID3();
+				entry.id = album.id;
+				entry.name = album.name;
+				entry.year = album.year;
+				entry.coverArt = album.coverArt;
+				// artist/artistId are known from context but not in the
+				// PulseAPI_AlbumSummary -- spec clients tolerate them empty when
+				// the album is already nested under the artist.
+				body.artist.album.Add(entry);
 			}
-
-			for (int index = 0; index < source.Albums.Count; index++)
-			{
-				AlbumInfo albumSource = source.Albums[index];
-
-				AlbumID3 album = new AlbumID3(albumSource);
-				body.artist.album.Add(album);
-			}
-
 			return Respond(context, body);
 		}
 
 		public IResult HandleGetAlbum(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			AlbumInfo source = m_musicManager.GetAlbum(id);
-
-			if (source == null)
+			IResult pulseResult = m_pulseAPI.GetAlbum(context);
+			JsonHttpResult<PulseAPI_Album> ok = pulseResult as JsonHttpResult<PulseAPI_Album>;
+			if (ok == null)
 			{
 				return Respond(context, CreateErrorResponse(70, "Album not found"));
 			}
 
+			PulseAPI_Album data = ok.Value;
 			string user = context.Request.Query["u"].FirstOrDefault();
 
 			SubsonicResponseBody body = CreateResponse();
 			body.album = new AlbumWithSongsID3();
-			body.album.id = source.Id;
-			body.album.name = source.Name;
-			body.album.artist = source.ArtistName;
-			body.album.artistId = source.ArtistId;
-			body.album.songCount = source.Tracks.Count;
-			body.album.coverArt = source.CoverArtId;
-			body.album.year = source.Year;
-			body.album.genre = source.Genre;
-			// OpenSubsonic aggregates + per-user starred (#159).
-			body.album.displayArtist = source.ArtistName;
-			if (!string.IsNullOrEmpty(user))
-			{
-				bool albumStarredFlag = false;
-				bool albumHasStar = source.Starred.TryGetValue(user, out albumStarredFlag);
-				if (albumHasStar && albumStarredFlag)
-				{
-					body.album.starred = DateTime.UtcNow.ToString("o");
-				}
-			}
-
-			int albumPlayCount = 0;
-			DateTime albumMostRecent = default(DateTime);
-			float albumRatingTotal = 0f;
-			int albumRatedCount = 0;
-			for (int statIndex = 0; statIndex < source.Tracks.Count; statIndex++)
-			{
-				TrackInfo statTrack = source.Tracks[statIndex];
-				albumPlayCount = albumPlayCount + statTrack.Score.PlayCount;
-				if (statTrack.LastPlayed > albumMostRecent)
-				{
-					albumMostRecent = statTrack.LastPlayed;
-				}
-				if (statTrack.Rating > 0)
-				{
-					albumRatingTotal = albumRatingTotal + statTrack.Rating;
-					albumRatedCount++;
-				}
-			}
-			body.album.playCount = albumPlayCount;
-			if (albumMostRecent != default(DateTime))
-			{
-				body.album.played = albumMostRecent.ToString("o");
-			}
-			if (albumRatedCount > 0)
-			{
-				body.album.userRating = (int)Math.Round(albumRatingTotal / albumRatedCount);
-			}
-
-			List<TrackInfo> orderedTracks = new List<TrackInfo>(source.Tracks);
-			orderedTracks.Sort(CompareTrackByDiscThenNumber);
+			body.album.id = data.id;
+			body.album.name = data.name;
+			body.album.artist = data.artistName;
+			body.album.artistId = data.artistId;
+			body.album.year = data.year;
+			body.album.coverArt = data.coverArt;
+			body.album.songCount = data.tracks.Count;
+			body.album.displayArtist = data.artistName;
 
 			long albumDuration = 0;
-			for (int index = 0; index < orderedTracks.Count; index++)
+			for (int index = 0; index < data.tracks.Count; index++)
 			{
-				TrackInfo trackSource = orderedTracks[index];
-
-				SongID3 song = new SongID3(user, trackSource);
-
-				body.album.song.Add(song);
-				albumDuration = albumDuration + trackSource.DurationSeconds;
+				PulseAPI_Track track = data.tracks[index];
+				body.album.song.Add(BuildSongFromPulseTrack(track, user));
+				albumDuration = albumDuration + track.duration;
 			}
 			body.album.duration = (int)albumDuration;
-
 			return Respond(context, body);
 		}
 		public IResult HandleGetAlbumList2(HttpContext context)
@@ -1364,32 +1151,23 @@ namespace Pulse.SubsonicService
 
 		public IResult HandleGetGenres(HttpContext context)
 		{
-			Dictionary<string, GenreEntry> genreMap = new Dictionary<string, GenreEntry>();
-
-			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
-			for (int index = 0; index < allAlbums.Count; index++)
-			{
-				AlbumInfo album = allAlbums[index];
-				if (string.IsNullOrEmpty(album.Genre))
-				{
-					continue;
-				}
-
-				GenreEntry entry;
-				if (!genreMap.TryGetValue(album.Genre, out entry))
-				{
-					entry = new GenreEntry();
-					entry.value = album.Genre;
-					genreMap[album.Genre] = entry;
-				}
-				entry.albumCount = entry.albumCount + 1;
-				entry.songCount = entry.songCount + album.Tracks.Count;
-			}
-
+			IResult pulseResult = m_pulseAPI.GetGenres(context);
+			JsonHttpResult<List<PulseAPI_Genre>> ok = pulseResult as JsonHttpResult<List<PulseAPI_Genre>>;
 			SubsonicResponseBody body = CreateResponse();
 			body.genres = new GenresContainer();
-			body.genres.genre = new List<GenreEntry>(genreMap.Values);
-
+			body.genres.genre = new List<GenreEntry>();
+			if (ok != null)
+			{
+				for (int index = 0; index < ok.Value.Count; index++)
+				{
+					PulseAPI_Genre g = ok.Value[index];
+					GenreEntry entry = new GenreEntry();
+					entry.value = g.name;
+					entry.songCount = g.songCount;
+					entry.albumCount = g.albumCount;
+					body.genres.genre.Add(entry);
+				}
+			}
 			return Respond(context, body);
 		}
 
@@ -1887,79 +1665,62 @@ namespace Pulse.SubsonicService
 
 		public IResult HandleGetPlaylists(HttpContext context)
 		{
+			IResult pulseResult = m_pulseAPI.GetPlaylists(context);
+			JsonHttpResult<List<PulseAPI_PlaylistSummary>> ok = pulseResult as JsonHttpResult<List<PulseAPI_PlaylistSummary>>;
+			string user = context.Request.Query["u"].FirstOrDefault();
+			string owner = user;
+			if (owner == null) { owner = ""; }
+
 			SubsonicResponseBody body = CreateResponse();
 			body.playlists = new PlaylistsContainer();
-
-			string user = context.Request.Query["u"].FirstOrDefault();
-
-			List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(user);
-			for (int index = 0; index < allPlaylists.Count; index++)
+			if (ok != null)
 			{
-				PlaylistInfo playlist = allPlaylists[index];
-				PlaylistEntry entry = new PlaylistEntry();
-				entry.id = playlist.Id;
-				entry.name = playlist.Name;
-				entry.comment = playlist.Comment;
-				entry.songCount = playlist.GetSongCount();
-				entry.duration = (int)playlist.DurationSeconds;
-				entry.coverArt = "pl-" + playlist.Id;
-				// OpenSubsonic ownership fields (#159). Pulse is single-user,
-				// so owner = the requesting user and everything is treated as
-				// public. created / changed need schema support; left unset.
-				string ownerName = user;
-				if (ownerName == null)
+				for (int index = 0; index < ok.Value.Count; index++)
 				{
-					ownerName = "";
+					PulseAPI_PlaylistSummary p = ok.Value[index];
+					PlaylistEntry entry = new PlaylistEntry();
+					entry.id = p.id;
+					entry.name = p.name;
+					entry.comment = p.comment;
+					entry.songCount = p.songCount;
+					entry.duration = (int)p.duration;
+					entry.coverArt = p.coverArt;
+					entry.owner = owner;
+					entry.isPublic = true;
+					body.playlists.playlist.Add(entry);
 				}
-				entry.owner = ownerName;
-				entry.isPublic = true;
-				body.playlists.playlist.Add(entry);
 			}
-
 			return Respond(context, body);
 		}
 
 		public IResult HandleGetPlaylist(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			if (string.IsNullOrEmpty(id))
+			IResult pulseResult = m_pulseAPI.GetPlaylist(context);
+			JsonHttpResult<PulseAPI_Playlist> ok = pulseResult as JsonHttpResult<PulseAPI_Playlist>;
+			if (ok == null)
 			{
-				return Results.BadRequest();
+				return Respond(context, CreateErrorResponse(70, "Playlist not found"));
 			}
 
-			PlaylistInfo playlist = m_musicManager.GetPlaylist(id);
-			if (playlist == null)
-			{
-				return Results.NotFound();
-			}
-
+			PulseAPI_Playlist data = ok.Value;
 			string user = context.Request.Query["u"].FirstOrDefault();
+			string playlistOwner = user;
+			if (playlistOwner == null) { playlistOwner = ""; }
 
 			SubsonicResponseBody body = CreateResponse();
 			body.playlist = new PlaylistWithSongs();
-			body.playlist.id = playlist.Id;
-			body.playlist.name = playlist.Name;
-			body.playlist.comment = playlist.Comment;
-			body.playlist.songCount = playlist.GetSongCount();
-			body.playlist.duration = (int)playlist.DurationSeconds;
-			body.playlist.coverArt = "pl-" + playlist.Id;
-			// OpenSubsonic ownership fields (#159).
-			string playlistOwner = user;
-			if (playlistOwner == null)
-			{
-				playlistOwner = "";
-			}
+			body.playlist.id = data.id;
+			body.playlist.name = data.name;
+			body.playlist.comment = data.comment;
+			body.playlist.songCount = data.songCount;
+			body.playlist.duration = (int)data.duration;
+			body.playlist.coverArt = data.coverArt;
 			body.playlist.owner = playlistOwner;
 			body.playlist.isPublic = true;
-
-			List<TrackInfo> tracks = m_musicManager.GetPlaylistTracks(playlist.Id);
-			for (int index = 0; index < tracks.Count; index++)
+			for (int index = 0; index < data.tracks.Count; index++)
 			{
-				TrackInfo track = tracks[index];
-				SongID3 entry = new SongID3(user, track);
-				body.playlist.entry.Add(entry);
+				body.playlist.entry.Add(BuildSongFromPulseTrack(data.tracks[index], user));
 			}
-
 			return Respond(context, body);
 		}
 
@@ -2143,21 +1904,12 @@ namespace Pulse.SubsonicService
 
 		public IResult HandleDeletePlaylist(HttpContext context)
 		{
-			string playlistId = context.Request.Query["id"].FirstOrDefault();
-
-			if (string.IsNullOrEmpty(playlistId))
+			IResult pulseResult = m_pulseAPI.DeletePlaylist(context);
+			JsonHttpResult<PulseAPI_OkResult> ok = pulseResult as JsonHttpResult<PulseAPI_OkResult>;
+			if (ok == null)
 			{
-				return Respond(context, CreateErrorResponse(10, "Missing id"));
+				return Respond(context, CreateErrorResponse(70, "Playlist not found or missing id"));
 			}
-
-			PlaylistInfo playlist = m_musicManager.GetPlaylist(playlistId);
-			if (playlist == null)
-			{
-				return Respond(context, CreateErrorResponse(70, "Playlist not found"));
-			}
-
-			m_musicManager.DeletePlaylist(playlistId);
-
 			return Respond(context, CreateResponse());
 		}
 

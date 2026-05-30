@@ -19,5 +19,17 @@ namespace Pulse
 			}
 			return value;
 		}
+
+		// Same contract as GetInt: missing or unparseable -> defaultValue.
+		public static bool GetBool(HttpContext context, string name, bool defaultValue)
+		{
+			string raw = context.Request.Query[name].FirstOrDefault();
+			bool value;
+			if (string.IsNullOrEmpty(raw) || !bool.TryParse(raw, out value))
+			{
+				return defaultValue;
+			}
+			return value;
+		}
 	}
 }

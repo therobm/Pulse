@@ -421,6 +421,10 @@ namespace Pulse.SubsonicService
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string artistImageUrl { get; set; }
 
+		public ArtistID3()
+		{
+		}
+
 		public ArtistID3(ArtistInfo artistInfo)
 		{
 			id = artistInfo.Id;
@@ -529,6 +533,10 @@ namespace Pulse.SubsonicService
 		public string comment { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
 		public int bpm { get; set; }
+
+		public SongID3()
+		{
+		}
 
 		public SongID3(string user, TrackInfo trackInfo)
 		{
@@ -645,6 +653,10 @@ namespace Pulse.SubsonicService
 		public string originalReleaseDate { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
 		public int userRating { get; set; }
+
+		public AlbumID3()
+		{
+		}
 
 		public AlbumID3(AlbumInfo albumInfo)
 		{
