@@ -1,5 +1,6 @@
 using System;
 using Microsoft.Maui;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using Thump.Pulse;
@@ -13,6 +14,7 @@ namespace Thump.Views.Tiles
 		private Label m_titleLabel;
 		private Label m_artistLabel;
 		private Label m_durationLabel;
+		private Label m_cacheIcon;
 		private PulseTrack m_song;
 
 		public TrackRowTile() : base(MainView.Self)
@@ -31,16 +33,20 @@ namespace Thump.Views.Tiles
 			textColumn.Width = GridLength.Star;
 			ColumnDefinition durationColumn = new ColumnDefinition();
 			durationColumn.Width = GridLength.Auto;
+			ColumnDefinition cacheIconColumn = new ColumnDefinition();
+			cacheIconColumn.Width = GridLength.Auto;
 			ColumnDefinition optionsColumn = new ColumnDefinition();
 			optionsColumn.Width = GridLength.Auto;
 			grid.ColumnDefinitions.Add(artColumn);
 			grid.ColumnDefinitions.Add(textColumn);
 			grid.ColumnDefinitions.Add(durationColumn);
+			grid.ColumnDefinitions.Add(cacheIconColumn);
 			grid.ColumnDefinitions.Add(optionsColumn);
 
 			grid.Children.Add(BuildArt());
 			grid.Children.Add(BuildText());
 			grid.Children.Add(BuildDuration());
+			grid.Children.Add(BuildCacheIcon());
 			grid.Children.Add(BuildOptions());
 
 			TapGestureRecognizer tap = new TapGestureRecognizer();
@@ -98,6 +104,21 @@ namespace Thump.Views.Tiles
 			return m_durationLabel;
 		}
 
+		private View BuildCacheIcon()
+		{
+			m_cacheIcon = new Label();
+			m_cacheIcon.FontFamily = "MaterialIcons";
+			m_cacheIcon.Text = "\uE837";
+			m_cacheIcon.FontSize = 16;
+			m_cacheIcon.TextColor = ThumpColors.Accent;
+			m_cacheIcon.VerticalOptions = LayoutOptions.Center;
+			m_cacheIcon.Margin = new Thickness(0, 0, 4, 0);
+			m_cacheIcon.IsVisible = false;
+
+			Grid.SetColumn(m_cacheIcon, 3);
+			return m_cacheIcon;
+		}
+
 		private View BuildOptions()
 		{
 			Button optionsButton = new Button();
@@ -111,7 +132,7 @@ namespace Thump.Views.Tiles
 			optionsButton.VerticalOptions = LayoutOptions.Center;
 			optionsButton.Clicked += OnOptionsClicked;
 
-			Grid.SetColumn(optionsButton, 3);
+			Grid.SetColumn(optionsButton, 4);
 			return optionsButton;
 		}
 
@@ -123,6 +144,9 @@ namespace Thump.Views.Tiles
 		protected override void OnBindingContextChanged()
 		{
 			base.OnBindingContextChanged();
+			m_cacheIcon.IsVisible = false;
+			m_titleLabel.Opacity = 1.0;
+			m_artistLabel.Opacity = 1.0;
 			PulseTrack song = BindingContext as PulseTrack;
 			if (song == null)
 			{
@@ -133,6 +157,36 @@ namespace Thump.Views.Tiles
 			m_artistLabel.Text = song.Artist;
 			m_durationLabel.Text = FormatDuration(song.Duration);
 			m_art.SetCoverArt(song.ImageID);
+			UpdateAvailability(song);
+		}
+
+		private void UpdateAvailability(PulseTrack song)
+		{
+			bool online = MainView.Data.Pulse.IsOnline();
+			string id = song.Id;
+			System.Threading.Tasks.Task.Run(() =>
+			{
+				bool cached = MainView.Data.IsTrackCached(song);
+				MainThread.BeginInvokeOnMainThread(() =>
+				{
+					if (m_song == null || m_song.Id != id)
+					{
+						return;
+					}
+					m_cacheIcon.IsVisible = cached;
+					double opacity;
+					if (!online && !cached)
+					{
+						opacity = 0.4;
+					}
+					else
+					{
+						opacity = 1.0;
+					}
+					m_titleLabel.Opacity = opacity;
+					m_artistLabel.Opacity = opacity;
+				});
+			});
 		}
 
 		private static string FormatDuration(int totalSeconds)
