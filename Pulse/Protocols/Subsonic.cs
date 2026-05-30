@@ -214,10 +214,12 @@ namespace Pulse.SubsonicService
 
 			if (!string.IsNullOrEmpty(id) && id.StartsWith("pl-"))
 			{
+				id = id.Substring(3);
 				sType = "playlist";
 			}
 			if (!string.IsNullOrEmpty(id) && id.StartsWith("ar-"))
 			{
+				id = id.Substring(3);
 				sType = "artist";
 			}
 

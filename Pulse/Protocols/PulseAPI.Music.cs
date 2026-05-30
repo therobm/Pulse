@@ -382,7 +382,7 @@ namespace Pulse.Protocols
 			{
 				return Results.Bytes(m_defaultCoverArt, "image/png");
 			}
-
+			/*
 			if (m_coverArtCache.TryGetValue(id, out byte[] cached))
 			{
 				if (cached.Length == 0)
@@ -390,13 +390,12 @@ namespace Pulse.Protocols
 					return Results.Bytes(m_defaultCoverArt, "image/png");
 				}
 				return Results.Bytes(cached, "image/jpeg");
-			}
+			}*/
 
 			if (sType == "playlist")
 			{
 				Log.Info(0, "Cover fro playlist");
-				string playlistId = id.Substring(3);
-				PlaylistInfo playlist = m_musicManager.GetPlaylist(playlistId);
+				PlaylistInfo playlist = m_musicManager.GetPlaylist(id);
 				if (playlist != null)
 				{
 					// Collect up to 4 distinct album covers, in playlist order.
