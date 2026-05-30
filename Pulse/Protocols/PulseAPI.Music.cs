@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Pulse.MusicLibrary;
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -372,9 +374,102 @@ namespace Pulse.Protocols
 		public IResult GetCoverArt(HttpContext context)
 		{
 			string id = context.Request.Query["id"].FirstOrDefault();
+			string sType = context.Request.Query["type"].FirstOrDefault();
+
 			int size = QueryParameters.GetInt(context, "size", 0);
-			return Results.Json(new { error = "not implemented" }, statusCode: 501);
+
+			if (string.IsNullOrEmpty(id))
+			{
+				return Results.Bytes(m_defaultCoverArt, "image/png");
+			}
+
+			if (m_coverArtCache.TryGetValue(id, out byte[] cached))
+			{
+				if (cached.Length == 0)
+				{
+					return Results.Bytes(m_defaultCoverArt, "image/png");
+				}
+				return Results.Bytes(cached, "image/jpeg");
+			}
+
+			if (sType == "playlist")
+			{
+				Log.Info(0, "Cover fro playlist");
+				string playlistId = id.Substring(3);
+				PlaylistInfo playlist = m_musicManager.GetPlaylist(playlistId);
+				if (playlist != null)
+				{
+					// Collect up to 4 distinct album covers, in playlist order.
+					List<byte[]> tileBytes = new List<byte[]>();
+					HashSet<string> seenAlbumIds = new HashSet<string>();
+					for (int idx = 0; idx < playlist.TrackIds.Count && tileBytes.Count < 4; idx++)
+					{
+						TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[idx]);
+						if (track == null || string.IsNullOrEmpty(track.AlbumId))
+						{
+							continue;
+						}
+
+						if (!seenAlbumIds.Add(track.AlbumId))
+						{
+							continue;
+						}
+
+						AlbumInfo album = m_musicManager.GetAlbum(track.AlbumId);
+						if (album == null)
+						{
+							continue;
+						}
+
+						if (m_musicManager.GetAlbumCover(album, out byte[] imageBytes, out string contentType))
+						{
+							tileBytes.Add(imageBytes);
+						}
+					}
+					if (tileBytes.Count > 0)
+					{
+
+						try
+						{
+							byte[] composed = ImageComposer.ComposeTiledImage(tileBytes, 600);
+							m_coverArtCache[id] = composed;
+							return Results.Bytes(composed, "image/jpeg");
+						}
+						catch (Exception ex)
+						{
+							Log.Error(-1, "HandlePlaylistCompositeCover: failed to compose - " + ex.Message);
+						}
+					}
+				}
+			}
+			else if (sType == "artist")
+			{
+			}
+			else
+			{
+				//albums
+
+				AlbumInfo album = m_musicManager.GetAlbum(id);
+				if (album != null)
+				{
+					if (m_musicManager.GetAlbumCover(album, out byte[] imageBytes, out string contentType))
+					{
+						m_coverArtCache[id] = imageBytes;
+						return Results.Bytes(imageBytes, contentType);
+					}
+				}
+
+			}
+
+
+
+
+
+			m_coverArtCache[id] = m_defaultCoverArt;
+			return Results.Bytes(m_defaultCoverArt, "image/png");
 		}
+
+
 
 		public IResult TrackAnalytics(HttpContext context)
 		{

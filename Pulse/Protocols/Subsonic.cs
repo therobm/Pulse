@@ -1,5 +1,6 @@
 ﻿
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Primitives;
 using Pulse.Data;
 using Pulse.MusicLibrary;
 using Pulse.Protocols;
@@ -8,6 +9,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -208,54 +210,27 @@ namespace Pulse.SubsonicService
 		public IResult HandleGetCoverArt(HttpContext context)
 		{
 			string id = context.Request.Query["id"].FirstOrDefault();
-			if (string.IsNullOrEmpty(id))
-			{
-				return Results.Bytes(m_defaultCoverArt, "image/png");
-			}
+			string sType = "album";
 
-			byte[] cached;
-			if (m_coverArtCache.TryGetValue(id, out cached))
-			{
-				if (cached.Length == 0)
-				{
-					return Results.Bytes(m_defaultCoverArt, "image/png");
-				}
-				return Results.Bytes(cached, "image/jpeg");
-			}
-
-			// Playlist composite art -- generated on demand from the first few
-			// distinct album covers in the playlist, served (and cached) like
-			// any other cover. Stable id format is "pl-<playlistId>".
 			if (!string.IsNullOrEmpty(id) && id.StartsWith("pl-"))
 			{
-				return HandlePlaylistCompositeCover(id);
+				sType = "playlist";
 			}
-
-			// Artist alias (Flatline #224): "ar-<artistId>" resolves to a
-			// representative album's cover so every artist response has a
-			// usable coverArt id even when no portrait is uploaded.
 			if (!string.IsNullOrEmpty(id) && id.StartsWith("ar-"))
 			{
-				return HandleArtistAliasCover(id);
+				sType = "artist";
 			}
 
-			AlbumInfo album = m_musicManager.GetAlbum(id);
-			byte[] albumBytes;
-			string albumContentType;
-			if (album != null && TryGetAlbumCoverBytes(album, out albumBytes, out albumContentType))
-			{
-				m_coverArtCache[id] = albumBytes;
-				return Results.Bytes(albumBytes, albumContentType);
-			}
 
-			if (album == null)
-			{
-				m_coverArtCache[id] = m_defaultCoverArt;
-				return Results.Bytes(m_defaultCoverArt, "image/png");
-			}
 
-			m_coverArtCache[id] = m_placeholder;
-			return Results.Bytes(m_placeholder, "image/png");
+			Dictionary<string, StringValues> dict = new Dictionary<string, StringValues>();
+			dict["id"] = id;
+			dict["type"] = sType;
+
+			DefaultHttpContext forwarded = new DefaultHttpContext();
+			forwarded.Request.Query = new QueryCollection(dict);
+
+			return m_pulseAPI.GetCoverArt(forwarded);
 		}
 
 		/// <summary>
@@ -310,203 +285,8 @@ namespace Pulse.SubsonicService
 			return false;
 		}
 
-		/// <summary>
-		/// Resolve a stable "ar-<id>" cover-art alias to a representative
-		/// album cover so every artist response has usable bytes behind it
-		/// (Flatline #224). Picks the album with the most plays, falling back
-		/// to the first album with any embedded/folder art. Cached under the
-		/// alias so repeat fetches don't re-scan the artist's discography.
-		/// </summary>
-		private IResult HandleArtistAliasCover(string coverId)
-		{
-			string artistId = coverId.Substring(3);
-			ArtistInfo artist = m_musicManager.GetArtist(artistId);
-			if (artist == null || artist.Albums.Count == 0)
-			{
-				m_coverArtCache[coverId] = m_defaultCoverArt;
-				return Results.Bytes(m_defaultCoverArt, "image/png");
-			}
+		
 
-			// Score each album by its total play count across tracks and pick the
-			// busiest. Ties go to the order the artist has albums in. New albums
-			// (zero plays) still get a chance through the fallback loop below.
-			AlbumInfo bestAlbum = null;
-			int bestPlays = -1;
-			for (int index = 0; index < artist.Albums.Count; index++)
-			{
-				AlbumInfo album = artist.Albums[index];
-				int plays = 0;
-				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
-				{
-					plays = plays + album.Tracks[trackIndex].Score.PlayCount;
-				}
-				if (plays > bestPlays)
-				{
-					bestPlays = plays;
-					bestAlbum = album;
-				}
-			}
-
-			byte[] bytes;
-			string contentType;
-			if (bestAlbum != null && TryGetAlbumCoverBytes(bestAlbum, out bytes, out contentType))
-			{
-				m_coverArtCache[coverId] = bytes;
-				return Results.Bytes(bytes, contentType);
-			}
-
-			// Fallback: walk every album until we find one with art.
-			for (int index = 0; index < artist.Albums.Count; index++)
-			{
-				if (artist.Albums[index] == bestAlbum) { continue; }
-				if (TryGetAlbumCoverBytes(artist.Albums[index], out bytes, out contentType))
-				{
-					m_coverArtCache[coverId] = bytes;
-					return Results.Bytes(bytes, contentType);
-				}
-			}
-
-			m_coverArtCache[coverId] = m_defaultCoverArt;
-			return Results.Bytes(m_defaultCoverArt, "image/png");
-		}
-
-		/// <summary>
-		/// Build (or return cached) composite cover art for a playlist. Picks
-		/// the first 4 distinct album covers from the playlist's tracks and
-		/// tiles them into a single 600x600 JPEG. Falls back to a single tile
-		/// if fewer covers are available; falls back to the default placeholder
-		/// if none are. Cached under the "pl-<id>" key so subsequent hits are
-		/// the same fast path as album covers.
-		/// </summary>
-		private IResult HandlePlaylistCompositeCover(string coverId)
-		{
-			string playlistId = coverId.Substring(3);
-			PlaylistInfo playlist = m_musicManager.GetPlaylist(playlistId);
-			if (playlist == null || playlist.TrackIds.Count == 0)
-			{
-				m_coverArtCache[coverId] = m_defaultCoverArt;
-				return Results.Bytes(m_defaultCoverArt, "image/png");
-			}
-
-			// Collect up to 4 distinct album covers, in playlist order.
-			List<byte[]> tileBytes = new List<byte[]>();
-			HashSet<string> seenAlbumIds = new HashSet<string>();
-			for (int idx = 0; idx < playlist.TrackIds.Count && tileBytes.Count < 4; idx++)
-			{
-				TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[idx]);
-				if (track == null || string.IsNullOrEmpty(track.AlbumId))
-				{
-					continue;
-				}
-				if (!seenAlbumIds.Add(track.AlbumId))
-				{
-					continue;
-				}
-				AlbumInfo album = m_musicManager.GetAlbum(track.AlbumId);
-				byte[] albumBytes;
-				string albumContentType;
-				if (TryGetAlbumCoverBytes(album, out albumBytes, out albumContentType))
-				{
-					tileBytes.Add(albumBytes);
-				}
-			}
-
-			if (tileBytes.Count == 0)
-			{
-				m_coverArtCache[coverId] = m_defaultCoverArt;
-				return Results.Bytes(m_defaultCoverArt, "image/png");
-			}
-
-			try
-			{
-				byte[] composed = ComposeTiledImage(tileBytes, 600);
-				m_coverArtCache[coverId] = composed;
-				return Results.Bytes(composed, "image/jpeg");
-			}
-			catch (Exception ex)
-			{
-				Log.Error(-1, "HandlePlaylistCompositeCover: failed to compose - " + ex.Message);
-				// Cache the first tile so we don't keep retrying composition.
-				m_coverArtCache[coverId] = tileBytes[0];
-				return Results.Bytes(tileBytes[0], "image/jpeg");
-			}
-		}
-
-		/// <summary>
-		/// Compose 1, 2, or 4 source images into a single square JPEG of the
-		/// requested size. 1 image = full size; 2 = side-by-side halves;
-		/// 3 or 4 = 2x2 grid (with last cell blank if only 3). Source images
-		/// are stretched to fill their cell.
-		/// </summary>
-		private static byte[] ComposeTiledImage(List<byte[]> tiles, int size)
-		{
-			int tileCount = tiles.Count;
-			using (System.Drawing.Bitmap canvas = new System.Drawing.Bitmap(size, size))
-			{
-				using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(canvas))
-				{
-					graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-					graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
-					graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-					graphics.Clear(System.Drawing.Color.Black);
-
-					if (tileCount == 1)
-					{
-						DrawTile(graphics, tiles[0], 0, 0, size, size);
-					}
-					else if (tileCount == 2)
-					{
-						int half = size / 2;
-						DrawTile(graphics, tiles[0], 0, 0, half, size);
-						DrawTile(graphics, tiles[1], half, 0, size - half, size);
-					}
-					else
-					{
-						int half = size / 2;
-						DrawTile(graphics, tiles[0], 0, 0, half, half);
-						DrawTile(graphics, tiles[1], half, 0, size - half, half);
-						DrawTile(graphics, tiles[2], 0, half, half, size - half);
-						if (tileCount >= 4)
-						{
-							DrawTile(graphics, tiles[3], half, half, size - half, size - half);
-						}
-					}
-				}
-
-				using (MemoryStream output = new MemoryStream())
-				{
-					System.Drawing.Imaging.ImageCodecInfo jpegCodec = GetJpegCodec();
-					System.Drawing.Imaging.EncoderParameters encoderParams = new System.Drawing.Imaging.EncoderParameters(1);
-					encoderParams.Param[0] = new System.Drawing.Imaging.EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 85L);
-					canvas.Save(output, jpegCodec, encoderParams);
-					return output.ToArray();
-				}
-			}
-		}
-
-		private static void DrawTile(System.Drawing.Graphics graphics, byte[] imageBytes, int x, int y, int width, int height)
-		{
-			using (MemoryStream source = new MemoryStream(imageBytes))
-			{
-				using (System.Drawing.Image tile = System.Drawing.Image.FromStream(source))
-				{
-					graphics.DrawImage(tile, new System.Drawing.Rectangle(x, y, width, height));
-				}
-			}
-		}
-
-		private static System.Drawing.Imaging.ImageCodecInfo GetJpegCodec()
-		{
-			System.Drawing.Imaging.ImageCodecInfo[] codecs = System.Drawing.Imaging.ImageCodecInfo.GetImageEncoders();
-			for (int idx = 0; idx < codecs.Length; idx++)
-			{
-				if (codecs[idx].FormatID == System.Drawing.Imaging.ImageFormat.Jpeg.Guid)
-				{
-					return codecs[idx];
-				}
-			}
-			return null;
-		}
 
 		public IResult HandleGetIndexes(HttpContext context)
 		{
