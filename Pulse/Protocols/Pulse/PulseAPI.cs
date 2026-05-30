@@ -461,6 +461,7 @@ namespace Pulse.Protocols.Pulse
 		{
 			int count = QueryParameters.GetInt(context, "count", 10);
 			string user = context.Request.Query["u"].FirstOrDefault();
+			string api = context.Request.Query["api"].FirstOrDefault();
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
 
@@ -471,9 +472,33 @@ namespace Pulse.Protocols.Pulse
 			}
 			ranked.Sort(ComparePlaylistByLastPlayedDescending);
 
+			int limit = Math.Min(count, ranked.Count);
+
+			// Legacy Thump (no `api` param) — pre-envelope wire shape. Delete
+			// this branch once every fielded client is on the envelope-aware
+			// build.
+			if (string.IsNullOrEmpty(api))
+			{
+				List<object> legacyPlaylists = new List<object>();
+				for (int index = 0; index < limit; index++)
+				{
+					PlaylistInfo playlist = ranked[index].Key;
+					legacyPlaylists.Add(new
+					{
+						id = playlist.Id,
+						name = playlist.Name,
+						songCount = playlist.GetSongCount(),
+						duration = playlist.DurationSeconds,
+						score = 0f,
+						lastPlayed = FormatLastPlayedForJson(ranked[index].Value),
+						coverArt = "pl-" + playlist.Id
+					});
+				}
+				return Results.Json(new { playlists = legacyPlaylists });
+			}
+
 			SearchResult result = new SearchResult();
 			result.Playlists = new List<PlaylistInfo>();
-			int limit = Math.Min(count, ranked.Count);
 			for (int index = 0; index < limit; index++)
 			{
 				result.Playlists.Add(ranked[index].Key);
@@ -485,6 +510,7 @@ namespace Pulse.Protocols.Pulse
 		{
 			int count = QueryParameters.GetInt(context, "count", 10);
 			string user = context.Request.Query["u"].FirstOrDefault();
+			string api = context.Request.Query["api"].FirstOrDefault();
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
 
@@ -495,9 +521,33 @@ namespace Pulse.Protocols.Pulse
 			}
 			ranked.Sort(ComparePlaylistByLastPlayedDescending);
 
+			int limit = Math.Min(count, ranked.Count);
+
+			// Legacy Thump (no `api` param) — pre-envelope wire shape. Delete
+			// this branch once every fielded client is on the envelope-aware
+			// build.
+			if (string.IsNullOrEmpty(api))
+			{
+				List<object> legacyPlaylists = new List<object>();
+				for (int index = 0; index < limit; index++)
+				{
+					PlaylistInfo playlist = ranked[index].Key;
+					legacyPlaylists.Add(new
+					{
+						id = playlist.Id,
+						name = playlist.Name,
+						songCount = playlist.GetSongCount(),
+						duration = playlist.DurationSeconds,
+						score = 0f,
+						lastPlayed = FormatLastPlayedForJson(ranked[index].Value),
+						coverArt = "pl-" + playlist.Id
+					});
+				}
+				return Results.Json(new { playlists = legacyPlaylists });
+			}
+
 			SearchResult result = new SearchResult();
 			result.Playlists = new List<PlaylistInfo>();
-			int limit = Math.Min(count, ranked.Count);
 			for (int index = 0; index < limit; index++)
 			{
 				result.Playlists.Add(ranked[index].Key);
