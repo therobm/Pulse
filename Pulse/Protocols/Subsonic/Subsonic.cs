@@ -206,115 +206,37 @@ namespace Pulse.Protocols.Subsonic
 			SubsonicResponseBody body = new SubsonicResponseBody();
 			body.internetRadioStations = new InternetRadioStationsContainer();
 			body.internetRadioStations.internetRadioStation = new List<object>();
+
+
+			JsonHttpResult<List<Podcast>> pResult = m_pulseAPI.GetPodcasts(context) as JsonHttpResult<List<Podcast>>;
+			if (pResult != null)
+			{
+				//todo populate body.internetRadioStations.internetRadioStation 
+			}
+
 			return Respond(context, body);
 		}
 
 		public IResult HandleSearch3(HttpContext context)
 		{
-			string query = context.Request.Query["query"].FirstOrDefault() ?? "";
-			query = query.Trim('"');
-
-			string user = context.Request.Query["u"].FirstOrDefault();
-
-			int artistCount = QueryParameters.GetInt(context, "artistCount", 20);
-			int albumCount = QueryParameters.GetInt(context, "albumCount", 20);
-			int songCount = QueryParameters.GetInt(context, "songCount", 20);
-
-			int artistOffset = QueryParameters.GetInt(context, "artistOffset", 0);
-			int albumOffset = QueryParameters.GetInt(context, "albumOffset", 0);
-			int songOffset = QueryParameters.GetInt(context, "songOffset", 0);
-
 			SubsonicResponseBody body = CreateResponse();
-			body.searchResult3 = new SearchResult3();
 
-			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
-			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
-
-			if (string.IsNullOrEmpty(query))
+			JsonHttpResult<SearchResult> pResult = m_pulseAPI.GetTrack(context) as JsonHttpResult<SearchResult>;
+			if (pResult != null)
 			{
-				int artistEnd = Math.Min(artistOffset + artistCount, allArtists.Count);
-				for (int index = artistOffset; index < artistEnd; index++)
-				{
-					ArtistID3 entry = new ArtistID3(allArtists[index]);
-					body.searchResult3.artist.Add(entry);
-				}
+				body.searchResult3 = new SearchResult3();
 
-				int albumEnd = Math.Min(albumOffset + albumCount, allAlbums.Count);
-				for (int index = albumOffset; index < albumEnd; index++)
-				{
-					AlbumID3 entry = new AlbumID3(allAlbums[index]);
-					body.searchResult3.album.Add(entry);
-				}
 
-				int songsSeen = 0;
-				for (int albumIndex = 0; albumIndex < allAlbums.Count && body.searchResult3.song.Count < songCount; albumIndex++)
-				{
-					List<TrackInfo> tracks = allAlbums[albumIndex].Tracks;
-					for (int trackIndex = 0; trackIndex < tracks.Count && body.searchResult3.song.Count < songCount; trackIndex++)
-					{
-						if (songsSeen < songOffset)
-						{
-							songsSeen++;
-							continue;
-						}
+				for (int i=0;i< pResult.Value.Albums.Count;i++)
+					body.searchResult3.album.Add(new AlbumID3(pResult.Value.Albums[i]));
 
-						TrackInfo track = tracks[trackIndex];
-						SongID3 entry = new SongID3(user, track);
 
-						body.searchResult3.song.Add(entry);
-					}
-				}
+				for (int i = 0; i < pResult.Value.Artists.Count; i++)
+					body.searchResult3.artist.Add(new ArtistID3(pResult.Value.Artists[i]));
 
-				return Respond(context, body);
-			}
 
-			string lowerQuery = query.ToLowerInvariant();
-
-			
-			int artistHits = 0;
-			for (int index = 0; index < allArtists.Count && artistHits < artistCount; index++)
-			{
-				if (allArtists[index].Name.ToLowerInvariant().Contains(lowerQuery))
-				{
-					ArtistID3 entry = new ArtistID3(allArtists[index]);
-					body.searchResult3.artist.Add(entry);
-					artistHits++;
-				}
-			}
-
-			
-			int albumHits = 0;
-			for (int index = 0; index < allAlbums.Count && albumHits < albumCount; index++)
-			{
-				if (allAlbums[index].Name.ToLowerInvariant().Contains(lowerQuery))
-				{
-					AlbumID3 entry = new AlbumID3(allAlbums[index]);
-					body.searchResult3.album.Add(entry);
-					albumHits++;
-				}
-			}
-
-			// Song search — Feishin sends songCount=500, so cap it
-			int songHits = 0;
-			for (int albumIndex = 0; albumIndex < allAlbums.Count && songHits < songCount; albumIndex++)
-			{
-				List<TrackInfo> tracks = allAlbums[albumIndex].Tracks;
-				for (int trackIndex = 0; trackIndex < tracks.Count && songHits < songCount; trackIndex++)
-				{
-					TrackInfo track = tracks[trackIndex];
-					if (track == null)
-					{
-						continue;
-					}
-
-					if (track.Title.ToLowerInvariant().Contains(lowerQuery) ||
-						track.Artist.ToLowerInvariant().Contains(lowerQuery))
-					{
-						SongID3 entry = new SongID3(user, track);
-						body.searchResult3.song.Add(entry);
-						songHits++;
-					}
-				}
+				for (int i = 0; i < pResult.Value.Tracks.Count; i++)
+					body.searchResult3.song.Add(new SongID3(pResult.Value.Tracks[i]));
 			}
 
 			return Respond(context, body);

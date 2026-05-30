@@ -222,6 +222,13 @@ namespace Pulse.MusicLibrary
 		public DateTime Changed { get; set; }
 	}
 
+	public class SearchResult : PulseInfo
+	{
+		public List<ArtistInfo> Artists { get; set; }
+		public List<AlbumInfo> Albums { get; set; }
+		public List<PlaylistInfo> Playlists { get; set; }
+		public List<TrackInfo> Tracks { get; set; }
+	}
 	// Settings-page record for a single user. Backed by the `users` SQLite
 	// table (migration v5, Flatline #201); the activity counters are derived
 	// at read time by scanning the in-memory stores.

@@ -209,9 +209,85 @@ namespace Pulse.Protocols.Pulse
 
 
 
-		public IResult GetIndexes(HttpContext context) { }
-		public IResult GetPodcasts(HttpContext context) { }
-		public IResult Search(HttpContext context) { }
+		public IResult GetPodcasts(HttpContext context)
+		{
+			return CreateResponse(new Error(ePulseCode.NotImplemented, "Not implemented yet"));
+		}
+
+		public IResult Search(HttpContext context)
+		{
+			string query = context.Request.Query["query"].FirstOrDefault() ?? "";
+			query = query.Trim('"');
+
+			if (string.IsNullOrEmpty(query))
+			{
+				return CreateResponse(new SearchResult());
+			}
+
+			string user = context.Request.Query["u"].FirstOrDefault();
+
+			int artistCount = QueryParameters.GetInt(context, "artistCount", 20);
+			int albumCount = QueryParameters.GetInt(context, "albumCount", 20);
+			int songCount = QueryParameters.GetInt(context, "songCount", 20);
+
+			int artistOffset = QueryParameters.GetInt(context, "artistOffset", 0);
+			int albumOffset = QueryParameters.GetInt(context, "albumOffset", 0);
+			int songOffset = QueryParameters.GetInt(context, "songOffset", 0);
+
+
+			SearchResult result = new SearchResult();
+
+
+			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+
+			string lowerQuery = query.ToLowerInvariant();
+
+			int artistHits = 0;
+			for (int index = 0; index < allArtists.Count && artistHits < artistCount; index++)
+			{
+				if (allArtists[index].Name.ToLowerInvariant().Contains(lowerQuery))
+				{
+					result.Artists.Add(allArtists[index]);
+					artistHits++;
+				}
+			}
+
+
+			int albumHits = 0;
+			for (int index = 0; index < allAlbums.Count && albumHits < albumCount; index++)
+			{
+				if (allAlbums[index].Name.ToLowerInvariant().Contains(lowerQuery))
+				{
+					result.Albums.Add(allAlbums[index]);
+					albumHits++;
+				}
+			}
+
+			// Song search — Feishin sends songCount=500, so cap it
+			int songHits = 0;
+			for (int albumIndex = 0; albumIndex < allAlbums.Count && songHits < songCount; albumIndex++)
+			{
+				List<TrackInfo> tracks = allAlbums[albumIndex].Tracks;
+				for (int trackIndex = 0; trackIndex < tracks.Count && songHits < songCount; trackIndex++)
+				{
+					TrackInfo track = tracks[trackIndex];
+					if (track == null)
+					{
+						continue;
+					}
+
+					if (track.Title.ToLowerInvariant().Contains(lowerQuery) ||
+						track.Artist.ToLowerInvariant().Contains(lowerQuery))
+					{
+						result.Albums.Add(track);
+						songHits++;
+					}
+				}
+			}
+			return CreateResponse(result);
+		}
+
 		public IResult GetFavorites(HttpContext context) { }
 		public IResult GetTopTracks(HttpContext context) { }
 		public IResult Favorite(HttpContext context) { }

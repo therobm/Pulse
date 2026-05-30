@@ -5,6 +5,6 @@ namespace Pulse.Protocols.Pulse
 	{
 		OK,
 		NotFound,
-
+		NotImplemented
 	}
 }

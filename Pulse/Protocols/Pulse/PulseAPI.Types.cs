@@ -24,4 +24,10 @@ namespace Pulse.Protocols.Pulse
 		public bool ok = true;
 		public string serverVersion = "";
 	}
+
+	public class Podcast
+	{
+		
+	}
+
 }
