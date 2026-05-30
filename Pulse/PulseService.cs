@@ -7,7 +7,7 @@ using Pulse.Data;
 using Pulse.MusicLibrary;
 using Pulse.Protocols;
 using Pulse.Spotify;
-using Pulse.SubsonicService;
+using Pulse.Protocols.Subsonic;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -17,7 +17,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Threading;
-
+using Pulse.Protocols.Pulse;
 
 namespace Pulse
 {
@@ -95,8 +95,9 @@ namespace Pulse
 			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
 
-			m_subsonic = new Subsonic(this, m_musicManager);
 			m_pulseAPI = new PulseAPI(this, m_musicManager);
+			m_subsonic = new Subsonic(m_pulseAPI);
+			
 
 			RegisterRoutes(webServer);
 			SyncSpotify();
@@ -207,8 +208,32 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/recentPlaylists", m_pulseAPI.HandleRecentPlaylists);
 			host.RegisterResultRoute("pulse/artistTracks", m_pulseAPI.HandleArtistTracks);
 			host.RegisterResultRoute("pulse/markPlaylistPlayed", m_pulseAPI.HandleMarkPlaylistPlayed);
-			host.RegisterResultRoute("rest/playRandom", m_subsonic.HandlePlayRandom);
 
+			host.RegisterResultRoute("pulse/ping", m_pulseAPI.Ping);
+			host.RegisterResultRoute("pulse/me", m_pulseAPI.GetUser);
+			host.RegisterResultRoute("pulse/stream", m_pulseAPI.GetStream);
+			host.RegisterResultRoute("pulse/download", m_pulseAPI.GetDownload);
+			host.RegisterResultRoute("pulse/coverArt", m_pulseAPI.GetCoverArt);
+			host.RegisterResultRoute("pulse/search", m_pulseAPI.Search);
+			host.RegisterResultRoute("pulse/track", m_pulseAPI.GetTrack);
+			host.RegisterResultRoute("pulse/topTracks", m_pulseAPI.GetTopTracks);
+			host.RegisterResultRoute("pulse/artists", m_pulseAPI.GetArtists);
+			host.RegisterResultRoute("pulse/artist", m_pulseAPI.GetArtist);
+			host.RegisterResultRoute("pulse/albums", m_pulseAPI.GetAlbums);
+			host.RegisterResultRoute("pulse/album", m_pulseAPI.GetAlbum);
+			host.RegisterResultRoute("pulse/genres", m_pulseAPI.GetGenres);
+			host.RegisterResultRoute("pulse/genreTracks", m_pulseAPI.GetGenreTracks);
+			host.RegisterResultRoute("pulse/favorites", m_pulseAPI.GetFavorites);
+			host.RegisterResultRoute("pulse/favorite", m_pulseAPI.Favorite);
+			host.RegisterResultRoute("pulse/unfavorite", m_pulseAPI.Unfavorite);
+			host.RegisterResultRoute("pulse/reportTrackAnalytics", m_pulseAPI.ReportTrackAnalytics);
+			host.RegisterResultRoute("pulse/playlists", m_pulseAPI.GetPlaylists);
+			host.RegisterResultRoute("pulse/playlist", m_pulseAPI.GetPlaylist);
+			host.RegisterResultRoute("pulse/createPlaylist", m_pulseAPI.CreatePlaylist);
+			host.RegisterResultRoute("pulse/updatePlaylist", m_pulseAPI.UpdatePlaylist);
+			host.RegisterResultRoute("pulse/deletePlaylist", m_pulseAPI.DeletePlaylist);
+			host.RegisterResultRoute("pulse/podcasts", m_pulseAPI.GetPodcasts);
+			
 			host.RegisterResultRoute("pulse/stats", HandleStats);
 			host.RegisterRoute("web/stats.html", HandleStatsPage);
 

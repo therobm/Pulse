@@ -196,6 +196,22 @@ namespace Pulse.MusicLibrary
 			Comment = "";
 		}
 	}
+	public class PlaylistAndTracks : PlaylistInfo
+	{
+		public List<TrackInfo> Tracks { get; set; }
+		public PlaylistAndTracks(PlaylistInfo info, List<TrackInfo> tracks)
+		{
+			Tracks = tracks;
+			Id = info.Id;
+			Name = info.Name;
+			Comment = info.Comment;
+			TrackIds =info.TrackIds;
+			DurationSeconds = info.DurationSeconds;
+			LastPlayed = info.LastPlayed;
+			UserLastPlayed = info.UserLastPlayed;
+		}
+
+	}
 	public class PulseAnalyticsInfo : PulseInfo
 	{
 		public List<string> RecentlyPlayed { get; set; } = new List<string>();
@@ -222,10 +238,31 @@ namespace Pulse.MusicLibrary
 		public DateTime Changed { get; set; }
 	}
 
+	public class SearchResult : PulseInfo
+	{
+		public List<ArtistInfo> Artists { get; set; }
+		public List<AlbumInfo> Albums { get; set; }
+		public List<PlaylistInfo> Playlists { get; set; }
+		public List<TrackInfo> Tracks { get; set; }
+		public List<GenreInfo> Genres { get; set; }
+	}
+
+	public class GenreInfo : PulseInfo, IComparable<GenreInfo>
+	{
+		public int TrackCount { get; set; }
+		public int AlbumCount { get; set; }
+		public string Name { get; set; }
+
+		public int CompareTo(GenreInfo other)
+		{
+			if (other == null) { return 1; }
+			return string.Compare(Name ?? "", other.Name ?? "", StringComparison.OrdinalIgnoreCase);
+		}
+	}
 	// Settings-page record for a single user. Backed by the `users` SQLite
 	// table (migration v5, Flatline #201); the activity counters are derived
 	// at read time by scanning the in-memory stores.
-	public class UserRecord
+	public class UserRecord : PulseInfo
 	{
 		public string Name = "";
 		public string DisplayName = "";
