@@ -1416,7 +1416,7 @@ namespace Thump.Pulse
 				try
 				{
 					int count = 50;
-					string url = m_baseUrl + "/pulse/topPlaylists?count=" + count + "&u=" + Uri.EscapeDataString(m_user);
+					string url = m_baseUrl + "/pulse/topPlaylists?count=" + count + "&u=" + Uri.EscapeDataString(m_user) + "&api=1";
 					string json = HttpGet(url);
 					if (json != null)
 					{
@@ -1513,7 +1513,7 @@ namespace Thump.Pulse
 				List<PulsePlaylist> results = new List<PulsePlaylist>();
 				try
 				{
-					string url = m_baseUrl + "/pulse/" + endpoint + "?count=" + count + "&u=" + Uri.EscapeDataString(m_user);
+					string url = m_baseUrl + "/pulse/" + endpoint + "?count=" + count + "&u=" + Uri.EscapeDataString(m_user) + "&api=1";
 					string json = HttpGet(url);
 					if (json != null)
 					{
