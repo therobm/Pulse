@@ -7,7 +7,7 @@ using Pulse.Data;
 using Pulse.MusicLibrary;
 using Pulse.Protocols;
 using Pulse.Spotify;
-using Pulse.SubsonicService;
+using Pulse.Protocols.Subsonic;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -17,7 +17,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Threading;
-
+using Pulse.Protocols.Pulse;
 
 namespace Pulse
 {
@@ -95,8 +95,9 @@ namespace Pulse
 			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
 
-			m_subsonic = new Subsonic(this, m_musicManager);
 			m_pulseAPI = new PulseAPI(this, m_musicManager);
+			m_subsonic = new Subsonic(m_pulseAPI);
+			
 
 			RegisterRoutes(webServer);
 			SyncSpotify();
@@ -207,8 +208,7 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/recentPlaylists", m_pulseAPI.HandleRecentPlaylists);
 			host.RegisterResultRoute("pulse/artistTracks", m_pulseAPI.HandleArtistTracks);
 			host.RegisterResultRoute("pulse/markPlaylistPlayed", m_pulseAPI.HandleMarkPlaylistPlayed);
-			host.RegisterResultRoute("rest/playRandom", m_subsonic.HandlePlayRandom);
-
+			
 			host.RegisterResultRoute("pulse/stats", HandleStats);
 			host.RegisterRoute("web/stats.html", HandleStatsPage);
 

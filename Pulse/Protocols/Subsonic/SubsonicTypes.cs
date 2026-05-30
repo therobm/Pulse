@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 
-namespace Pulse.SubsonicService
+namespace Pulse.Protocols.Subsonic
 {
 	public class SubsonicResponseBody
 	{
@@ -204,6 +204,22 @@ namespace Pulse.SubsonicService
 		public string changed { get; set; } = "";
 		public string changedBy { get; set; } = "";
 		public List<SongID3> entry { get; set; } = new List<SongID3>();
+
+		public PlayQueueBody(string user, PlayQueueInfo queue, List<TrackInfo> tracks)
+		{
+			current = queue.CurrentTrackId;
+			position = queue.PositionMs;
+			username = user;
+			if (queue.Changed != default(DateTime))
+			{
+				changed = queue.Changed.ToString("o");
+			}
+			changedBy = queue.ChangedBy;
+			for (int index = 0; index < tracks.Count; index++)
+			{
+				entry.Add(new SongID3(user, tracks[index]));
+			}
+		}
 	}
 
 	public class BookmarksContainer
@@ -219,6 +235,22 @@ namespace Pulse.SubsonicService
 		public string created { get; set; } = "";
 		public string changed { get; set; } = "";
 		public SongID3 entry { get; set; }
+
+		public BookmarkEntry(string user, BookmarkInfo bookmark, TrackInfo track)
+		{
+			username = user;
+			position = bookmark.PositionMs;
+			comment = bookmark.Comment;
+			if (bookmark.Created != default(DateTime))
+			{
+				created = bookmark.Created.ToString("o");
+			}
+			if (bookmark.Changed != default(DateTime))
+			{
+				changed = bookmark.Changed.ToString("o");
+			}
+			entry = new SongID3(user, track);
+		}
 	}
 
 	public class PlaylistWithSongs
@@ -256,6 +288,22 @@ namespace Pulse.SubsonicService
 		public PlaylistWithSongs()
 		{
 			entry = new List<SongID3>();
+		}
+
+		public PlaylistWithSongs(string user, PlaylistInfo playlistInfo, List<TrackInfo> tracks)
+		{
+			id = playlistInfo.Id;
+			name = playlistInfo.Name;
+			comment = playlistInfo.Comment;
+			songCount = playlistInfo.GetSongCount();
+			duration = (int)playlistInfo.DurationSeconds;
+			coverArt = "pl-" + playlistInfo.Id;
+			owner = user;
+			entry = new List<SongID3>();
+			for (int index = 0; index < tracks.Count; index++)
+			{
+				entry.Add(new SongID3(user, tracks[index]));
+			}
 		}
 	}
 
@@ -376,6 +424,17 @@ namespace Pulse.SubsonicService
 		public string created { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string changed { get; set; }
+
+		public PlaylistEntry(string user, PlaylistInfo playlistInfo)
+		{
+			id = playlistInfo.Id;
+			name = playlistInfo.Name;
+			comment = playlistInfo.Comment;
+			songCount = playlistInfo.GetSongCount();
+			duration = (int)playlistInfo.DurationSeconds;
+			coverArt = "pl-" + playlistInfo.Id;
+			owner = user;
+		}
 	}
 
 	public class MusicFoldersContainer
@@ -477,6 +536,52 @@ namespace Pulse.SubsonicService
 		public string originalReleaseDate { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
 		public int userRating { get; set; }
+
+		public AlbumWithSongsID3(string user, AlbumInfo albumInfo)
+		{
+			id = albumInfo.Id;
+			name = albumInfo.Name;
+			artist = albumInfo.ArtistName;
+			artistId = albumInfo.ArtistId;
+			songCount = albumInfo.Tracks.Count;
+			coverArt = albumInfo.CoverArtId;
+			year = albumInfo.Year;
+			genre = albumInfo.Genre;
+			displayArtist = albumInfo.ArtistName;
+
+			long total = 0;
+			int playCountTotal = 0;
+			DateTime mostRecent = default(DateTime);
+			float ratingTotal = 0f;
+			int ratedCount = 0;
+			for (int trackIndex = 0; trackIndex < albumInfo.Tracks.Count; trackIndex++)
+			{
+				TrackInfo track = albumInfo.Tracks[trackIndex];
+				total = total + track.DurationSeconds;
+				playCountTotal = playCountTotal + track.Score.PlayCount;
+				if (track.LastPlayed > mostRecent) { mostRecent = track.LastPlayed; }
+				if (track.Rating > 0)
+				{
+					ratingTotal = ratingTotal + track.Rating;
+					ratedCount++;
+				}
+				song.Add(new SongID3(user, track));
+			}
+			duration = (int)total;
+			playCount = playCountTotal;
+			if (mostRecent != default(DateTime))
+			{
+				played = mostRecent.ToString("o");
+			}
+			if (ratedCount > 0)
+			{
+				userRating = (int)Math.Round(ratingTotal / ratedCount);
+			}
+			if (user != null && albumInfo.Starred.ContainsKey(user) && albumInfo.Starred[user])
+			{
+				starred = DateTime.UtcNow.ToString("o");
+			}
+		}
 	}
 
 	public class SongID3
@@ -603,6 +708,24 @@ namespace Pulse.SubsonicService
 		public List<string> roles { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string artistImageUrl { get; set; }
+
+		public ArtistWithAlbumsID3(string user, ArtistInfo artistInfo)
+		{
+			id = artistInfo.Id;
+			name = artistInfo.Name;
+			albumCount = artistInfo.Albums.Count;
+			// Stable alias id; HandleGetCoverArt resolves "ar-<id>" to a
+			// representative album cover.
+			coverArt = "ar-" + artistInfo.Id;
+			for (int index = 0; index < artistInfo.Albums.Count; index++)
+			{
+				album.Add(new AlbumID3(artistInfo.Albums[index]));
+			}
+			if (user != null && artistInfo.Starred.ContainsKey(user) && artistInfo.Starred[user])
+			{
+				starred = DateTime.UtcNow.ToString("o");
+			}
+		}
 	}
 
 	public class AlbumList2
@@ -729,6 +852,16 @@ namespace Pulse.SubsonicService
 		// folder ids the user can access. Matches getMusicFolders, which
 		// returns a single folder id "1" (see HandleGetMusicFolders).
 		public List<string> folder { get; set; } = new List<string>() { "1" };
+
+		public UserInfo() 
+		{
+
+		}
+		public UserInfo(UserRecord userRecord)
+		{
+			username = userRecord.Name;
+			adminRole = userRecord.IsAdmin;
+		}
 	}
 	
 

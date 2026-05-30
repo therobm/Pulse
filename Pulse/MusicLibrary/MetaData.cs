@@ -225,7 +225,7 @@ namespace Pulse.MusicLibrary
 	// Settings-page record for a single user. Backed by the `users` SQLite
 	// table (migration v5, Flatline #201); the activity counters are derived
 	// at read time by scanning the in-memory stores.
-	public class UserRecord
+	public class UserRecord : PulseInfo
 	{
 		public string Name = "";
 		public string DisplayName = "";

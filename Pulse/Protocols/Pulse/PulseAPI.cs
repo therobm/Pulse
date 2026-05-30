@@ -2,16 +2,15 @@
 
 using Microsoft.AspNetCore.Http;
 using Pulse.MusicLibrary;
-using Pulse.SubsonicService;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace Pulse.Protocols
+namespace Pulse.Protocols.Pulse
 {
-	public class PulseAPI
+	public partial class PulseAPI
 	{
 		MusicManager m_musicManager;
 		PulseService m_pulseService;
@@ -19,14 +18,14 @@ namespace Pulse.Protocols
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 		private object m_recentLock = new object();
 
+
+
 		public PulseAPI(PulseService pulse, MusicManager musicManager)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
 			m_defaultCoverArt = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png"));
 		}
-
-	
 
 		// Mixed-kind recents shelf (Flatline #223). Accepts a comma-separated
 		// `types` query param -- any combination of "track", "artist", "album",

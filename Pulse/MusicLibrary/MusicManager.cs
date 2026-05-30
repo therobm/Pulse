@@ -51,6 +51,7 @@ namespace Pulse.MusicLibrary
 			return m_database.GetAllAlbums();
 		}
 
+	
 		public PlaylistInfo GetPlaylist(string id)
 		{
 			return m_database.GetPlaylist(id);
@@ -158,6 +159,102 @@ namespace Pulse.MusicLibrary
 		{
 			m_database.DeleteUser(userName);
 		}
+
+		public bool GetAlbumCover(AlbumInfo album, out byte[] bytes, out string contentType)
+		{
+			bytes = null;
+			contentType = "image/jpeg";
+			if (album == null || album.Tracks.Count == 0)
+			{
+				return false;
+			}
+
+			for (int index = 0; index < album.Tracks.Count; index++)
+			{
+				try
+				{
+					TagLib.File tagFile = TagLib.File.Create(album.Tracks[index].FilePath);
+					if (tagFile.Tag.Pictures.Length > 0)
+					{
+						bytes = tagFile.Tag.Pictures[0].Data.Data;
+						tagFile.Dispose();
+						return true;
+					}
+					tagFile.Dispose();
+				}
+				catch (Exception ex)
+				{
+					Log.Error(-1, "TryGetAlbumCoverBytes: failed to read embedded art - " + ex.Message);
+				}
+			}
+
+			string albumDir = Path.GetDirectoryName(album.Tracks[0].FilePath);
+			string[] artFileNames = new string[] { "cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png", "album.jpg", "album.png" };
+			for (int artIndex = 0; artIndex < artFileNames.Length; artIndex++)
+			{
+				string artPath = Path.Combine(albumDir, artFileNames[artIndex]);
+				if (File.Exists(artPath))
+				{
+					bytes = File.ReadAllBytes(artPath);
+					if (artPath.EndsWith(".png"))
+					{
+						contentType = "image/png";
+					}
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		public bool GetArtistImage(ArtistInfo artist, out byte[] bytes, out string contentType)
+		{
+			bytes = null;
+			contentType = "image/jpeg";
+			if (artist == null)
+				return false;
+
+			// Score each album by its total play count across tracks and pick the
+			// busiest. Ties go to the order the artist has albums in. New albums
+			// (zero plays) still get a chance through the fallback loop below.
+			AlbumInfo bestAlbum = null;
+			int bestPlays = -1;
+			for (int index = 0; index < artist.Albums.Count; index++)
+			{
+				AlbumInfo album = artist.Albums[index];
+				int plays = 0;
+				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+				{
+					plays = plays + album.Tracks[trackIndex].Score.PlayCount;
+				}
+				if (plays > bestPlays)
+				{
+					bestPlays = plays;
+					bestAlbum = album;
+				}
+			}
+
+			if (bestAlbum != null)
+			{
+				return GetAlbumCover(bestAlbum, out bytes, out contentType);
+			}
+
+			// Fallback: walk every album until we find one with art.
+			for (int index = 0; index < artist.Albums.Count; index++)
+			{
+				if (artist.Albums[index] == bestAlbum)
+				{
+					continue;
+				}
+
+				if (GetAlbumCover(artist.Albums[index], out bytes, out contentType))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
 
 
 		private IPulseDatabase m_database;
