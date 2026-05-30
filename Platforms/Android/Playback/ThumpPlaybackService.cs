@@ -93,7 +93,7 @@ namespace Thump.Playback
 
 		private static ThumpData BuildThumpData()
 		{
-			PulseClient pulseClient = new PulseClient();
+			IMediaClient pulseClient = new PulseAPI();
 			pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), true);
 			string cacheRoot = FileSystem.CacheDirectory;
 			string databasePath = Path.Combine(cacheRoot, "thump.db");

@@ -27,7 +27,7 @@ namespace Thump
 		public static ThumpData Data { get { return Self.m_data; } }
 		
 		private static MainView s_self;
-		private PulseClient m_pulseClient;
+		private IMediaClient m_pulseClient;
 		private ThumpCache m_cache;
 		private Grid m_rootGrid;
 		private ContentView m_contentHost;
@@ -78,7 +78,7 @@ namespace Thump
 			Content = m_rootGrid;
 
 
-			m_pulseClient = new PulseClient();
+			m_pulseClient = new PulseAPI();
 			m_pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), true);
 
 
