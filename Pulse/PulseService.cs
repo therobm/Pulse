@@ -95,9 +95,9 @@ namespace Pulse
 			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
 
+			m_subsonic = new Subsonic(this, m_musicManager);
 			m_pulseAPI = new PulseAPI(this, m_musicManager);
-			m_subsonic = new Subsonic(m_pulseAPI, this, m_musicManager);
-			
+
 			RegisterRoutes(webServer);
 			SyncSpotify();
 
@@ -219,34 +219,6 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/updateUser", m_pulseAPI.HandleUpdateUser);
 			host.RegisterResultRoute("pulse/deleteUser", m_pulseAPI.HandleDeleteUser);
 			host.RegisterRoute("web/settings.html", HandleSettingsPage);
-
-			// Pulse-native Music API (PulseAPI.Music.cs). Most bodies are still
-			// 501 stubs; the ones that have landed do real work.
-			host.RegisterResultRoute("pulse/ping", m_pulseAPI.Ping);
-
-			host.RegisterResultRoute("pulse/artists", m_pulseAPI.GetArtists);
-			host.RegisterResultRoute("pulse/artist", m_pulseAPI.GetArtist);
-			host.RegisterResultRoute("pulse/album", m_pulseAPI.GetAlbum);
-			host.RegisterResultRoute("pulse/albums", m_pulseAPI.GetAlbums);
-			host.RegisterResultRoute("pulse/genres", m_pulseAPI.GetGenres);
-			host.RegisterResultRoute("pulse/genre", m_pulseAPI.GetGenre);
-			host.RegisterResultRoute("pulse/track", m_pulseAPI.GetTrack);
-			host.RegisterResultRoute("pulse/tracks", m_pulseAPI.GetTracks);
-
-			host.RegisterResultRoute("pulse/search", m_pulseAPI.Search);
-
-			host.RegisterResultRoute("pulse/playlists", m_pulseAPI.GetPlaylists);
-			host.RegisterResultRoute("pulse/playlist", m_pulseAPI.GetPlaylist);
-			host.RegisterResultRoute("pulse/createPlaylist", m_pulseAPI.CreatePlaylist);
-			host.RegisterResultRoute("pulse/updatePlaylist", m_pulseAPI.UpdatePlaylist);
-			host.RegisterResultRoute("pulse/deletePlaylist", m_pulseAPI.DeletePlaylist);
-
-			host.RegisterResultRoute("pulse/favorites", m_pulseAPI.GetFavorites);
-			host.RegisterResultRoute("pulse/favorite", m_pulseAPI.Favorite);
-
-			host.RegisterResultRoute("pulse/stream", m_pulseAPI.Stream);
-			host.RegisterResultRoute("pulse/coverArt", m_pulseAPI.GetCoverArt);
-			host.RegisterResultRoute("pulse/trackAnalytics", m_pulseAPI.TrackAnalytics);
 
 
 			host.RegisterRoute("spotify/callback", HandleSpotifyCallback);
