@@ -279,16 +279,23 @@ namespace Pulse.Protocols.Subsonic
 			if (searchResult != null)
 			{
 				body.searchResult3 = new SearchResult3();
-				for (int i=0;i< searchResult.Albums.Count;i++)
-					body.searchResult3.album.Add(new AlbumID3(searchResult.Albums[i]));
+				if (searchResult.Albums != null)
+				{
+					for (int i = 0; i < searchResult.Albums.Count; i++)
+						body.searchResult3.album.Add(new AlbumID3(searchResult.Albums[i]));
+				}
 
+				if (searchResult.Artists != null)
+				{
+					for (int i = 0; i < searchResult.Artists.Count; i++)
+						body.searchResult3.artist.Add(new ArtistID3(searchResult.Artists[i]));
+				}
 
-				for (int i = 0; i < searchResult.Artists.Count; i++)
-					body.searchResult3.artist.Add(new ArtistID3(searchResult.Artists[i]));
-
-
-				for (int i = 0; i < searchResult.Tracks.Count; i++)
-					body.searchResult3.song.Add(new SongID3(searchResult.Tracks[i]));
+				if (searchResult.Tracks != null)
+				{
+					for (int i = 0; i < searchResult.Tracks.Count; i++)
+						body.searchResult3.song.Add(new SongID3(searchResult.Tracks[i]));
+				}
 			}
 
 			return Respond(context, body);
