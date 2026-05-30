@@ -109,7 +109,7 @@ namespace Pulse.Protocols.Pulse
 			{
 				return CreateResponse(new Error(ePulseCode.NotFound, "Track not found"));
 			}
-			return Results.Json(track);
+			return CreateResponse(track);
 		}
 		public IResult GetCoverArt(HttpContext context)
 		{
@@ -134,7 +134,6 @@ namespace Pulse.Protocols.Pulse
 
 			if (sType == "playlist")
 			{
-				Log.Info(0, "Cover fro playlist");
 				PlaylistInfo playlist = m_musicManager.GetPlaylist(id);
 				if (playlist != null)
 				{
@@ -268,7 +267,7 @@ namespace Pulse.Protocols.Pulse
 			{
 				if (allAlbums[index].Name.ToLowerInvariant().Contains(lowerQuery))
 				{
-					if (result.Artists == null)
+					if (result.Albums == null)
 						result.Albums = new List<AlbumInfo>();
 					result.Albums.Add(allAlbums[index]);
 					albumHits++;
@@ -449,7 +448,7 @@ namespace Pulse.Protocols.Pulse
 				trackId = id;
 			}
 
-			m_musicManager.UpdateStar(user, trackId, albumId, artistId, false);
+			m_musicManager.UpdateStar(user, trackId, albumId, artistId, true);
 			return CreateResponse();
 
 		}
@@ -489,7 +488,7 @@ namespace Pulse.Protocols.Pulse
 
 			m_musicManager.UpdateStar(user, trackId, albumId, artistId, false);
 
-			return Results.Json(new PulseResponse());
+			return CreateResponse();
 		}
 
 		
@@ -504,7 +503,7 @@ namespace Pulse.Protocols.Pulse
 			}
 
 			m_musicManager.OnTrackStreamed(user, id);
-			return Results.Json(new PulseResponse());
+			return CreateResponse();
 		}
 
 		public IResult GetArtists(HttpContext context)
@@ -738,6 +737,11 @@ namespace Pulse.Protocols.Pulse
 			{
 				return CreateResponse(new Error(ePulseCode.NotFound, "Album not found"));
 			}
+
+			//todo this should be done once at load time only
+			//sort tracks by actual album order
+			album.Tracks.Sort(CompareTrackByDiscThenNumber);
+
 			return CreateResponse(album);
 		}
 
@@ -769,7 +773,6 @@ namespace Pulse.Protocols.Pulse
 			searchResult.Genres = new List<GenreInfo>(genreMap.Values);
 			searchResult.Genres.Sort();
 
-			// Pulse has no GenreInfo type yet; revisit once one exists.
 			return CreateResponse(searchResult);
 		}
 
@@ -964,7 +967,9 @@ namespace Pulse.Protocols.Pulse
 			byte[] discard;
 			m_coverArtCache.TryRemove(playlist.Id, out discard);
 
-			return CreateResponse(playlist);
+
+			PlaylistAndTracks fullPlaylist = m_musicManager.GetPlaylistAndTracks(playlist.Id);
+			return CreateResponse(fullPlaylist);
 		}
 
 		// Case-insensitive duplicate-name check. skipPlaylistId lets the caller
@@ -1003,7 +1008,7 @@ namespace Pulse.Protocols.Pulse
 			}
 
 			m_musicManager.DeletePlaylist(playlistId);
-			return Results.Json(new PulseResponse());
+			return CreateResponse();
 		}
 
 

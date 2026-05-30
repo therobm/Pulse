@@ -44,7 +44,7 @@ namespace Pulse.Protocols.Subsonic
 			if (response == null || response.Value == null)
 				return false;
 			error = response.Value.error;
-			return true;
+			return error != null;
 		}
 
 		PulseAPI m_pulseAPI;
@@ -132,12 +132,16 @@ namespace Pulse.Protocols.Subsonic
 		public IResult HandleGetSong(HttpContext context)
 		{
 			//incoming shape is identical
-			JsonHttpResult<TrackInfo> pResult = m_pulseAPI.GetTrack(context) as JsonHttpResult<TrackInfo>;
+			IResult pResult = m_pulseAPI.GetTrack(context);
+			if (IsPulseError(pResult, out Error error))
+			{
+				return Respond(context, CreateErrorResponse(70, error.message));
+			}
 
-
+			
 			string id = context.Request.Query["id"].FirstOrDefault();
 			string user = context.Request.Query["u"].FirstOrDefault();
-			TrackInfo track = pResult.Value;
+			TrackInfo track = ExtractPulseContent<TrackInfo>(pResult);
 
 			if (track == null)
 			{
@@ -249,12 +253,14 @@ namespace Pulse.Protocols.Subsonic
 			body.internetRadioStations = new InternetRadioStationsContainer();
 			body.internetRadioStations.internetRadioStation = new List<object>();
 
-
-			JsonHttpResult<List<Podcast>> pResult = m_pulseAPI.GetPodcasts(context) as JsonHttpResult<List<Podcast>>;
-			if (pResult != null)
+			IResult pResult = m_pulseAPI.GetPodcasts(context);
+			if (IsPulseError(pResult, out Error error))
 			{
-				//todo populate body.internetRadioStations.internetRadioStation 
+				return Respond(context, CreateErrorResponse(10, error.message));
 			}
+
+			//podcast support todo
+
 
 			return Respond(context, body);
 		}
@@ -263,20 +269,26 @@ namespace Pulse.Protocols.Subsonic
 		{
 			SubsonicResponseBody body = CreateResponse();
 
-			JsonHttpResult<SearchResult> pResult = m_pulseAPI.GetTrack(context) as JsonHttpResult<SearchResult>;
-			if (pResult != null)
+			IResult pResult = m_pulseAPI.Search(context);
+			if (IsPulseError(pResult, out Error error))
+			{
+				return Respond(context, CreateErrorResponse(10, error.message));
+			}
+
+			SearchResult searchResult = ExtractPulseContent<SearchResult>(pResult);
+			if (searchResult != null)
 			{
 				body.searchResult3 = new SearchResult3();
-				for (int i=0;i< pResult.Value.Albums.Count;i++)
-					body.searchResult3.album.Add(new AlbumID3(pResult.Value.Albums[i]));
+				for (int i=0;i< searchResult.Albums.Count;i++)
+					body.searchResult3.album.Add(new AlbumID3(searchResult.Albums[i]));
 
 
-				for (int i = 0; i < pResult.Value.Artists.Count; i++)
-					body.searchResult3.artist.Add(new ArtistID3(pResult.Value.Artists[i]));
+				for (int i = 0; i < searchResult.Artists.Count; i++)
+					body.searchResult3.artist.Add(new ArtistID3(searchResult.Artists[i]));
 
 
-				for (int i = 0; i < pResult.Value.Tracks.Count; i++)
-					body.searchResult3.song.Add(new SongID3(pResult.Value.Tracks[i]));
+				for (int i = 0; i < searchResult.Tracks.Count; i++)
+					body.searchResult3.song.Add(new SongID3(searchResult.Tracks[i]));
 			}
 
 			return Respond(context, body);
@@ -373,11 +385,6 @@ namespace Pulse.Protocols.Subsonic
 			SubsonicResponseBody body = CreateResponse();
 			body.artistInfo2 = new ArtistInfo2();
 			return Respond(context, body);
-		}
-
-		private static int CompareArtistByWeightedScoreDescending(ArtistInfo left, ArtistInfo right)
-		{
-			return right.WeightedScore.CompareTo(left.WeightedScore);
 		}
 
 		public IResult HandleSetRating(HttpContext context)
@@ -512,29 +519,7 @@ namespace Pulse.Protocols.Subsonic
 			return Respond(context, CreateResponse());
 		}
 
-		// Builds a minimal HttpContext carrying only the query params PulseAPI
-		// needs. Pass user (becomes ?u=...) and then alternating key/value pairs.
-		private static HttpContext BuildForwardContext(string user, params string[] keyValuePairs)
-		{
-			Dictionary<string, StringValues> values = new Dictionary<string, StringValues>();
-			if (!string.IsNullOrEmpty(user))
-			{
-				values["u"] = user;
-			}
-			for (int index = 0; index + 1 < keyValuePairs.Length; index = index + 2)
-			{
-				string key = keyValuePairs[index];
-				string value = keyValuePairs[index + 1];
-				if (value == null)
-				{
-					continue;
-				}
-				values[key] = value;
-			}
-			DefaultHttpContext forwarded = new DefaultHttpContext();
-			forwarded.Request.Query = new QueryCollection(values);
-			return forwarded;
-		}
+
 		public IResult HandleGetLicense(HttpContext context)
 		{
 			SubsonicResponseBody body = CreateResponse();
@@ -586,8 +571,7 @@ namespace Pulse.Protocols.Subsonic
 		{
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			JsonHttpResult<PulseResponse> pulseResult = m_pulseAPI.GetArtist(context) as JsonHttpResult<PulseResponse>;
-			ArtistInfo source = ExtractContent<ArtistInfo>(pulseResult);
+			ArtistInfo source = ExtractPulseContent<ArtistInfo>(m_pulseAPI.GetArtist(context));
 			if (source == null)
 			{
 				return Respond(context, CreateErrorResponse(70, "Artist not found"));
@@ -602,8 +586,7 @@ namespace Pulse.Protocols.Subsonic
 		{
 			string user = context.Request.Query["u"].FirstOrDefault();
 
-			JsonHttpResult<PulseResponse> pulseResult = m_pulseAPI.GetAlbum(context) as JsonHttpResult<PulseResponse>;
-			AlbumInfo source = ExtractContent<AlbumInfo>(pulseResult);
+			AlbumInfo source = ExtractPulseContent<AlbumInfo>(m_pulseAPI.GetAlbum(context));
 			if (source == null)
 			{
 				return Respond(context, CreateErrorResponse(70, "Album not found"));
@@ -614,19 +597,6 @@ namespace Pulse.Protocols.Subsonic
 			return Respond(context, body);
 		}
 
-		// Generic variant of ExtractSearchResult for single-item PulseInfo payloads.
-		private static T ExtractContent<T>(JsonHttpResult<PulseResponse> pulseResult) where T : PulseInfo
-		{
-			if (pulseResult == null)
-			{
-				return null;
-			}
-			if (pulseResult.Value == null)
-			{
-				return null;
-			}
-			return pulseResult.Value.item as T;
-		}
 		public IResult HandleGetAlbumList2(HttpContext context)
 		{
 			SubsonicResponseBody body = CreateResponse();
@@ -651,9 +621,15 @@ namespace Pulse.Protocols.Subsonic
 			SubsonicResponseBody body = CreateResponse();
 			body.genres = new GenresContainer();
 			body.genres.genre = new List<GenreEntry>();
-			for (int i = 0; i < genres.Count; i++)
+			if (genres != null)
 			{
-				body.genres.genre.Add(new GenreEntry(genres[i]));
+				for (int i = 0; i < genres.Count; i++)
+				{
+					if (genres[i] != null)
+					{
+						body.genres.genre.Add(new GenreEntry(genres[i]));
+					}
+				}
 			}
 
 			return Respond(context, body);
@@ -866,14 +842,6 @@ namespace Pulse.Protocols.Subsonic
 			return Respond(context, CreateErrorResponse(70, "not supported"));
 		}
 
-		private static int CompareTrackByDiscThenNumber(TrackInfo left, TrackInfo right)
-		{
-			int discCompare = left.DiscNumber.CompareTo(right.DiscNumber);
-			if (discCompare != 0)
-			{
-				return discCompare;
-			}
-			return left.TrackNumber.CompareTo(right.TrackNumber);
-		}
+
 	}
 }
