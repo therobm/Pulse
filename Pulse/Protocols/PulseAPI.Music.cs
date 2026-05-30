@@ -444,6 +444,16 @@ namespace Pulse.Protocols
 			}
 			else if (sType == "artist")
 			{
+				ArtistInfo artist = m_musicManager.GetArtist(id);
+				if (artist != null)
+				{
+					if (m_musicManager.GetArtistImage(artist, out byte[] imageBytes, out string contentType))
+					{
+						m_coverArtCache[id] = imageBytes;
+						return Results.Bytes(imageBytes, contentType);
+					}
+				}
+				
 			}
 			else
 			{
