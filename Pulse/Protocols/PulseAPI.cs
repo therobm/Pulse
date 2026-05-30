@@ -11,7 +11,7 @@ using System.Linq;
 
 namespace Pulse.Protocols
 {
-	public class PulseAPI
+	public partial class PulseAPI
 	{
 		MusicManager m_musicManager;
 		PulseService m_pulseService;

@@ -220,6 +220,38 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/deleteUser", m_pulseAPI.HandleDeleteUser);
 			host.RegisterRoute("web/settings.html", HandleSettingsPage);
 
+			// Pulse-native API scaffold (PulseAPI.Scaffold.cs). Bodies are 501
+			// stubs for now; routes are wired so clients can start probing the
+			// surface as endpoints land.
+			host.RegisterResultRoute("pulse/ping", m_pulseAPI.HandlePing);
+			host.RegisterResultRoute("pulse/me", m_pulseAPI.HandleMe);
+
+			host.RegisterResultRoute("pulse/artists", m_pulseAPI.HandleGetArtists);
+			host.RegisterResultRoute("pulse/artist", m_pulseAPI.HandleGetArtist);
+			host.RegisterResultRoute("pulse/album", m_pulseAPI.HandleGetAlbum);
+			host.RegisterResultRoute("pulse/albums", m_pulseAPI.HandleGetAlbums);
+			host.RegisterResultRoute("pulse/genres", m_pulseAPI.HandleGetGenres);
+			host.RegisterResultRoute("pulse/genre", m_pulseAPI.HandleGetGenre);
+			host.RegisterResultRoute("pulse/track", m_pulseAPI.HandleGetTrack);
+
+			host.RegisterResultRoute("pulse/search", m_pulseAPI.HandleSearch);
+
+			host.RegisterResultRoute("pulse/playlists", m_pulseAPI.HandleGetPlaylists);
+			host.RegisterResultRoute("pulse/playlist", m_pulseAPI.HandleGetPlaylist);
+			host.RegisterResultRoute("pulse/createPlaylist", m_pulseAPI.HandleCreatePlaylist);
+			host.RegisterResultRoute("pulse/updatePlaylist", m_pulseAPI.HandleUpdatePlaylist);
+			host.RegisterResultRoute("pulse/deletePlaylist", m_pulseAPI.HandleDeletePlaylist);
+
+			host.RegisterResultRoute("pulse/starred", m_pulseAPI.HandleGetStarred);
+			host.RegisterResultRoute("pulse/star", m_pulseAPI.HandleStar);
+			host.RegisterResultRoute("pulse/rate", m_pulseAPI.HandleRate);
+
+			host.RegisterResultRoute("pulse/stream", m_pulseAPI.HandleStream);
+			host.RegisterResultRoute("pulse/coverArt", m_pulseAPI.HandleGetCoverArt);
+			host.RegisterResultRoute("pulse/scrobble", m_pulseAPI.HandleScrobble);
+
+			host.RegisterResultRoute("pulse/home", m_pulseAPI.HandleHome);
+
 
 			host.RegisterRoute("spotify/callback", HandleSpotifyCallback);
 			host.RegisterRoute("spotify/authorize", HandleSpotifyAuthorize);
