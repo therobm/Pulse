@@ -1,11 +1,13 @@
 ﻿using Pulse.MusicLibrary;
+using System.Collections.Generic;
 
 namespace Pulse.Protocols.Pulse
 {
 	public class PulseResponse
 	{
 		public Error error;
-		public PulseInfo content;
+		public PulseInfo item;
+		public List<PulseInfo> itemList;
 		public byte[] data;
 	}
 	public class Error

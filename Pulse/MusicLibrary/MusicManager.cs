@@ -56,7 +56,14 @@ namespace Pulse.MusicLibrary
 		{
 			return m_database.GetPlaylist(id);
 		}
+		public PlaylistAndTracks GetPlaylistAndTracks(string id)
+		{
+			PlaylistInfo playlist = GetPlaylist(id);
+			List<TrackInfo> tracks = GetPlaylistTracks(id);
 
+			PlaylistAndTracks fullPlaylist = new PlaylistAndTracks(playlist, tracks);
+			return fullPlaylist;
+		}
 		public List<PlaylistInfo> GetAllPlaylists(string userName)
 		{
 			return m_database.GetAllPlaylists(userName);

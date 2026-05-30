@@ -290,19 +290,19 @@ namespace Pulse.Protocols.Subsonic
 			entry = new List<SongID3>();
 		}
 
-		public PlaylistWithSongs(string user, PlaylistInfo playlistInfo, List<TrackInfo> tracks)
+		public PlaylistWithSongs(string user, PlaylistAndTracks playlist)
 		{
-			id = playlistInfo.Id;
-			name = playlistInfo.Name;
-			comment = playlistInfo.Comment;
-			songCount = playlistInfo.GetSongCount();
-			duration = (int)playlistInfo.DurationSeconds;
-			coverArt = "pl-" + playlistInfo.Id;
+			id = playlist.Id;
+			name = playlist.Name;
+			comment = playlist.Comment;
+			songCount = playlist.GetSongCount();
+			duration = (int)playlist.DurationSeconds;
+			coverArt = "pl-" + playlist.Id;
 			owner = user;
 			entry = new List<SongID3>();
-			for (int index = 0; index < tracks.Count; index++)
+			for (int index = 0; index < playlist.Tracks.Count; index++)
 			{
-				entry.Add(new SongID3(user, tracks[index]));
+				entry.Add(new SongID3(user, playlist.Tracks[index]));
 			}
 		}
 	}
@@ -635,7 +635,19 @@ namespace Pulse.Protocols.Subsonic
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
 		public int bpm { get; set; }
 
-		public SongID3(string user, TrackInfo trackInfo)
+		public SongID3(string user, TrackInfo trackInfo) : this(trackInfo)
+		{
+			if (user != null && trackInfo.Starred.ContainsKey(user) && trackInfo.Starred[user])
+			{
+				starred = DateTime.UtcNow.ToString("o");
+			}
+
+			if (user != null && trackInfo.UserScore.ContainsKey(user))
+			{
+				playCount = trackInfo.UserScore[user].PlayCount;
+			}
+		}
+		public SongID3(TrackInfo trackInfo)
 		{
 			id = trackInfo.Id;
 			title = trackInfo.Title;
@@ -653,14 +665,8 @@ namespace Pulse.Protocols.Subsonic
 			contentType = trackInfo.ContentType;
 			coverArt = trackInfo.CoverArtId;
 			userRating = trackInfo.Rating;
-			if (user != null && trackInfo.Starred.ContainsKey(user) && trackInfo.Starred[user])
-			{
-				starred = DateTime.UtcNow.ToString("o");
-			}
-			else
-			{
-				starred = null;
-			}
+			starred = null;
+			playCount = trackInfo.Score.PlayCount;
 
 			// --- New populations for OpenSubsonic (#159) ---
 			parent = trackInfo.AlbumId;
@@ -670,16 +676,7 @@ namespace Pulse.Protocols.Subsonic
 			{
 				bitRate = (int)((trackInfo.FileSizeBytes * 8L) / (trackInfo.DurationSeconds * 1000L));
 			}
-			// Per-user play count + last played when we have a user context;
-			// fall back to the global counters otherwise.
-			if (user != null && trackInfo.UserScore.ContainsKey(user))
-			{
-				playCount = trackInfo.UserScore[user].PlayCount;
-			}
-			else
-			{
-				playCount = trackInfo.Score.PlayCount;
-			}
+			
 			if (trackInfo.LastPlayed != default(DateTime))
 			{
 				played = trackInfo.LastPlayed.ToString("o");
@@ -824,6 +821,12 @@ namespace Pulse.Protocols.Subsonic
 		public int songCount { get; set; }
 		public int albumCount { get; set; }
 		public string value { get; set; }
+		public GenreEntry(GenreInfo pulseGenre)
+		{
+			songCount = pulseGenre.TrackCount;
+			albumCount = pulseGenre.AlbumCount;
+			value = pulseGenre.Name;
+		}
 	}
 
 	public class UserInfo

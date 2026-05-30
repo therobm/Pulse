@@ -19,12 +19,19 @@ namespace Pulse.Protocols.Pulse
 			DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 		};
 
+		protected IResult CreateResponse()
+		{
+			PulseResponse response = new PulseResponse();
+			return Results.Json(response);
+		}
+		
 		protected IResult CreateResponse(PulseInfo content)
 		{
 			PulseResponse response = new PulseResponse();
-			response.content = content;
+			response.item = content;
 			return Results.Json(response);
 		}
+	
 		protected IResult CreateResponse(byte[] data)
 		{
 			PulseResponse response = new PulseResponse();
@@ -248,6 +255,8 @@ namespace Pulse.Protocols.Pulse
 			{
 				if (allArtists[index].Name.ToLowerInvariant().Contains(lowerQuery))
 				{
+					if (result.Artists == null)
+						result.Artists = new List<ArtistInfo>();
 					result.Artists.Add(allArtists[index]);
 					artistHits++;
 				}
@@ -259,6 +268,8 @@ namespace Pulse.Protocols.Pulse
 			{
 				if (allAlbums[index].Name.ToLowerInvariant().Contains(lowerQuery))
 				{
+					if (result.Artists == null)
+						result.Albums = new List<AlbumInfo>();
 					result.Albums.Add(allAlbums[index]);
 					albumHits++;
 				}
@@ -280,7 +291,9 @@ namespace Pulse.Protocols.Pulse
 					if (track.Title.ToLowerInvariant().Contains(lowerQuery) ||
 						track.Artist.ToLowerInvariant().Contains(lowerQuery))
 					{
-						result.Albums.Add(track);
+						if (result.Tracks == null)
+							result.Tracks = new List<TrackInfo>();
+						result.Tracks.Add(track);
 						songHits++;
 					}
 				}
@@ -288,26 +301,710 @@ namespace Pulse.Protocols.Pulse
 			return CreateResponse(result);
 		}
 
-		public IResult GetFavorites(HttpContext context) { }
-		public IResult GetTopTracks(HttpContext context) { }
-		public IResult Favorite(HttpContext context) { }
-		public IResult Unfavorite(HttpContext context) { }
-		public IResult ReportTrackAnalytics(HttpContext context) { }
 
-		public IResult GetArtists(HttpContext context) { }
-		public IResult GetArtist(HttpContext context) { }
+		public IResult GetTopTracks(HttpContext context)
+		{
+			string artistName = context.Request.Query["artist"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+			int count = QueryParameters.GetInt(context, "count", 50);
+			if (count < 1)
+			{
+				count = 1;
+			}
+			if (count > 500)
+			{
+				count = 500;
+			}
 
-		public IResult GetAlbums(HttpContext context) { }
-		public IResult GetAlbum(HttpContext context) { }
+			SearchResult result = new SearchResult();
+			result.Tracks = new List<TrackInfo>();
 
-		public IResult GetGenres(HttpContext context) { }
-		public IResult GetGenreTracks(HttpContext context) { }
+			if (string.IsNullOrEmpty(artistName))
+			{
+				return CreateResponse(result);
+			}
 
-		public IResult GetPlaylists(HttpContext context) { }
-		public IResult GetPlaylist(HttpContext context) { }
-		public IResult CreatePlaylist(HttpContext context) { }
-		public IResult UpdatePlaylist(HttpContext context) { }
-		public IResult DeletePlaylist(HttpContext context) { }
+			string artistNameLower = artistName.ToLowerInvariant();
+			ArtistInfo artist = null;
+			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+			for (int index = 0; index < allArtists.Count; index++)
+			{
+				if (allArtists[index].Name.ToLowerInvariant() == artistNameLower)
+				{
+					artist = allArtists[index];
+					break;
+				}
+			}
+			if (artist == null)
+			{
+				return CreateResponse(result);
+			}
+
+			List<TrackInfo> tracks = new List<TrackInfo>();
+			for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
+			{
+				AlbumInfo album = artist.Albums[albumIndex];
+				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+				{
+					tracks.Add(album.Tracks[trackIndex]);
+				}
+			}
+			tracks.Sort(MusicComparers.CompareTrackByTopRank);
+
+			for (int index = 0; index < tracks.Count && result.Tracks.Count < count; index++)
+			{
+				TrackInfo track = tracks[index];
+				// Drop never-played tracks so the list isn't filler for artists with no listening history.
+				if (track.Score.PlayCount == 0 && track.Score.WeightedScore <= 0f)
+				{
+					break;
+				}
+				result.Tracks.Add(track);
+			}
+
+			return CreateResponse(result);
+		}
+
+		public IResult GetFavorites(HttpContext context)
+		{
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null)
+			{
+				user = "";
+			}
+
+			SearchResult result = new SearchResult();
+			result.Artists = new List<ArtistInfo>();
+			result.Albums = new List<AlbumInfo>();
+			result.Tracks = new List<TrackInfo>();
+
+			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+			for (int index = 0; index < allArtists.Count; index++)
+			{
+				ArtistInfo artist = allArtists[index];
+				bool artistStarred = false;
+				artist.Starred.TryGetValue(user, out artistStarred);
+				if (artistStarred)
+				{
+					result.Artists.Add(artist);
+				}
+			}
+
+			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+			for (int albumIndex = 0; albumIndex < allAlbums.Count; albumIndex++)
+			{
+				AlbumInfo album = allAlbums[albumIndex];
+				bool albumStarred = false;
+				album.Starred.TryGetValue(user, out albumStarred);
+				if (albumStarred)
+				{
+					result.Albums.Add(album);
+				}
+
+				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+				{
+					TrackInfo track = album.Tracks[trackIndex];
+					bool trackStarred = false;
+					track.Starred.TryGetValue(user, out trackStarred);
+					if (trackStarred)
+					{
+						result.Tracks.Add(track);
+					}
+				}
+			}
+
+			return CreateResponse(result);
+		}
+
+		public IResult Favorite(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			string type = context.Request.Query["type"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+
+			if (string.IsNullOrEmpty(id))
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Missing id"));
+			}
+
+			string typeLower = "track";
+			if (!string.IsNullOrEmpty(type))
+			{
+				typeLower = type.ToLowerInvariant();
+			}
+
+			string trackId = null;
+			string albumId = null;
+			string artistId = null;
+			if (typeLower == "album")
+			{
+				albumId = id;
+			}
+			else if (typeLower == "artist")
+			{
+				artistId = id;
+			}
+			else
+			{
+				trackId = id;
+			}
+
+			m_musicManager.UpdateStar(user, trackId, albumId, artistId, false);
+			return CreateResponse();
+
+		}
+
+		public IResult Unfavorite(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			string type = context.Request.Query["type"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+
+			if (string.IsNullOrEmpty(id))
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Missing id"));
+			}
+
+			string typeLower = "track";
+			if (!string.IsNullOrEmpty(type))
+			{
+				typeLower = type.ToLowerInvariant();
+			}
+
+			string trackId = null;
+			string albumId = null;
+			string artistId = null;
+			if (typeLower == "album")
+			{
+				albumId = id;
+			}
+			else if (typeLower == "artist")
+			{
+				artistId = id;
+			}
+			else
+			{
+				trackId = id;
+			}
+
+			m_musicManager.UpdateStar(user, trackId, albumId, artistId, false);
+
+			return Results.Json(new PulseResponse());
+		}
+
+		
+		public IResult ReportTrackAnalytics(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+
+			if (string.IsNullOrEmpty(id))
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Missing id"));
+			}
+
+			m_musicManager.OnTrackStreamed(user, id);
+			return Results.Json(new PulseResponse());
+		}
+
+		public IResult GetArtists(HttpContext context)
+		{
+			SearchResult result = new SearchResult();
+			result.Artists = m_musicManager.GetAllArtists();
+			return CreateResponse(result);
+		}
+
+		public IResult GetArtist(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			ArtistInfo artist = m_musicManager.GetArtist(id);
+			if (artist == null)
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Artist not found"));
+			}
+			return CreateResponse(artist);
+		}
+
+		// type controls ordering (random / newest / alphabeticalbyname / alphabeticalbyartist
+		// / frequent / recent / byyear / bygenre / starred / highest). Default = random.
+		public IResult GetAlbums(HttpContext context)
+		{
+			string typeRaw = context.Request.Query["type"].FirstOrDefault();
+			int size = QueryParameters.GetInt(context, "size", 20);
+			int offset = QueryParameters.GetInt(context, "offset", 0);
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null)
+			{
+				user = "";
+			}
+
+			string type = "random";
+			if (!string.IsNullOrEmpty(typeRaw))
+			{
+				type = typeRaw.ToLowerInvariant();
+			}
+
+			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+
+			if (type == "newest")
+			{
+				allAlbums.Sort(MusicComparers.CompareAlbumYearDescending);
+			}
+			else if (type == "random")
+			{
+				Random rng = new Random();
+				for (int index = allAlbums.Count - 1; index > 0; index--)
+				{
+					int swapIndex = rng.Next(index + 1);
+					AlbumInfo temp = allAlbums[index];
+					allAlbums[index] = allAlbums[swapIndex];
+					allAlbums[swapIndex] = temp;
+				}
+			}
+			else if (type == "alphabeticalbyname")
+			{
+				allAlbums.Sort(MusicComparers.CompareAlbumByName);
+			}
+			else if (type == "alphabeticalbyartist")
+			{
+				allAlbums.Sort(MusicComparers.CompareAlbumByArtistThenName);
+			}
+			else if (type == "frequent")
+			{
+				List<KeyValuePair<AlbumInfo, int>> scored = new List<KeyValuePair<AlbumInfo, int>>();
+				for (int index = 0; index < allAlbums.Count; index++)
+				{
+					AlbumInfo album = allAlbums[index];
+					int total = 0;
+					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+					{
+						total = total + album.Tracks[trackIndex].Score.PlayCount;
+					}
+					if (total > 0)
+					{
+						scored.Add(new KeyValuePair<AlbumInfo, int>(album, total));
+					}
+				}
+				scored.Sort(MusicComparers.CompareAlbumPlayCountDescending);
+				allAlbums = new List<AlbumInfo>();
+				for (int index = 0; index < scored.Count; index++)
+				{
+					allAlbums.Add(scored[index].Key);
+				}
+			}
+			else if (type == "recent")
+			{
+				List<KeyValuePair<AlbumInfo, DateTime>> scored = new List<KeyValuePair<AlbumInfo, DateTime>>();
+				for (int index = 0; index < allAlbums.Count; index++)
+				{
+					AlbumInfo album = allAlbums[index];
+					DateTime mostRecent = default(DateTime);
+					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+					{
+						DateTime trackPlayed = album.Tracks[trackIndex].LastPlayed;
+						if (trackPlayed > mostRecent)
+						{
+							mostRecent = trackPlayed;
+						}
+					}
+					if (mostRecent != default(DateTime))
+					{
+						scored.Add(new KeyValuePair<AlbumInfo, DateTime>(album, mostRecent));
+					}
+				}
+				scored.Sort(MusicComparers.CompareAlbumDateDescending);
+				allAlbums = new List<AlbumInfo>();
+				for (int index = 0; index < scored.Count; index++)
+				{
+					allAlbums.Add(scored[index].Key);
+				}
+			}
+			else if (type == "byyear")
+			{
+				int fromYear = int.MinValue;
+				int toYear = int.MaxValue;
+				string fromYearRaw = context.Request.Query["fromYear"].FirstOrDefault();
+				string toYearRaw = context.Request.Query["toYear"].FirstOrDefault();
+				int parsedFromYear = 0;
+				bool fromYearParsed = int.TryParse(fromYearRaw, out parsedFromYear);
+				if (fromYearParsed)
+				{
+					fromYear = parsedFromYear;
+				}
+				int parsedToYear = 0;
+				bool toYearParsed = int.TryParse(toYearRaw, out parsedToYear);
+				if (toYearParsed)
+				{
+					toYear = parsedToYear;
+				}
+				List<AlbumInfo> filtered = new List<AlbumInfo>();
+				for (int index = 0; index < allAlbums.Count; index++)
+				{
+					AlbumInfo album = allAlbums[index];
+					if (album.Year >= fromYear && album.Year <= toYear)
+					{
+						filtered.Add(album);
+					}
+				}
+				if (fromYear <= toYear)
+				{
+					filtered.Sort(MusicComparers.CompareAlbumYearAscending);
+				}
+				else
+				{
+					filtered.Sort(MusicComparers.CompareAlbumYearDescending);
+				}
+				allAlbums = filtered;
+			}
+			else if (type == "bygenre")
+			{
+				string genre = context.Request.Query["genre"].FirstOrDefault();
+				List<AlbumInfo> filtered = new List<AlbumInfo>();
+				if (!string.IsNullOrEmpty(genre))
+				{
+					string genreLower = genre.ToLowerInvariant();
+					for (int index = 0; index < allAlbums.Count; index++)
+					{
+						AlbumInfo album = allAlbums[index];
+						if (!string.IsNullOrEmpty(album.Genre) && album.Genre.ToLowerInvariant() == genreLower)
+						{
+							filtered.Add(album);
+						}
+					}
+				}
+				allAlbums = filtered;
+			}
+			else if (type == "starred")
+			{
+				List<AlbumInfo> filtered = new List<AlbumInfo>();
+				for (int index = 0; index < allAlbums.Count; index++)
+				{
+					AlbumInfo album = allAlbums[index];
+					bool isStarred = false;
+					album.Starred.TryGetValue(user, out isStarred);
+					if (isStarred)
+					{
+						filtered.Add(album);
+					}
+				}
+				allAlbums = filtered;
+			}
+			else if (type == "highest")
+			{
+				// Pulse has per-track Rating only; average over the album. Unrated albums drop off.
+				List<KeyValuePair<AlbumInfo, float>> scored = new List<KeyValuePair<AlbumInfo, float>>();
+				for (int index = 0; index < allAlbums.Count; index++)
+				{
+					AlbumInfo album = allAlbums[index];
+					float total = 0f;
+					int rated = 0;
+					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+					{
+						int trackRating = album.Tracks[trackIndex].Rating;
+						if (trackRating > 0)
+						{
+							total = total + trackRating;
+							rated++;
+						}
+					}
+					if (rated > 0)
+					{
+						scored.Add(new KeyValuePair<AlbumInfo, float>(album, total / rated));
+					}
+				}
+				scored.Sort(MusicComparers.CompareAlbumFloatDescending);
+				allAlbums = new List<AlbumInfo>();
+				for (int index = 0; index < scored.Count; index++)
+				{
+					allAlbums.Add(scored[index].Key);
+				}
+			}
+
+			SearchResult result = new SearchResult();
+			result.Albums = new List<AlbumInfo>();
+			int end = Math.Min(offset + size, allAlbums.Count);
+			for (int index = offset; index < end; index++)
+			{
+				result.Albums.Add(allAlbums[index]);
+			}
+			return CreateResponse(result);
+		}
+
+		public IResult GetAlbum(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			AlbumInfo album = m_musicManager.GetAlbum(id);
+			if (album == null)
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Album not found"));
+			}
+			return CreateResponse(album);
+		}
+
+		public IResult GetGenres(HttpContext context)
+		{
+			Dictionary<string, GenreInfo> genreMap = new Dictionary<string, GenreInfo>();
+
+			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+			for (int index = 0; index < allAlbums.Count; index++)
+			{
+				AlbumInfo album = allAlbums[index];
+				if (string.IsNullOrEmpty(album.Genre))
+				{
+					continue;
+				}
+
+				GenreInfo entry;
+				if (!genreMap.TryGetValue(album.Genre, out entry))
+				{
+					entry = new GenreInfo();
+					entry.Name = album.Genre;
+					genreMap[album.Genre] = entry;
+				}
+				entry.AlbumCount = entry.AlbumCount + 1;
+				entry.TrackCount = entry.TrackCount + album.Tracks.Count;
+			}
+
+			SearchResult searchResult = new SearchResult();
+			searchResult.Genres = new List<GenreInfo>(genreMap.Values);
+			searchResult.Genres.Sort();
+
+			// Pulse has no GenreInfo type yet; revisit once one exists.
+			return CreateResponse(searchResult);
+		}
+
+		public IResult GetGenreTracks(HttpContext context)
+		{
+			string genre = context.Request.Query["genre"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+			int count = QueryParameters.GetInt(context, "count", 10);
+			int offset = QueryParameters.GetInt(context, "offset", 0);
+
+			if (string.IsNullOrEmpty(genre))
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Missing genre"));
+			}
+
+			string genreLower = genre.ToLowerInvariant();
+			List<TrackInfo> matches = new List<TrackInfo>();
+			List<TrackInfo> allTracks = m_musicManager.GetAllTracks();
+			for (int index = 0; index < allTracks.Count; index++)
+			{
+				TrackInfo track = allTracks[index];
+				if (!string.IsNullOrEmpty(track.Genre) && track.Genre.ToLowerInvariant() == genreLower)
+				{
+					matches.Add(track);
+				}
+			}
+
+			SearchResult result = new SearchResult();
+			result.Tracks = new List<TrackInfo>();
+			int end = Math.Min(matches.Count, offset + count);
+			for (int index = offset; index < end; index++)
+			{
+				result.Tracks.Add(matches[index]);
+			}
+			return CreateResponse(result);
+		}
+
+		public IResult GetPlaylists(HttpContext context)
+		{
+			string user = context.Request.Query["u"].FirstOrDefault();
+
+			SearchResult result = new SearchResult();
+			result.Playlists = m_musicManager.GetAllPlaylists(user);
+			return CreateResponse(result);
+		}
+
+		public IResult GetPlaylist(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			if (string.IsNullOrEmpty(id))
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Missing id"));
+			}
+
+			PlaylistAndTracks playlist = m_musicManager.GetPlaylistAndTracks(id);
+			if (playlist == null)
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Playlist not found"));
+			}
+			return CreateResponse(playlist);
+		}
+
+		public IResult CreatePlaylist(HttpContext context)
+		{
+			string playlistId = context.Request.Query["playlistId"].FirstOrDefault();
+			string name = context.Request.Query["name"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+			List<string> songIds = context.Request.Query["songId"].ToList();
+
+			PlaylistInfo playlist = null;
+			if (!string.IsNullOrEmpty(playlistId))
+			{
+				playlist = m_musicManager.GetPlaylist(playlistId);
+				if (playlist != null)
+				{
+					playlist.TrackIds.Clear();
+				}
+			}
+
+			if (playlist == null)
+			{
+				if (string.IsNullOrEmpty(name))
+				{
+					return CreateResponse(new Error(ePulseCode.NotFound, "Missing name"));
+				}
+				if (PlaylistNameTaken(name, ""))
+				{
+					return CreateResponse(new Error(ePulseCode.NotFound, "A playlist named '" + name + "' already exists."));
+				}
+				playlist = new PlaylistInfo();
+				playlist.Id = MusicManager.GenerateID("playlist/" + user + "/" + name + "/" + DateTime.UtcNow.Ticks);
+				playlist.Name = name;
+			}
+
+			long totalDuration = 0;
+			for (int index = 0; index < songIds.Count; index++)
+			{
+				TrackInfo track = m_musicManager.GetTrack(songIds[index]);
+				if (track == null)
+				{
+					continue;
+				}
+				playlist.TrackIds.Add(track.Id);
+				totalDuration = totalDuration + track.DurationSeconds;
+			}
+			playlist.DurationSeconds = totalDuration;
+			m_musicManager.CreateOrUpdatePlaylist(playlist);
+
+
+			PlaylistAndTracks fullPlaylist = m_musicManager.GetPlaylistAndTracks(playlist.Id);
+			return CreateResponse(fullPlaylist);
+		}
+
+		public IResult UpdatePlaylist(HttpContext context)
+		{
+			string playlistId = context.Request.Query["playlistId"].FirstOrDefault();
+			string name = context.Request.Query["name"].FirstOrDefault();
+			string comment = context.Request.Query["comment"].FirstOrDefault();
+			List<string> songIdsToAdd = context.Request.Query["songIdToAdd"].ToList();
+			List<string> indicesToRemove = context.Request.Query["songIndexToRemove"].ToList();
+
+			if (string.IsNullOrEmpty(playlistId))
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Missing playlistId"));
+			}
+
+			PlaylistInfo playlist = m_musicManager.GetPlaylist(playlistId);
+			if (playlist == null)
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Playlist not found"));
+			}
+
+			if (!string.IsNullOrEmpty(name))
+			{
+				if (PlaylistNameTaken(name, playlist.Id))
+				{
+					return CreateResponse(new Error(ePulseCode.NotFound, "A playlist named '" + name + "' already exists."));
+				}
+				playlist.Name = name;
+			}
+
+			if (!string.IsNullOrEmpty(comment))
+			{
+				playlist.Comment = comment;
+			}
+
+			// Remove by descending index so the indices don't shift under us.
+			List<int> parsedIndices = new List<int>();
+			for (int index = 0; index < indicesToRemove.Count; index++)
+			{
+				int parsed = 0;
+				bool didParse = int.TryParse(indicesToRemove[index], out parsed);
+				if (didParse)
+				{
+					parsedIndices.Add(parsed);
+				}
+			}
+			parsedIndices.Sort(MusicComparers.CompareIntDescending);
+			for (int index = 0; index < parsedIndices.Count; index++)
+			{
+				int removeIndex = parsedIndices[index];
+				if (removeIndex >= 0 && removeIndex < playlist.TrackIds.Count)
+				{
+					playlist.TrackIds.RemoveAt(removeIndex);
+				}
+			}
+
+			for (int index = 0; index < songIdsToAdd.Count; index++)
+			{
+				TrackInfo track = m_musicManager.GetTrack(songIdsToAdd[index]);
+				if (track == null)
+				{
+					continue;
+				}
+				playlist.TrackIds.Add(track.Id);
+			}
+
+			long totalDuration = 0;
+			for (int index = 0; index < playlist.TrackIds.Count; index++)
+			{
+				TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[index]);
+				if (track != null)
+				{
+					totalDuration = totalDuration + track.DurationSeconds;
+				}
+			}
+			playlist.DurationSeconds = totalDuration;
+
+			m_musicManager.CreateOrUpdatePlaylist(playlist);
+
+			// Composite playlist cover (#224) regenerates from the new track set.
+			byte[] discard;
+			m_coverArtCache.TryRemove(playlist.Id, out discard);
+
+			return CreateResponse(playlist);
+		}
+
+		// Case-insensitive duplicate-name check. skipPlaylistId lets the caller
+		// exclude the playlist currently being renamed.
+		private bool PlaylistNameTaken(string name, string skipPlaylistId)
+		{
+			string nameLower = name.ToLowerInvariant();
+			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(null);
+			for (int index = 0; index < all.Count; index++)
+			{
+				PlaylistInfo existing = all[index];
+				if (!string.IsNullOrEmpty(skipPlaylistId) && existing.Id == skipPlaylistId)
+				{
+					continue;
+				}
+				if (existing.Name.ToLowerInvariant() == nameLower)
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		public IResult DeletePlaylist(HttpContext context)
+		{
+			string playlistId = context.Request.Query["id"].FirstOrDefault();
+			if (string.IsNullOrEmpty(playlistId))
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Missing id"));
+			}
+
+			PlaylistInfo playlist = m_musicManager.GetPlaylist(playlistId);
+			if (playlist == null)
+			{
+				return CreateResponse(new Error(ePulseCode.NotFound, "Playlist not found"));
+			}
+
+			m_musicManager.DeletePlaylist(playlistId);
+			return Results.Json(new PulseResponse());
+		}
 
 
 	}
