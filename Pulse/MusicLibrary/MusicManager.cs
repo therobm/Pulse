@@ -19,6 +19,9 @@ namespace Pulse.MusicLibrary
 
 	public class MusicManager
 	{
+		public Dictionary<string, ArtistInfo> m_scanningArtistCache = new Dictionary<string, ArtistInfo>();
+		public Dictionary<string, AlbumInfo> m_scanningAlbumCache = new Dictionary<string, AlbumInfo>();
+
 		public int GetTrackCount()
 		{
 			return m_database.GetTrackCount();
@@ -707,16 +710,20 @@ namespace Pulse.MusicLibrary
 
 			string[] extensions = new string[] { ".mp3", ".flac", ".ogg", ".m4a", ".wma", ".wav" };
 
+			List<TrackInfo> allTracks = m_database.GetAllTracks();
+
+			HashSet<string> existingIds = new HashSet<string>();
+			for(int i = 0; i<allTracks.Count;i++)
+				existingIds.Add(allTracks[i].Id);
+
+			m_scanningAlbumCache.Clear();
+			m_scanningArtistCache.Clear();
 			foreach (string filePath in Directory.EnumerateFiles(musicPath, "*.*", SearchOption.AllDirectories))
 			{
 				fileCount++;
 				string libraryID = MusicManager.GenerateID(filePath);
 
-				if (m_database.TrackExists(libraryID))
-				{
-					skippedCount++;
-					continue;
-				}
+			
 
 				string extension = Path.GetExtension(filePath).ToLowerInvariant();
 
@@ -729,8 +736,15 @@ namespace Pulse.MusicLibrary
 						break;
 					}
 				}
+
 				if (!supported)
 				{
+					continue;
+				}
+
+				if (existingIds.Contains(libraryID))
+				{
+					skippedCount++;
 					continue;
 				}
 
@@ -748,7 +762,6 @@ namespace Pulse.MusicLibrary
 
 			//remove missing files
 			Log.Info(-1, "Scanning for deleted tracks...");
-			List<TrackInfo> allTracks = m_database.GetAllTracks();
 			for (int index = 0; index < allTracks.Count; index++)
 			{
 				if (!File.Exists(allTracks[index].FilePath))
@@ -816,10 +829,22 @@ namespace Pulse.MusicLibrary
 			}
 
 			string artistId = MusicManager.GenerateID(artist);
-			ArtistInfo artistInfo = m_database.GetOrCreateArtist(artistId, artist);
+			ArtistInfo artistInfo = null;
+			if (!m_scanningArtistCache.TryGetValue(artistId, out artistInfo))
+			{
+				artistInfo = m_database.GetOrCreateArtist(artistId, artist);
+				m_scanningArtistCache[artistId] = artistInfo;
+			}
+			
 
 			string albumId = MusicManager.GenerateID(artist + "/" + album);
-			AlbumInfo albumInfo = m_database.GetOrCreateAlbum(albumId, album, artistId, artist, (int)tagFile.Tag.Year, tagFile.Tag.FirstGenre ?? "");
+			AlbumInfo albumInfo = null;
+			if (!m_scanningArtistCache.TryGetValue(artistId, out artistInfo))
+			{
+				albumInfo = m_database.GetOrCreateAlbum(albumId, album, artistId, artist, (int)tagFile.Tag.Year, tagFile.Tag.FirstGenre ?? "");
+				m_scanningAlbumCache[artistId] = albumInfo;
+			}
+			
 
 			string extension = Path.GetExtension(filePath).ToLowerInvariant();
 			FileInfo fileInfo = new FileInfo(filePath);
