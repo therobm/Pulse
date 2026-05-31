@@ -21,19 +21,18 @@ namespace Thump.Playback
 			m_done = false;
 		}
 
-		public void SendObject<T>(List<PulseTrack> data, eAAObject objectType, string objectId)
+		public void OnComplete<T>(List<PulseTrack> data, eAAObject objectType, string objectId)
 		{
 			List<MediaItem> items = AAutoHelper.BuildContainerChildren("albumplay/" + objectId, "albumshuffle/" + objectId, data);
 			Java.Lang.Object result = LibraryResult.OfItemList(items, AAStyles.BuildContentStyleParams());
 			OnComplete(result);
 		}
 
-		public void SendContainer(List<MediaItem> data) 
+		public void OnComplete(List<MediaItem> data) 
 		{
 			Java.Lang.Object result = LibraryResult.OfItemList(data, AAStyles.BuildContentStyleParams());
 			OnComplete(result);
 		}
-
 
 		public void OnComplete(Java.Lang.Object result)
 		{
@@ -85,6 +84,29 @@ namespace Thump.Playback
 			{
 				JObjectCallback onComplete = new JObjectCallback(completer);
 				m_owner.LoadObject(m_object, m_parentId, onComplete);
+				return null;
+			}
+		}
+		public class LoadMediaSetFunc : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+		{
+			private ThumpMediaLibraryService m_owner;
+			private string m_parentId;
+			private IList<MediaItem> m_items;
+			private int m_startIndex;
+			private long m_startPosition;
+
+			public LoadMediaSetFunc(ThumpMediaLibraryService owner, IList<MediaItem> items, int startIndex, long startPositionMs)
+			{
+				m_owner = owner;
+				m_items = items;
+				m_startIndex = startIndex;
+				m_startPosition = startPositionMs;
+			}
+
+			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
+			{
+				JObjectCallback onComplete = new JObjectCallback(completer);
+				m_owner.LoadMediaItems(m_items, m_startIndex, m_startPosition, onComplete);
 				return null;
 			}
 		}

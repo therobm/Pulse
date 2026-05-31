@@ -84,7 +84,7 @@ namespace Thump.Playback
 		/// resolved items along with the start index and start position the
 		/// framework should jump to.
 		/// </summary>
-		public Func<MediaSession, MediaSession.ControllerInfo, IList<MediaItem>, int, long, MediaSession.MediaItemsWithStartPosition> m_onSetMediaItems;
+		public Func<MediaSession, MediaSession.ControllerInfo, IList<MediaItem>, int, long, IListenableFuture> m_onSetMediaItems;
 
 		public MediaSession.ConnectionResult OnConnect(MediaSession session, MediaSession.ControllerInfo controller)
 		{
@@ -194,8 +194,6 @@ namespace Thump.Playback
 			IList<MediaItem> children;
 			if (m_onGetChildren != null)
 			{
-
-				///THIS IS AN ASYNC CALL AND NEEDS TO RETURN  (IListenableFuture)CallbackToFutureAdapter.GetFuture(resolver);
 				return m_onGetChildren(session, browser, parentId, page, pageSize, libraryParams);
 			}
 			else
@@ -236,14 +234,9 @@ namespace Thump.Playback
 		{
 			if (m_onSetMediaItems != null)
 			{
-				MediaSession.MediaItemsWithStartPosition resolved = m_onSetMediaItems(session, controller, mediaItems, startIndex, startPositionMs);
-				if (resolved != null)
-				{
-					return ImmediateFuture(resolved);
-				}
+				return m_onSetMediaItems(session, controller, mediaItems, startIndex, startPositionMs);
 			}
-			MediaSession.MediaItemsWithStartPosition fallback = new MediaSession.MediaItemsWithStartPosition(mediaItems, startIndex, startPositionMs);
-			return ImmediateFuture(fallback);
+			return ImmediateFuture(new MediaSession.MediaItemsWithStartPosition(new List<MediaItem>(), startIndex, startPositionMs));
 		}
 
 		// Wraps a synchronously-available value as a resolved IListenableFuture.

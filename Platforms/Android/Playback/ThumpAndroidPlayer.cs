@@ -141,7 +141,7 @@ namespace Thump.Playback
 
 
 			//kick off caching and start when startIndex is ready
-			m_data.CacheTrack(m_queue[startIndex], (firstCached)=>
+			m_data.CacheTrack(m_queue[startItemIndex], (firstCached)=>
 			{
 				//some other queue has been started, we'll just bail on this
 				if (m_currentQueueID != taskQueueID)

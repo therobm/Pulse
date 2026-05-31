@@ -83,7 +83,7 @@ namespace Thump.Playback
 			library.m_onPlayerCommandRequest = null;
 			library.m_onPlayerInteractionFinished = null;
 			library.m_onPostConnect = null;
-			library.m_onSetMediaItems = null;
+			library.m_onSetMediaItems = OnSetMediaItems;
 			library.m_onSubscribe = null;
 			library.m_onUnsubscribe = null;
 
@@ -128,7 +128,12 @@ namespace Thump.Playback
 			MediaItem item = AAutoHelper.BuildItemForId(mediaId);
 			return item;
 		}
-
+		
+		public IListenableFuture OnSetMediaItems(MediaSession session, MediaSession.ControllerInfo controller, IList<MediaItem> mediaItems, int startIndex, long startPositionMs)
+		{
+			AAutoHelper.LoadMediaSetFunc media = new AAutoHelper.LoadMediaSetFunc(this, mediaItems, startIndex, startPositionMs);
+			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(media);
+		}
 		public IListenableFuture OnGetChildren(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string parentId, int page, int pageSize, MediaLibraryService.LibraryParams libraryParams)
 		{
 			eAADirectory dir = eAADirectory.Root;
@@ -166,6 +171,68 @@ namespace Thump.Playback
 			}
 		}
 
+		public void LoadMediaItems(IList<MediaItem> items, int startIndex, long startPositionMs, JObjectCallback callback)
+		{
+
+			//Single tracks working - lists/albums/etc need to send their tracks rather than themselves.
+			// playlist entered here, obviously not a media item.
+
+
+			List<MediaItem> outputItems = new List<MediaItem>();
+
+			bool isOnline = s_thumpData.IsOnline();
+
+			//get the pulse ids
+			List<string> trackIds = new List<string>();
+			for (int i = 0; i < items.Count; i++)
+			{
+				MediaItem item = items[i];
+				string pulseID = AAutoHelper.StripTrackPrefix(item.MediaId);
+				trackIds.Add(pulseID);
+			}
+
+			Queue<string> cacheQueue = new Queue<string>();
+
+			//build playlist
+			int startItemIndex = -1;
+			int builtCount = 0;
+			for (int i = 0; i < trackIds.Count; i++)
+			{
+				//If we're not online and we don't have this track locally cached skip it
+				if (!isOnline && !s_thumpData.IsTrackCached(trackIds[i]))
+					continue;
+
+				
+
+				if (i == startIndex)
+					startItemIndex = builtCount;
+				else
+					cacheQueue.Enqueue(trackIds[i]);
+
+				Android.Net.Uri uri = ThumpAndroidPlayer.GetURI(trackIds[i]);
+				MediaItem outItem = items[i].BuildUpon().SetUri(uri).Build();
+
+				outputItems.Add(outItem);
+				builtCount++;
+			}
+
+			if (startItemIndex < 0) 
+				startItemIndex = 0;
+
+			if (trackIds.Count == 0)
+			{
+				MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputItems, startIndex, startPositionMs);
+				callback.OnComplete(result);
+			}
+			else
+			{ 
+				s_thumpData.CacheTrack(trackIds[startItemIndex], (success)=>
+				{
+					MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputItems, startItemIndex, startPositionMs);
+					callback.OnComplete(result);
+				});
+			}
+		}
 
 		public IList<MediaItem> LoadContainer(eAADirectory parent, JObjectCallback request)
 		{
@@ -210,7 +277,7 @@ namespace Thump.Playback
 										combined.AddRange(AAutoHelper.BuildMixedItemsGrouped(topPlaylists, "Top Playlists"));
 										combined.AddRange(AAutoHelper.BuildMixedItemsGrouped(artists, "Popular Artists"));
 
-										request.SendContainer(combined);
+										request.OnComplete(combined);
 									});
 								});
 							});
@@ -218,25 +285,98 @@ namespace Thump.Playback
 						break;
 					}
 				case eAADirectory.Podcasts:
-					break;
+					{
+						s_thumpData.GetPodcasts((podcasts) =>
+						{
+							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(podcasts, "Podcasts");
+							request.OnComplete(items);
+						});
+						break;
+					}
 				case eAADirectory.Library:
-					break;
+					{
+						// Library is a navigation hub, not a data fetch — it lists
+						// the four library sub-categories so the user can drill in.
+						List<MediaItem> categories = new List<MediaItem>();
+						categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Albums), "Albums"));
+						categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Playlists), "Playlists"));
+						categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Artists), "Artists"));
+						categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Genres), "Genres"));
+						request.OnComplete(categories);
+						break;
+					}
 				case eAADirectory.RecentlyPlayed:
-					break;
+					{
+						s_thumpData.GetRecentlyPlayed((recentlyPlayed) =>
+						{
+							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played");
+							request.OnComplete(items);
+						});
+						break;
+					}
 				case eAADirectory.RecentlyAdded:
-					break;
+					{
+						s_thumpData.GetRecentlyAdded((recentlyAdded) =>
+						{
+							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(recentlyAdded, "Recently Added");
+							request.OnComplete(items);
+						});
+						break;
+					}
 				case eAADirectory.TopPlaylists:
-					break;
+					{
+						s_thumpData.GetTopPlaylists((topPlaylists) =>
+						{
+							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(topPlaylists, "Top Playlists");
+							request.OnComplete(items);
+						});
+						break;
+					}
 				case eAADirectory.PopularArtists:
-					break;
+					{
+						s_thumpData.GetPopularArtists((popularArtists) =>
+						{
+							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(popularArtists, "Popular Artists");
+							request.OnComplete(items);
+						});
+						break;
+					}
 				case eAADirectory.Albums:
-					break;
+					{
+						s_thumpData.GetAlbums((albums) =>
+						{
+							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(albums, "Albums");
+							request.OnComplete(items);
+						});
+						break;
+					}
 				case eAADirectory.Playlists:
-					break;
+					{
+						s_thumpData.GetPlaylists((playlists) =>
+						{
+							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(playlists, "Playlists");
+							request.OnComplete(items);
+						});
+						break;
+					}
 				case eAADirectory.Artists:
-					break;
+					{
+						s_thumpData.GetArtists((artists) =>
+						{
+							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(artists, "Artists");
+							request.OnComplete(items);
+						});
+						break;
+					}
 				case eAADirectory.Genres:
-					break;
+					{
+						s_thumpData.GetGenres((genres) =>
+						{
+							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(genres, "Genres");
+							request.OnComplete(items);
+						});
+						break;
+					}
 			}
 
 			return new List<MediaItem>();
@@ -249,25 +389,25 @@ namespace Thump.Playback
 				case eAAObject.Album:
 					s_thumpData.GetAlbum(objectID, (album)=>
 					{
-						request.SendObject<PulseAlbum>(album.Tracks, objectType, objectID);
+						request.OnComplete<PulseAlbum>(album.Tracks, objectType, objectID);
 					});
 					break;
 				case eAAObject.Artist:
 					s_thumpData.GetTracksForArtist(objectID, (artistTracks) =>
 					{
-						request.SendObject<PulseTrack>(artistTracks, objectType, objectID);
+						request.OnComplete<PulseTrack>(artistTracks, objectType, objectID);
 					});
 					break;
 				case eAAObject.Playlist:
 					s_thumpData.GetPlaylist(objectID, (playlist) =>
 					{
-						request.SendObject<PulseAlbum>(playlist.Tracks, objectType, objectID);
+						request.OnComplete<PulseAlbum>(playlist.Tracks, objectType, objectID);
 					});
 					break;
 				case eAAObject.Genre:
 					s_thumpData.GetTracksForGenre(objectID, (genreTracks) =>
 					{
-						request.SendObject<PulseAlbum>(genreTracks, objectType, objectID);
+						request.OnComplete<PulseAlbum>(genreTracks, objectType, objectID);
 					});
 					break;
 			}

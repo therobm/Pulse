@@ -403,11 +403,15 @@ namespace Thump.Data
 		/// <returns></returns>
 		public bool IsTrackCached(PulseTrack track)
 		{
-			if (track == null || string.IsNullOrEmpty(track.Id))
+			return IsTrackCached(track.Id);
+		}
+		public bool IsTrackCached(string trackId)
+		{
+			if ( string.IsNullOrEmpty(trackId))
 			{
 				return false;
 			}
-			string blobKey = "track:" + track.Id;
+			string blobKey = "track:" + trackId;
 			bool cached = false;
 			m_cache.ExecuteSync(() =>
 			{
@@ -425,15 +429,19 @@ namespace Thump.Data
 		/// <param name="onComplete"></param>
 		public void CacheTrack(PulseTrack track, Action<bool> onComplete)
 		{
-			if (IsTrackCached(track))
+			CacheTrack(track.Id, onComplete);
+		}
+		public void CacheTrack(string trackId, Action<bool> onComplete)
+		{ 
+			if (IsTrackCached(trackId))
 			{
 				if (onComplete != null)
 					onComplete(true);
 				return;
 			}
 
-			string blobKey = "track:" + track.Id;
-			m_pulseClient.GetTrackAudio(track.Id, (data) =>
+			string blobKey = "track:" + trackId;
+			m_pulseClient.GetTrackAudio(trackId, (data) =>
 			{
 				if (data == null || data.Length == 0)
 				{
