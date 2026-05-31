@@ -349,7 +349,7 @@ namespace Pulse.Data
 			}
 		}
 
-		public override void Save()
+		public override void Save(string reason)
 		{
 			lock (m_saveLock)
 			{
@@ -360,17 +360,20 @@ namespace Pulse.Data
 					SqliteTransaction transaction = connection.BeginTransaction();
 					try
 					{
-						int written = 0;
-						written += SaveDirtyArtists(connection, transaction);
-						written += SaveDirtyAlbums(connection, transaction);
-						written += SaveDirtyTracks(connection, transaction);
-						written += SaveDirtyPlaylists(connection, transaction);
-						SaveAnalytics(connection, transaction);
+						int artists = SaveDirtyArtists(connection, transaction);
+						int albums = SaveDirtyAlbums(connection, transaction);
+						int tracks = SaveDirtyTracks(connection, transaction);
+						int playlists = SaveDirtyPlaylists(connection, transaction);
+						int analytics = SaveAnalytics(connection, transaction);
 						transaction.Commit();
 						sw.Stop();
+						int written = artists + albums + tracks + playlists + analytics;
 						if (written > 0)
 						{
-							Log.Info(-1, "PulseSqliteDatabase saved " + written + " dirty rows in " + sw.ElapsedMilliseconds + "ms");
+							Log.Info(-1, "PulseSqliteDatabase saved " + written + " dirty rows in " + sw.ElapsedMilliseconds + "ms"
+								+ " [" + reason + "]"
+								+ " (artists=" + artists + " albums=" + albums + " tracks=" + tracks
+								+ " playlists=" + playlists + " analytics=" + analytics + ")");
 						}
 					}
 					catch (Exception ex)
@@ -662,9 +665,9 @@ namespace Pulse.Data
 			}
 		}
 
-		private void SaveAnalytics(SqliteConnection connection, SqliteTransaction transaction)
+		private int SaveAnalytics(SqliteConnection connection, SqliteTransaction transaction)
 		{
-			if (!m_analytics.m_bIsDirty) { return; }
+			if (!m_analytics.m_bIsDirty) { return 0; }
 
 			SqliteCommand delete = connection.CreateCommand();
 			delete.Transaction = transaction;
@@ -681,6 +684,7 @@ namespace Pulse.Data
 				insert.ExecuteNonQuery();
 			}
 			m_analytics.m_bIsDirty = false;
+			return 1;
 		}
 
 		// Override the base RemoveTrack to also clean up SQLite. The base operation
@@ -1261,7 +1265,7 @@ namespace Pulse.Data
 			}
 
 			base.DeleteUser(userName);
-			Save();
+			Save("delete-user");
 		}
 	}
 }
