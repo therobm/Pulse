@@ -64,7 +64,7 @@ namespace Thump.Playback
 		/// the children synchronously. Async fetches need to block here or
 		/// return an empty list and push later via a different mechanism.
 		/// </summary>
-		public Func<MediaLibraryService.MediaLibrarySession, MediaSession.ControllerInfo, string, int, int, MediaLibraryService.LibraryParams, IList<MediaItem>> m_onGetChildren;
+		public Func<MediaLibraryService.MediaLibrarySession, MediaSession.ControllerInfo, string, int, int, MediaLibraryService.LibraryParams, IListenableFuture> m_onGetChildren;
 
 		/// <summary>Fired when a browser subscribes to a parent node. Most hosts can ignore this.</summary>
 		public Action<MediaLibraryService.MediaLibrarySession, MediaSession.ControllerInfo, string, MediaLibraryService.LibraryParams> m_onSubscribe;
@@ -194,7 +194,9 @@ namespace Thump.Playback
 			IList<MediaItem> children;
 			if (m_onGetChildren != null)
 			{
-				children = m_onGetChildren(session, browser, parentId, page, pageSize, libraryParams);
+
+				///THIS IS AN ASYNC CALL AND NEEDS TO RETURN  (IListenableFuture)CallbackToFutureAdapter.GetFuture(resolver);
+				return m_onGetChildren(session, browser, parentId, page, pageSize, libraryParams);
 			}
 			else
 			{

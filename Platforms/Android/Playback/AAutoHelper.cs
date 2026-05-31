@@ -14,6 +14,7 @@ namespace Thump.Playback
 		private CallbackToFutureAdapter.Completer m_completer;
 		private bool m_done;
 
+
 		public JObjectCallback(CallbackToFutureAdapter.Completer completer)
 		{
 			m_completer = completer;
@@ -27,14 +28,14 @@ namespace Thump.Playback
 			OnComplete(result);
 		}
 
-		public void SendContainer<T>(IEnumerable<T> data, string title) where T : PulseObject
+		public void SendContainer(List<MediaItem> data) 
 		{
-			List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(data, title);
-			Java.Lang.Object result = LibraryResult.OfItemList(items, AAStyles.BuildContentStyleParams());
+			Java.Lang.Object result = LibraryResult.OfItemList(data, AAStyles.BuildContentStyleParams());
 			OnComplete(result);
 		}
 
-		private void OnComplete(Java.Lang.Object result)
+
+		public void OnComplete(Java.Lang.Object result)
 		{
 			if (m_done)
 			{
@@ -47,28 +48,63 @@ namespace Thump.Playback
 
 	public class AAutoHelper
 	{
-	
-		/*
-		private class ChildrenResolver : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+		public class LoadContainerFunc : Java.Lang.Object, CallbackToFutureAdapter.IResolver
 		{
-			private ThumpLibraryCallback m_owner;
+			private ThumpMediaLibraryService m_owner;
 			private string m_parentId;
-			private MediaLibraryService.LibraryParams m_params;
+			private eAADirectory m_parent;
 
-			public ChildrenResolver(ThumpLibraryCallback owner, string parentId, MediaLibraryService.LibraryParams libraryParams)
+			public LoadContainerFunc(ThumpMediaLibraryService owner, eAADirectory parent, string parentId)
 			{
 				m_owner = owner;
 				m_parentId = parentId;
-				m_params = libraryParams;
+				m_parent = parent;
+			}
+
+			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
+			{
+				JObjectCallback onComplete = new JObjectCallback(completer);
+				m_owner.LoadContainer(m_parent, onComplete);
+				return null;
+			}
+		}
+		public class LoadObjectFunc : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+		{
+			private ThumpMediaLibraryService m_owner;
+			private string m_parentId;
+			private eAAObject m_object;
+
+			public LoadObjectFunc(ThumpMediaLibraryService owner, eAAObject aaObject, string parentId)
+			{
+				m_owner = owner;
+				m_parentId = parentId;
+				m_object = aaObject;
+			}
+
+			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
+			{
+				JObjectCallback onComplete = new JObjectCallback(completer);
+				m_owner.LoadObject(m_object, m_parentId, onComplete);
+				return null;
+			}
+		}
+
+		public class LoadJavaObjectFunc : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+		{
+			private Java.Lang.Object m_value;
+
+			public LoadJavaObjectFunc(Java.Lang.Object value)
+			{
+				m_value = value;
 			}
 
 			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
 			{
 				JObjectCallback guard = new JObjectCallback(completer);
-				m_owner.LoadChildren(m_parentId, m_params, guard);
+				guard.OnComplete(m_value);
 				return null;
 			}
-		}*/
+		}
 
 		public static List<MediaItem> BuildTrackItems(List<PulseTrack> tracks)
 		{

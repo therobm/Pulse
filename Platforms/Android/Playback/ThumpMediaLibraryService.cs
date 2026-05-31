@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Android.App;
@@ -5,16 +6,19 @@ using Android.Content;
 using Android.Content.PM;
 using Android.Net.Eap;
 using AndroidX.Annotations;
+using AndroidX.Concurrent.Futures;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.ExoPlayer;
 using AndroidX.Media3.ExoPlayer.Source;
 using AndroidX.Media3.Extractor;
 using AndroidX.Media3.Extractor.Mp3;
 using AndroidX.Media3.Session;
+using Google.Common.Util.Concurrent;
 using Java.Util;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Storage;
 using Thump.Data;
+using Thump.Platforms;
 using Thump.Pulse;
 
 namespace Thump.Playback
@@ -72,9 +76,9 @@ namespace Thump.Playback
 			library.m_onAddMediaItems = null;
 			library.m_onConnect = null;
 			library.m_onDisconnected = OnPhoneDisconnected;
-			library.m_onGetChildren = null;
-			library.m_onGetItem = null;
-			library.m_onGetLibraryRoot = null;
+			library.m_onGetChildren = OnGetChildren;
+			library.m_onGetItem = OnGetItem;
+			library.m_onGetLibraryRoot = OnGetLibraryRoot;
 			library.m_onPlaybackResumption = null;
 			library.m_onPlayerCommandRequest = null;
 			library.m_onPlayerInteractionFinished = null;
@@ -125,36 +129,94 @@ namespace Thump.Playback
 			return item;
 		}
 
-		public IList<MediaItem> OnGetChildren(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string parentId, int page, int pageSize, MediaLibraryService.LibraryParams libraryParams)
+		public IListenableFuture OnGetChildren(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string parentId, int page, int pageSize, MediaLibraryService.LibraryParams libraryParams)
 		{
 			eAADirectory dir = eAADirectory.Root;
-			if (!AAudoNavigation.TryGetDirectory(parentId, out dir))
-				return new List<MediaItem>();
-			/*
-			if (dir == eAADirectory.Root)
+			bool isDir = AAudoNavigation.TryGetDirectory(parentId, out dir);
+			
+			if (isDir && dir == eAADirectory.Root)
 			{
 				List<MediaItem> categories = new List<MediaItem>();
-				categories.Add(AAutoHelper.BuildBrowsableItem(s_homeId, "Home"));
-				categories.Add(AAutoHelper.BuildBrowsableItem(s_playlistsId, "Playlists"));
-				categories.Add(AAutoHelper.BuildBrowsableItem(s_libraryId, "Library"));
-				categories.Add(AAutoHelper.BuildBrowsableItem(s_podcastsId, "Podcasts"));
-				return categories;
+				categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Home), "Home"));
+				categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Playlists), "Playlists"));
+				categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Library), "Library"));
+				categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Podcasts), "Podcasts"));
+
+				AAutoHelper.LoadJavaObjectFunc loadHome = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfItemList(categories, AAStyles.BuildContentStyleParams()));
+				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadHome);
 			}
+			if (isDir) 
+			{ 
+				AAutoHelper.LoadContainerFunc loadContainer = new AAutoHelper.LoadContainerFunc(this, dir, parentId);
+				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadContainer);
+			}
+			else
+			{
+				eAAObject aaObject = eAAObject.Album;
+				//todo part out the objet type
+				if  (!AAudoNavigation.TryGetObject(parentId, out aaObject))
+				{
+					//hrm.. I dunno what this is...
+				}
+				string mediaId = AAutoHelper.ParseValue(parentId);
 
-			
-			ChildrenResolver resolver = new ChildrenResolver(this, parentId, libraryParams);
-			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(resolver);*/
 
-			return new List<MediaItem>();
+				AAutoHelper.LoadObjectFunc loadObject = new AAutoHelper.LoadObjectFunc(this, aaObject, mediaId);
+				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadObject);
+			}
 		}
 
 
-		public void LoadContainer(eAADirectory parent)
+		public IList<MediaItem> LoadContainer(eAADirectory parent, JObjectCallback request)
 		{
 			switch (parent)
 			{
 				case eAADirectory.Home:
-					break;
+					{
+						int tileLimit = 10;
+						List<MediaItem> combined = new List<MediaItem>();
+						s_thumpData.GetRecentlyPlayed((A)=>
+						{
+							List<PulseObject> recentlyPlayed = new List<PulseObject>();
+							for(int i = 0; i < A.Count && i < tileLimit; i++)
+							{
+								recentlyPlayed.Add(A[i]);
+							}
+
+							s_thumpData.GetRecentlyAdded((B)=>
+							{
+								List<PulseObject> added = new List<PulseObject>();
+								for (int i = 0; i < B.Count && i < tileLimit; i++)
+								{
+									added.Add(B[i]);
+								}
+								s_thumpData.GetTopPlaylists((C)=>
+								{
+									List<PulseObject> topPlaylists = new List<PulseObject>();
+									for (int i = 0; i < C.Count && i < tileLimit; i++)
+									{
+										topPlaylists.Add(C[i]);
+									}
+									s_thumpData.GetPopularArtists((D)=>
+									{
+										List<PulseObject> artists = new List<PulseObject>();
+										for (int i = 0; i < D.Count && i < tileLimit; i++)
+										{
+											artists.Add(D[i]);
+										}
+
+										combined.AddRange(AAutoHelper.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played"));
+										combined.AddRange(AAutoHelper.BuildMixedItemsGrouped(added, "Recently Added"));
+										combined.AddRange(AAutoHelper.BuildMixedItemsGrouped(topPlaylists, "Top Playlists"));
+										combined.AddRange(AAutoHelper.BuildMixedItemsGrouped(artists, "Popular Artists"));
+
+										request.SendContainer(combined);
+									});
+								});
+							});
+						});
+						break;
+					}
 				case eAADirectory.Podcasts:
 					break;
 				case eAADirectory.Library:
@@ -176,6 +238,8 @@ namespace Thump.Playback
 				case eAADirectory.Genres:
 					break;
 			}
+
+			return new List<MediaItem>();
 		}
 
 		public void LoadObject(eAAObject objectType, string objectID, JObjectCallback request)

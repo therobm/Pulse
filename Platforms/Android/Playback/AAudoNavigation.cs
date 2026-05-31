@@ -43,6 +43,13 @@ namespace Thump.Playback
 			{ eAADirectory.RecentlyAdded, "home_added" },
 			{ eAADirectory.TopPlaylists, "home_top" },
 			{ eAADirectory.PopularArtists, "home_popular" },
+		}; 
+		private static Dictionary<eAAObject, string> m_objects = new Dictionary<eAAObject, string>()
+		{
+			{ eAAObject.Album, "album" },
+			{ eAAObject.Artist, "artist" },
+			{ eAAObject.Playlist, "playlist" },
+			{ eAAObject.Genre, "genre" },
 		};
 
 		public static string GetId(eAADirectory directory)
@@ -69,6 +76,25 @@ namespace Thump.Playback
 			return false;
 		}
 
+		public static bool TryGetObject(string mediaId, out eAAObject aaObject)
+		{
+			int slash = mediaId.IndexOf('/');
+			if (slash >= 0)
+			{
+				 mediaId = mediaId.Substring(0, slash);
+			}
+
+			foreach (KeyValuePair<eAAObject, string> pair in m_objects)
+			{
+				if (pair.Value == mediaId)
+				{
+					aaObject = pair.Key;
+					return true;
+				}
+			}
+			aaObject = eAAObject.Album;
+			return false;
+		}
 
 
 	}
