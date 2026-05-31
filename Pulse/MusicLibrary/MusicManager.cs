@@ -398,7 +398,7 @@ namespace Pulse.MusicLibrary
 						+ " score=" + previousTrack.Score.WeightedScore.ToString("F3")
 						+ skipSuffix);
 
-					SaveDB();
+					SaveDB("track-streamed");
 				}
 			}
 
@@ -526,7 +526,7 @@ namespace Pulse.MusicLibrary
 
 			playlist.DurationSeconds = totalDuration;
 			m_database.CreateOrUpdate(playlist);
-			SaveDB();
+			SaveDB("playlist-import");
 
 			//Console.WriteLine("Pulse: Imported playlist \"" + name + "\": " + matched + " matched, " + missed + " missed, " + entries.Count + " total");
 			return playlist;
@@ -629,13 +629,13 @@ namespace Pulse.MusicLibrary
 		public void CreateOrUpdatePlaylist(PlaylistInfo playlist)
 		{
 			m_database.CreateOrUpdate(playlist);
-			SaveDB();
+			SaveDB("playlist-create-update");
 		}
 
 		public void DeletePlaylist(string playlistId)
 		{
 			m_database.DeletePlaylist(playlistId);
-			SaveDB();
+			SaveDB("playlist-delete");
 		}
 
 
@@ -682,9 +682,9 @@ namespace Pulse.MusicLibrary
 			sqliteDb.Load();
 		}
 
-		private void SaveDB()
+		private void SaveDB(string reason)
 		{
-			m_database.Save();
+			m_database.Save(reason);
 
 			JsonSerializerOptions options = new JsonSerializerOptions
 			{
@@ -768,7 +768,7 @@ namespace Pulse.MusicLibrary
 
 			Log.Info(-1, "Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_database.GetTrackCount());
 			m_scanning = false;
-			SaveDB();
+			SaveDB("scan-complete");
 		}
 
 		private void ProcessFile(string filePath, string musicRoot)
@@ -848,7 +848,7 @@ namespace Pulse.MusicLibrary
 			int count = Interlocked.Increment(ref m_processedSinceLastSave);
 			if (count % 500 == 0)
 			{
-				SaveDB();
+				SaveDB("scan-batch");
 			}
 		}
 

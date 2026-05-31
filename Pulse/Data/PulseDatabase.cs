@@ -38,7 +38,7 @@ namespace Pulse.Data
 		void CreateOrUpdate(ArtistInfo artist);
 
 
-		void Save();
+		void Save(string reason);
 
 		// Subsonic getPlayQueue / savePlayQueue / getBookmarks support (Flatline
 		// #168). Written through directly to the persistence layer -- not cached
@@ -346,7 +346,7 @@ namespace Pulse.Data
 			return true;
 		}
 
-		public abstract void Save();
+		public abstract void Save(string reason);
 
 		// Default no-op implementations (#168). PulseSqliteDatabase overrides them;
 		// these remain as harmless base defaults.
