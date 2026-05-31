@@ -378,16 +378,16 @@ namespace Thump.Playback
 			{
 				m_serviceData.GetAlbum(value, (album) =>
 				{
-					List<PulseTrack> songs;
+					List<PulseTrack> tracks;
 					if (album == null)
 					{
-						songs = new List<PulseTrack>();
+						tracks = new List<PulseTrack>();
 					}
 					else
 					{
-						songs = album.Songs;
+						tracks = album.Songs;
 					}
-					completer.Set(LibraryResult.OfItemList(BuildCollectionItems("albumplay/" + value, "albumshuffle/" + value, songs), styleParams));
+					completer.Set(LibraryResult.OfItemList(BuildContainerChildren("albumplay/" + value, "albumshuffle/" + value, tracks), styleParams));
 				});
 				return;
 			}
@@ -395,16 +395,16 @@ namespace Thump.Playback
 			{
 				m_serviceData.GetPlaylist(value, (playlist) =>
 				{
-					List<PulseTrack> songs;
+					List<PulseTrack> tracks;
 					if (playlist == null)
 					{
-						songs = new List<PulseTrack>();
+						tracks = new List<PulseTrack>();
 					}
 					else
 					{
-						songs = playlist.Songs;
+						tracks = playlist.Songs;
 					}
-					completer.Set(LibraryResult.OfItemList(BuildCollectionItems("playlistplay/" + value, "playlistshuffle/" + value, songs), styleParams));
+					completer.Set(LibraryResult.OfItemList(BuildContainerChildren("playlistplay/" + value, "playlistshuffle/" + value, tracks), styleParams));
 				});
 				return;
 			}
@@ -435,7 +435,7 @@ namespace Thump.Playback
 				genre.Name = value;
 				m_serviceData.GetTracksForGenre(genre, (tracks) =>
 				{
-					completer.Set(LibraryResult.OfItemList(BuildCollectionItems("genreplay/" + value, "genreshuffle/" + value, tracks), styleParams));
+					completer.Set(LibraryResult.OfItemList(BuildContainerChildren("genreplay/" + value, "genreshuffle/" + value, tracks), styleParams));
 				});
 				return;
 			}
@@ -527,13 +527,13 @@ namespace Thump.Playback
 				return false;
 			}
 			QueueDataRequest request = ParseQueueDataRequest(items[0].MediaId);
-			if (!request.m_isQueue)
+			if (request == null)
 			{
 				return false;
 			}
-			GetTracks(request, (songs) =>
+			GetTracks(request, (tracks) =>
 			{
-				m_prefetcher.LoadCollection(songs, 0, (startItem) =>
+				m_prefetcher.LoadCollection(tracks, 0, (startItem) =>
 				{
 					if (startItem == null)
 					{
@@ -550,7 +550,7 @@ namespace Thump.Playback
 			return true;
 		}
 
-		private bool TryExpandAddCollection(IList<MediaItem> items, OneShotCompleter completer)
+		private bool AppendToQueue(IList<MediaItem> items, OneShotCompleter completer)
 		{
 			if (items == null)
 			{
@@ -561,13 +561,13 @@ namespace Thump.Playback
 				return false;
 			}
 			QueueDataRequest request = ParseQueueDataRequest(items[0].MediaId);
-			if (!request.m_isQueue)
+			if (request == null)
 			{
 				return false;
 			}
-			GetTracks(request, (songs) =>
+			GetTracks(request, (tracks) =>
 			{
-				List<MediaItem> trackItems = BuildTrackItems(songs);
+				List<MediaItem> trackItems = BuildTrackItems(tracks);
 				Java.Util.ArrayList resolved = new Java.Util.ArrayList();
 				ResolveItems(trackItems, 0, resolved, completer);
 			});
@@ -576,24 +576,24 @@ namespace Thump.Playback
 
 		private void GetTracks(QueueDataRequest request, System.Action<List<PulseTrack>> onTracksLoaded)
 		{
-			if (request.m_queueType == eQueueType.Playlist)
+			if (request.m_queueSource == eQueueSource.Playlist)
 			{
 				m_serviceData.GetPlaylist(request.m_id, (playlist) =>
 				{
-					List<PulseTrack> songs;
+					List<PulseTrack> tracks;
 					if (playlist == null)
 					{
-						songs = new List<PulseTrack>();
+						tracks = new List<PulseTrack>();
 					}
 					else
 					{
-						songs = playlist.Songs;
+						tracks = playlist.Songs;
 					}
-					OnTracksLoaded(request, songs, onTracksLoaded);
+					OnTracksLoaded(request, tracks, onTracksLoaded);
 				});
 				return;
 			}
-			if (request.m_queueType == eQueueType.Genre)
+			if (request.m_queueSource == eQueueSource.Genre)
 			{
 				PulseGenre genre = new PulseGenre();
 				genre.Name = request.m_id;
@@ -603,23 +603,23 @@ namespace Thump.Playback
 				});
 				return;
 			}
-			if (request.m_queueType == eQueueType.Artist)
+			if (request.m_queueSource == eQueueSource.Artist)
 			{
 				GetArtistTracks(request, onTracksLoaded);
 				return;
 			}
 			m_serviceData.GetAlbum(request.m_id, (album) =>
 			{
-				List<PulseTrack> songs;
+				List<PulseTrack> tracks;
 				if (album == null)
 				{
-					songs = new List<PulseTrack>();
+					tracks = new List<PulseTrack>();
 				}
 				else
 				{
-					songs = album.Songs;
+					tracks = album.Songs;
 				}
-				OnTracksLoaded(request, songs, onTracksLoaded);
+				OnTracksLoaded(request, tracks, onTracksLoaded);
 			});
 		}
 
@@ -645,11 +645,11 @@ namespace Thump.Playback
 					return;
 				}
 				object gate = new object();
-				List<List<PulseTrack>> albumSongs = new List<List<PulseTrack>>();
+				List<List<PulseTrack>> tracksPerAlbum = new List<List<PulseTrack>>();
 				bool[] albumDelivered = new bool[albumCount];
 				for (int idx = 0; idx < albumCount; idx++)
 				{
-					albumSongs.Add(new List<PulseTrack>());
+					tracksPerAlbum.Add(new List<PulseTrack>());
 					albumDelivered[idx] = false;
 				}
 				int pendingAlbums = albumCount;
@@ -668,12 +668,12 @@ namespace Thump.Playback
 							albumDelivered[albumIndex] = true;
 							if (fetched != null)
 							{
-								List<PulseTrack> fetchedSongs = fetched.Songs;
-								if (fetchedSongs != null)
+								List<PulseTrack> fetchedTracks = fetched.Songs;
+								if (fetchedTracks != null)
 								{
-									for (int songIdx = 0; songIdx < fetchedSongs.Count; songIdx++)
+									for (int trackIdx = 0; trackIdx < fetchedTracks.Count; trackIdx++)
 									{
-										albumSongs[albumIndex].Add(fetchedSongs[songIdx]);
+										tracksPerAlbum[albumIndex].Add(fetchedTracks[trackIdx]);
 									}
 								}
 							}
@@ -683,10 +683,10 @@ namespace Thump.Playback
 								List<PulseTrack> combined = new List<PulseTrack>();
 								for (int collectIdx = 0; collectIdx < albumCount; collectIdx++)
 								{
-									List<PulseTrack> slot = albumSongs[collectIdx];
-									for (int songIdx = 0; songIdx < slot.Count; songIdx++)
+									List<PulseTrack> slot = tracksPerAlbum[collectIdx];
+									for (int trackIdx = 0; trackIdx < slot.Count; trackIdx++)
 									{
-										combined.Add(slot[songIdx]);
+										combined.Add(slot[trackIdx]);
 									}
 								}
 								OnTracksLoaded(request, combined, onTracks);
@@ -697,16 +697,16 @@ namespace Thump.Playback
 			});
 		}
 
-		private static void OnTracksLoaded(QueueDataRequest request, List<PulseTrack> songs, System.Action<List<PulseTrack>> onTracks)
+		private static void OnTracksLoaded(QueueDataRequest request, List<PulseTrack> tracks, System.Action<List<PulseTrack>> onTracks)
 		{
 			List<PulseTrack> ordered;
-			if (songs == null)
+			if (tracks == null)
 			{
 				ordered = new List<PulseTrack>();
 			}
 			else
 			{
-				ordered = songs;
+				ordered = tracks;
 			}
 			if (request.m_isShuffled)
 			{
@@ -718,7 +718,10 @@ namespace Thump.Playback
 				ShuffleTracks(shuffled);
 				ordered = shuffled;
 			}
-			onTracks(ordered);
+			if (onTracks != null)
+			{
+				onTracks(ordered);
+			}
 		}
 
 		private static void ShuffleTracks(List<PulseTrack> tracks)
@@ -733,81 +736,57 @@ namespace Thump.Playback
 			}
 		}
 
+		// Returns null when the mediaId doesn't encode a queue source. The bool
+		// "did this parse" flag the struct used to carry was just this signal in
+		// a different shape; a null return says the same thing without needing a
+		// member on the result.
 		private static QueueDataRequest ParseQueueDataRequest(string mediaId)
 		{
-			QueueDataRequest request = new QueueDataRequest();
-			request.m_isQueue = false;
-			request.m_queueType = eQueueType.Album;
-			request.m_isShuffled = false;
-			request.m_id = "";
 			if (string.IsNullOrEmpty(mediaId))
 			{
-				return request;
+				return null;
 			}
 			if (mediaId.StartsWith("albumplay/"))
 			{
-				request.m_isQueue = true;
-				request.m_queueType = eQueueType.Album;
-				request.m_isShuffled = false;
-				request.m_id = mediaId.Substring("albumplay/".Length);
-				return request;
+				return BuildQueueDataRequest(eQueueSource.Album, false, mediaId.Substring("albumplay/".Length));
 			}
 			if (mediaId.StartsWith("albumshuffle/"))
 			{
-				request.m_isQueue = true;
-				request.m_queueType = eQueueType.Album;
-				request.m_isShuffled = true;
-				request.m_id = mediaId.Substring("albumshuffle/".Length);
-				return request;
+				return BuildQueueDataRequest(eQueueSource.Album, true, mediaId.Substring("albumshuffle/".Length));
 			}
 			if (mediaId.StartsWith("playlistplay/"))
 			{
-				request.m_isQueue = true;
-				request.m_queueType = eQueueType.Playlist;
-				request.m_isShuffled = false;
-				request.m_id = mediaId.Substring("playlistplay/".Length);
-				return request;
+				return BuildQueueDataRequest(eQueueSource.Playlist, false, mediaId.Substring("playlistplay/".Length));
 			}
 			if (mediaId.StartsWith("playlistshuffle/"))
 			{
-				request.m_isQueue = true;
-				request.m_queueType = eQueueType.Playlist;
-				request.m_isShuffled = true;
-				request.m_id = mediaId.Substring("playlistshuffle/".Length);
-				return request;
+				return BuildQueueDataRequest(eQueueSource.Playlist, true, mediaId.Substring("playlistshuffle/".Length));
 			}
 			if (mediaId.StartsWith("artistplay/"))
 			{
-				request.m_isQueue = true;
-				request.m_queueType = eQueueType.Artist;
-				request.m_isShuffled = false;
-				request.m_id = mediaId.Substring("artistplay/".Length);
-				return request;
+				return BuildQueueDataRequest(eQueueSource.Artist, false, mediaId.Substring("artistplay/".Length));
 			}
 			if (mediaId.StartsWith("artistshuffle/"))
 			{
-				request.m_isQueue = true;
-				request.m_queueType = eQueueType.Artist;
-				request.m_isShuffled = true;
-				request.m_id = mediaId.Substring("artistshuffle/".Length);
-				return request;
+				return BuildQueueDataRequest(eQueueSource.Artist, true, mediaId.Substring("artistshuffle/".Length));
 			}
 			if (mediaId.StartsWith("genreplay/"))
 			{
-				request.m_isQueue = true;
-				request.m_queueType = eQueueType.Genre;
-				request.m_isShuffled = false;
-				request.m_id = mediaId.Substring("genreplay/".Length);
-				return request;
+				return BuildQueueDataRequest(eQueueSource.Genre, false, mediaId.Substring("genreplay/".Length));
 			}
 			if (mediaId.StartsWith("genreshuffle/"))
 			{
-				request.m_isQueue = true;
-				request.m_queueType = eQueueType.Genre;
-				request.m_isShuffled = true;
-				request.m_id = mediaId.Substring("genreshuffle/".Length);
-				return request;
+				return BuildQueueDataRequest(eQueueSource.Genre, true, mediaId.Substring("genreshuffle/".Length));
 			}
+			return null;
+		}
+
+		private static QueueDataRequest BuildQueueDataRequest(eQueueSource source, bool isShuffled, string id)
+		{
+			QueueDataRequest request = new QueueDataRequest();
+			request.m_queueSource = source;
+			request.m_isShuffled = isShuffled;
+			request.m_id = id;
 			return request;
 		}
 
@@ -842,7 +821,7 @@ namespace Thump.Playback
 			return items;
 		}
 
-		private static List<MediaItem> BuildCollectionItems(string playMediaId, string shuffleMediaId, List<PulseTrack> tracks)
+		private static List<MediaItem> BuildContainerChildren(string playMediaId, string shuffleMediaId, List<PulseTrack> tracks)
 		{
 			List<MediaItem> items = new List<MediaItem>();
 			items.Add(BuildPlayableItem(playMediaId, "Play all", ""));
@@ -1122,18 +1101,9 @@ namespace Thump.Playback
 			return mediaId.Substring("track/".Length);
 		}
 
-		private enum eQueueType
-		{
-			Album,
-			Playlist,
-			Artist,
-			Genre
-		}
-
 		private class QueueDataRequest
 		{
-			public bool m_isQueue;
-			public eQueueType m_queueType;
+			public eQueueSource m_queueSource;
 			public bool m_isShuffled;
 			public string m_id;
 		}
@@ -1212,7 +1182,7 @@ namespace Thump.Playback
 			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
 			{
 				OneShotCompleter guard = new OneShotCompleter(completer);
-				bool handled = m_owner.TryExpandAddCollection(m_items, guard);
+				bool handled = m_owner.AppendToQueue(m_items, guard);
 				if (handled)
 				{
 					return null;
