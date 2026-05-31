@@ -8,6 +8,7 @@ using Thump.Pulse;
 
 namespace Thump.Playback
 {
+	/*
 	public class ThumpLibraryCallback : Java.Lang.Object, MediaLibraryService.MediaLibrarySession.ICallback
 	{
 		private const string s_rootId = "root";
@@ -471,7 +472,7 @@ namespace Thump.Playback
 				MediaItem resolvedItem = item;
 				if (isAvailable)
 				{
-					Android.Net.Uri uri = MediaItemBuilder.GetURI(track.Id);
+					Android.Net.Uri uri = AndroidMediaItemBuilder.GetURI(track.Id);
 					resolvedItem = item.BuildUpon().SetUri(uri).Build();
 				}
 				resolved.Add(resolvedItem);
@@ -508,7 +509,7 @@ namespace Thump.Playback
 				MediaItem resolvedItem = item;
 				if (isAvailable)
 				{
-					Android.Net.Uri uri = MediaItemBuilder.GetURI(trackId);
+					Android.Net.Uri uri = AndroidMediaItemBuilder.GetURI(trackId);
 					resolvedItem = item.BuildUpon().SetUri(uri).Build();
 				}
 				resolved.Add(resolvedItem);
@@ -1230,5 +1231,5 @@ namespace Thump.Playback
 				return null;
 			}
 		}
-	}
+	}*/
 }

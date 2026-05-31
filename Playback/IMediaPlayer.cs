@@ -19,7 +19,7 @@ namespace Thump.Playback
 		All,
 	}
 
-	public interface IThumpPlayer
+	public interface IMediaPlayer
 	{
 		void Play(List<PulseTrack> tracks, int startIndex);
 		void Pause();

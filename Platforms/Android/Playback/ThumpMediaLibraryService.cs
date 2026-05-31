@@ -1,30 +1,42 @@
+using System.Collections.Generic;
 using System.IO;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
+using Android.Net.Eap;
+using AndroidX.Annotations;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.ExoPlayer;
 using AndroidX.Media3.ExoPlayer.Source;
 using AndroidX.Media3.Extractor;
 using AndroidX.Media3.Extractor.Mp3;
 using AndroidX.Media3.Session;
+using Java.Util;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Storage;
 using Thump.Data;
 using Thump.Pulse;
 
 namespace Thump.Playback
 {
+	
+
+	/// <summary>
+	/// A lightweight process for Android's media player to leverage so it can access
+	/// Thump specific data and functionality
+	/// </summary>
 	[Service(Exported = true, Enabled = true, Name = "com.therobm.thump.ThumpPlaybackService", ForegroundServiceType = ForegroundService.TypeMediaPlayback)]
 	[IntentFilter(new string[] { "androidx.media3.session.MediaLibraryService", "android.media.browse.MediaBrowserService" })]
-	public class ThumpPlaybackService : MediaLibraryService
+	public class ThumpMediaLibraryService : MediaLibraryService
 	{
 		/// <summary>
 		/// A special sneaky global so the media service can access our data
 		/// </summary>
-		public static ThumpData s_ThumpData;
+		public static ThumpData s_thumpData;
 
+		
+		
 		private IExoPlayer m_player;
-		private QueuePrefetcher m_prefetcher;
 		private MediaLibraryService.MediaLibrarySession m_session;
 		private CarConnectionReceiver m_carReceiver;
 
@@ -32,9 +44,9 @@ namespace Thump.Playback
 		{
 			base.OnCreate();
 
-			if (s_ThumpData == null)
+			if (s_thumpData == null)
 			{
-				s_ThumpData = BuildThumpData();
+				s_thumpData = BuildThumpData();
 			}
 
 			ExoPlayerBuilder builder = new ExoPlayerBuilder(this);
@@ -50,15 +62,29 @@ namespace Thump.Playback
 			DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
 			extractorsFactory.SetMp3ExtractorFlags( Mp3Extractor.FlagEnableConstantBitrateSeeking | Mp3Extractor.FlagDisableId3Metadata);
 
-			ByteArrayDataSourceFactory dataSourceFactory = new ByteArrayDataSourceFactory(s_ThumpData);
+			AndroidMediaDataSourceFactory dataSourceFactory = new AndroidMediaDataSourceFactory(s_thumpData);
 			DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory);
 			builder.SetMediaSourceFactory(mediaSourceFactory);
 
 			m_player = builder.Build();
 
-			m_prefetcher = new QueuePrefetcher(m_player, s_ThumpData);
+			AndroidMediaLibraryCallback library = new AndroidMediaLibraryCallback();
+			library.m_onAddMediaItems = null;
+			library.m_onConnect = null;
+			library.m_onDisconnected = OnPhoneDisconnected;
+			library.m_onGetChildren = null;
+			library.m_onGetItem = null;
+			library.m_onGetLibraryRoot = null;
+			library.m_onPlaybackResumption = null;
+			library.m_onPlayerCommandRequest = null;
+			library.m_onPlayerInteractionFinished = null;
+			library.m_onPostConnect = null;
+			library.m_onSetMediaItems = null;
+			library.m_onSubscribe = null;
+			library.m_onUnsubscribe = null;
 
-			MediaLibraryService.MediaLibrarySession.Builder sessionBuilder = new MediaLibraryService.MediaLibrarySession.Builder(this, m_player, new ThumpLibraryCallback(s_ThumpData, m_prefetcher));
+
+			MediaLibrarySession.Builder sessionBuilder = new MediaLibrarySession.Builder(this, m_player, library);
 			PendingIntent sessionActivity = BuildSessionActivity();
 			if (sessionActivity != null)
 			{
@@ -75,6 +101,111 @@ namespace Thump.Playback
 			else
 			{
 				RegisterReceiver(m_carReceiver, carFilter);
+			}
+		}
+
+		public void OnPhoneDisconnected(MediaSession session, MediaSession.ControllerInfo controller)
+		{
+			bool isCarController = session.IsAutoCompanionController(controller) || session.IsAutomotiveController(controller);
+			if (!isCarController)
+			{
+				return;
+			}
+			PausePlayback();
+		}
+
+		public MediaItem OnGetLibraryRoot(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, MediaLibraryService.LibraryParams libraryParams)
+		{
+			MediaItem root = AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Root), "Thump");
+			return root;
+		}
+		public MediaItem OnGetItem(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string mediaId)
+		{
+			MediaItem item = AAutoHelper.BuildItemForId(mediaId);
+			return item;
+		}
+
+		public IList<MediaItem> OnGetChildren(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string parentId, int page, int pageSize, MediaLibraryService.LibraryParams libraryParams)
+		{
+			eAADirectory dir = eAADirectory.Root;
+			if (!AAudoNavigation.TryGetDirectory(parentId, out dir))
+				return new List<MediaItem>();
+			/*
+			if (dir == eAADirectory.Root)
+			{
+				List<MediaItem> categories = new List<MediaItem>();
+				categories.Add(AAutoHelper.BuildBrowsableItem(s_homeId, "Home"));
+				categories.Add(AAutoHelper.BuildBrowsableItem(s_playlistsId, "Playlists"));
+				categories.Add(AAutoHelper.BuildBrowsableItem(s_libraryId, "Library"));
+				categories.Add(AAutoHelper.BuildBrowsableItem(s_podcastsId, "Podcasts"));
+				return categories;
+			}
+
+			
+			ChildrenResolver resolver = new ChildrenResolver(this, parentId, libraryParams);
+			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(resolver);*/
+
+			return new List<MediaItem>();
+		}
+
+
+		public void LoadContainer(eAADirectory parent)
+		{
+			switch (parent)
+			{
+				case eAADirectory.Home:
+					break;
+				case eAADirectory.Podcasts:
+					break;
+				case eAADirectory.Library:
+					break;
+				case eAADirectory.RecentlyPlayed:
+					break;
+				case eAADirectory.RecentlyAdded:
+					break;
+				case eAADirectory.TopPlaylists:
+					break;
+				case eAADirectory.PopularArtists:
+					break;
+				case eAADirectory.Albums:
+					break;
+				case eAADirectory.Playlists:
+					break;
+				case eAADirectory.Artists:
+					break;
+				case eAADirectory.Genres:
+					break;
+			}
+		}
+
+		public void LoadObject(eAAObject objectType, string objectID, JObjectCallback request)
+		{
+			switch (objectType)
+			{
+				case eAAObject.Album:
+					s_thumpData.GetAlbum(objectID, (album)=>
+					{
+						request.SendObject<PulseAlbum>(album.Tracks, objectType, objectID);
+					});
+					break;
+				case eAAObject.Artist:
+					s_thumpData.GetTracksForArtist(objectID, (artistTracks) =>
+					{
+						request.SendObject<PulseTrack>(artistTracks, objectType, objectID);
+					});
+					break;
+				case eAAObject.Playlist:
+					s_thumpData.GetPlaylist(objectID, (playlist) =>
+					{
+						request.SendObject<PulseAlbum>(playlist.Tracks, objectType, objectID);
+					});
+					break;
+				case eAAObject.Genre:
+					s_thumpData.GetTracksForGenre(objectID, (genreTracks) =>
+					{
+						request.SendObject<PulseAlbum>(genreTracks, objectType, objectID);
+					});
+					break;
 			}
 		}
 

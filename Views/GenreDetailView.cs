@@ -157,7 +157,7 @@ namespace Thump.Views
 		{
 			base.Initialize();
 			m_titleLabel.Text = m_genre.Name;
-			m_metaLabel.Text = m_genre.SongCount + " songs  ·  " + m_genre.AlbumCount + " albums";
+			m_metaLabel.Text = m_genre.TrackCount + " songs  ·  " + m_genre.AlbumCount + " albums";
 			MainView.Data.GetTracksForGenre(m_genre, OnTracksLoaded);
 		}
 

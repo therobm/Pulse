@@ -3,7 +3,7 @@ using System.Threading;
 using Thump.Data;
 
 namespace Thump.Playback
-{
+{/*
 	[Android.Content.ContentProvider(new string[] { "com.therobm.thump.coverart" }, Exported = true)]
 	public class ThumpCoverArtProvider : Android.Content.ContentProvider
 	{
@@ -50,7 +50,7 @@ namespace Thump.Playback
 					return null;
 				}
 
-				ThumpData data = ThumpPlaybackService.s_ThumpData;
+				ThumpData data = ThumpMediaLibraryService.s_ThumpData;
 				if (data == null)
 				{
 					return null;
@@ -81,5 +81,5 @@ namespace Thump.Playback
 				return null;
 			}
 		}
-	}
+	}*/
 }

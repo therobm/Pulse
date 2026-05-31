@@ -3,7 +3,7 @@ using Thump.Pulse;
 
 namespace Thump.Playback
 {
-	public class StubThumpPlayer : IThumpPlayer
+	public class StubThumpPlayer : IMediaPlayer
 	{
 		public void Play(List<PulseTrack> tracks, int startIndex)
 		{

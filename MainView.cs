@@ -53,7 +53,7 @@ namespace Thump
 		private int m_currentQueueIndex;
 		private PulseTrack m_currentTrack;
 		private ThumpData m_data;
-		private IThumpPlayer m_player;
+		private IMediaPlayer m_player;
 		private ePlaybackState m_playbackState = ePlaybackState.Idle;
 		private long m_currentDurationMs;
 		private NowPlayingView m_nowPlayingView;
@@ -97,7 +97,7 @@ namespace Thump
 			m_data = new ThumpData(m_pulseClient, m_cache);
 
 #if ANDROID
-			m_player = new AndroidThumpPlayer(this, m_data);
+			m_player = new ThumpAndroidPlayer(this, m_data);
 #else
 			m_player = new StubThumpPlayer();
 #endif

@@ -1,9 +1,41 @@
 using System;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.DataSource;
+using Thump.Data;
 
 namespace Thump.Playback
 {
+	/// <summary>
+	/// Pair to <see cref="AndroidMediaDataSource"/>. Media3 holds a single
+	/// factory and asks it for a fresh <see cref="IDataSource"/> per request.
+	/// The factory propagates the host's <see cref="m_onResolveBytes"/> to
+	/// every data source it creates, so the host wires up the resolver once on
+	/// the factory and every created data source inherits it.
+	/// </summary>
+	public class AndroidMediaDataSourceFactory : Java.Lang.Object, IDataSourceFactory
+	{
+		/// <summary>The byte resolver every created data source receives. Set this once before handing the factory to Media3.</summary>
+		public Func<Android.Net.Uri, byte[]> m_onResolveBytes;
+
+		/// <summary>
+		/// The android process needs access to our data pipeline to fetch
+		/// info and track data
+		/// </summary>
+		private ThumpData m_data;
+
+		public AndroidMediaDataSourceFactory(ThumpData data)
+		{
+			m_data = data;
+		}
+
+		public IDataSource CreateDataSource()
+		{
+			AndroidMediaDataSource source = new AndroidMediaDataSource(m_data);
+			source.m_onResolveBytes = m_onResolveBytes;
+			return source;
+		}
+	}
+
 	/// <summary>
 	/// The minimum boundary between Thump code and Media3's
 	/// <see cref="IDataSource"/> contract. Media3 opens a fresh data source for
@@ -21,6 +53,39 @@ namespace Thump.Playback
 	public class AndroidMediaDataSource : BaseDataSource
 	{
 		/// <summary>
+		/// A skipahead function to find where audio data actually starts
+		/// </summary>
+		/// <param name="bytes"></param>
+		/// <returns></returns>
+		private static int GetAudioStartOffset(byte[] bytes)
+		{
+			// Skip a leading ID3v2 tag so the stream starts at the first audio frame.
+			if (bytes.Length < 10)
+			{
+				return 0;
+			}
+			if (bytes[0] != 0x49 || bytes[1] != 0x44 || bytes[2] != 0x33)   // "ID3"
+			{
+				return 0;
+			}
+			int flags = bytes[5];
+			int size = ((bytes[6] & 0x7F) << 21)
+					 | ((bytes[7] & 0x7F) << 14)
+					 | ((bytes[8] & 0x7F) << 7)
+					 | (bytes[9] & 0x7F);          // synchsafe int
+			int offset = 10 + size;
+			if ((flags & 0x10) != 0)                 // footer present
+			{
+				offset = offset + 10;
+			}
+			if (offset < 10 || offset > bytes.Length)
+			{
+				return 0;
+			}
+			return offset;
+		}
+
+		/// <summary>
 		/// Host-supplied resolver. Given the URI Media3 is asking for, the
 		/// host returns the full bytes of the asset, or null if the asset
 		/// can't be served. A null result causes Open to throw an IOException,
@@ -28,13 +93,15 @@ namespace Thump.Playback
 		/// </summary>
 		public Func<Android.Net.Uri, byte[]> m_onResolveBytes;
 
+		private ThumpData m_data;
 		private byte[] m_bytes;
 		private Android.Net.Uri m_uri;
 		private int m_readPosition;
 		private int m_bytesRemaining;
 
-		public AndroidMediaDataSource() : base(false)
+		public AndroidMediaDataSource(ThumpData data) : base(false)
 		{
+			m_data = data;
 		}
 
 		/// <inheritdoc/>
@@ -42,19 +109,24 @@ namespace Thump.Playback
 		{
 			TransferInitializing(dataSpec);
 			m_uri = dataSpec.Uri;
-
-			if (m_onResolveBytes == null)
+			string trackId = m_uri.Host;
+			if (string.IsNullOrEmpty(trackId))
 			{
-				throw new Java.IO.IOException("No byte resolver attached for " + m_uri);
+				trackId = m_uri.LastPathSegment;
 			}
-			m_bytes = m_onResolveBytes(m_uri);
+
+			//Grab the bytes for the requested track
+			m_bytes = m_data.GetTrackAudioData(trackId);
+
 			if (m_bytes == null)
 			{
 				throw new Java.IO.IOException("No audio data for " + m_uri);
 			}
 
-			m_readPosition = (int)dataSpec.Position;
-			m_bytesRemaining = m_bytes.Length - (int)dataSpec.Position;
+			int audioStart = GetAudioStartOffset(m_bytes);
+
+			m_readPosition = audioStart + (int)dataSpec.Position;
+			m_bytesRemaining = m_bytes.Length - m_readPosition;
 			if (dataSpec.Length != C.LengthUnset)
 			{
 				m_bytesRemaining = (int)System.Math.Min(m_bytesRemaining, dataSpec.Length);
@@ -105,23 +177,5 @@ namespace Thump.Playback
 		}
 	}
 
-	/// <summary>
-	/// Pair to <see cref="AndroidMediaDataSource"/>. Media3 holds a single
-	/// factory and asks it for a fresh <see cref="IDataSource"/> per request.
-	/// The factory propagates the host's <see cref="m_onResolveBytes"/> to
-	/// every data source it creates, so the host wires up the resolver once on
-	/// the factory and every created data source inherits it.
-	/// </summary>
-	public class AndroidMediaDataSourceFactory : Java.Lang.Object, IDataSourceFactory
-	{
-		/// <summary>The byte resolver every created data source receives. Set this once before handing the factory to Media3.</summary>
-		public Func<Android.Net.Uri, byte[]> m_onResolveBytes;
-
-		public IDataSource CreateDataSource()
-		{
-			AndroidMediaDataSource source = new AndroidMediaDataSource();
-			source.m_onResolveBytes = m_onResolveBytes;
-			return source;
-		}
-	}
+	
 }

@@ -3,6 +3,7 @@ using Thump.Data;
 
 namespace Thump.Playback
 {
+	/*
 	public class ByteArrayDataSourceFactory : Java.Lang.Object, IDataSourceFactory
 	{
 		private ThumpData m_data;
@@ -16,5 +17,5 @@ namespace Thump.Playback
 		{
 			return new ByteArrayDataSource(m_data);
 		}
-	}
+	}*/
 }

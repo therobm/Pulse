@@ -8,6 +8,7 @@ using Thump.Pulse;
 
 namespace Thump.Playback
 {
+	/*
 	public class QueuePrefetcher
 	{
 		private const int s_window = 10;
@@ -67,7 +68,7 @@ namespace Thump.Playback
 					}
 					return;
 				}
-				MediaItem item = MediaItemBuilder.Build(startTrack);
+				MediaItem item = AndroidMediaItemBuilder.Build(startTrack);
 				if (onStartResolved != null)
 				{
 					onStartResolved(item);
@@ -132,7 +133,7 @@ namespace Thump.Playback
 					}
 					if (isAvailable)
 					{
-						m_player.AddMediaItem(MediaItemBuilder.Build(next));
+						m_player.AddMediaItem(AndroidMediaItemBuilder.Build(next));
 					}
 					m_addedThrough = m_addedThrough + 1;
 					m_fetching = false;
@@ -141,5 +142,5 @@ namespace Thump.Playback
 		}
 
 
-	}
+	}*/
 }
