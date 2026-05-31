@@ -1,50 +1,31 @@
 using System;
 using Android.Content;
+using Android.Runtime;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.Session;
 using Google.Common.Util.Concurrent;
 
 namespace Thump.Playback
 {
-	// =============================================================================
-	// AndroidMediaController
-	//
-	// The minimum boundary between Thump code and Media3 / ExoPlayer. Everything
-	// on this class's surface speaks in Media3 types (MediaItem, ints, longs);
-	// nothing here knows about PulseTrack, PulsePlaylist, MainView, ThumpData,
-	// or any other Thump concept. The class:
-	//
-	//   1. Bootstraps an AndroidX.Media3.Session.MediaController bound to a
-	//      named MediaSessionService (the host passes the service Type).
-	//   2. Exposes the slice of MediaController operations the rest of Thump
-	//      actually uses (load / play / pause / seek / append / insert / mode).
-	//   3. Reports state through read-only getters (poll) plus one optional
-	//      Action that fires when the controller has bound to the session.
-	//
-	// What it deliberately does NOT do:
-	//   - Convert Thump types to MediaItems. The host builds MediaItems.
-	//   - Track a parallel queue of Thump objects. The MediaController already
-	//     holds the queue; the host can keep its own parallel structure if it
-	//     needs to map MediaItem.MediaId back to a Thump entity.
-	//   - Tick / poll on a timer. The host decides if and how to poll the
-	//     getters or wire up a Media3 listener.
-	//   - Fire "track changed" / "playback state changed" / "ended" signals.
-	//     Same reason: those are derivations on top of the getters, and the
-	//     host owns the derivation policy.
-	//
-	// The only outbound signal is `m_onConnected`. Everything else is pull.
-	// =============================================================================
+	/// <summary>
+	/// The minimum boundary between Thump code and the running Media3 session.
+	/// Nothing on this class's surface knows about PulseTrack, MainView,
+	/// ThumpData, or any other Thump concept — every method takes / returns
+	/// Media3 types or primitives. Whoever owns an instance is responsible for
+	/// building MediaItems, maintaining any parallel Thump-side queue, and
+	/// deciding how (or whether) to poll for state changes. The class only
+	/// emits one outbound signal — <see cref="m_onConnected"/> — when the
+	/// async bind to the session completes.
+	/// </summary>
 	public class AndroidMediaController
 	{
-		// Media3 PlaybackState integer values, surfaced so callers can compare
-		// against the result of PlaybackState() without re-reaching into Media3.
-		// Mirrors the values returned by IPlayer.PlaybackState.
+		/// <summary>Media3 PlaybackState integer values, mirrored so callers can compare without re-reaching into Media3.</summary>
 		public const int PlaybackStateIdle = 1;
 		public const int PlaybackStateBuffering = 2;
 		public const int PlaybackStateReady = 3;
 		public const int PlaybackStateEnded = 4;
 
-		// Media3 RepeatMode integer values.
+		/// <summary>Media3 RepeatMode integer values.</summary>
 		public const int RepeatModeOff = 0;
 		public const int RepeatModeOne = 1;
 		public const int RepeatModeAll = 2;
@@ -59,22 +40,20 @@ namespace Thump.Playback
 		// listener can call .Get on it once Media3 signals readiness.
 		private IListenableFuture m_controllerFuture;
 
-		// Optional one-shot callback. Set by the host before or after
-		// construction; the class null-checks before invoking. Fires once on
-		// the main thread when the controller has bound to its session.
-		// If construction completes after the host already sets this, the call
-		// still fires (it runs from OnControllerConnected, which executes after
-		// BuildAsync resolves).
+		/// <summary>
+		/// Optional one-shot callback. Set by the host before or after
+		/// construction; the class null-checks before invoking. Fires once on
+		/// the main thread when the controller has bound to its session.
+		/// </summary>
 		public Action m_onConnected;
 
-		// ---------------------------------------------------------------------
-		// Construction
-		// ---------------------------------------------------------------------
-
-		// Begins the async bind to the MediaSessionService identified by
-		// `serviceType` (e.g. typeof(ThumpPlaybackService)). The constructor
-		// returns immediately; the controller is not usable until
-		// `m_onConnected` fires (or IsConnected() returns true).
+		/// <summary>
+		/// Begins the async bind to the MediaSessionService identified by
+		/// <paramref name="serviceType"/> (e.g. typeof(ThumpPlaybackService)).
+		/// The constructor returns immediately; the controller is not usable
+		/// until <see cref="m_onConnected"/> fires (or <see cref="IsConnected"/>
+		/// returns true).
+		/// </summary>
 		public AndroidMediaController(Type serviceType)
 		{
 			Context context = Android.App.Application.Context;
@@ -107,22 +86,13 @@ namespace Thump.Playback
 			}
 		}
 
-		// ---------------------------------------------------------------------
-		// State (read-only getters)
-		// ---------------------------------------------------------------------
-
-		// True once the async bind has completed and the controller is usable.
-		// False before connect and after Release. Every other getter and every
-		// mutator returns / no-ops sensibly while disconnected, so callers can
-		// skip this guard if they don't care to distinguish.
+		/// <summary>True once the async bind has completed and the controller is usable. False before connect and after <see cref="Release"/>.</summary>
 		public bool IsConnected()
 		{
 			return m_controller != null;
 		}
 
-		// True if the controller currently has playback active (Media3 considers
-		// "playing" to require Ready state + playWhenReady + no suppression).
-		// Returns false while disconnected.
+		/// <summary>True if playback is currently active (Media3 requires Ready state + playWhenReady + no suppression). False while disconnected.</summary>
 		public bool IsPlaying()
 		{
 			if (m_controller == null)
@@ -132,9 +102,7 @@ namespace Thump.Playback
 			return m_controller.IsPlaying;
 		}
 
-		// Media3 PlaybackState integer (see the PlaybackState* constants above).
-		// Returns 0 while disconnected — 0 isn't a defined Media3 value, so the
-		// host can treat it as "unknown / not yet bound."
+		/// <summary>Media3 PlaybackState integer (see the PlaybackState* constants). Returns 0 while disconnected.</summary>
 		public int PlaybackState()
 		{
 			if (m_controller == null)
@@ -144,8 +112,7 @@ namespace Thump.Playback
 			return m_controller.PlaybackState;
 		}
 
-		// Current playback position in the active item, in milliseconds.
-		// Returns 0 while disconnected.
+		/// <summary>Current playback position in the active item, in milliseconds. Returns 0 while disconnected or when Media3 reports a negative position.</summary>
 		public long CurrentPositionMs()
 		{
 			if (m_controller == null)
@@ -160,9 +127,7 @@ namespace Thump.Playback
 			return position;
 		}
 
-		// Duration of the active item in milliseconds. Returns 0 while
-		// disconnected or while Media3 reports an unknown duration
-		// (the player gives -1 / TIME_UNSET in those cases — normalized to 0).
+		/// <summary>Duration of the active item in milliseconds. Returns 0 while disconnected or when Media3 reports an unknown duration (TIME_UNSET).</summary>
 		public long DurationMs()
 		{
 			if (m_controller == null)
@@ -177,8 +142,7 @@ namespace Thump.Playback
 			return duration;
 		}
 
-		// The MediaItem the player is currently positioned at. Null when
-		// disconnected or when the queue is empty.
+		/// <summary>The MediaItem the player is currently positioned at. Null when disconnected or when the queue is empty.</summary>
 		public MediaItem CurrentItem()
 		{
 			if (m_controller == null)
@@ -188,8 +152,7 @@ namespace Thump.Playback
 			return m_controller.CurrentMediaItem;
 		}
 
-		// Index of the current item within the queue. Returns -1 while
-		// disconnected.
+		/// <summary>Index of the current item within the queue. Returns -1 while disconnected.</summary>
 		public int CurrentItemIndex()
 		{
 			if (m_controller == null)
@@ -199,7 +162,7 @@ namespace Thump.Playback
 			return m_controller.CurrentMediaItemIndex;
 		}
 
-		// Number of items in the queue. Returns 0 while disconnected.
+		/// <summary>Number of items in the queue. Returns 0 while disconnected.</summary>
 		public int ItemCount()
 		{
 			if (m_controller == null)
@@ -209,12 +172,7 @@ namespace Thump.Playback
 			return m_controller.MediaItemCount;
 		}
 
-		// ---------------------------------------------------------------------
-		// Queue mutation
-		// ---------------------------------------------------------------------
-
-		// Replaces the queue with a single item. Does NOT auto-prepare or play;
-		// the host must call Prepare() (and then Play()) when ready.
+		/// <summary>Replaces the queue with a single item. Does NOT auto-prepare or play; the host must call <see cref="Prepare"/> (then <see cref="Play"/>) when ready.</summary>
 		public void SetSingleItem(MediaItem item)
 		{
 			if (m_controller == null)
@@ -224,8 +182,7 @@ namespace Thump.Playback
 			m_controller.SetMediaItem(item);
 		}
 
-		// Appends an item to the end of the queue. Does not affect playback
-		// position. Safe to call while playing.
+		/// <summary>Appends an item to the end of the queue. Does not affect playback position. Safe to call while playing.</summary>
 		public void AppendItem(MediaItem item)
 		{
 			if (m_controller == null)
@@ -235,10 +192,7 @@ namespace Thump.Playback
 			m_controller.AddMediaItem(item);
 		}
 
-		// Inserts an item at the given index. Items at and after that index
-		// shift forward by one. Safe to call while playing; if `index` is the
-		// current position, behaviour follows Media3's documented semantics
-		// for AddMediaItem(int, MediaItem).
+		/// <summary>Inserts an item at the given index. Items at and after that index shift forward by one.</summary>
 		public void InsertItem(int index, MediaItem item)
 		{
 			if (m_controller == null)
@@ -248,7 +202,7 @@ namespace Thump.Playback
 			m_controller.AddMediaItem(index, item);
 		}
 
-		// Empties the queue. Playback stops.
+		/// <summary>Empties the queue. Playback stops.</summary>
 		public void ClearQueue()
 		{
 			if (m_controller == null)
@@ -258,13 +212,7 @@ namespace Thump.Playback
 			m_controller.ClearMediaItems();
 		}
 
-		// ---------------------------------------------------------------------
-		// Playback control
-		// ---------------------------------------------------------------------
-
-		// Tells Media3 to prepare the currently loaded queue for playback.
-		// Required after SetSingleItem / AppendItem / InsertItem before Play()
-		// will succeed.
+		/// <summary>Tells Media3 to prepare the currently loaded queue for playback. Required after a queue mutation before <see cref="Play"/> will succeed.</summary>
 		public void Prepare()
 		{
 			if (m_controller == null)
@@ -274,7 +222,7 @@ namespace Thump.Playback
 			m_controller.Prepare();
 		}
 
-		// Starts or resumes playback at the current position.
+		/// <summary>Starts or resumes playback at the current position.</summary>
 		public void Play()
 		{
 			if (m_controller == null)
@@ -284,7 +232,7 @@ namespace Thump.Playback
 			m_controller.Play();
 		}
 
-		// Pauses playback. Position is retained.
+		/// <summary>Pauses playback. Position is retained.</summary>
 		public void Pause()
 		{
 			if (m_controller == null)
@@ -294,9 +242,7 @@ namespace Thump.Playback
 			m_controller.Pause();
 		}
 
-		// Stops playback and releases the prepared player resources. The
-		// queue is retained; Prepare() + Play() will resume from the current
-		// item at position 0.
+		/// <summary>Stops playback and releases prepared player resources. The queue is retained; <see cref="Prepare"/> + <see cref="Play"/> resume from the current item at position 0.</summary>
 		public void Stop()
 		{
 			if (m_controller == null)
@@ -306,7 +252,7 @@ namespace Thump.Playback
 			m_controller.Stop();
 		}
 
-		// Seeks within the current item to the given position.
+		/// <summary>Seeks within the current item to the given position in milliseconds.</summary>
 		public void SeekTo(long positionMs)
 		{
 			if (m_controller == null)
@@ -316,8 +262,7 @@ namespace Thump.Playback
 			m_controller.SeekTo(positionMs);
 		}
 
-		// Jumps to the item at `queueIndex` and starts at position 0.
-		// Does not change play/pause state on its own.
+		/// <summary>Jumps to the item at <paramref name="queueIndex"/> and starts at position 0. Does not change play/pause state.</summary>
 		public void SeekToItem(int queueIndex)
 		{
 			if (m_controller == null)
@@ -327,7 +272,7 @@ namespace Thump.Playback
 			m_controller.SeekTo(queueIndex, 0L);
 		}
 
-		// Skips to the next item in the queue.
+		/// <summary>Skips to the next item in the queue.</summary>
 		public void SkipNext()
 		{
 			if (m_controller == null)
@@ -337,7 +282,7 @@ namespace Thump.Playback
 			m_controller.SeekToNextMediaItem();
 		}
 
-		// Skips to the previous item in the queue.
+		/// <summary>Skips to the previous item in the queue.</summary>
 		public void SkipPrev()
 		{
 			if (m_controller == null)
@@ -347,12 +292,7 @@ namespace Thump.Playback
 			m_controller.SeekToPreviousMediaItem();
 		}
 
-		// ---------------------------------------------------------------------
-		// Modes
-		// ---------------------------------------------------------------------
-
-		// Toggles Media3's queue shuffle mode. When enabled the player walks
-		// the queue in a shuffled order without mutating the underlying queue.
+		/// <summary>Toggles Media3's queue shuffle mode. When enabled the player walks the queue in a shuffled order without mutating the underlying queue.</summary>
 		public void SetShuffleEnabled(bool enabled)
 		{
 			if (m_controller == null)
@@ -362,7 +302,7 @@ namespace Thump.Playback
 			m_controller.ShuffleModeEnabled = enabled;
 		}
 
-		// Sets the repeat mode. Use the RepeatMode* constants on this class.
+		/// <summary>Sets the repeat mode. Use the RepeatMode* constants on this class.</summary>
 		public void SetRepeatMode(int mode)
 		{
 			if (m_controller == null)
@@ -372,13 +312,7 @@ namespace Thump.Playback
 			m_controller.RepeatMode = mode;
 		}
 
-		// ---------------------------------------------------------------------
-		// Lifecycle
-		// ---------------------------------------------------------------------
-
-		// Releases the controller and lets Media3 unbind from the session.
-		// After Release, every method is a no-op and IsConnected() returns
-		// false. Must be called by whoever owns this instance.
+		/// <summary>Releases the controller and unbinds from the session. After Release, every method is a no-op and <see cref="IsConnected"/> returns false.</summary>
 		public void Release()
 		{
 			if (m_controller == null)
