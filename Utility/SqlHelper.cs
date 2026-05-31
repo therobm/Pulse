@@ -88,7 +88,7 @@ namespace Thump.Utility
 			album.ArtistId = ReadNullableString(reader, 3);
 			album.CoverArt = ReadNullableString(reader, 4);
 			album.Year = reader.GetInt32(5);
-			album.SongCount = reader.GetInt32(6);
+			album.TrackCount = reader.GetInt32(6);
 			album.Duration = reader.GetInt32(7);
 			return album;
 		}
@@ -113,7 +113,7 @@ namespace Thump.Utility
 			playlist.Id = reader.GetString(0);
 			playlist.Name = reader.GetString(1);
 			playlist.CoverArt = ReadNullableString(reader, 2);
-			playlist.SongCount = reader.GetInt32(3);
+			playlist.TrackCount = reader.GetInt32(3);
 			playlist.Duration = reader.GetInt32(4);
 			playlist.Score = (float)reader.GetDouble(5);
 			playlist.LastPlayed = FromUnixSeconds(reader.GetInt64(6));

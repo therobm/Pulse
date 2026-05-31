@@ -90,6 +90,10 @@ namespace Thump.Data
 
 		}
 
+		public bool IsOnline()
+		{
+			return m_pulseClient.IsOnline();
+		}
 		private void GetData<T>(DataRoute<T> dataRoute, Action<T> callback) where T : class
 		{
 			dataRoute.GetData(callback);
@@ -154,8 +158,29 @@ namespace Thump.Data
 			}
 		}
 
+		public void GetArtist(string artistID, Action<PulseArtist> callback)
+		{
+			if (callback == null)
+			{
+				return;
+			}
+			DataRouteID<PulseArtist> dataRoute = GetDataRouteID<PulseArtist>(eRoutes.GetAlbum);
+			if (dataRoute != null)
+			{
+				GetData(dataRoute, artistID, callback);
+			}
+			else
+			{
+				callback(null);
+			}
+		}
+
+
 		public void GetAlbumsForArtist(PulseArtist artist, Action<List<PulseAlbum>> callback)
 		{
+		}
+		public void GetAlbumsForArtist(string artistID, Action<List<PulseAlbum>> callback)
+		{ 
 			if (callback == null)
 			{
 				return;
@@ -163,7 +188,7 @@ namespace Thump.Data
 			DataRouteID<List<PulseAlbum>> dataRoute = GetDataRouteID<List<PulseAlbum>>(eRoutes.GetAlbumsForArtist);
 			if (dataRoute != null)
 			{
-				GetData(dataRoute, artist.Id, callback);
+				GetData(dataRoute, artistID, callback);
 			}
 			else
 			{
@@ -171,6 +196,26 @@ namespace Thump.Data
 			}
 		}
 
+		public void GetTracksForArtist(PulseArtist artist, Action<List<PulseTrack>> callback)
+		{
+		}
+		public void GetTracksForArtist(string artistID, Action<List<PulseTrack>> callback)
+		{ 
+			if (callback == null)
+			{
+				return;
+			}
+
+			GetAlbumsForArtist(artistID, (albums) =>
+			{
+				List<PulseTrack> tracks = new List<PulseTrack>();
+				for(int i = 0; i < albums.Count; i++)
+				{
+					tracks.AddRange(albums[i].Tracks);
+				}
+				callback(tracks);
+			});
+		}
 		public void GetAlbum(string albumId, Action<PulseAlbum> callback)
 		{
 			if (callback == null)
@@ -201,7 +246,7 @@ namespace Thump.Data
 					callback(new List<PulseTrack>());
 					return;
 				}
-				callback(fullAlbum.Songs);
+				callback(fullAlbum.Tracks);
 			});
 		}
 
@@ -275,6 +320,10 @@ namespace Thump.Data
 
 		public void GetTracksForGenre(PulseGenre genre, Action<List<PulseTrack>> callback)
 		{
+			GetTracksForGenre(genre.Name, callback);
+		}
+		public void GetTracksForGenre(string genreName, Action<List<PulseTrack>> callback)
+		{ 
 			if (callback == null)
 			{
 				return;
@@ -282,7 +331,7 @@ namespace Thump.Data
 			DataRouteID<List<PulseTrack>> dataRoute = GetDataRouteID<List<PulseTrack>>(eRoutes.GetTracksForGenre);
 			if (dataRoute != null)
 			{
-				GetData(dataRoute, genre.Name, callback);
+				GetData(dataRoute, genreName, callback);
 			}
 			else
 			{
@@ -292,36 +341,66 @@ namespace Thump.Data
 
 		public byte[] GetTrackAudioData(PulseTrack track)
 		{
-			if (track == null || string.IsNullOrEmpty(track.Id))
+			if (track == null)
+				return null;
+			return GetTrackAudioData(track.Id);
+		}
+		public byte[] GetTrackAudioData(string trackId)
+		{ 
+			if (string.IsNullOrEmpty(trackId))
 			{
 				return null;
 			}
-			string blobKey = "track:" + track.Id;
+			string blobKey = "track:" + trackId;
 
-			byte[] cached = null;
-			m_cache.ExecuteSync(() => { cached = m_cache.ReadBlob(blobKey); });
-			if (cached != null && cached.Length > 0)
+			//try our local cache first
+			byte[] trackData = null;
+			m_cache.ExecuteSync(() => 
+			{ 
+				trackData = m_cache.ReadBlob(blobKey);
+			});
+
+			if (trackData != null && trackData.Length > 0)
 			{
-				return cached;
+				return trackData;
 			}
 
+			//we only stream from disk, whoever wanted this should have cached ahead
+			return null;
+
+
+			/*
+			//We're offline, no point in trying to pull new data
+			if (!IsOnline())
+				return	null;
+			
 			ManualResetEventSlim wait = new ManualResetEventSlim(false);
-			byte[] fetched = null;
-			m_pulseClient.GetTrackAudio(track.Id, (data) =>
+			m_pulseClient.GetTrackAudio(trackId, (data) =>
 			{
-				fetched = data;
+				trackData = data;
 				wait.Set();
 			});
 			wait.Wait();
 
-			if (fetched == null || fetched.Length == 0)
+			if (trackData == null || trackData.Length == 0)
 			{
+				//track is busted and/or missing
 				return null;
 			}
-			m_cache.ExecuteSync(() => { m_cache.WriteBlob(blobKey, fetched, "audio"); });
-			return fetched;
+
+			//Save this file to our cache
+			m_cache.ExecuteSync(() => 
+			{ 
+				m_cache.WriteBlob(blobKey, trackData, "audio"); 
+			});
+			return trackData;*/
 		}
 
+		/// <summary>
+		/// Checks if a track has been locally cached
+		/// </summary>
+		/// <param name="track"></param>
+		/// <returns></returns>
 		public bool IsTrackCached(PulseTrack track)
 		{
 			if (track == null || string.IsNullOrEmpty(track.Id))
@@ -330,40 +409,51 @@ namespace Thump.Data
 			}
 			string blobKey = "track:" + track.Id;
 			bool cached = false;
-			m_cache.ExecuteSync(() => { cached = !string.IsNullOrEmpty(m_cache.GetBlobFilePath(blobKey)); });
+			m_cache.ExecuteSync(() =>
+			{
+				cached = !string.IsNullOrEmpty(m_cache.GetBlobFilePath(blobKey));
+			});
+
 			return cached;
 		}
 
-		public void EnsureTrackAvailability(PulseTrack track, Action<bool> callback)
+
+		/// <summary>
+		/// Requests a track be cached to disk
+		/// </summary>
+		/// <param name="track"></param>
+		/// <param name="onComplete"></param>
+		public void CacheTrack(PulseTrack track, Action<bool> onComplete)
 		{
-			if (callback == null)
+			if (IsTrackCached(track))
 			{
+				if (onComplete != null)
+					onComplete(true);
 				return;
 			}
-			if (track == null || string.IsNullOrEmpty(track.Id))
-			{
-				callback(false);
-				return;
-			}
+
 			string blobKey = "track:" + track.Id;
-
-			string existingPath = null;
-			m_cache.ExecuteSync(() => { existingPath = m_cache.GetBlobFilePath(blobKey); });
-			if (!string.IsNullOrEmpty(existingPath))
-			{
-				MainThread.BeginInvokeOnMainThread(() => { callback(true); });
-				return;
-			}
-
 			m_pulseClient.GetTrackAudio(track.Id, (data) =>
 			{
 				if (data == null || data.Length == 0)
 				{
-					MainThread.BeginInvokeOnMainThread(() => { callback(false); });
+					MainThread.BeginInvokeOnMainThread(() => 
+					{
+						if (onComplete != null)
+							onComplete(false);
+					});
 					return;
 				}
-				m_cache.ExecuteSync(() => { m_cache.WriteBlob(blobKey, data, "audio"); });
-				MainThread.BeginInvokeOnMainThread(() => { callback(true); });
+				m_cache.ExecuteSync(() =>
+				{ 
+					m_cache.WriteBlob(blobKey, data, "audio");
+				});
+
+				MainThread.BeginInvokeOnMainThread(() => 
+				{
+					if (onComplete != null)
+						onComplete(true);
+				});
 			});
 		}
 

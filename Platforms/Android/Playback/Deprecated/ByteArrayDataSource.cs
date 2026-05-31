@@ -6,6 +6,7 @@ using Thump.Pulse;
 
 namespace Thump.Playback
 {
+	/*
 	public class ByteArrayDataSource : BaseDataSource
 	{
 
@@ -120,5 +121,5 @@ namespace Thump.Playback
 			m_uri = null;
 			m_bytes = null;
 		}
-	}
+	}*/
 }

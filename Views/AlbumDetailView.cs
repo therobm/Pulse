@@ -186,7 +186,7 @@ namespace Thump.Views
 			base.Initialize();
 			m_titleLabel.Text = m_album.Name;
 			m_artistLabel.Text = m_album.Artist;
-			m_metaLabel.Text = m_album.Year + "  ·  " + m_album.SongCount + " tracks";
+			m_metaLabel.Text = m_album.Year + "  ·  " + m_album.TrackCount + " tracks";
 			m_art.SetCoverArt(m_album.CoverArt);
 			MainView.Data.GetTracksForAlbum(m_album, OnTracksLoaded);
 		}
