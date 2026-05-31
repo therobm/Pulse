@@ -293,6 +293,7 @@ namespace Pulse.Data
 		public void AddTrack(TrackInfo track, string albumId)
 		{
 			m_tracks[track.Id] = track;
+			track.m_bIsDirty = true;
 
 			AlbumInfo album;
 			if (m_albums.TryGetValue(albumId, out album))
