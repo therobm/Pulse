@@ -159,9 +159,9 @@ namespace Thump.Playback.AndroidOS
 				AAutoHelper.LoadJavaObjectFunc loadHome = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfItemList(categories, MediaItemBuilder.BuildContentStyleParams()));
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadHome);
 			}
-			if (isDir) 
-			{ 
-				AAutoHelper.LoadContainerFunc loadContainer = new AAutoHelper.LoadContainerFunc(this, dir, parentId);
+			if (isDir)
+			{
+				AAutoHelper.LoadContainerFunc loadContainer = new AAutoHelper.LoadContainerFunc(this, dir, parentId, page, pageSize);
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadContainer);
 			}
 			else
@@ -174,7 +174,7 @@ namespace Thump.Playback.AndroidOS
 					return (IListenableFuture)CallbackToFutureAdapter.GetFuture(unknown);
 				}
 				string mediaId = AAutoHelper.ParseValue(parentId);
-				AAutoHelper.LoadObjectFunc loadObject = new AAutoHelper.LoadObjectFunc(this, aaObject, mediaId);
+				AAutoHelper.LoadObjectFunc loadObject = new AAutoHelper.LoadObjectFunc(this, aaObject, mediaId, page, pageSize);
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadObject);
 			}
 		}
