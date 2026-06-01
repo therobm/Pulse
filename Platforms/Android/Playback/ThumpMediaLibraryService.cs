@@ -192,6 +192,13 @@ namespace Thump.Playback.AndroidOS
 			{
 				m_currentQueueID = m_currentQueueID + 1;
 
+				//silence the outgoing queue while we resolve and cache the new one,
+				//Media3 will resume playback when the new queue lands
+				if (m_player != null && m_player.IsPlaying)
+				{
+					m_player.Pause();
+				}
+
 				List<MediaItem> outputTracks = new List<MediaItem>();
 
 				if (items == null || items.Count == 0)
