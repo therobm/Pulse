@@ -376,6 +376,59 @@ namespace Thump.Data
 				}
 			}
 		}
+		public PulseArtist GetArtist(string artistId)
+		{
+			PulseArtist artist = new PulseArtist();
+			lock (m_sqlLock)
+			{
+				using (SqliteCommand cmd = m_connection.CreateCommand())
+				{
+					cmd.CommandText = "SELECT id, name, cover_art, album_count, play_count, score, last_played FROM artists WHERE id = $id";
+					cmd.Parameters.AddWithValue("$id", artistId);
+					using (SqliteDataReader reader = cmd.ExecuteReader())
+					{
+						if (!reader.Read())
+						{
+							return artist;
+						}
+						artist.Id = reader.GetString(0);
+						artist.Name = reader.GetString(1);
+						artist.CoverArt = SqlHelper.ReadNullableString(reader, 2);
+						artist.AlbumCount = reader.GetInt32(3);
+						artist.PlayCount = reader.GetInt32(4);
+						artist.Score = (float)reader.GetDouble(5);
+						artist.LastPlayed = SqlHelper.FromUnixSeconds(reader.GetInt64(6));
+					}
+				}
+			}
+			return artist;
+		}
+
+		public void UpdateArtist(string artistId, PulseArtist artist)
+		{
+			if (artist == null)
+			{
+				return;
+			}
+			long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+			lock (m_sqlLock)
+			{
+				using (SqliteCommand ins = m_connection.CreateCommand())
+				{
+					ins.CommandText = "INSERT OR REPLACE INTO artists (id, name, cover_art, album_count, play_count, score, last_played, fetched_at) VALUES ($id, $name, $ca, $ac, $pc, $score, $lp, $f)";
+					ins.Parameters.AddWithValue("$id", artist.Id);
+					ins.Parameters.AddWithValue("$name", artist.Name);
+					ins.Parameters.AddWithValue("$ca", SqlHelper.NullableParam(artist.CoverArt));
+					ins.Parameters.AddWithValue("$ac", artist.AlbumCount);
+					ins.Parameters.AddWithValue("$pc", artist.PlayCount);
+					ins.Parameters.AddWithValue("$score", artist.Score);
+					ins.Parameters.AddWithValue("$lp", SqlHelper.ToUnixSeconds(artist.LastPlayed));
+					ins.Parameters.AddWithValue("$f", now);
+					ins.ExecuteNonQuery();
+				}
+			}
+		}
+
 		public List<PulseArtist> GetAllArtists()
 		{
 			List<PulseArtist> result = new List<PulseArtist>();
@@ -444,18 +497,18 @@ namespace Thump.Data
 		{
 			List<PulseAlbum> result = new List<PulseAlbum>();
 			lock(m_sqlLock)
-			{ 
+			{
 				using (SqliteCommand cmd = m_connection.CreateCommand())
 				{
-					cmd.CommandText = "SELECT id, name, artist, artist_id, cover_art, year, song_count, duration FROM albums WHERE artist_id = $aid ORDER BY year, name";
+					cmd.CommandText = "SELECT a.id, a.name, a.artist, a.artist_id, a.cover_art, a.year, a.song_count, a.duration, "
+						+ "t.id, t.title, t.artist, t.artist_id, t.album, t.album_id, t.cover_art, t.duration "
+						+ "FROM albums a "
+						+ "LEFT JOIN album_tracks at ON at.album_id = a.id "
+						+ "LEFT JOIN tracks t ON t.id = at.track_id "
+						+ "WHERE a.artist_id = $aid "
+						+ "ORDER BY a.year, a.name, at.sort_order";
 					cmd.Parameters.AddWithValue("$aid", artistId);
-					using (SqliteDataReader reader = cmd.ExecuteReader())
-					{
-						while (reader.Read())
-						{
-							result.Add(SqlHelper.ReadAlbumRow(reader));
-						}
-					}
+					ReadAlbumsWithTracks(cmd, result);
 				}
 			}
 			return result;
@@ -709,14 +762,13 @@ namespace Thump.Data
 			{
 				using (SqliteCommand cmd = m_connection.CreateCommand())
 				{
-					cmd.CommandText = "SELECT id, name, artist, artist_id, cover_art, year, song_count, duration FROM albums ORDER BY name";
-					using (SqliteDataReader reader = cmd.ExecuteReader())
-					{
-						while (reader.Read())
-						{
-							result.Add(SqlHelper.ReadAlbumRow(reader));
-						}
-					}
+					cmd.CommandText = "SELECT a.id, a.name, a.artist, a.artist_id, a.cover_art, a.year, a.song_count, a.duration, "
+						+ "t.id, t.title, t.artist, t.artist_id, t.album, t.album_id, t.cover_art, t.duration "
+						+ "FROM albums a "
+						+ "LEFT JOIN album_tracks at ON at.album_id = a.id "
+						+ "LEFT JOIN tracks t ON t.id = at.track_id "
+						+ "ORDER BY a.name, at.sort_order";
+					ReadAlbumsWithTracks(cmd, result);
 				}
 			}
 			return result;
@@ -750,17 +802,47 @@ namespace Thump.Data
 			{
 				using (SqliteCommand cmd = m_connection.CreateCommand())
 				{
-					cmd.CommandText = "SELECT id, name, artist, artist_id, cover_art, year, song_count, duration FROM recently_added ORDER BY position";
-					using (SqliteDataReader reader = cmd.ExecuteReader())
+					cmd.CommandText = "SELECT ra.id, ra.name, ra.artist, ra.artist_id, ra.cover_art, ra.year, ra.song_count, ra.duration, "
+						+ "t.id, t.title, t.artist, t.artist_id, t.album, t.album_id, t.cover_art, t.duration "
+						+ "FROM recently_added ra "
+						+ "LEFT JOIN album_tracks at ON at.album_id = ra.id "
+						+ "LEFT JOIN tracks t ON t.id = at.track_id "
+						+ "ORDER BY ra.position, at.sort_order";
+					List<PulseAlbum> albums = new List<PulseAlbum>();
+					ReadAlbumsWithTracks(cmd, albums);
+					for (int idx = 0; idx < albums.Count; idx++)
 					{
-						while (reader.Read())
-						{
-							result.Add(SqlHelper.ReadAlbumRow(reader));
-						}
+						result.Add(albums[idx]);
 					}
 				}
 			}
 			return result;
+		}
+
+		//Shared helper for the album-list cache reads. Each row of the joined
+		//query carries one album (cols 0-7) and optionally one of its tracks
+		//(cols 8-15, NULL when the album has no tracks via the LEFT JOIN).
+		//Rows are pre-ordered so all tracks for an album appear contiguously;
+		//we group on a.id as the reader walks.
+		private static void ReadAlbumsWithTracks(SqliteCommand cmd, List<PulseAlbum> result)
+		{
+			using (SqliteDataReader reader = cmd.ExecuteReader())
+			{
+				PulseAlbum current = null;
+				while (reader.Read())
+				{
+					string albumId = reader.GetString(0);
+					if (current == null || current.Id != albumId)
+					{
+						current = SqlHelper.ReadAlbumRow(reader, 0);
+						result.Add(current);
+					}
+					if (!reader.IsDBNull(8))
+					{
+						current.Tracks.Add(SqlHelper.ReadSongRow(reader, 8));
+					}
+				}
+			}
 		}
 		public void UpdateRecentlyAdded(List<PulseObject> albums)
 		{

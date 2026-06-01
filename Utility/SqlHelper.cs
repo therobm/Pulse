@@ -26,6 +26,37 @@ namespace Thump.Utility
 			return reader.GetString(column);
 		}
 
+		//Joined queries need to pull two row shapes from a single reader; the
+		//offset versions let a caller say "read an album starting at col N,
+		//then a track starting at col N+8" without slicing the reader.
+		public static PulseAlbum ReadAlbumRow(SqliteDataReader reader, int offset)
+		{
+			PulseAlbum album = new PulseAlbum();
+			album.Id = reader.GetString(offset + 0);
+			album.Name = reader.GetString(offset + 1);
+			album.Artist = ReadNullableString(reader, offset + 2);
+			album.ArtistId = ReadNullableString(reader, offset + 3);
+			album.CoverArt = ReadNullableString(reader, offset + 4);
+			album.Year = reader.GetInt32(offset + 5);
+			album.TrackCount = reader.GetInt32(offset + 6);
+			album.Duration = reader.GetInt32(offset + 7);
+			return album;
+		}
+
+		public static PulseTrack ReadSongRow(SqliteDataReader reader, int offset)
+		{
+			PulseTrack song = new PulseTrack();
+			song.Id = reader.GetString(offset + 0);
+			song.Title = reader.GetString(offset + 1);
+			song.Artist = ReadNullableString(reader, offset + 2);
+			song.ArtistId = ReadNullableString(reader, offset + 3);
+			song.Album = ReadNullableString(reader, offset + 4);
+			song.AlbumId = ReadNullableString(reader, offset + 5);
+			song.CoverArt = ReadNullableString(reader, offset + 6);
+			song.Duration = reader.GetInt32(offset + 7);
+			return song;
+		}
+
 		public static long ToUnixSeconds(DateTime value)
 		{
 			if (value == DateTime.MinValue)
@@ -81,30 +112,12 @@ namespace Thump.Utility
 
 		public static PulseAlbum ReadAlbumRow(SqliteDataReader reader)
 		{
-			PulseAlbum album = new PulseAlbum();
-			album.Id = reader.GetString(0);
-			album.Name = reader.GetString(1);
-			album.Artist = ReadNullableString(reader, 2);
-			album.ArtistId = ReadNullableString(reader, 3);
-			album.CoverArt = ReadNullableString(reader, 4);
-			album.Year = reader.GetInt32(5);
-			album.TrackCount = reader.GetInt32(6);
-			album.Duration = reader.GetInt32(7);
-			return album;
+			return ReadAlbumRow(reader, 0);
 		}
 
 		public static PulseTrack ReadSongRow(SqliteDataReader reader)
 		{
-			PulseTrack song = new PulseTrack();
-			song.Id = reader.GetString(0);
-			song.Title = reader.GetString(1);
-			song.Artist = ReadNullableString(reader, 2);
-			song.ArtistId = ReadNullableString(reader, 3);
-			song.Album = ReadNullableString(reader, 4);
-			song.AlbumId = ReadNullableString(reader, 5);
-			song.CoverArt = ReadNullableString(reader, 6);
-			song.Duration = reader.GetInt32(7);
-			return song;
+			return ReadSongRow(reader, 0);
 		}
 
 		public static PulsePlaylist ReadPlaylistRow(SqliteDataReader reader)

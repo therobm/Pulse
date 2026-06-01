@@ -24,6 +24,7 @@ namespace Thump.Data
 	public enum eRoutes
 	{
 		GetTrack,
+		GetArtist,
 		GetArtists,
 		GetAlbum,
 		GetAlbums,
@@ -72,6 +73,7 @@ namespace Thump.Data
 			m_dataRoutes = new Dictionary<eRoutes, DataRoute>()
 			{
 				{ eRoutes.GetTrack,					new DataRouteID<PulseTrack>(this,			eRouteCachingMethod.NetworkAuthorative, m_pulseClient.GetTrack,					m_cache.GetTrack,				m_cache.UpdateTrack,                IsValidObject) },
+				{ eRoutes.GetArtist,				new DataRouteID<PulseArtist>(this,			eRouteCachingMethod.NetworkAuthorative, m_pulseClient.GetArtist,				m_cache.GetArtist,				m_cache.UpdateArtist,				IsValidObject) },
 				{ eRoutes.GetArtists,				new DataRoute<List<PulseArtist>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetArtists,				m_cache.GetAllArtists,			m_cache.UpdateAllArtists,			IsValidList<PulseArtist>) },
 				{ eRoutes.GetAlbum,					new DataRouteID<PulseAlbum>(this,			eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetAlbum,					m_cache.GetAlbum,				m_cache.UpdateAlbum,				IsValidObject) },
 				{ eRoutes.GetAlbums,				new DataRoute<List<PulseAlbum>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetAlbums,				m_cache.GetAlbums,				m_cache.UpdateAlbums,				IsValidList<PulseAlbum>) },
@@ -131,6 +133,7 @@ namespace Thump.Data
 		{
 			if (m_dataRoutes.TryGetValue(route, out DataRoute dataRoute))
 				return dataRoute as DataRoute<T>;
+			Log.Error("Error unmapped data route request: " + route.ToString());
 			return null;
 		}
 
@@ -138,6 +141,7 @@ namespace Thump.Data
 		{
 			if (m_dataRoutes.TryGetValue(route, out DataRoute dataRoute))
 				return dataRoute as DataRouteID<T>;
+			Log.Error("Error unmapped data route request: " + route.ToString());
 			return null;
 		}
 
@@ -164,7 +168,7 @@ namespace Thump.Data
 			{
 				return;
 			}
-			DataRouteID<PulseArtist> dataRoute = GetDataRouteID<PulseArtist>(eRoutes.GetAlbum);
+			DataRouteID<PulseArtist> dataRoute = GetDataRouteID<PulseArtist>(eRoutes.GetArtist);
 			if (dataRoute != null)
 			{
 				GetData(dataRoute, artistID, callback);
@@ -178,6 +182,7 @@ namespace Thump.Data
 
 		public void GetAlbumsForArtist(PulseArtist artist, Action<List<PulseAlbum>> callback)
 		{
+			GetAlbumsForArtist(artist.Id, callback);
 		}
 		public void GetAlbumsForArtist(string artistID, Action<List<PulseAlbum>> callback)
 		{ 
@@ -637,13 +642,13 @@ namespace Thump.Data
 			m_pulseClient.GetTopItems(callback);
 		}
 
-		public void GetFavories(Action<List<PulseObject>> callback)
+		public void GetFavorites(Action<List<PulseTrack>> callback)
 		{
 			if (callback == null)
 			{
 				return;
 			}
-			DataRoute<List<PulseObject>> dataRoute = GetDataRoute<List<PulseObject>>(eRoutes.GetFavorites);
+			DataRoute<List<PulseTrack>> dataRoute = GetDataRoute<List<PulseTrack>>(eRoutes.GetFavorites);
 			if (dataRoute != null)
 			{
 				GetData(dataRoute, callback);

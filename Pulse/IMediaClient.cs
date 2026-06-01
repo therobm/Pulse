@@ -17,6 +17,7 @@ namespace Thump.Pulse
 		string BuildRestUrl(string endpoint, string extraParams = null);
 		void GetTrack(string trackId, Action<PulseTrack> onComplete);
 		void GetArtists(Action<List<PulseArtist>> onComplete);
+		void GetArtist(string artistId, Action<PulseArtist> onComplete);
 		void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete);
 		void Search(string query, Action<PulseSearchData> onComplete);
 		void GetArtistAlbums(string artistId, Action<List<PulseAlbum>> onComplete);
