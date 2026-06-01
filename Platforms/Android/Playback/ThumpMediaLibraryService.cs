@@ -580,9 +580,10 @@ namespace Thump.Playback.AndroidOS
 					});
 					break;
 				case eAAObject.Artist:
-					s_thumpData.GetTracksForArtist(objectID, (artistTracks) =>
+					s_thumpData.GetAlbumsForArtist(objectID, (albums) =>
 					{
-						request.OnComplete<PulseTrack>(artistTracks, objectType, objectID);
+						List<MediaItem> items = MediaItemBuilder.BuildArtistChildren(objectID, albums);
+						request.OnComplete(items);
 					});
 					break;
 				case eAAObject.Playlist:
