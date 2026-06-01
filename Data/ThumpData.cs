@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Java.IO;
 using Microsoft.Maui.ApplicationModel;
 using Thump.Pulse;
 
@@ -196,8 +197,10 @@ namespace Thump.Data
 			}
 		}
 
+
 		public void GetTracksForArtist(PulseArtist artist, Action<List<PulseTrack>> callback)
 		{
+			GetTracksForArtist(artist.Id, callback);
 		}
 		public void GetTracksForArtist(string artistID, Action<List<PulseTrack>> callback)
 		{ 
@@ -235,11 +238,15 @@ namespace Thump.Data
 
 		public void GetTracksForAlbum(PulseAlbum album, Action<List<PulseTrack>> callback)
 		{
+			GetTracksForAlbum(album.Id, callback);
+		}
+		public void GetTracksForAlbum(string albumId, Action<List<PulseTrack>> callback)
+		{ 
 			if (callback == null)
 			{
 				return;
 			}
-			GetAlbum(album.Id, (fullAlbum) =>
+			GetAlbum(albumId, (fullAlbum) =>
 			{
 				if (fullAlbum == null)
 				{
@@ -282,6 +289,26 @@ namespace Thump.Data
 			{
 				callback(null);
 			}
+		}
+		public void GetTracksForPlaylist(PulsePlaylist Playlist, Action<List<PulseTrack>> callback)
+		{
+			GetTracksForPlaylist(Playlist.Id, callback);
+		}
+		public void GetTracksForPlaylist(string PlaylistId, Action<List<PulseTrack>> callback)
+		{
+			if (callback == null)
+			{
+				return;
+			}
+			GetPlaylist(PlaylistId, (fullPlaylist) =>
+			{
+				if (fullPlaylist == null)
+				{
+					callback(new List<PulseTrack>());
+					return;
+				}
+				callback(fullPlaylist.Tracks);
+			});
 		}
 
 		public void GetAlbums(Action<List<PulseAlbum>> callback)

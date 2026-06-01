@@ -26,7 +26,8 @@ namespace Thump.Playback.AndroidOS
 		Album,
 		Artist,
 		Playlist,
-		Genre
+		Genre,
+		Track
 	}
 
 	public class MediaItemBuilder

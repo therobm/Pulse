@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -12,6 +13,7 @@ using AndroidX.Media3.Extractor;
 using AndroidX.Media3.Extractor.Mp3;
 using AndroidX.Media3.Session;
 using Google.Common.Util.Concurrent;
+using Kotlin.Jvm.Functions;
 using Microsoft.Maui.Storage;
 using Thump.Data;
 using Thump.Pulse;
@@ -189,18 +191,38 @@ namespace Thump.Playback.AndroidOS
 			m_currentQueueID = m_currentQueueID + 1;
 			int queueID = m_currentQueueID;
 
+			List<MediaItem> outputTracks = new List<MediaItem>();
+
 			if (items == null || items.Count == 0)
 			{
-				MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(new List<MediaItem>(), 0, startPositionMs);
+				MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(outputTracks, 0, startPositionMs);
 				callback.OnComplete(empty);
 				return;
 			}
 
-			// Per-input-item offset into the resolved queue. If AA tells us to
-			// start at items[N], we play resolved[expandedStart[N]].
-			List<MediaItem> resolved = new List<MediaItem>();
-			int[] expandedStart = new int[items.Count];
-			ResolveQueueItems(items, 0, queueID, resolved, expandedStart, startIndex, startPositionMs, callback);
+			bool isOnline = s_thumpData.IsOnline();
+
+			//determine which object types are being requested so we can fetch the appropriate data
+
+			List<string> requestedTracks = new List<string>();
+			for(int i = 0; i < items.Count; i++)
+			{
+				List<string> tracks = GetTrackIds(items[i], m_currentQueueID);
+
+				//filter out unavailable tracks
+				if (!isOnline)
+				{ 
+					for(int j = 0; j < tracks.Count; j++)
+					{
+						if (!isOnline && !s_thumpData.IsTrackCached(tracks[i]))
+							continue;
+						requestedTracks.Add(tracks[i]);
+					}
+				}
+
+			}
+			
+			//todo fill out inline
 		}
 
 		private void ResolveQueueItems(IList<MediaItem> items, int index, int queueID, List<MediaItem> resolved, int[] expandedStart, int startIndex, long startPositionMs, JObjectCallback callback)
@@ -221,7 +243,7 @@ namespace Thump.Playback.AndroidOS
 			}
 
 			expandedStart[index] = resolved.Count;
-			ResolveOneItem(items[index], queueID, (built)=>
+			GetTracks(items[index], queueID, (built)=>
 			{
 				if (queueID != m_currentQueueID)
 				{
@@ -235,26 +257,22 @@ namespace Thump.Playback.AndroidOS
 			});
 		}
 
-		private void ResolveOneItem(MediaItem input, int queueID, Action<List<MediaItem>> onResolved)
+		private List<string> GetTrackIds(MediaItem input, int queueID)
 		{
+			List<string> trackList = new List<string>();
+
 			string mediaId = input.MediaId;
 			if (string.IsNullOrEmpty(mediaId))
 			{
-				onResolved(new List<MediaItem>());
-				return;
+				return trackList;
 			}
 
-			// Single track: keep the AA-supplied metadata, just attach the
-			// playable URI so Media3 can route bytes through our DataSource.
+			// Single track:
 			if (mediaId.StartsWith("track/"))
 			{
 				string trackId = AAutoHelper.StripTrackPrefix(mediaId);
-				Android.Net.Uri uri = MediaItemBuilder.GetURI(trackId);
-				MediaItem attached = input.BuildUpon().SetUri(uri).Build();
-				List<MediaItem> single = new List<MediaItem>();
-				single.Add(attached);
-				onResolved(single);
-				return;
+				trackList.Add(trackId);
+				return trackList;
 			}
 
 			eAAObject objectType;
@@ -262,190 +280,66 @@ namespace Thump.Playback.AndroidOS
 			bool isShuffle;
 			if (!MediaItemBuilder.TryParsePlayMediaId(mediaId, out objectType, out objectId, out isShuffle))
 			{
-				Thump.Log.Warn("ThumpMediaLibraryService.LoadMediaItems: unknown mediaId prefix '" + mediaId + "', skipping");
-				onResolved(new List<MediaItem>());
-				return;
+				Log.Warn("ThumpMediaLibraryService.LoadMediaItems: unknown mediaId prefix '" + mediaId + "', skipping");
+				return trackList;
 			}
 
-			ResolveTracksFor(objectType, objectId, queueID, (tracks)=>
+			List<PulseTrack> pulseTracks = GetTracksFor(objectType, objectId, queueID);
+			for(int i = 0; i < pulseTracks.Count; i++)
 			{
-				if (queueID != m_currentQueueID)
+				trackList.Add(pulseTracks[i].Id);
+			}
+			return trackList;
+		}
+
+		private List<PulseTrack> GetTracksFor(eAAObject objectType, string objectId, int queueID)
+		{
+			List<PulseTrack> outputTracks = new List<PulseTrack>();
+			using (ManualResetEventSlim done = new ManualResetEventSlim(false))
+			{
+				//Lambda exception to avoid too many indirection calls
+				bool fired = false;
+				// ThumpData NetworkAuthorative routes can fire the callback twice
+				// (cached burst + refresh) by design; this is a one-shot consumer
+				// so guard against the second hit.
+				Action<List<PulseTrack>> onComplete = (tracks) =>
 				{
-					return;
-				}
-				List<MediaItem> built = new List<MediaItem>();
-				if (tracks != null)
-				{
-					if (isShuffle)
+					if (fired)
 					{
-						ShuffleInPlace(tracks);
+						return;
 					}
-					for (int i = 0; i < tracks.Count; i++)
+
+					fired = true;
+					done.Set();
+
+					if (queueID != m_currentQueueID || tracks == null)
 					{
-						PulseTrack track = tracks[i];
-						MediaItem template = MediaItemBuilder.BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.ImageID);
-						Android.Net.Uri uri = MediaItemBuilder.GetURI(track.Id);
-						MediaItem withUri = template.BuildUpon().SetUri(uri).Build();
-						built.Add(withUri);
+						return;
 					}
-				}
-				onResolved(built);
-			});
-		}
+					outputTracks = tracks;
+				};
 
-		private void ResolveTracksFor(eAAObject objectType, string objectId, int queueID, Action<List<PulseTrack>> callback)
-		{
-			// ThumpData NetworkAuthorative routes can fire the callback twice
-			// (cached burst + refresh) by design; this is a one-shot consumer
-			// so guard against the second hit.
-			bool fired = false;
-			switch (objectType)
-			{
-				case eAAObject.Album:
-					s_thumpData.GetAlbum(objectId, (album)=>
-					{
-						if (fired)
-						{
-							return;
-						}
-						fired = true;
-						if (queueID != m_currentQueueID)
-						{
-							return;
-						}
-						List<PulseTrack> tracks = album != null ? album.Tracks : null;
-						callback(tracks);
-					});
-					break;
-				case eAAObject.Playlist:
-					s_thumpData.GetPlaylist(objectId, (playlist)=>
-					{
-						if (fired)
-						{
-							return;
-						}
-						fired = true;
-						if (queueID != m_currentQueueID)
-						{
-							return;
-						}
-						List<PulseTrack> tracks = playlist != null ? playlist.Tracks : null;
-						callback(tracks);
-					});
-					break;
-				case eAAObject.Artist:
-					s_thumpData.GetTracksForArtist(objectId, (tracks)=>
-					{
-						if (fired)
-						{
-							return;
-						}
-						fired = true;
-						if (queueID != m_currentQueueID)
-						{
-							return;
-						}
-						callback(tracks);
-					});
-					break;
-				case eAAObject.Genre:
-					s_thumpData.GetTracksForGenre(objectId, (tracks)=>
-					{
-						if (fired)
-						{
-							return;
-						}
-						fired = true;
-						if (queueID != m_currentQueueID)
-						{
-							return;
-						}
-						callback(tracks);
-					});
-					break;
-				default:
-					callback(null);
-					break;
-			}
-		}
-
-		private void FinalizeQueue(List<MediaItem> resolved, int startIndex, long startPositionMs, int queueID, JObjectCallback callback)
-		{
-			bool isOnline = s_thumpData.IsOnline();
-			List<MediaItem> outputItems = new List<MediaItem>();
-			Queue<string> cacheQueue = new Queue<string>();
-			int startItemIndex = -1;
-			int builtCount = 0;
-
-			for (int i = 0; i < resolved.Count; i++)
-			{
-				MediaItem item = resolved[i];
-				string trackId = AAutoHelper.StripTrackPrefix(item.MediaId);
-				if (string.IsNullOrEmpty(trackId))
+			
+				switch (objectType)
 				{
-					continue;
+					case eAAObject.Album:
+						s_thumpData.GetTracksForAlbum(objectId, onComplete);
+						break;
+					case eAAObject.Playlist:
+						s_thumpData.GetTracksForPlaylist(objectId, onComplete);
+						break;
+					case eAAObject.Artist:
+						s_thumpData.GetTracksForArtist(objectId, onComplete);
+						break;
+					case eAAObject.Genre:
+						s_thumpData.GetTracksForGenre(objectId, onComplete);
+						break;
+					default:
+						break;
 				}
-				if (!isOnline && !s_thumpData.IsTrackCached(trackId))
-				{
-					continue;
-				}
-
-				if (i == startIndex)
-				{
-					startItemIndex = builtCount;
-				}
-				else
-				{
-					cacheQueue.Enqueue(trackId);
-				}
-
-				outputItems.Add(item);
-				builtCount++;
+				done.Wait();
 			}
-
-			if (outputItems.Count == 0)
-			{
-				MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(outputItems, 0, startPositionMs);
-				callback.OnComplete(empty);
-				return;
-			}
-
-			if (startItemIndex < 0)
-			{
-				startItemIndex = 0;
-			}
-
-			string startTrackId = AAutoHelper.StripTrackPrefix(outputItems[startItemIndex].MediaId);
-			int finalStartIndex = startItemIndex;
-			long finalStartPosition = startPositionMs;
-
-			s_thumpData.CacheTrack(startTrackId, (success)=>
-			{
-				if (queueID != m_currentQueueID)
-				{
-					return;
-				}
-				MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputItems, finalStartIndex, finalStartPosition);
-				callback.OnComplete(result);
-				DrainCacheQueue(cacheQueue, queueID);
-			});
-		}
-
-		private void DrainCacheQueue(Queue<string> queue, int queueID)
-		{
-			if (queueID != m_currentQueueID)
-			{
-				return;
-			}
-			if (queue == null || queue.Count == 0)
-			{
-				return;
-			}
-			string next = queue.Dequeue();
-			s_thumpData.CacheTrack(next, (success)=>
-			{
-				DrainCacheQueue(queue, queueID);
-			});
+			return outputTracks;
 		}
 
 		private static void ShuffleInPlace<T>(List<T> list)
