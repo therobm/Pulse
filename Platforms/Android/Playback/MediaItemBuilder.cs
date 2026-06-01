@@ -340,14 +340,14 @@ namespace Thump.Playback.AndroidOS
 			return builder.Build();
 		}
 
-		public static MediaItem BuildItemForId(string mediaId)
+		public static MediaItem BuildItemForId(string mediaId, string mediaTitle)
 		{
 			string trackId = AAutoHelper.StripTrackPrefix(mediaId);
 			if (!string.IsNullOrEmpty(trackId))
 			{
-				return BuildPlayableItem(mediaId, mediaId, "");
+				return BuildPlayableItem(mediaId, mediaTitle, "");
 			}
-			return BuildBrowsableItem(mediaId, mediaId);
+			return BuildBrowsableItem(mediaId, mediaTitle);
 		}
 
 		public static MediaItem BuildBrowsableItem(string mediaId, string title)

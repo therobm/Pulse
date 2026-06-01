@@ -13,7 +13,6 @@ using AndroidX.Media3.Extractor;
 using AndroidX.Media3.Extractor.Mp3;
 using AndroidX.Media3.Session;
 using Google.Common.Util.Concurrent;
-using Kotlin.Jvm.Functions;
 using Microsoft.Maui.Storage;
 using Thump.Data;
 using Thump.Pulse;
@@ -130,7 +129,9 @@ namespace Thump.Playback.AndroidOS
 		}
 		public MediaItem OnGetItem(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string mediaId)
 		{
-			MediaItem item = MediaItemBuilder.BuildItemForId(mediaId);
+			string mediaTitle = "";
+
+			MediaItem item = MediaItemBuilder.BuildItemForId(mediaId, mediaTitle);
 			return item;
 		}
 		
@@ -162,15 +163,14 @@ namespace Thump.Playback.AndroidOS
 			}
 			else
 			{
-				eAAObject aaObject = eAAObject.Album;
-				//todo part out the objet type
-				if  (!MediaItemBuilder.TryGetObject(parentId, out aaObject))
+				eAAObject aaObject;
+				if (!MediaItemBuilder.TryGetObject(parentId, out aaObject))
 				{
-					//hrm.. I dunno what this is...
+					//parentId didn't match any known object prefix, return empty so AA shows nothing rather than dispatching a guess to ThumpData
+					AAutoHelper.LoadJavaObjectFunc unknown = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfItemList(new List<MediaItem>(), MediaItemBuilder.BuildContentStyleParams()));
+					return (IListenableFuture)CallbackToFutureAdapter.GetFuture(unknown);
 				}
 				string mediaId = AAutoHelper.ParseValue(parentId);
-
-
 				AAutoHelper.LoadObjectFunc loadObject = new AAutoHelper.LoadObjectFunc(this, aaObject, mediaId);
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadObject);
 			}
@@ -205,6 +205,7 @@ namespace Thump.Playback.AndroidOS
 			{
 				if (i == startIndex)
 				{
+					//this is the new potential index if tracks before it weren't included
 					startItemIndex = requestedTracks.Count;
 				}
 
@@ -218,6 +219,12 @@ namespace Thump.Playback.AndroidOS
 					}
 					requestedTracks.Add(tracks[j]);
 				}
+			}
+
+			//our startItem was filtered out so we'll reset our index
+			if (startItemIndex >= requestedTracks.Count)
+			{
+				startItemIndex = 0;
 			}
 
 			//nothing's avialable
@@ -242,11 +249,15 @@ namespace Thump.Playback.AndroidOS
 			int finalStartIndex = startItemIndex;
 			long finalStartPosition = startPositionMs;
 
+			int cacheQueueID = m_currentQueueID;
 			s_thumpData.CacheTrack(startTrack, (success)=>
 			{
+				if (cacheQueueID != m_currentQueueID)
+					return;
+
 				MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputTracks, finalStartIndex, finalStartPosition);
 				callback.OnComplete(result);
-				CacheQueued(cacheQueue, m_currentQueueID);
+				CacheQueued(cacheQueue, cacheQueueID);
 			});
 		}
 
@@ -283,9 +294,10 @@ namespace Thump.Playback.AndroidOS
 				{
 					s_thumpData.GetTrack(trackId, (pulseTrack)=>
 					{
-						done.Set();
 						if (pulseTrack != null)
 							trackList.Add(pulseTrack);
+
+						done.Set();
 					});
 					if (!done.Wait(8000))
 					{
@@ -330,13 +342,13 @@ namespace Thump.Playback.AndroidOS
 					}
 
 					fired = true;
-					done.Set();
 
-					if (tracks == null)
+					if (tracks != null)
 					{
-						return;
+						//return this to the caller via the closure
+						outputTracks = tracks;
 					}
-					outputTracks = tracks;
+					done.Set();
 				};
 
 			
