@@ -24,6 +24,7 @@ namespace Thump.Data
 	public enum eRoutes
 	{
 		GetTrack,
+		GetArtist,
 		GetArtists,
 		GetAlbum,
 		GetAlbums,
@@ -131,6 +132,7 @@ namespace Thump.Data
 		{
 			if (m_dataRoutes.TryGetValue(route, out DataRoute dataRoute))
 				return dataRoute as DataRoute<T>;
+			Log.Error("Error unmapped data route request: " + route.ToString());
 			return null;
 		}
 
@@ -138,6 +140,7 @@ namespace Thump.Data
 		{
 			if (m_dataRoutes.TryGetValue(route, out DataRoute dataRoute))
 				return dataRoute as DataRouteID<T>;
+			Log.Error("Error unmapped data route request: " + route.ToString());
 			return null;
 		}
 
@@ -178,6 +181,7 @@ namespace Thump.Data
 
 		public void GetAlbumsForArtist(PulseArtist artist, Action<List<PulseAlbum>> callback)
 		{
+			GetAlbumsForArtist(artist.Id, callback);
 		}
 		public void GetAlbumsForArtist(string artistID, Action<List<PulseAlbum>> callback)
 		{ 
