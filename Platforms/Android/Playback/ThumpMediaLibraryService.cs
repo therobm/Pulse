@@ -91,6 +91,7 @@ namespace Thump.Playback.AndroidOS
 			library.m_onSetMediaItems = OnSetMediaItems;
 			library.m_onSubscribe = null;
 			library.m_onUnsubscribe = null;
+			library.m_onMediaButtonEvent = null;
 
 
 			MediaLibrarySession.Builder sessionBuilder = new MediaLibrarySession.Builder(this, m_player, library);
