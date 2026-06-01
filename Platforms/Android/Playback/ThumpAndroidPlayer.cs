@@ -490,27 +490,5 @@ namespace Thump.Playback.AndroidOS
 			m_mainView.OnPlaybackStateChanged(state);
 		}
 
-		public static MediaItem Build(PulseTrack track)
-		{
-			MediaMetadata.Builder metadata = new MediaMetadata.Builder();
-			metadata.SetTitle(track.Title);
-			metadata.SetArtist(track.Artist);
-			if (!string.IsNullOrEmpty(track.Album))
-			{
-				metadata.SetAlbumTitle(track.Album);
-			}
-
-			Android.Net.Uri uri = GetURI(track.Id);
-			MediaItem.Builder builder = new MediaItem.Builder();
-			builder.SetMediaId(track.Id);
-			builder.SetUri(uri);
-			builder.SetMediaMetadata(metadata.Build());
-			return builder.Build();
-		}
-		public static Android.Net.Uri GetURI(string id)
-		{
-			Android.Net.Uri uri = Android.Net.Uri.Parse("thump://" + id);
-			return uri;
-		}
 	}
 }
