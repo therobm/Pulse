@@ -119,7 +119,7 @@ namespace Thump.Playback.AndroidOS
 			m_cacheQueue.Clear();
 
 			//build playlist
-			int startItemIndex = -1;
+			int startItemIndex = 0;
 			int builtCount = 0;
 			for (int i = 0; i < m_queue.Count; i++)
 			{

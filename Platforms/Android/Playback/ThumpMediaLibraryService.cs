@@ -35,8 +35,12 @@ namespace Thump.Playback.AndroidOS
 		/// </summary>
 		public static ThumpData s_thumpData;
 
-		
-		
+		/// <summary>
+		/// A callback identifier used to discard late arrivals
+		/// when the queue has been changed/reset.
+		/// </summary>
+		private int m_currentQueueID;
+
 		private IExoPlayer m_player;
 		private MediaLibraryService.MediaLibrarySession m_session;
 		private CarConnectionReceiver m_carReceiver;
@@ -182,6 +186,8 @@ namespace Thump.Playback.AndroidOS
 		// stays linear except for the start-track CacheTrack hop at the end.
 		public void LoadMediaItems(IList<MediaItem> items, int startIndex, long startPositionMs, JObjectCallback callback)
 		{
+			m_currentQueueID = m_currentQueueID + 1;
+
 			List<MediaItem> outputTracks = new List<MediaItem>();
 
 			if (items == null || items.Count == 0)
@@ -193,10 +199,6 @@ namespace Thump.Playback.AndroidOS
 
 			bool isOnline = s_thumpData.IsOnline();
 
-			// Expand each input MediaItem to its tracks. AA's startIndex points
-			// into items[] — remember where the corresponding input's first
-			// surviving track lands in the flattened list so we can hand the
-			// right start position back to the player.
 			List<PulseTrack> requestedTracks = new List<PulseTrack>();
 			int startItemIndex = 0;
 			for(int i = 0; i < items.Count; i++)
@@ -208,7 +210,8 @@ namespace Thump.Playback.AndroidOS
 
 				List<PulseTrack> tracks = GetTrackIds(items[i]);
 				for (int j = 0; j < tracks.Count; j++)
-				{
+				{   
+					//filter out unavailable tracks
 					if (!isOnline && !s_thumpData.IsTrackCached(tracks[j]))
 					{
 						continue;
@@ -217,6 +220,7 @@ namespace Thump.Playback.AndroidOS
 				}
 			}
 
+			//nothing's avialable
 			if (requestedTracks.Count == 0)
 			{
 				MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(outputTracks, 0, startPositionMs);
@@ -224,15 +228,6 @@ namespace Thump.Playback.AndroidOS
 				return;
 			}
 
-			if (startItemIndex >= requestedTracks.Count)
-			{
-				startItemIndex = 0;
-			}
-
-			// Build the player queue and split out the tracks we still need
-			// to pre-cache. The start track is cached as the one async hop
-			// below; everything else gets dripped in afterwards so the player
-			// has bytes ready by the time it advances.
 			Queue<PulseTrack> cacheQueue = new Queue<PulseTrack>();
 			for (int i = 0; i < requestedTracks.Count; i++)
 			{
@@ -251,23 +246,21 @@ namespace Thump.Playback.AndroidOS
 			{
 				MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputTracks, finalStartIndex, finalStartPosition);
 				callback.OnComplete(result);
-				DrainCacheQueue(cacheQueue);
+				CacheQueued(cacheQueue, m_currentQueueID);
 			});
 		}
 
-		// Fire-and-forget: keep caching the rest of the queue after the
-		// player has been handed the list. Mirrors ThumpAndroidPlayer.CacheQueued
-		// (recursive CacheTrack chain so each callback queues the next).
-		private void DrainCacheQueue(Queue<PulseTrack> queue)
+		
+		private void CacheQueued(Queue<PulseTrack> queue, int queueId)
 		{
-			if (queue == null || queue.Count == 0)
+			if (queue == null || queue.Count == 0 || queueId != m_currentQueueID)
 			{
 				return;
 			}
 			PulseTrack next = queue.Dequeue();
 			s_thumpData.CacheTrack(next, (success)=>
 			{
-				DrainCacheQueue(queue);
+				CacheQueued(queue, queueId);
 			});
 		}
 
