@@ -5,7 +5,7 @@ using AndroidX.Media3.Common;
 using AndroidX.Media3.Session;
 using Google.Common.Util.Concurrent;
 
-namespace Thump.Playback
+namespace Thump.Playback.AndroidOS
 {
 	/// <summary>
 	/// The minimum boundary between Thump code and the running Media3 session.

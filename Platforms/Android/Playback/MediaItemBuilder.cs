@@ -1,132 +1,113 @@
-﻿using System.Collections.Generic;
-using AndroidX.Concurrent.Futures;
-using AndroidX.Media3.Common;
+﻿using AndroidX.Media3.Common;
 using AndroidX.Media3.Session;
-using Google.Common.Util.Concurrent;
+using System.Collections.Generic;
 using Thump.Data;
-using Thump.Platforms;
 using Thump.Pulse;
 
-namespace Thump.Playback
+namespace Thump.Playback.AndroidOS
 {
-	public class JObjectCallback
+	public enum eAADirectory
 	{
-		private CallbackToFutureAdapter.Completer m_completer;
-		private bool m_done;
-
-
-		public JObjectCallback(CallbackToFutureAdapter.Completer completer)
-		{
-			m_completer = completer;
-			m_done = false;
-		}
-
-		public void OnComplete<T>(List<PulseTrack> data, eAAObject objectType, string objectId)
-		{
-			List<MediaItem> items = AAutoHelper.BuildContainerChildren("albumplay/" + objectId, "albumshuffle/" + objectId, data);
-			Java.Lang.Object result = LibraryResult.OfItemList(items, AAStyles.BuildContentStyleParams());
-			OnComplete(result);
-		}
-
-		public void OnComplete(List<MediaItem> data) 
-		{
-			Java.Lang.Object result = LibraryResult.OfItemList(data, AAStyles.BuildContentStyleParams());
-			OnComplete(result);
-		}
-
-		public void OnComplete(Java.Lang.Object result)
-		{
-			if (m_done)
-			{
-				return;
-			}
-			m_done = true;
-			m_completer.Set(result);
-		}
+		Root,
+		Home,
+		Library,
+		Podcasts,
+		Albums,
+		Playlists,
+		Artists,
+		Genres,
+		RecentlyPlayed,
+		RecentlyAdded,
+		TopPlaylists,
+		PopularArtists,
+	}
+	public enum eAAObject
+	{
+		Album,
+		Artist,
+		Playlist,
+		Genre
 	}
 
-	public class AAutoHelper
+	public class MediaItemBuilder
 	{
-		public class LoadContainerFunc : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+		private static Dictionary<eAADirectory, string> m_directories = new Dictionary<eAADirectory, string>()
 		{
-			private ThumpMediaLibraryService m_owner;
-			private string m_parentId;
-			private eAADirectory m_parent;
-
-			public LoadContainerFunc(ThumpMediaLibraryService owner, eAADirectory parent, string parentId)
-			{
-				m_owner = owner;
-				m_parentId = parentId;
-				m_parent = parent;
-			}
-
-			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
-			{
-				JObjectCallback onComplete = new JObjectCallback(completer);
-				m_owner.LoadContainer(m_parent, onComplete);
-				return null;
-			}
-		}
-		public class LoadObjectFunc : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+			{ eAADirectory.Root, "root" },
+			{ eAADirectory.Home, "home" },
+			{ eAADirectory.Library, "library" },
+			{ eAADirectory.Podcasts, "podcasts" },
+			{ eAADirectory.Albums, "albums" },
+			{ eAADirectory.Playlists, "playlists" },
+			{ eAADirectory.Artists, "artists" },
+			{ eAADirectory.Genres, "genres" },
+			{ eAADirectory.RecentlyPlayed, "home_recent" },
+			{ eAADirectory.RecentlyAdded, "home_added" },
+			{ eAADirectory.TopPlaylists, "home_top" },
+			{ eAADirectory.PopularArtists, "home_popular" },
+		};
+		private static Dictionary<eAAObject, string> m_objects = new Dictionary<eAAObject, string>()
 		{
-			private ThumpMediaLibraryService m_owner;
-			private string m_parentId;
-			private eAAObject m_object;
+			{ eAAObject.Album, "album" },
+			{ eAAObject.Artist, "artist" },
+			{ eAAObject.Playlist, "playlist" },
+			{ eAAObject.Genre, "genre" },
+		};
 
-			public LoadObjectFunc(ThumpMediaLibraryService owner, eAAObject aaObject, string parentId)
-			{
-				m_owner = owner;
-				m_parentId = parentId;
-				m_object = aaObject;
-			}
-
-			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
-			{
-				JObjectCallback onComplete = new JObjectCallback(completer);
-				m_owner.LoadObject(m_object, m_parentId, onComplete);
-				return null;
-			}
-		}
-		public class LoadMediaSetFunc : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+		public static MediaLibraryService.LibraryParams BuildContentStyleParams()
 		{
-			private ThumpMediaLibraryService m_owner;
-			private string m_parentId;
-			private IList<MediaItem> m_items;
-			private int m_startIndex;
-			private long m_startPosition;
-
-			public LoadMediaSetFunc(ThumpMediaLibraryService owner, IList<MediaItem> items, int startIndex, long startPositionMs)
-			{
-				m_owner = owner;
-				m_items = items;
-				m_startIndex = startIndex;
-				m_startPosition = startPositionMs;
-			}
-
-			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
-			{
-				JObjectCallback onComplete = new JObjectCallback(completer);
-				m_owner.LoadMediaItems(m_items, m_startIndex, m_startPosition, onComplete);
-				return null;
-			}
+			Android.OS.Bundle extras = new Android.OS.Bundle();
+			extras.PutInt(MediaConstants.ExtrasKeyContentStyleBrowsable, MediaConstants.ExtrasValueContentStyleGridItem);
+			extras.PutInt(MediaConstants.ExtrasKeyContentStylePlayable, MediaConstants.ExtrasValueContentStyleListItem);
+			MediaLibraryService.LibraryParams.Builder builder = new MediaLibraryService.LibraryParams.Builder();
+			builder.SetExtras(extras);
+			return builder.Build();
 		}
 
-		public class LoadJavaObjectFunc : Java.Lang.Object, CallbackToFutureAdapter.IResolver
+		public static string GetId(eAADirectory directory)
 		{
-			private Java.Lang.Object m_value;
-
-			public LoadJavaObjectFunc(Java.Lang.Object value)
+			string id;
+			if (m_directories.TryGetValue(directory, out id))
 			{
-				m_value = value;
+				return id;
 			}
-
-			public Java.Lang.Object AttachCompleter(CallbackToFutureAdapter.Completer completer)
-			{
-				JObjectCallback guard = new JObjectCallback(completer);
-				guard.OnComplete(m_value);
-				return null;
-			}
+			return null;
 		}
+
+		public static bool TryGetDirectory(string id, out eAADirectory directory)
+		{
+			foreach (KeyValuePair<eAADirectory, string> pair in m_directories)
+			{
+				if (pair.Value == id)
+				{
+					directory = pair.Key;
+					return true;
+				}
+			}
+			directory = eAADirectory.Root;
+			return false;
+		}
+
+		public static bool TryGetObject(string mediaId, out eAAObject aaObject)
+		{
+			int slash = mediaId.IndexOf('/');
+			if (slash >= 0)
+			{
+				mediaId = mediaId.Substring(0, slash);
+			}
+
+			foreach (KeyValuePair<eAAObject, string> pair in m_objects)
+			{
+				if (pair.Value == mediaId)
+				{
+					aaObject = pair.Key;
+					return true;
+				}
+			}
+			aaObject = eAAObject.Album;
+			return false;
+		}
+
 
 		public static List<MediaItem> BuildTrackItems(List<PulseTrack> tracks)
 		{
@@ -135,7 +116,7 @@ namespace Thump.Playback
 			{
 				return items;
 			}
-			for(int i=0;i<tracks.Count;i++)
+			for (int i = 0; i < tracks.Count; i++)
 			{
 				PulseTrack track = tracks[i];
 				items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.ImageID));
@@ -204,7 +185,7 @@ namespace Thump.Playback
 			{
 				return items;
 			}
-			foreach(PulseObject pulseObject in objects)
+			foreach (PulseObject pulseObject in objects)
 			{
 				switch (pulseObject.Kind)
 				{
@@ -306,7 +287,7 @@ namespace Thump.Playback
 
 		public static MediaItem BuildItemForId(string mediaId)
 		{
-			string trackId = StripTrackPrefix(mediaId);
+			string trackId = AAutoHelper.StripTrackPrefix(mediaId);
 			if (!string.IsNullOrEmpty(trackId))
 			{
 				return BuildPlayableItem(mediaId, mediaId, "");
@@ -387,39 +368,6 @@ namespace Thump.Playback
 				return null;
 			}
 			return Android.Net.Uri.Parse("content://com.therobm.thump.coverart/" + Android.Net.Uri.Encode(coverArtId));
-		}
-
-		public static string ParsePrefix(string mediaId)
-		{
-			int slash = mediaId.IndexOf('/');
-			if (slash < 0)
-			{
-				return mediaId;
-			}
-			return mediaId.Substring(0, slash);
-		}
-
-		public static string ParseValue(string mediaId)
-		{
-			int slash = mediaId.IndexOf('/');
-			if (slash < 0)
-			{
-				return "";
-			}
-			return mediaId.Substring(slash + 1);
-		}
-
-		public static string StripTrackPrefix(string mediaId)
-		{
-			if (string.IsNullOrEmpty(mediaId))
-			{
-				return null;
-			}
-			if (!mediaId.StartsWith("track/"))
-			{
-				return null;
-			}
-			return mediaId.Substring("track/".Length);
 		}
 	}
 }

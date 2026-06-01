@@ -1,8 +1,10 @@
 using System;
 using System.Threading;
+using Android.Content;
 using Thump.Data;
 
-namespace Thump.Playback
+
+namespace Thump.Playback.AndroidOS
 {
 	[Android.Content.ContentProvider(new string[] { "com.therobm.thump.coverart" }, Exported = true)]
 	public class ThumpCoverArtProvider : Android.Content.ContentProvider

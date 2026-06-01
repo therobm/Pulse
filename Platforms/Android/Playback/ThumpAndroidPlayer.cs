@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Timers;
-using Android.App.Admin;
 using Android.Content;
 using Android.Runtime;
 using AndroidX.Media3.Common;
@@ -9,7 +8,7 @@ using Microsoft.Maui.ApplicationModel;
 using Thump.Data;
 using Thump.Pulse;
 
-namespace Thump.Playback
+namespace Thump.Playback.AndroidOS
 {
 	public class ThumpAndroidPlayer : IMediaPlayer
 	{

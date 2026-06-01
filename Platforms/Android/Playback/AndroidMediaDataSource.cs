@@ -3,7 +3,8 @@ using AndroidX.Media3.Common;
 using AndroidX.Media3.DataSource;
 using Thump.Data;
 
-namespace Thump.Playback
+
+namespace Thump.Playback.AndroidOS
 {
 	/// <summary>
 	/// Pair to <see cref="AndroidMediaDataSource"/>. Media3 holds a single

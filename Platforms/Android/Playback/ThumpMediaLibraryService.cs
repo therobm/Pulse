@@ -1,11 +1,8 @@
-using System;
 using System.Collections.Generic;
 using System.IO;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
-using Android.Net.Eap;
-using AndroidX.Annotations;
 using AndroidX.Concurrent.Futures;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.ExoPlayer;
@@ -14,14 +11,11 @@ using AndroidX.Media3.Extractor;
 using AndroidX.Media3.Extractor.Mp3;
 using AndroidX.Media3.Session;
 using Google.Common.Util.Concurrent;
-using Java.Util;
-using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Storage;
 using Thump.Data;
-using Thump.Platforms;
 using Thump.Pulse;
 
-namespace Thump.Playback
+namespace Thump.Playback.AndroidOS
 {
 	
 
@@ -120,12 +114,12 @@ namespace Thump.Playback
 
 		public MediaItem OnGetLibraryRoot(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, MediaLibraryService.LibraryParams libraryParams)
 		{
-			MediaItem root = AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Root), "Thump");
+			MediaItem root = MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Root), "Thump");
 			return root;
 		}
 		public MediaItem OnGetItem(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string mediaId)
 		{
-			MediaItem item = AAutoHelper.BuildItemForId(mediaId);
+			MediaItem item = MediaItemBuilder.BuildItemForId(mediaId);
 			return item;
 		}
 		
@@ -137,17 +131,17 @@ namespace Thump.Playback
 		public IListenableFuture OnGetChildren(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string parentId, int page, int pageSize, MediaLibraryService.LibraryParams libraryParams)
 		{
 			eAADirectory dir = eAADirectory.Root;
-			bool isDir = AAudoNavigation.TryGetDirectory(parentId, out dir);
+			bool isDir = MediaItemBuilder.TryGetDirectory(parentId, out dir);
 			
 			if (isDir && dir == eAADirectory.Root)
 			{
 				List<MediaItem> categories = new List<MediaItem>();
-				categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Home), "Home"));
-				categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Playlists), "Playlists"));
-				categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Library), "Library"));
-				categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Podcasts), "Podcasts"));
+				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Home), "Home"));
+				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Playlists), "Playlists"));
+				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Library), "Library"));
+				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Podcasts), "Podcasts"));
 
-				AAutoHelper.LoadJavaObjectFunc loadHome = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfItemList(categories, AAStyles.BuildContentStyleParams()));
+				AAutoHelper.LoadJavaObjectFunc loadHome = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfItemList(categories, MediaItemBuilder.BuildContentStyleParams()));
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadHome);
 			}
 			if (isDir) 
@@ -159,7 +153,7 @@ namespace Thump.Playback
 			{
 				eAAObject aaObject = eAAObject.Album;
 				//todo part out the objet type
-				if  (!AAudoNavigation.TryGetObject(parentId, out aaObject))
+				if  (!MediaItemBuilder.TryGetObject(parentId, out aaObject))
 				{
 					//hrm.. I dunno what this is...
 				}
@@ -272,10 +266,10 @@ namespace Thump.Playback
 											artists.Add(D[i]);
 										}
 
-										combined.AddRange(AAutoHelper.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played"));
-										combined.AddRange(AAutoHelper.BuildMixedItemsGrouped(added, "Recently Added"));
-										combined.AddRange(AAutoHelper.BuildMixedItemsGrouped(topPlaylists, "Top Playlists"));
-										combined.AddRange(AAutoHelper.BuildMixedItemsGrouped(artists, "Popular Artists"));
+										combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played"));
+										combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(added, "Recently Added"));
+										combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(topPlaylists, "Top Playlists"));
+										combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(artists, "Popular Artists"));
 
 										request.OnComplete(combined);
 									});
@@ -288,7 +282,7 @@ namespace Thump.Playback
 					{
 						s_thumpData.GetPodcasts((podcasts) =>
 						{
-							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(podcasts, "Podcasts");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(podcasts, "Podcasts");
 							request.OnComplete(items);
 						});
 						break;
@@ -298,10 +292,10 @@ namespace Thump.Playback
 						// Library is a navigation hub, not a data fetch — it lists
 						// the four library sub-categories so the user can drill in.
 						List<MediaItem> categories = new List<MediaItem>();
-						categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Albums), "Albums"));
-						categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Playlists), "Playlists"));
-						categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Artists), "Artists"));
-						categories.Add(AAutoHelper.BuildBrowsableItem(AAudoNavigation.GetId(eAADirectory.Genres), "Genres"));
+						categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Albums), "Albums"));
+						categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Playlists), "Playlists"));
+						categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Artists), "Artists"));
+						categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Genres), "Genres"));
 						request.OnComplete(categories);
 						break;
 					}
@@ -309,7 +303,7 @@ namespace Thump.Playback
 					{
 						s_thumpData.GetRecentlyPlayed((recentlyPlayed) =>
 						{
-							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played");
 							request.OnComplete(items);
 						});
 						break;
@@ -318,7 +312,7 @@ namespace Thump.Playback
 					{
 						s_thumpData.GetRecentlyAdded((recentlyAdded) =>
 						{
-							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(recentlyAdded, "Recently Added");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(recentlyAdded, "Recently Added");
 							request.OnComplete(items);
 						});
 						break;
@@ -327,7 +321,7 @@ namespace Thump.Playback
 					{
 						s_thumpData.GetTopPlaylists((topPlaylists) =>
 						{
-							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(topPlaylists, "Top Playlists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(topPlaylists, "Top Playlists");
 							request.OnComplete(items);
 						});
 						break;
@@ -336,7 +330,7 @@ namespace Thump.Playback
 					{
 						s_thumpData.GetPopularArtists((popularArtists) =>
 						{
-							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(popularArtists, "Popular Artists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(popularArtists, "Popular Artists");
 							request.OnComplete(items);
 						});
 						break;
@@ -345,7 +339,7 @@ namespace Thump.Playback
 					{
 						s_thumpData.GetAlbums((albums) =>
 						{
-							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(albums, "Albums");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(albums, "Albums");
 							request.OnComplete(items);
 						});
 						break;
@@ -354,7 +348,7 @@ namespace Thump.Playback
 					{
 						s_thumpData.GetPlaylists((playlists) =>
 						{
-							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(playlists, "Playlists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(playlists, "Playlists");
 							request.OnComplete(items);
 						});
 						break;
@@ -363,7 +357,7 @@ namespace Thump.Playback
 					{
 						s_thumpData.GetArtists((artists) =>
 						{
-							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(artists, "Artists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(artists, "Artists");
 							request.OnComplete(items);
 						});
 						break;
@@ -372,7 +366,7 @@ namespace Thump.Playback
 					{
 						s_thumpData.GetGenres((genres) =>
 						{
-							List<MediaItem> items = AAutoHelper.BuildMixedItemsGrouped(genres, "Genres");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(genres, "Genres");
 							request.OnComplete(items);
 						});
 						break;

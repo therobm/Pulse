@@ -5,6 +5,9 @@ using Microsoft.Maui.Controls;
 using Microsoft.Maui.Storage;
 using Thump.Data;
 using Thump.Playback;
+#if ANDROID
+using Thump.Playback.AndroidOS;
+#endif
 using Thump.Pulse;
 using Thump.Views;
 
