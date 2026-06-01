@@ -157,7 +157,7 @@ namespace Thump.Views
 		{
 			base.Initialize();
 			m_titleLabel.Text = m_genre.Name;
-			m_metaLabel.Text = m_genre.SongCount + " songs  ·  " + m_genre.AlbumCount + " albums";
+			m_metaLabel.Text = m_genre.TrackCount + " songs  ·  " + m_genre.AlbumCount + " albums";
 			MainView.Data.GetTracksForGenre(m_genre, OnTracksLoaded);
 		}
 
@@ -174,22 +174,22 @@ namespace Thump.Views
 
 		private void OnPlayClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayTracks(m_tracks, 0);
+			m_mainView.OnPlayTracks(m_tracks, 0, eQueueSource.Genre, m_genre.Id);
 		}
 
 		private void OnShuffleClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayTracksShuffled(m_tracks);
+			m_mainView.OnPlayTracksShuffled(m_tracks, eQueueSource.Genre, m_genre.Id);
 		}
 
 		private void OnAddToQueueClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnAddToQueue(m_tracks);
+			m_mainView.OnAddToQueue(m_tracks, eQueueSource.Genre, m_genre.Id);
 		}
 
 		private void OnPlayNextClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayNext(m_tracks);
+			m_mainView.OnPlayNext(m_tracks, eQueueSource.Genre, m_genre.Id);
 		}
 	}
 }

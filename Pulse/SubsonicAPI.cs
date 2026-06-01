@@ -27,7 +27,7 @@ namespace Thump.Pulse
 		private eSubSonicAuthType m_authType;
 		private Thread m_thread;
 		private bool m_bInitialized = false;
-		private bool m_bIsOnline = false;
+		private bool m_bIsOnline = true;
 		/// <summary>
 		/// todo this seems dumb now that we have a real cache
 		/// </summary>
@@ -110,7 +110,7 @@ namespace Thump.Pulse
 			catch (Exception ex)
 			{
 				//Don't log ping failures, this is our online/offline state polling
-				//Log.Exception(ex);
+				Log.Exception(ex);
 			}
 			m_bIsOnline = false;
 			response = default;
@@ -139,6 +139,35 @@ namespace Thump.Pulse
 				url = url + "&" + extraParams;
 			}
 			return url;
+		}
+
+		public void GetTrack(string trackId, Action<PulseTrack> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new PulseTrack());
+				return;
+			}
+			Task.Run(() =>
+			{
+				PulseTrack result = new PulseTrack();
+				try
+				{
+					if (SubsonicGet("getSong", out JsonElement response, "id=" + Uri.EscapeDataString(trackId)))
+					{
+						if (response.TryGetProperty("song", out JsonElement songElement))
+						{
+							result = PulseHelper.ParseSong(songElement);
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				PulseTrack captured = result;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
 		}
 
 		public void GetArtists(Action<List<PulseArtist>> onComplete)
@@ -330,7 +359,7 @@ namespace Thump.Pulse
 							{
 								foreach (JsonElement element in songArray.EnumerateArray())
 								{
-									result.Songs.Add(PulseHelper.ParseSong(element));
+									result.Tracks.Add(PulseHelper.ParseSong(element));
 								}
 							}
 						}
@@ -436,7 +465,7 @@ namespace Thump.Pulse
 						if (response.TryGetProperty("album", out JsonElement albumElement))
 						{
 							PulseAlbum album = ParseAlbum(albumElement);
-							album.Songs = PulseHelper.ParseSongArray(albumElement, "song");
+							album.Tracks = PulseHelper.ParseSongArray(albumElement, "song");
 							result = album;
 						}
 					}
@@ -460,7 +489,7 @@ namespace Thump.Pulse
 			album.ArtistId = JsonHelper.GetString(element, "artistId");
 			album.CoverArt = JsonHelper.GetString(element, "coverArt");
 			album.Year = JsonHelper.GetInt(element, "year");
-			album.SongCount = JsonHelper.GetInt(element, "songCount");
+			album.TrackCount = JsonHelper.GetInt(element, "songCount");
 			album.Duration = JsonHelper.GetInt(element, "duration");
 			return album;
 		}
@@ -747,7 +776,8 @@ namespace Thump.Pulse
 		{
 			if (!IsOnline())
 			{
-				onComplete(false);
+				if (onComplete != null)
+					onComplete(false);
 				return;
 			}
 			Task.Run(() =>
@@ -765,7 +795,11 @@ namespace Thump.Pulse
 
 				}
 				bool result = ok;
-				MainThread.BeginInvokeOnMainThread(() => { onComplete(result); });
+				MainThread.BeginInvokeOnMainThread(() => 
+				{
+					if (onComplete != null)
+						onComplete(result); 
+				});
 			});
 		}
 
@@ -861,7 +895,7 @@ namespace Thump.Pulse
 			{
 				songCount = trackIds.GetArrayLength();
 			}
-			playlist.SongCount = songCount;
+			playlist.TrackCount = songCount;
 			playlist.Duration = JsonHelper.GetInt(element, "DurationSeconds");
 			playlist.Score = 0f;
 			DateTime lastPlayed = DateTime.MinValue;
@@ -934,7 +968,8 @@ namespace Thump.Pulse
 		{
 			if (!IsOnline() || string.IsNullOrEmpty(trackId))
 			{
-				onComplete(null);
+				if (onComplete != null)	
+					onComplete(null);
 				return;
 			}
 			string url = BuildStreamUrl(trackId);
@@ -950,12 +985,16 @@ namespace Thump.Pulse
 						return;
 					}
 					byte[] data = response.Content.ReadAsByteArrayAsync().Result;
-					onComplete(data);
+
+					if (onComplete != null)
+						onComplete(data);
 				}
 				catch (Exception ex)
 				{
 					Log.Exception(ex);
-					onComplete(null);
+
+					if (onComplete != null)
+						onComplete(null);
 				}
 			});
 		}
@@ -1196,7 +1235,7 @@ namespace Thump.Pulse
 								PulseGenre genre = new PulseGenre();
 								genre.Id = value;
 								genre.Name = value;
-								genre.SongCount = JsonHelper.GetInt(element, "songCount");
+								genre.TrackCount = JsonHelper.GetInt(element, "songCount");
 								genre.AlbumCount = JsonHelper.GetInt(element, "albumCount");
 								results.Add(genre);
 							}
@@ -1366,7 +1405,6 @@ namespace Thump.Pulse
 			}
 			return response.Content.ReadAsStringAsync().Result;
 		}
-
 
 	}
 }

@@ -114,7 +114,7 @@ namespace Thump.Views.Tiles
 				{
 					m_art.SetShape(eArtShape.RoundedRect);
 					m_titleLabel.Text = playlist.Name;
-					m_subtitleLabel.Text = playlist.SongCount + " tracks";
+					m_subtitleLabel.Text = playlist.TrackCount + " tracks";
 					m_art.SetCoverArt(playlist.CoverArt);
 				}
 			}

@@ -339,6 +339,43 @@ namespace Thump.Data
 			}
 		}
 
+		public PulseTrack GetTrack(string trackId)
+		{
+			PulseTrack track = new PulseTrack();
+			lock (m_sqlLock)
+			{
+				using (SqliteCommand cmd = m_connection.CreateCommand())
+				{
+					cmd.CommandText = "SELECT id, title, artist, artist_id, album, album_id, cover_art, duration FROM tracks WHERE id = $id";
+					cmd.Parameters.AddWithValue("$id", trackId);
+					using (SqliteDataReader reader = cmd.ExecuteReader())
+					{
+						if (!reader.Read())
+						{
+							return track;
+						}
+						track = SqlHelper.ReadSongRow(reader);
+					}
+				}
+			}
+			return track;
+		}
+		public void UpdateTrack(string trackId, PulseTrack track)
+		{
+			if (track == null)
+			{
+				return;
+			}
+			long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+			lock (m_sqlLock)
+			{
+				using (SqliteTransaction tx = m_connection.BeginTransaction())
+				{
+					WriteTrackRow(tx, track, now);
+					tx.Commit();
+				}
+			}
+		}
 		public List<PulseArtist> GetAllArtists()
 		{
 			List<PulseArtist> result = new List<PulseArtist>();
@@ -498,7 +535,7 @@ namespace Thump.Data
 					{
 						while (reader.Read())
 						{
-							album.Songs.Add(SqlHelper.ReadSongRow(reader));
+							album.Tracks.Add(SqlHelper.ReadSongRow(reader));
 						}
 					}
 				}
@@ -521,9 +558,9 @@ namespace Thump.Data
 						del.Parameters.AddWithValue("$id", album.Id);
 						del.ExecuteNonQuery();
 					}
-					for (int idx = 0; idx < album.Songs.Count; idx++)
+					for (int idx = 0; idx < album.Tracks.Count; idx++)
 					{
-						PulseTrack song = album.Songs[idx];
+						PulseTrack song = album.Tracks[idx];
 						WriteTrackRow(tx, song, now);
 						using (SqliteCommand atIns = m_connection.CreateCommand())
 						{
@@ -608,7 +645,7 @@ namespace Thump.Data
 					{
 						while (reader.Read())
 						{
-							playlist.Songs.Add(SqlHelper.ReadSongRow(reader));
+							playlist.Tracks.Add(SqlHelper.ReadSongRow(reader));
 						}
 					}
 				}
@@ -630,9 +667,9 @@ namespace Thump.Data
 						del.Parameters.AddWithValue("$id", playlist.Id);
 						del.ExecuteNonQuery();
 					}
-					for (int idx = 0; idx < playlist.Songs.Count; idx++)
+					for (int idx = 0; idx < playlist.Tracks.Count; idx++)
 					{
-						PulseTrack song = playlist.Songs[idx];
+						PulseTrack song = playlist.Tracks[idx];
 						WriteTrackRow(tx, song, now);
 						using (SqliteCommand ptIns = m_connection.CreateCommand())
 						{
@@ -751,7 +788,7 @@ namespace Thump.Data
 							ins.Parameters.AddWithValue("$aid", SqlHelper.NullableParam(a.ArtistId));
 							ins.Parameters.AddWithValue("$ca", SqlHelper.NullableParam(a.CoverArt));
 							ins.Parameters.AddWithValue("$y", a.Year);
-							ins.Parameters.AddWithValue("$sc", a.SongCount);
+							ins.Parameters.AddWithValue("$sc", a.TrackCount);
 							ins.Parameters.AddWithValue("$d", a.Duration);
 							ins.ExecuteNonQuery();
 						}
@@ -777,7 +814,7 @@ namespace Thump.Data
 							PulseGenre genre = new PulseGenre();
 							genre.Id = reader.GetString(0);
 							genre.Name = reader.GetString(0);
-							genre.SongCount = reader.GetInt32(1);
+							genre.TrackCount = reader.GetInt32(1);
 							genre.AlbumCount = reader.GetInt32(2);
 							result.Add(genre);
 						}
@@ -808,7 +845,7 @@ namespace Thump.Data
 							ins.Transaction = tx;
 							ins.CommandText = "INSERT INTO genres (name, song_count, album_count, fetched_at) VALUES ($name, $sc, $ac, $f)";
 							ins.Parameters.AddWithValue("$name", genre.Name);
-							ins.Parameters.AddWithValue("$sc", genre.SongCount);
+							ins.Parameters.AddWithValue("$sc", genre.TrackCount);
 							ins.Parameters.AddWithValue("$ac", genre.AlbumCount);
 							ins.Parameters.AddWithValue("$f", now);
 							ins.ExecuteNonQuery();
@@ -974,7 +1011,7 @@ namespace Thump.Data
 							ins.Parameters.AddWithValue("$id", SqlHelper.NullableParam(p.Id));
 							ins.Parameters.AddWithValue("$n", SqlHelper.NullableParam(p.Name));
 							ins.Parameters.AddWithValue("$ca", SqlHelper.NullableParam(p.CoverArt));
-							ins.Parameters.AddWithValue("$sc", p.SongCount);
+							ins.Parameters.AddWithValue("$sc", p.TrackCount);
 							ins.Parameters.AddWithValue("$d", p.Duration);
 							ins.Parameters.AddWithValue("$score", p.Score);
 							ins.Parameters.AddWithValue("$lp", SqlHelper.ToUnixSeconds(p.LastPlayed));
@@ -1082,7 +1119,7 @@ namespace Thump.Data
 				cmd.Parameters.AddWithValue("$aid", SqlHelper.NullableParam(album.ArtistId));
 				cmd.Parameters.AddWithValue("$ca", SqlHelper.NullableParam(album.CoverArt));
 				cmd.Parameters.AddWithValue("$y", album.Year);
-				cmd.Parameters.AddWithValue("$sc", album.SongCount);
+				cmd.Parameters.AddWithValue("$sc", album.TrackCount);
 				cmd.Parameters.AddWithValue("$d", album.Duration);
 				cmd.Parameters.AddWithValue("$f", now);
 				cmd.ExecuteNonQuery();
@@ -1127,7 +1164,7 @@ namespace Thump.Data
 				cmd.Parameters.AddWithValue("$id", playlist.Id);
 				cmd.Parameters.AddWithValue("$n", playlist.Name);
 				cmd.Parameters.AddWithValue("$ca", SqlHelper.NullableParam(playlist.CoverArt));
-				cmd.Parameters.AddWithValue("$sc", playlist.SongCount);
+				cmd.Parameters.AddWithValue("$sc", playlist.TrackCount);
 				cmd.Parameters.AddWithValue("$d", playlist.Duration);
 				cmd.Parameters.AddWithValue("$s", playlist.Score);
 				cmd.Parameters.AddWithValue("$lp", SqlHelper.ToUnixSeconds(playlist.LastPlayed));

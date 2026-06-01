@@ -1,10 +1,12 @@
 using System;
 using System.Threading;
+using Android.Content;
 using Thump.Data;
 
-namespace Thump.Playback
+
+namespace Thump.Playback.AndroidOS
 {
-	[Android.Content.ContentProvider(new string[] { "com.therobm.thump.coverart" }, Exported = true)]
+	[Android.Content.ContentProvider(new string[] { "com.therobm.thump.coverart" }, Exported = true, GrantUriPermissions = true)]
 	public class ThumpCoverArtProvider : Android.Content.ContentProvider
 	{
 		private const string s_authority = "com.therobm.thump.coverart";
@@ -50,7 +52,7 @@ namespace Thump.Playback
 					return null;
 				}
 
-				ThumpData data = ThumpPlaybackService.s_ThumpData;
+				ThumpData data = ThumpMediaLibraryService.s_thumpData;
 				if (data == null)
 				{
 					return null;
@@ -71,8 +73,11 @@ namespace Thump.Playback
 				}
 
 				Java.IO.File cacheDir = Context.CacheDir;
-				Java.IO.File outFile = new Java.IO.File(cacheDir, "coverart_" + artId.GetHashCode() + ".img");
-				System.IO.File.WriteAllBytes(outFile.AbsolutePath, result);
+				Java.IO.File outFile = new Java.IO.File(cacheDir, "coverart_" + artId + ".img");
+				if (!outFile.Exists())
+				{
+					System.IO.File.WriteAllBytes(outFile.AbsolutePath, result);
+				}
 				return Android.OS.ParcelFileDescriptor.Open(outFile, Android.OS.ParcelFileMode.ReadOnly);
 			}
 			catch (Exception exception)

@@ -92,7 +92,7 @@ namespace Thump.Views.Tiles
 			}
 			m_genre = genre;
 			m_nameLabel.Text = genre.Name;
-			m_subtitleLabel.Text = genre.SongCount + " songs  ·  " + genre.AlbumCount + " albums";
+			m_subtitleLabel.Text = genre.TrackCount + " songs  ·  " + genre.AlbumCount + " albums";
 		}
 
 		private void OnTapped(object sender, EventArgs e)

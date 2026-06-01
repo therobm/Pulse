@@ -43,7 +43,10 @@ namespace Thump.Pulse
 		{
 			return m_subsonic.BuildRestUrl(endpoint, extraParams);
 		}
-
+		public void GetTrack(string trackId, Action<PulseTrack> onComplete)
+		{
+			m_subsonic.GetTrack(trackId, onComplete);
+		}
 		public void GetArtists(Action<List<PulseArtist>> onComplete)
 		{
 			m_subsonic.GetArtists(onComplete);
@@ -183,5 +186,7 @@ namespace Thump.Pulse
 		{
 			m_subsonic.GetFavorites(onComplete);
 		}
+
+	
 	}
 }

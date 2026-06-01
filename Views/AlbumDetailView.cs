@@ -165,7 +165,7 @@ namespace Thump.Views
 
 			ScrollView scroller = new ScrollView();
 			scroller.Orientation = ScrollOrientation.Horizontal;
-			scroller.HorizontalScrollBarVisibility = ScrollBarVisibility.Never;
+			scroller.HorizontalScrollBarVisibility = ScrollBarVisibility.Default;
 			scroller.Content = buttonStack;
 
 			Grid.SetRow(scroller, 3);
@@ -186,7 +186,7 @@ namespace Thump.Views
 			base.Initialize();
 			m_titleLabel.Text = m_album.Name;
 			m_artistLabel.Text = m_album.Artist;
-			m_metaLabel.Text = m_album.Year + "  ·  " + m_album.SongCount + " tracks";
+			m_metaLabel.Text = m_album.Year + "  ·  " + m_album.TrackCount + " tracks";
 			m_art.SetCoverArt(m_album.CoverArt);
 			MainView.Data.GetTracksForAlbum(m_album, OnTracksLoaded);
 		}
@@ -206,22 +206,22 @@ namespace Thump.Views
 		private void OnPlayClicked(object sender, EventArgs e)
 		{
 			Log.Info("OnPlayClicked");
-			m_mainView.OnPlayTracks(m_tracks, 0);
+			m_mainView.OnPlayTracks(m_tracks, 0, eQueueSource.Album, m_album.Id);
 		}
 
 		private void OnShuffleClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayTracksShuffled(m_tracks);
+			m_mainView.OnPlayTracksShuffled(m_tracks, eQueueSource.Album, m_album.Id);
 		}
 
 		private void OnAddToQueueClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnAddToQueue(m_tracks);
+			m_mainView.OnAddToQueue(m_tracks, eQueueSource.Album, m_album.Id);
 		}
 
 		private void OnPlayNextClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayNext(m_tracks);
+			m_mainView.OnPlayNext(m_tracks, eQueueSource.Album, m_album.Id);
 		}
 	}
 }

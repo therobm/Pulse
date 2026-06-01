@@ -16,14 +16,14 @@ namespace Thump.Pulse
 	{
 		public List<PulseArtist> Artists;
 		public List<PulseAlbum> Albums;
-		public List<PulseTrack> Songs;
+		public List<PulseTrack> Tracks;
 		public List<PulsePlaylist> Playlists;
 
 		public PulseSearchData()
 		{
 			Artists = new List<PulseArtist>();
 			Albums = new List<PulseAlbum>();
-			Songs = new List<PulseTrack>();
+			Tracks = new List<PulseTrack>();
 			Playlists = new List<PulsePlaylist>();
 		}
 	}
@@ -69,13 +69,13 @@ namespace Thump.Pulse
 		public string ArtistId { get; set; }
 		public string CoverArt { get; set; }
 		public int Year { get; set; }
-		public int SongCount { get; set; }
+		public int TrackCount { get; set; }
 		public int Duration { get; set; }
-		public List<PulseTrack> Songs { get; set; }
+		public List<PulseTrack> Tracks { get; set; }
 
 		public PulseAlbum()
 		{
-			Songs = new List<PulseTrack>();
+			Tracks = new List<PulseTrack>();
 			Kind = eDataType.Album;
 		}
 	}
@@ -84,15 +84,15 @@ namespace Thump.Pulse
 	{
 		public string Name { get; set; }
 		public string CoverArt { get; set; }
-		public int SongCount { get; set; }
+		public int TrackCount { get; set; }
 		public int Duration { get; set; }
 		public float Score { get; set; }
 		public DateTime LastPlayed { get; set; }
-		public List<PulseTrack> Songs { get; set; }
+		public List<PulseTrack> Tracks { get; set; }
 
 		public PulsePlaylist()
 		{
-			Songs = new List<PulseTrack>();
+			Tracks = new List<PulseTrack>();
 			Kind = eDataType.Playlist;
 		}
 	}
@@ -115,7 +115,7 @@ namespace Thump.Pulse
 	public class PulseGenre : PulseObject
 	{
 		public string Name { get; set; }
-		public int SongCount { get; set; }
+		public int TrackCount { get; set; }
 		public int AlbumCount { get; set; }
 		public PulseGenre()
 		{
@@ -163,17 +163,17 @@ namespace Thump.Pulse
 			playlist.Id = JsonHelper.GetString(element, "id");
 			playlist.Name = JsonHelper.GetString(element, "name");
 			playlist.CoverArt = JsonHelper.GetString(element, "coverArt");
-			playlist.SongCount = JsonHelper.GetInt(element, "songCount");
+			playlist.TrackCount = JsonHelper.GetInt(element, "songCount");
 			playlist.Duration = JsonHelper.GetInt(element, "duration");
 			playlist.Score = JsonHelper.GetFloat(element, "score");
 			playlist.LastPlayed = JsonHelper.GetDateTime(element, "lastPlayed");
-			playlist.Songs = ParseSongArray(element, "entry");
+			playlist.Tracks = ParseSongArray(element, "entry");
 			return playlist;
 		}
 
 		public static List<PulseTrack> ParseSongArray(JsonElement parent, string propertyName)
 		{
-			List<PulseTrack> songs = new List<PulseTrack>();
+			List<PulseTrack> tracks = new List<PulseTrack>();
 			JsonElement array;
 			bool validParams = true;
 			if (!parent.TryGetProperty(propertyName, out array))
@@ -184,26 +184,26 @@ namespace Thump.Pulse
 			{
 				foreach (JsonElement element in array.EnumerateArray())
 				{
-					songs.Add(ParseSong(element));
+					tracks.Add(ParseSong(element));
 				}
 			}
-			return songs;
+			return tracks;
 		}
 
 		public static PulseTrack ParseSong(JsonElement element)
 		{
-			PulseTrack song = new PulseTrack();
-			song.Id = JsonHelper.GetString(element, "id");
-			song.Title = JsonHelper.GetString(element, "title");
-			song.Artist = JsonHelper.GetString(element, "artist");
-			song.ArtistId = JsonHelper.GetString(element, "artistId");
-			song.Album = JsonHelper.GetString(element, "album");
-			song.AlbumId = JsonHelper.GetString(element, "albumId");
-			song.CoverArt = JsonHelper.GetString(element, "coverArt");
-			song.Duration = JsonHelper.GetInt(element, "duration");
+			PulseTrack track = new PulseTrack();
+			track.Id = JsonHelper.GetString(element, "id");
+			track.Title = JsonHelper.GetString(element, "title");
+			track.Artist = JsonHelper.GetString(element, "artist");
+			track.ArtistId = JsonHelper.GetString(element, "artistId");
+			track.Album = JsonHelper.GetString(element, "album");
+			track.AlbumId = JsonHelper.GetString(element, "albumId");
+			track.CoverArt = JsonHelper.GetString(element, "coverArt");
+			track.Duration = JsonHelper.GetInt(element, "duration");
 			string starredValue = JsonHelper.GetString(element, "starred");
-			song.Starred = !string.IsNullOrEmpty(starredValue);
-			return song;
+			track.Starred = !string.IsNullOrEmpty(starredValue);
+			return track;
 		}
 	}
 }

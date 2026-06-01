@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Threading;
 using Microsoft.Maui.ApplicationModel;
 using Thump.Pulse;
 
@@ -25,6 +23,7 @@ namespace Thump.Data
 
 	public enum eRoutes
 	{
+		GetTrack,
 		GetArtists,
 		GetAlbum,
 		GetAlbums,
@@ -72,24 +71,29 @@ namespace Thump.Data
 
 			m_dataRoutes = new Dictionary<eRoutes, DataRoute>()
 			{
+				{ eRoutes.GetTrack,					new DataRouteID<PulseTrack>(this,			eRouteCachingMethod.NetworkAuthorative, m_pulseClient.GetTrack,					m_cache.GetTrack,				m_cache.UpdateTrack,                IsValidObject) },
 				{ eRoutes.GetArtists,				new DataRoute<List<PulseArtist>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetArtists,				m_cache.GetAllArtists,			m_cache.UpdateAllArtists,			IsValidList<PulseArtist>) },
-				{ eRoutes.GetAlbum,					new DataRouteID<PulseAlbum>(this,			eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetAlbum,				m_cache.GetAlbum,				m_cache.UpdateAlbum,				IsValidObject) },
+				{ eRoutes.GetAlbum,					new DataRouteID<PulseAlbum>(this,			eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetAlbum,					m_cache.GetAlbum,				m_cache.UpdateAlbum,				IsValidObject) },
 				{ eRoutes.GetAlbums,				new DataRoute<List<PulseAlbum>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetAlbums,				m_cache.GetAlbums,				m_cache.UpdateAlbums,				IsValidList<PulseAlbum>) },
 				{ eRoutes.GetAlbumsForArtist,		new DataRouteID<List<PulseAlbum>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetArtistAlbums,			m_cache.GetAlbumsForArtist,		m_cache.UpdateAlbumsForArtist,		IsValidList<PulseAlbum>) },
-				{ eRoutes.GetPlaylists,				new DataRoute<List<PulsePlaylist>>(this,	eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetPlaylists,			m_cache.GetAllPlaylists,		m_cache.UpdateAllPlaylists,			IsValidList<PulsePlaylist>) },
+				{ eRoutes.GetPlaylists,				new DataRoute<List<PulsePlaylist>>(this,	eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetPlaylists,				m_cache.GetAllPlaylists,		m_cache.UpdateAllPlaylists,			IsValidList<PulsePlaylist>) },
 				{ eRoutes.GetPlaylist,				new DataRouteID<PulsePlaylist>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetPlaylist,				m_cache.GetPlaylist,			m_cache.UpdatePlaylist,				IsValidObject) },
 				{ eRoutes.GetGenres,				new DataRoute<List<PulseGenre>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetGenres,				m_cache.GetGenres,				m_cache.UpdateGenres,				IsValidList<PulseGenre>) },
 				{ eRoutes.GetTracksForGenre,		new DataRouteID<List<PulseTrack>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetTracksForGenre,		m_cache.GetTracksForGenre,		m_cache.UpdateTracksForGenre,		IsValidList<PulseTrack>) },
-				{ eRoutes.GetCoverArt,				new DataRouteID<byte[]>(this,				eRouteCachingMethod.LocalFirst,		m_pulseClient.GetCoverArt,				m_cache.GetCoverArt,			m_cache.UpdateCoverArt,				IsValidBinary) },
+				{ eRoutes.GetCoverArt,				new DataRouteID<byte[]>(this,				eRouteCachingMethod.LocalFirst,			m_pulseClient.GetCoverArt,				m_cache.GetCoverArt,			m_cache.UpdateCoverArt,				IsValidBinary) },
 				{ eRoutes.GetRecentlyPlayed,		new DataRoute<List<PulseObject>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetRecentlyPlayed,		m_cache.GetRecentlyPlayed,		m_cache.UpdateRecentlyPlayed,		IsValidList<PulseObject>) },
 				{ eRoutes.GetTopPlaylists,			new DataRoute<List<PulsePlaylist>>(this,	eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetTopPlaylists,			m_cache.GetTopPlaylists,		m_cache.UpdateTopPlaylists,			IsValidList<PulsePlaylist>) },
 				{ eRoutes.GetPopularArtists,		new DataRoute<List<PulseArtist>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetPopularArtists,		m_cache.GetPopularArtists,		m_cache.UpdatePopularArtists,		IsValidList<PulseArtist>) },
-				{ eRoutes.GetRecentlyAdded,			new DataRoute<List<PulseObject>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetRecentlyAdded,		m_cache.GetRecentlyAdded,		m_cache.UpdateRecentlyAdded,		IsValidList<PulseObject>) },
-				{ eRoutes.GetFavorites,				new DataRoute<List<PulseTrack>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetFavorites,			m_cache.GetFavorites,			m_cache.UpdateFavorites,			IsValidList<PulseTrack>) },
+				{ eRoutes.GetRecentlyAdded,			new DataRoute<List<PulseObject>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetRecentlyAdded,			m_cache.GetRecentlyAdded,		m_cache.UpdateRecentlyAdded,		IsValidList<PulseObject>) },
+				{ eRoutes.GetFavorites,				new DataRoute<List<PulseTrack>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetFavorites,				m_cache.GetFavorites,			m_cache.UpdateFavorites,			IsValidList<PulseTrack>) },
 			};
 
 		}
 
+		public bool IsOnline()
+		{
+			return m_pulseClient.IsOnline();
+		}
 		private void GetData<T>(DataRoute<T> dataRoute, Action<T> callback) where T : class
 		{
 			dataRoute.GetData(callback);
@@ -154,8 +158,29 @@ namespace Thump.Data
 			}
 		}
 
+		public void GetArtist(string artistID, Action<PulseArtist> callback)
+		{
+			if (callback == null)
+			{
+				return;
+			}
+			DataRouteID<PulseArtist> dataRoute = GetDataRouteID<PulseArtist>(eRoutes.GetAlbum);
+			if (dataRoute != null)
+			{
+				GetData(dataRoute, artistID, callback);
+			}
+			else
+			{
+				callback(null);
+			}
+		}
+
+
 		public void GetAlbumsForArtist(PulseArtist artist, Action<List<PulseAlbum>> callback)
 		{
+		}
+		public void GetAlbumsForArtist(string artistID, Action<List<PulseAlbum>> callback)
+		{ 
 			if (callback == null)
 			{
 				return;
@@ -163,7 +188,7 @@ namespace Thump.Data
 			DataRouteID<List<PulseAlbum>> dataRoute = GetDataRouteID<List<PulseAlbum>>(eRoutes.GetAlbumsForArtist);
 			if (dataRoute != null)
 			{
-				GetData(dataRoute, artist.Id, callback);
+				GetData(dataRoute, artistID, callback);
 			}
 			else
 			{
@@ -171,6 +196,28 @@ namespace Thump.Data
 			}
 		}
 
+
+		public void GetTracksForArtist(PulseArtist artist, Action<List<PulseTrack>> callback)
+		{
+			GetTracksForArtist(artist.Id, callback);
+		}
+		public void GetTracksForArtist(string artistID, Action<List<PulseTrack>> callback)
+		{ 
+			if (callback == null)
+			{
+				return;
+			}
+
+			GetAlbumsForArtist(artistID, (albums) =>
+			{
+				List<PulseTrack> tracks = new List<PulseTrack>();
+				for(int i = 0; i < albums.Count; i++)
+				{
+					tracks.AddRange(albums[i].Tracks);
+				}
+				callback(tracks);
+			});
+		}
 		public void GetAlbum(string albumId, Action<PulseAlbum> callback)
 		{
 			if (callback == null)
@@ -190,18 +237,22 @@ namespace Thump.Data
 
 		public void GetTracksForAlbum(PulseAlbum album, Action<List<PulseTrack>> callback)
 		{
+			GetTracksForAlbum(album.Id, callback);
+		}
+		public void GetTracksForAlbum(string albumId, Action<List<PulseTrack>> callback)
+		{ 
 			if (callback == null)
 			{
 				return;
 			}
-			GetAlbum(album.Id, (fullAlbum) =>
+			GetAlbum(albumId, (fullAlbum) =>
 			{
 				if (fullAlbum == null)
 				{
 					callback(new List<PulseTrack>());
 					return;
 				}
-				callback(fullAlbum.Songs);
+				callback(fullAlbum.Tracks);
 			});
 		}
 
@@ -237,6 +288,26 @@ namespace Thump.Data
 			{
 				callback(null);
 			}
+		}
+		public void GetTracksForPlaylist(PulsePlaylist Playlist, Action<List<PulseTrack>> callback)
+		{
+			GetTracksForPlaylist(Playlist.Id, callback);
+		}
+		public void GetTracksForPlaylist(string PlaylistId, Action<List<PulseTrack>> callback)
+		{
+			if (callback == null)
+			{
+				return;
+			}
+			GetPlaylist(PlaylistId, (fullPlaylist) =>
+			{
+				if (fullPlaylist == null)
+				{
+					callback(new List<PulseTrack>());
+					return;
+				}
+				callback(fullPlaylist.Tracks);
+			});
 		}
 
 		public void GetAlbums(Action<List<PulseAlbum>> callback)
@@ -275,6 +346,10 @@ namespace Thump.Data
 
 		public void GetTracksForGenre(PulseGenre genre, Action<List<PulseTrack>> callback)
 		{
+			GetTracksForGenre(genre.Name, callback);
+		}
+		public void GetTracksForGenre(string genreName, Action<List<PulseTrack>> callback)
+		{ 
 			if (callback == null)
 			{
 				return;
@@ -282,88 +357,152 @@ namespace Thump.Data
 			DataRouteID<List<PulseTrack>> dataRoute = GetDataRouteID<List<PulseTrack>>(eRoutes.GetTracksForGenre);
 			if (dataRoute != null)
 			{
-				GetData(dataRoute, genre.Name, callback);
+				GetData(dataRoute, genreName, callback);
 			}
 			else
 			{
 				callback(null);
 			}
 		}
-
-		public byte[] GetTrackAudioData(PulseTrack track)
-		{
-			if (track == null || string.IsNullOrEmpty(track.Id))
-			{
-				return null;
-			}
-			string blobKey = "track:" + track.Id;
-
-			byte[] cached = null;
-			m_cache.ExecuteSync(() => { cached = m_cache.ReadBlob(blobKey); });
-			if (cached != null && cached.Length > 0)
-			{
-				return cached;
-			}
-
-			ManualResetEventSlim wait = new ManualResetEventSlim(false);
-			byte[] fetched = null;
-			m_pulseClient.GetTrackAudio(track.Id, (data) =>
-			{
-				fetched = data;
-				wait.Set();
-			});
-			wait.Wait();
-
-			if (fetched == null || fetched.Length == 0)
-			{
-				return null;
-			}
-			m_cache.ExecuteSync(() => { m_cache.WriteBlob(blobKey, fetched, "audio"); });
-			return fetched;
-		}
-
-		public bool IsTrackCached(PulseTrack track)
-		{
-			if (track == null || string.IsNullOrEmpty(track.Id))
-			{
-				return false;
-			}
-			string blobKey = "track:" + track.Id;
-			bool cached = false;
-			m_cache.ExecuteSync(() => { cached = !string.IsNullOrEmpty(m_cache.GetBlobFilePath(blobKey)); });
-			return cached;
-		}
-
-		public void EnsureTrackAvailability(PulseTrack track, Action<bool> callback)
+		public void GetTrack(string trackId, Action<PulseTrack> callback)
 		{
 			if (callback == null)
 			{
 				return;
 			}
-			if (track == null || string.IsNullOrEmpty(track.Id))
+			DataRouteID<PulseTrack> dataRoute = GetDataRouteID<PulseTrack>(eRoutes.GetTrack);
+			if (dataRoute != null)
 			{
-				callback(false);
+				GetData(dataRoute, trackId, callback);
+			}
+			else
+			{
+				callback(null);
+			}
+		}
+		public byte[] GetTrackAudioData(PulseTrack track)
+		{
+			if (track == null)
+				return null;
+			return GetTrackAudioData(track.Id);
+		}
+		public byte[] GetTrackAudioData(string trackId)
+		{ 
+			if (string.IsNullOrEmpty(trackId))
+			{
+				return null;
+			}
+			string blobKey = "track:" + trackId;
+
+			//try our local cache first
+			byte[] trackData = null;
+			m_cache.ExecuteSync(() => 
+			{ 
+				trackData = m_cache.ReadBlob(blobKey);
+			});
+
+			if (trackData != null && trackData.Length > 0)
+			{
+				return trackData;
+			}
+
+			//we only stream from disk, whoever wanted this should have cached ahead
+			return null;
+
+
+			/*
+			//We're offline, no point in trying to pull new data
+			if (!IsOnline())
+				return	null;
+			
+			ManualResetEventSlim wait = new ManualResetEventSlim(false);
+			m_pulseClient.GetTrackAudio(trackId, (data) =>
+			{
+				trackData = data;
+				wait.Set();
+			});
+			wait.Wait();
+
+			if (trackData == null || trackData.Length == 0)
+			{
+				//track is busted and/or missing
+				return null;
+			}
+
+			//Save this file to our cache
+			m_cache.ExecuteSync(() => 
+			{ 
+				m_cache.WriteBlob(blobKey, trackData, "audio"); 
+			});
+			return trackData;*/
+		}
+
+		/// <summary>
+		/// Checks if a track has been locally cached
+		/// </summary>
+		/// <param name="track"></param>
+		/// <returns></returns>
+		public bool IsTrackCached(PulseTrack track)
+		{
+			return IsTrackCached(track.Id);
+		}
+		public bool IsTrackCached(string trackId)
+		{
+			if ( string.IsNullOrEmpty(trackId))
+			{
+				return false;
+			}
+			string blobKey = "track:" + trackId;
+			bool cached = false;
+			m_cache.ExecuteSync(() =>
+			{
+				cached = !string.IsNullOrEmpty(m_cache.GetBlobFilePath(blobKey));
+			});
+
+			return cached;
+		}
+
+
+		/// <summary>
+		/// Requests a track be cached to disk
+		/// </summary>
+		/// <param name="track"></param>
+		/// <param name="onComplete"></param>
+		public void CacheTrack(PulseTrack track, Action<bool> onComplete)
+		{
+			CacheTrack(track.Id, onComplete);
+		}
+		public void CacheTrack(string trackId, Action<bool> onComplete)
+		{ 
+			if (IsTrackCached(trackId))
+			{
+				if (onComplete != null)
+					onComplete(true);
 				return;
 			}
-			string blobKey = "track:" + track.Id;
 
-			string existingPath = null;
-			m_cache.ExecuteSync(() => { existingPath = m_cache.GetBlobFilePath(blobKey); });
-			if (!string.IsNullOrEmpty(existingPath))
-			{
-				MainThread.BeginInvokeOnMainThread(() => { callback(true); });
-				return;
-			}
-
-			m_pulseClient.GetTrackAudio(track.Id, (data) =>
+			string blobKey = "track:" + trackId;
+			m_pulseClient.GetTrackAudio(trackId, (data) =>
 			{
 				if (data == null || data.Length == 0)
 				{
-					MainThread.BeginInvokeOnMainThread(() => { callback(false); });
+					MainThread.BeginInvokeOnMainThread(() => 
+					{
+						if (onComplete != null)
+							onComplete(false);
+					});
 					return;
 				}
-				m_cache.ExecuteSync(() => { m_cache.WriteBlob(blobKey, data, "audio"); });
-				MainThread.BeginInvokeOnMainThread(() => { callback(true); });
+				m_cache.ExecuteSync(() =>
+				{ 
+					m_cache.WriteBlob(blobKey, data, "audio");
+				});
+
+				MainThread.BeginInvokeOnMainThread(() => 
+				{
+					if (onComplete != null)
+						onComplete(true);
+				});
 			});
 		}
 

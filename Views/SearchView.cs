@@ -197,9 +197,9 @@ namespace Thump.Views
 				m_albumResults.IsVisible = false;
 				m_albumsHeader.IsVisible = false;
 			}
-			if (results.Songs != null && results.Songs.Count > 0)
+			if (results.Tracks != null && results.Tracks.Count > 0)
 			{
-				m_songResults.ItemsSource = results.Songs;
+				m_songResults.ItemsSource = results.Tracks;
 				m_songResults.IsVisible = true;
 				m_songsHeader.IsVisible = true;
 			}
