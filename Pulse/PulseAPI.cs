@@ -45,7 +45,7 @@ namespace Thump.Pulse
 		}
 		public void GetTrack(string trackId, Action<PulseTrack> onComplete)
 		{
-			throw new NotImplementedException();
+			m_subsonic.GetTrack(trackId, onComplete);
 		}
 		public void GetArtists(Action<List<PulseArtist>> onComplete)
 		{

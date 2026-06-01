@@ -370,7 +370,7 @@ namespace Thump.Data
 			{
 				return;
 			}
-			DataRouteID<PulseTrack> dataRoute = GetDataRouteID<PulseTrack>(eRoutes.GetTracksForGenre);
+			DataRouteID<PulseTrack> dataRoute = GetDataRouteID<PulseTrack>(eRoutes.GetTrack);
 			if (dataRoute != null)
 			{
 				GetData(dataRoute, trackId, callback);

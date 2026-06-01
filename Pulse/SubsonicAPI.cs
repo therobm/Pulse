@@ -143,7 +143,31 @@ namespace Thump.Pulse
 
 		public void GetTrack(string trackId, Action<PulseTrack> onComplete)
 		{
-			throw new NotImplementedException();
+			if (!IsOnline())
+			{
+				onComplete(new PulseTrack());
+				return;
+			}
+			Task.Run(() =>
+			{
+				PulseTrack result = new PulseTrack();
+				try
+				{
+					if (SubsonicGet("getSong", out JsonElement response, "id=" + Uri.EscapeDataString(trackId)))
+					{
+						if (response.TryGetProperty("song", out JsonElement songElement))
+						{
+							result = PulseHelper.ParseSong(songElement);
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				PulseTrack captured = result;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
 		}
 
 		public void GetArtists(Action<List<PulseArtist>> onComplete)
