@@ -97,6 +97,25 @@ namespace Thump.Playback.AndroidOS
 		/// </summary>
 		public Func<MediaSession, MediaSession.ControllerInfo, Intent, bool> m_onMediaButtonEvent;
 
+		/// <summary>
+		/// Fired when a browser asks the host to start a search. Host kicks
+		/// off the async fetch, notifies the session via
+		/// <c>NotifySearchResultChanged</c> when results are ready, and
+		/// returns a future that completes once the search has been
+		/// accepted. The browser then calls back into
+		/// <see cref="m_onGetSearchResult"/> to pick the items up.
+		/// </summary>
+		public Func<MediaLibraryService.MediaLibrarySession, MediaSession.ControllerInfo, string, MediaLibraryService.LibraryParams, IListenableFuture> m_onSearch;
+
+		/// <summary>
+		/// Fired when a browser wants the items for a previously-started
+		/// search. Host returns the items synchronously (typically from a
+		/// cache populated by <see cref="m_onSearch"/>). Page / pageSize
+		/// follow the same Media3 contract as OnGetChildren — AA itself
+		/// ignores them in practice and asks for everything in one shot.
+		/// </summary>
+		public Func<MediaLibraryService.MediaLibrarySession, MediaSession.ControllerInfo, string, int, int, MediaLibraryService.LibraryParams, IListenableFuture> m_onGetSearchResult;
+
 		public MediaSession.ConnectionResult OnConnect(MediaSession session, MediaSession.ControllerInfo controller)
 		{
 			if (m_onConnect != null)
@@ -257,6 +276,24 @@ namespace Thump.Playback.AndroidOS
 				return m_onMediaButtonEvent(session, controller, intent);
 			}
 			return false;
+		}
+
+		public IListenableFuture OnSearch(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string query, MediaLibraryService.LibraryParams libraryParams)
+		{
+			if (m_onSearch != null)
+			{
+				return m_onSearch(session, browser, query, libraryParams);
+			}
+			return ImmediateFuture(LibraryResult.OfVoid(libraryParams));
+		}
+
+		public IListenableFuture OnGetSearchResult(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string query, int page, int pageSize, MediaLibraryService.LibraryParams libraryParams)
+		{
+			if (m_onGetSearchResult != null)
+			{
+				return m_onGetSearchResult(session, browser, query, page, pageSize, libraryParams);
+			}
+			return ImmediateFuture(LibraryResult.OfItemList(new List<MediaItem>(), libraryParams));
 		}
 
 		// Wraps a synchronously-available value as a resolved IListenableFuture.
