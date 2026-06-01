@@ -71,7 +71,7 @@ namespace Thump.Data
 
 			m_dataRoutes = new Dictionary<eRoutes, DataRoute>()
 			{
-				{ eRoutes.GetTrack,					new DataRoute<PulseTrack>(this,				eRouteCachingMethod.NetworkAuthorative, m_pulseClient.GetTrack,					m_cache.GetTrack,				m_cache.UpdateTrack,                IsValidObject) },
+				{ eRoutes.GetTrack,					new DataRouteID<PulseTrack>(this,			eRouteCachingMethod.NetworkAuthorative, m_pulseClient.GetTrack,					m_cache.GetTrack,				m_cache.UpdateTrack,                IsValidObject) },
 				{ eRoutes.GetArtists,				new DataRoute<List<PulseArtist>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetArtists,				m_cache.GetAllArtists,			m_cache.UpdateAllArtists,			IsValidList<PulseArtist>) },
 				{ eRoutes.GetAlbum,					new DataRouteID<PulseAlbum>(this,			eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetAlbum,					m_cache.GetAlbum,				m_cache.UpdateAlbum,				IsValidObject) },
 				{ eRoutes.GetAlbums,				new DataRoute<List<PulseAlbum>>(this,		eRouteCachingMethod.NetworkAuthorative,	m_pulseClient.GetAlbums,				m_cache.GetAlbums,				m_cache.UpdateAlbums,				IsValidList<PulseAlbum>) },

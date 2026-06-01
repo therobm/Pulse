@@ -343,7 +343,7 @@ namespace Thump.Data
 		{
 			throw new NotImplementedException();
 		}
-		public void UpdateTrack(PulseTrack track)
+		public void UpdateTrack(string trackId, PulseTrack track)
 		{
 			throw new NotImplementedException();
 		}
