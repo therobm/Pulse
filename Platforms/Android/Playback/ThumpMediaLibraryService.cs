@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -184,7 +185,7 @@ namespace Thump.Playback.AndroidOS
 		// into actual tracks before we can build the player queue; that fetch
 		// is done synchronously per item via GetTrackIds so this function
 		// stays linear except for the start-track CacheTrack hop at the end.
-		public void LoadMediaItems(IList<MediaItem> items, int startIndex, long startPositionMs, JObjectCallback callback)
+		public async void LoadMediaItems(IList<MediaItem> items, int startIndex, long startPositionMs, JObjectCallback callback)
 		{
 			m_currentQueueID = m_currentQueueID + 1;
 
@@ -199,6 +200,15 @@ namespace Thump.Playback.AndroidOS
 
 			bool isOnline = s_thumpData.IsOnline();
 
+			//grab all our tracks at once
+			Task<List<PulseTrack>>[] fetchedTracks = new Task<List<PulseTrack>>[items.Count];
+			for (int i = 0; i < items.Count; i++)
+			{
+				fetchedTracks[i] = GetTrackIdsAsync(items[i]);
+			}
+			await Task.WhenAll(fetchedTracks);
+
+
 			List<PulseTrack> requestedTracks = new List<PulseTrack>();
 			int startItemIndex = 0;
 			for(int i = 0; i < items.Count; i++)
@@ -209,7 +219,7 @@ namespace Thump.Playback.AndroidOS
 					startItemIndex = requestedTracks.Count;
 				}
 
-				List<PulseTrack> tracks = GetTrackIds(items[i]);
+				List<PulseTrack> tracks = fetchedTracks[i].Result;
 				for (int j = 0; j < tracks.Count; j++)
 				{   
 					//filter out unavailable tracks
@@ -249,6 +259,7 @@ namespace Thump.Playback.AndroidOS
 			int finalStartIndex = startItemIndex;
 			long finalStartPosition = startPositionMs;
 
+
 			int cacheQueueID = m_currentQueueID;
 			s_thumpData.CacheTrack(startTrack, (success)=>
 			{
@@ -257,7 +268,10 @@ namespace Thump.Playback.AndroidOS
 
 				MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputTracks, finalStartIndex, finalStartPosition);
 				callback.OnComplete(result);
-				CacheQueued(cacheQueue, cacheQueueID);
+
+				//Wait for the initial spinup then start caching the rest
+				Task.Delay(5000).ContinueWith((_) => CacheQueued(cacheQueue, cacheQueueID));
+				//CacheQueued(cacheQueue, cacheQueueID);
 			});
 		}
 
@@ -275,36 +289,37 @@ namespace Thump.Playback.AndroidOS
 			});
 		}
 
-
-		private List<PulseTrack> GetTrackIds(MediaItem input)
+		Task<List<PulseTrack>> GetTrackIdsAsync(MediaItem item)
 		{
-			List<PulseTrack> trackList = new List<PulseTrack>();
+			TaskCompletionSource<List<PulseTrack>> tcs = new TaskCompletionSource<List<PulseTrack>>();
+			GetTrackIds(item, (tracks) => tcs.SetResult(tracks));
+			return tcs.Task;
+		}
+
+		private void GetTrackIds(MediaItem input, Action<List<PulseTrack>> onComplete)
+		{
+			if (onComplete == null)
+				return;
 
 			string mediaId = input.MediaId;
 			if (string.IsNullOrEmpty(mediaId))
 			{
-				return trackList;
+				onComplete(new List<PulseTrack>());
 			}
 
 			// Single track:
 			if (mediaId.StartsWith("track/"))
 			{
 				string trackId = AAutoHelper.StripTrackPrefix(mediaId);
-				using (ManualResetEventSlim done = new ManualResetEventSlim(false))
+				
+				s_thumpData.GetTrack(trackId, (pulseTrack)=>
 				{
-					s_thumpData.GetTrack(trackId, (pulseTrack)=>
-					{
-						if (pulseTrack != null)
-							trackList.Add(pulseTrack);
-
-						done.Set();
-					});
-					if (!done.Wait(8000))
-					{
-						Log.Warn("ThumpMediaLibraryService.LoadMediaItems: GetTrack timed out for '" + trackId + "'");
-					}
-				}
-				return trackList;
+					List<PulseTrack> trackList = new List<PulseTrack>();
+					if (pulseTrack != null)
+						trackList.Add(pulseTrack);
+					onComplete(trackList);
+				});
+				return;
 			}
 
 			eAAObject objectType;
@@ -313,69 +328,66 @@ namespace Thump.Playback.AndroidOS
 			if (!MediaItemBuilder.TryParsePlayMediaId(mediaId, out objectType, out objectId, out isShuffle))
 			{
 				Log.Warn("ThumpMediaLibraryService.LoadMediaItems: unknown mediaId prefix '" + mediaId + "', skipping");
-				return trackList;
+				onComplete(new List<PulseTrack>());
+				return;
 			}
 
-			trackList = GetTracksFor(objectType, objectId);
-			if (isShuffle)
+			GetTracksFor(objectType, objectId, (list) =>
 			{
-				ShuffleInPlace(trackList);
-			}
-			return trackList;
+				List<PulseTrack> trackList = new List<PulseTrack>(list);
+				if (isShuffle)
+				{
+					ShuffleInPlace(trackList);
+				}
+				onComplete(trackList);
+			});
+			
 		}
 
-		private List<PulseTrack> GetTracksFor(eAAObject objectType, string objectId)
+		private void GetTracksFor(eAAObject objectType, string objectId, Action<List<PulseTrack>> onComplete)
 		{
 			List<PulseTrack> outputTracks = new List<PulseTrack>();
-			using (ManualResetEventSlim done = new ManualResetEventSlim(false))
+		
+			//Lambda exception to avoid too many indirection calls
+			bool fired = false;
+			// ThumpData NetworkAuthorative routes can fire the callback twice
+			// (cached burst + refresh) by design; this is a one-shot consumer
+			// so guard against the second hit.
+			Action<List<PulseTrack>> onDataComplete = (tracks) =>
 			{
-				//Lambda exception to avoid too many indirection calls
-				bool fired = false;
-				// ThumpData NetworkAuthorative routes can fire the callback twice
-				// (cached burst + refresh) by design; this is a one-shot consumer
-				// so guard against the second hit.
-				Action<List<PulseTrack>> onComplete = (tracks) =>
+				if (fired)
 				{
-					if (fired)
-					{
-						return;
-					}
+					return;
+				}
 
-					fired = true;
+				fired = true;
 
-					if (tracks != null)
-					{
-						//return this to the caller via the closure
-						outputTracks = tracks;
-					}
-					done.Set();
-				};
+				if (tracks != null)
+				{
+					//return this to the caller via the closure
+					outputTracks = tracks;
+					onComplete(outputTracks);
+				}
+			};
 
 			
-				switch (objectType)
-				{
-					case eAAObject.Album:
-						s_thumpData.GetTracksForAlbum(objectId, onComplete);
-						break;
-					case eAAObject.Playlist:
-						s_thumpData.GetTracksForPlaylist(objectId, onComplete);
-						break;
-					case eAAObject.Artist:
-						s_thumpData.GetTracksForArtist(objectId, onComplete);
-						break;
-					case eAAObject.Genre:
-						s_thumpData.GetTracksForGenre(objectId, onComplete);
-						break;
-					default:
-						done.Set();
-						break;
-				}
-				if (!done.Wait(8000))
-				{
-					Log.Warn("ThumpMediaLibraryService.LoadMediaItems: GetTracksFor timed out for " + objectType + " '" + objectId + "'");
-				}
+			switch (objectType)
+			{
+				case eAAObject.Album:
+					s_thumpData.GetTracksForAlbum(objectId, onDataComplete);
+					break;
+				case eAAObject.Playlist:
+					s_thumpData.GetTracksForPlaylist(objectId, onDataComplete);
+					break;
+				case eAAObject.Artist:
+					s_thumpData.GetTracksForArtist(objectId, onDataComplete);
+					break;
+				case eAAObject.Genre:
+					s_thumpData.GetTracksForGenre(objectId, onDataComplete);
+					break;
+				default:
+					break;
 			}
-			return outputTracks;
 		}
 
 		private static void ShuffleInPlace<T>(List<T> list)
