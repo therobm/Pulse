@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Android.Content;
 using AndroidX.Concurrent.Futures;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.Session;
@@ -85,6 +86,16 @@ namespace Thump.Playback.AndroidOS
 		/// framework should jump to.
 		/// </summary>
 		public Func<MediaSession, MediaSession.ControllerInfo, IList<MediaItem>, int, long, IListenableFuture> m_onSetMediaItems;
+
+		/// <summary>
+		/// Fired when a hardware media key (steering wheel, headset, BT) sends
+		/// a raw KEYCODE_MEDIA_* intent. Host returns true if it consumed the
+		/// event; false to let Media3 dispatch the embedded key normally
+		/// (which routes Play/Pause/Next/Previous to the player as ordinary
+		/// commands). The default override below returns false so behavior
+		/// matches a host that doesn't set this field.
+		/// </summary>
+		public Func<MediaSession, MediaSession.ControllerInfo, Intent, bool> m_onMediaButtonEvent;
 
 		public MediaSession.ConnectionResult OnConnect(MediaSession session, MediaSession.ControllerInfo controller)
 		{
@@ -237,6 +248,15 @@ namespace Thump.Playback.AndroidOS
 				return m_onSetMediaItems(session, controller, mediaItems, startIndex, startPositionMs);
 			}
 			return ImmediateFuture(new MediaSession.MediaItemsWithStartPosition(new List<MediaItem>(), startIndex, startPositionMs));
+		}
+
+		public bool OnMediaButtonEvent(MediaSession session, MediaSession.ControllerInfo controller, Intent intent)
+		{
+			if (m_onMediaButtonEvent != null)
+			{
+				return m_onMediaButtonEvent(session, controller, intent);
+			}
+			return false;
 		}
 
 		// Wraps a synchronously-available value as a resolved IListenableFuture.
