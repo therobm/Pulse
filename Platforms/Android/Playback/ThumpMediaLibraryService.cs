@@ -177,9 +177,9 @@ namespace Thump.Playback.AndroidOS
 		// "<type>play/<id>" / "<type>shuffle/<id>" placeholder (the user
 		// tapped "Play all" / "Shuffle" on a container), or in principle a
 		// list combining both. Container ids need a ThumpData fetch to expand
-		// into actual tracks before we can build the player queue. Every
-		// async hop captures m_currentQueueID and bails if AA fires another
-		// OnSetMediaItems mid-flight.
+		// into actual tracks before we can build the player queue; that fetch
+		// is done synchronously per item via GetTrackIds so this function
+		// stays linear except for the start-track CacheTrack hop at the end.
 		public void LoadMediaItems(IList<MediaItem> items, int startIndex, long startPositionMs, JObjectCallback callback)
 		{
 			List<MediaItem> outputTracks = new List<MediaItem>();
@@ -193,27 +193,82 @@ namespace Thump.Playback.AndroidOS
 
 			bool isOnline = s_thumpData.IsOnline();
 
-			//determine which object types are being requested so we can fetch the appropriate data
-
+			// Expand each input MediaItem to its tracks. AA's startIndex points
+			// into items[] — remember where the corresponding input's first
+			// surviving track lands in the flattened list so we can hand the
+			// right start position back to the player.
 			List<PulseTrack> requestedTracks = new List<PulseTrack>();
+			int startItemIndex = 0;
 			for(int i = 0; i < items.Count; i++)
 			{
-				List<PulseTrack> tracks = GetTrackIds(items[i]);
-
-				//filter out unavailable tracks
-				if (!isOnline)
-				{ 
-					for(int j = 0; j < tracks.Count; j++)
-					{
-						if (!isOnline && !s_thumpData.IsTrackCached(tracks[j]))
-							continue;
-						requestedTracks.Add(tracks[j]);
-					}
+				if (i == startIndex)
+				{
+					startItemIndex = requestedTracks.Count;
 				}
 
+				List<PulseTrack> tracks = GetTrackIds(items[i]);
+				for (int j = 0; j < tracks.Count; j++)
+				{
+					if (!isOnline && !s_thumpData.IsTrackCached(tracks[j]))
+					{
+						continue;
+					}
+					requestedTracks.Add(tracks[j]);
+				}
 			}
 
-			throw new NotImplementedException();
+			if (requestedTracks.Count == 0)
+			{
+				MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(outputTracks, 0, startPositionMs);
+				callback.OnComplete(empty);
+				return;
+			}
+
+			if (startItemIndex >= requestedTracks.Count)
+			{
+				startItemIndex = 0;
+			}
+
+			// Build the player queue and split out the tracks we still need
+			// to pre-cache. The start track is cached as the one async hop
+			// below; everything else gets dripped in afterwards so the player
+			// has bytes ready by the time it advances.
+			Queue<PulseTrack> cacheQueue = new Queue<PulseTrack>();
+			for (int i = 0; i < requestedTracks.Count; i++)
+			{
+				outputTracks.Add(MediaItemBuilder.Build(requestedTracks[i]));
+				if (i != startItemIndex)
+				{
+					cacheQueue.Enqueue(requestedTracks[i]);
+				}
+			}
+
+			PulseTrack startTrack = requestedTracks[startItemIndex];
+			int finalStartIndex = startItemIndex;
+			long finalStartPosition = startPositionMs;
+
+			s_thumpData.CacheTrack(startTrack, (success)=>
+			{
+				MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputTracks, finalStartIndex, finalStartPosition);
+				callback.OnComplete(result);
+				DrainCacheQueue(cacheQueue);
+			});
+		}
+
+		// Fire-and-forget: keep caching the rest of the queue after the
+		// player has been handed the list. Mirrors ThumpAndroidPlayer.CacheQueued
+		// (recursive CacheTrack chain so each callback queues the next).
+		private void DrainCacheQueue(Queue<PulseTrack> queue)
+		{
+			if (queue == null || queue.Count == 0)
+			{
+				return;
+			}
+			PulseTrack next = queue.Dequeue();
+			s_thumpData.CacheTrack(next, (success)=>
+			{
+				DrainCacheQueue(queue);
+			});
 		}
 
 
@@ -239,7 +294,10 @@ namespace Thump.Playback.AndroidOS
 						if (pulseTrack != null)
 							trackList.Add(pulseTrack);
 					});
-					done.Wait();
+					if (!done.Wait(8000))
+					{
+						Log.Warn("ThumpMediaLibraryService.LoadMediaItems: GetTrack timed out for '" + trackId + "'");
+					}
 				}
 				return trackList;
 			}
@@ -254,6 +312,10 @@ namespace Thump.Playback.AndroidOS
 			}
 
 			trackList = GetTracksFor(objectType, objectId);
+			if (isShuffle)
+			{
+				ShuffleInPlace(trackList);
+			}
 			return trackList;
 		}
 
@@ -300,9 +362,13 @@ namespace Thump.Playback.AndroidOS
 						s_thumpData.GetTracksForGenre(objectId, onComplete);
 						break;
 					default:
+						done.Set();
 						break;
 				}
-				done.Wait();
+				if (!done.Wait(8000))
+				{
+					Log.Warn("ThumpMediaLibraryService.LoadMediaItems: GetTracksFor timed out for " + objectType + " '" + objectId + "'");
+				}
 			}
 			return outputTracks;
 		}
