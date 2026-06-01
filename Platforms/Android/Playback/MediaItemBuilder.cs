@@ -446,6 +446,11 @@ namespace Thump.Playback.AndroidOS
 			{
 				metadata.SetAlbumTitle(track.Album);
 			}
+			Android.Net.Uri artworkUri = BuildArtworkUri(track.ImageID);
+			if (artworkUri != null)
+			{
+				metadata.SetArtworkUri(artworkUri);
+			}
 
 			Android.Net.Uri uri = GetURI(track.Id);
 			MediaItem.Builder builder = new MediaItem.Builder();
