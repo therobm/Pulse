@@ -30,8 +30,7 @@ namespace Thump.Views
 		private Label m_cacheSizeValueLabel;
 		private ProgressBar m_usageBar;
 		private Label m_usageLabel;
-		private Label m_tracksCachedLabel;
-		private Label m_coverArtLabel;
+		private Label m_entriesLabel;
 		private Label m_oldestLabel;
 
 		private Entry m_serverIpEntry;
@@ -201,11 +200,8 @@ namespace Thump.Views
 			m_usageBar.Progress = 0;
 			section.Children.Add(m_usageBar);
 
-			m_tracksCachedLabel = BuildFieldLabel("Tracks Cached: 0");
-			section.Children.Add(m_tracksCachedLabel);
-
-			m_coverArtLabel = BuildFieldLabel("Cover Art: 0");
-			section.Children.Add(m_coverArtLabel);
+			m_entriesLabel = BuildFieldLabel("Cached Entries: 0");
+			section.Children.Add(m_entriesLabel);
 
 			m_oldestLabel = BuildFieldLabel("Oldest Cached Object: —");
 			section.Children.Add(m_oldestLabel);
@@ -630,8 +626,7 @@ namespace Thump.Views
 			{
 				m_usageBar.Progress = 0;
 			}
-			m_tracksCachedLabel.Text = "Tracks Cached: " + stats.TrackCount;
-			m_coverArtLabel.Text = "Cover Art: " + stats.CoverArtCount;
+			m_entriesLabel.Text = "Cached Entries: " + stats.EntryCount;
 			m_oldestLabel.Text = "Oldest Cached Object: " + FormatAge(stats.OldestFetchedUnix);
 		}
 
