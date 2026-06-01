@@ -20,7 +20,7 @@ namespace Thump.Playback.AndroidOS
 
 		public void OnComplete<T>(List<PulseTrack> data, eAAObject objectType, string objectId)
 		{
-			List<MediaItem> items = MediaItemBuilder.BuildContainerChildren("albumplay/" + objectId, "albumshuffle/" + objectId, data);
+			List<MediaItem> items = MediaItemBuilder.BuildContainerChildren(objectType, objectId, data);
 			Java.Lang.Object result = LibraryResult.OfItemList(items, MediaItemBuilder.BuildContentStyleParams());
 			OnComplete(result);
 		}

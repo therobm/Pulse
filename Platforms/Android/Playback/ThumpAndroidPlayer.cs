@@ -119,7 +119,7 @@ namespace Thump.Playback.AndroidOS
 			m_cacheQueue.Clear();
 
 			//build playlist
-			int startItemIndex = -1;
+			int startItemIndex = 0;
 			int builtCount = 0;
 			for (int i = 0; i < m_queue.Count; i++)
 			{
@@ -133,7 +133,7 @@ namespace Thump.Playback.AndroidOS
 					m_cacheQueue.Enqueue(m_queue[i]);
 
 
-				MediaItem item = Build(m_queue[i]);
+				MediaItem item = MediaItemBuilder.Build(m_queue[i]);
 				m_controller.AddMediaItem(item);
 				builtCount++;
 			}
@@ -291,7 +291,7 @@ namespace Thump.Playback.AndroidOS
 				}
 				if (isAvailable)
 				{
-					m_controller.AddMediaItem(Build(track));
+					m_controller.AddMediaItem(MediaItemBuilder.Build(track));
 				}
 				AppendQueueItem(tracks, index + 1, queueID);
 			});
@@ -330,7 +330,7 @@ namespace Thump.Playback.AndroidOS
 				}
 				if (isAvailable)
 				{
-					m_controller.AddMediaItem(insertAt, Build(track));
+					m_controller.AddMediaItem(insertAt, MediaItemBuilder.Build(track));
 				}
 				InsertQueueItem(tracks, index + 1, insertAt + 1, queueID);
 			});
