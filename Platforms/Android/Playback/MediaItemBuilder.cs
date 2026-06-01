@@ -192,6 +192,29 @@ namespace Thump.Playback.AndroidOS
 			return items;
 		}
 
+		// An artist's children are the artist's albums (browseable) prefixed
+		// by Play all / Shuffle for the whole artist. Tapping an album drills
+		// into that album's tracks via the standard album/<id> route; tapping
+		// Play all / Shuffle plays every artist track via artistplay/<id> /
+		// artistshuffle/<id> through OnSetMediaItems.
+		public static List<MediaItem> BuildArtistChildren(string artistId, List<PulseAlbum> albums)
+		{
+			string playMediaId = BuildPlayMediaId(eAAObject.Artist, artistId);
+			string shuffleMediaId = BuildShuffleMediaId(eAAObject.Artist, artistId);
+			List<MediaItem> items = new List<MediaItem>();
+			items.Add(BuildPlayableItem(playMediaId, "Play all", ""));
+			items.Add(BuildPlayableItem(shuffleMediaId, "Shuffle", ""));
+			if (albums != null)
+			{
+				for (int i = 0; i < albums.Count; i++)
+				{
+					PulseAlbum album = albums[i];
+					items.Add(BuildAlbumItem("album/" + album.Id, album.Name, album.Artist, album.CoverArt));
+				}
+			}
+			return items;
+		}
+
 		public static List<MediaItem> BuildMixedItems(List<PulseObject> objects)
 		{
 			List<MediaItem> items = new List<MediaItem>();
