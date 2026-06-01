@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Android.App;
@@ -37,6 +38,16 @@ namespace Thump.Playback.AndroidOS
 		private IExoPlayer m_player;
 		private MediaLibraryService.MediaLibrarySession m_session;
 		private CarConnectionReceiver m_carReceiver;
+
+		// Bumped at the start of every LoadMediaItems call. Every async hop
+		// captures the value it saw and bails if it no longer matches —
+		// guards against AA firing OnSetMediaItems again while the first
+		// resolve is still in flight.
+		private int m_currentQueueID;
+
+		// Shared shuffle RNG. Field-level rather than per-call so back-to-back
+		// shuffles within the same second don't get identically seeded.
+		private static Random s_shuffleRand = new Random();
 
 		public override void OnCreate()
 		{
@@ -165,66 +176,290 @@ namespace Thump.Playback.AndroidOS
 			}
 		}
 
+		// AA's OnSetMediaItems hands us a mixed bag of input MediaItems: a
+		// single "track/<id>" (one song the user tapped), or a single
+		// "<type>play/<id>" / "<type>shuffle/<id>" placeholder (the user
+		// tapped "Play all" / "Shuffle" on a container), or in principle a
+		// list combining both. Container ids need a ThumpData fetch to expand
+		// into actual tracks before we can build the player queue. Every
+		// async hop captures m_currentQueueID and bails if AA fires another
+		// OnSetMediaItems mid-flight.
 		public void LoadMediaItems(IList<MediaItem> items, int startIndex, long startPositionMs, JObjectCallback callback)
 		{
+			m_currentQueueID = m_currentQueueID + 1;
+			int queueID = m_currentQueueID;
 
-			//Single tracks working - lists/albums/etc need to send their tracks rather than themselves.
-			// playlist entered here, obviously not a media item.
-
-
-			List<MediaItem> outputItems = new List<MediaItem>();
-
-			bool isOnline = s_thumpData.IsOnline();
-
-			//get the pulse ids
-			List<string> trackIds = new List<string>();
-			for (int i = 0; i < items.Count; i++)
+			if (items == null || items.Count == 0)
 			{
-				MediaItem item = items[i];
-				string pulseID = AAutoHelper.StripTrackPrefix(item.MediaId);
-				trackIds.Add(pulseID);
+				MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(new List<MediaItem>(), 0, startPositionMs);
+				callback.OnComplete(empty);
+				return;
 			}
 
-			Queue<string> cacheQueue = new Queue<string>();
+			// Per-input-item offset into the resolved queue. If AA tells us to
+			// start at items[N], we play resolved[expandedStart[N]].
+			List<MediaItem> resolved = new List<MediaItem>();
+			int[] expandedStart = new int[items.Count];
+			ResolveQueueItems(items, 0, queueID, resolved, expandedStart, startIndex, startPositionMs, callback);
+		}
 
-			//build playlist
+		private void ResolveQueueItems(IList<MediaItem> items, int index, int queueID, List<MediaItem> resolved, int[] expandedStart, int startIndex, long startPositionMs, JObjectCallback callback)
+		{
+			if (queueID != m_currentQueueID)
+			{
+				return;
+			}
+			if (index >= items.Count)
+			{
+				int safeStart = 0;
+				if (startIndex >= 0 && startIndex < expandedStart.Length)
+				{
+					safeStart = expandedStart[startIndex];
+				}
+				FinalizeQueue(resolved, safeStart, startPositionMs, queueID, callback);
+				return;
+			}
+
+			expandedStart[index] = resolved.Count;
+			ResolveOneItem(items[index], queueID, (built)=>
+			{
+				if (queueID != m_currentQueueID)
+				{
+					return;
+				}
+				if (built != null)
+				{
+					resolved.AddRange(built);
+				}
+				ResolveQueueItems(items, index + 1, queueID, resolved, expandedStart, startIndex, startPositionMs, callback);
+			});
+		}
+
+		private void ResolveOneItem(MediaItem input, int queueID, Action<List<MediaItem>> onResolved)
+		{
+			string mediaId = input.MediaId;
+			if (string.IsNullOrEmpty(mediaId))
+			{
+				onResolved(new List<MediaItem>());
+				return;
+			}
+
+			// Single track: keep the AA-supplied metadata, just attach the
+			// playable URI so Media3 can route bytes through our DataSource.
+			if (mediaId.StartsWith("track/"))
+			{
+				string trackId = AAutoHelper.StripTrackPrefix(mediaId);
+				Android.Net.Uri uri = MediaItemBuilder.GetURI(trackId);
+				MediaItem attached = input.BuildUpon().SetUri(uri).Build();
+				List<MediaItem> single = new List<MediaItem>();
+				single.Add(attached);
+				onResolved(single);
+				return;
+			}
+
+			eAAObject objectType;
+			string objectId;
+			bool isShuffle;
+			if (!MediaItemBuilder.TryParsePlayMediaId(mediaId, out objectType, out objectId, out isShuffle))
+			{
+				Thump.Log.Warn("ThumpMediaLibraryService.LoadMediaItems: unknown mediaId prefix '" + mediaId + "', skipping");
+				onResolved(new List<MediaItem>());
+				return;
+			}
+
+			ResolveTracksFor(objectType, objectId, queueID, (tracks)=>
+			{
+				if (queueID != m_currentQueueID)
+				{
+					return;
+				}
+				List<MediaItem> built = new List<MediaItem>();
+				if (tracks != null)
+				{
+					if (isShuffle)
+					{
+						ShuffleInPlace(tracks);
+					}
+					for (int i = 0; i < tracks.Count; i++)
+					{
+						PulseTrack track = tracks[i];
+						MediaItem template = MediaItemBuilder.BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.ImageID);
+						Android.Net.Uri uri = MediaItemBuilder.GetURI(track.Id);
+						MediaItem withUri = template.BuildUpon().SetUri(uri).Build();
+						built.Add(withUri);
+					}
+				}
+				onResolved(built);
+			});
+		}
+
+		private void ResolveTracksFor(eAAObject objectType, string objectId, int queueID, Action<List<PulseTrack>> callback)
+		{
+			// ThumpData NetworkAuthorative routes can fire the callback twice
+			// (cached burst + refresh) by design; this is a one-shot consumer
+			// so guard against the second hit.
+			bool fired = false;
+			switch (objectType)
+			{
+				case eAAObject.Album:
+					s_thumpData.GetAlbum(objectId, (album)=>
+					{
+						if (fired)
+						{
+							return;
+						}
+						fired = true;
+						if (queueID != m_currentQueueID)
+						{
+							return;
+						}
+						List<PulseTrack> tracks = album != null ? album.Tracks : null;
+						callback(tracks);
+					});
+					break;
+				case eAAObject.Playlist:
+					s_thumpData.GetPlaylist(objectId, (playlist)=>
+					{
+						if (fired)
+						{
+							return;
+						}
+						fired = true;
+						if (queueID != m_currentQueueID)
+						{
+							return;
+						}
+						List<PulseTrack> tracks = playlist != null ? playlist.Tracks : null;
+						callback(tracks);
+					});
+					break;
+				case eAAObject.Artist:
+					s_thumpData.GetTracksForArtist(objectId, (tracks)=>
+					{
+						if (fired)
+						{
+							return;
+						}
+						fired = true;
+						if (queueID != m_currentQueueID)
+						{
+							return;
+						}
+						callback(tracks);
+					});
+					break;
+				case eAAObject.Genre:
+					s_thumpData.GetTracksForGenre(objectId, (tracks)=>
+					{
+						if (fired)
+						{
+							return;
+						}
+						fired = true;
+						if (queueID != m_currentQueueID)
+						{
+							return;
+						}
+						callback(tracks);
+					});
+					break;
+				default:
+					callback(null);
+					break;
+			}
+		}
+
+		private void FinalizeQueue(List<MediaItem> resolved, int startIndex, long startPositionMs, int queueID, JObjectCallback callback)
+		{
+			bool isOnline = s_thumpData.IsOnline();
+			List<MediaItem> outputItems = new List<MediaItem>();
+			Queue<string> cacheQueue = new Queue<string>();
 			int startItemIndex = -1;
 			int builtCount = 0;
-			for (int i = 0; i < trackIds.Count; i++)
-			{
-				//If we're not online and we don't have this track locally cached skip it
-				if (!isOnline && !s_thumpData.IsTrackCached(trackIds[i]))
-					continue;
 
-				
+			for (int i = 0; i < resolved.Count; i++)
+			{
+				MediaItem item = resolved[i];
+				string trackId = AAutoHelper.StripTrackPrefix(item.MediaId);
+				if (string.IsNullOrEmpty(trackId))
+				{
+					continue;
+				}
+				if (!isOnline && !s_thumpData.IsTrackCached(trackId))
+				{
+					continue;
+				}
 
 				if (i == startIndex)
+				{
 					startItemIndex = builtCount;
+				}
 				else
-					cacheQueue.Enqueue(trackIds[i]);
+				{
+					cacheQueue.Enqueue(trackId);
+				}
 
-				Android.Net.Uri uri = MediaItemBuilder.GetURI(trackIds[i]);
-				MediaItem outItem = items[i].BuildUpon().SetUri(uri).Build();
-
-				outputItems.Add(outItem);
+				outputItems.Add(item);
 				builtCount++;
 			}
 
-			if (startItemIndex < 0) 
-				startItemIndex = 0;
-
-			if (trackIds.Count == 0)
+			if (outputItems.Count == 0)
 			{
-				MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputItems, startIndex, startPositionMs);
-				callback.OnComplete(result);
+				MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(outputItems, 0, startPositionMs);
+				callback.OnComplete(empty);
+				return;
 			}
-			else
-			{ 
-				s_thumpData.CacheTrack(trackIds[startItemIndex], (success)=>
+
+			if (startItemIndex < 0)
+			{
+				startItemIndex = 0;
+			}
+
+			string startTrackId = AAutoHelper.StripTrackPrefix(outputItems[startItemIndex].MediaId);
+			int finalStartIndex = startItemIndex;
+			long finalStartPosition = startPositionMs;
+
+			s_thumpData.CacheTrack(startTrackId, (success)=>
+			{
+				if (queueID != m_currentQueueID)
 				{
-					MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputItems, startItemIndex, startPositionMs);
-					callback.OnComplete(result);
-				});
+					return;
+				}
+				MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputItems, finalStartIndex, finalStartPosition);
+				callback.OnComplete(result);
+				DrainCacheQueue(cacheQueue, queueID);
+			});
+		}
+
+		private void DrainCacheQueue(Queue<string> queue, int queueID)
+		{
+			if (queueID != m_currentQueueID)
+			{
+				return;
+			}
+			if (queue == null || queue.Count == 0)
+			{
+				return;
+			}
+			string next = queue.Dequeue();
+			s_thumpData.CacheTrack(next, (success)=>
+			{
+				DrainCacheQueue(queue, queueID);
+			});
+		}
+
+		private static void ShuffleInPlace<T>(List<T> list)
+		{
+			if (list == null || list.Count <= 1)
+			{
+				return;
+			}
+			for (int i = list.Count - 1; i > 0; i--)
+			{
+				int j = s_shuffleRand.Next(i + 1);
+				T tmp = list[i];
+				list[i] = list[j];
+				list[j] = tmp;
 			}
 		}
 

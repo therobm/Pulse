@@ -108,6 +108,58 @@ namespace Thump.Playback.AndroidOS
 			return false;
 		}
 
+		// Play/shuffle mediaIds carry the object type in the prefix so the
+		// service can route them back to the right ThumpData fetch when AA
+		// fires OnSetMediaItems. Shape: "<type>play/<id>" or "<type>shuffle/<id>".
+		public static string BuildPlayMediaId(eAAObject objectType, string objectId)
+		{
+			return m_objects[objectType] + "play/" + objectId;
+		}
+
+		public static string BuildShuffleMediaId(eAAObject objectType, string objectId)
+		{
+			return m_objects[objectType] + "shuffle/" + objectId;
+		}
+
+		// Inverse of Build*MediaId. Returns false (and leaves outs at defaults)
+		// for anything that isn't an "<type>play/" or "<type>shuffle/" id.
+		public static bool TryParsePlayMediaId(string mediaId, out eAAObject objectType, out string objectId, out bool isShuffle)
+		{
+			objectType = eAAObject.Album;
+			objectId = null;
+			isShuffle = false;
+			if (string.IsNullOrEmpty(mediaId))
+			{
+				return false;
+			}
+			int slash = mediaId.IndexOf('/');
+			if (slash < 0)
+			{
+				return false;
+			}
+			string prefix = mediaId.Substring(0, slash);
+			string value = mediaId.Substring(slash + 1);
+
+			foreach (KeyValuePair<eAAObject, string> pair in m_objects)
+			{
+				if (prefix == pair.Value + "play")
+				{
+					objectType = pair.Key;
+					objectId = value;
+					isShuffle = false;
+					return true;
+				}
+				if (prefix == pair.Value + "shuffle")
+				{
+					objectType = pair.Key;
+					objectId = value;
+					isShuffle = true;
+					return true;
+				}
+			}
+			return false;
+		}
+
 
 		public static List<MediaItem> BuildTrackItems(List<PulseTrack> tracks)
 		{
@@ -124,8 +176,10 @@ namespace Thump.Playback.AndroidOS
 			return items;
 		}
 
-		public static List<MediaItem> BuildContainerChildren(string playMediaId, string shuffleMediaId, List<PulseTrack> tracks)
+		public static List<MediaItem> BuildContainerChildren(eAAObject objectType, string objectId, List<PulseTrack> tracks)
 		{
+			string playMediaId = BuildPlayMediaId(objectType, objectId);
+			string shuffleMediaId = BuildShuffleMediaId(objectType, objectId);
 			List<MediaItem> items = new List<MediaItem>();
 			items.Add(BuildPlayableItem(playMediaId, "Play all", ""));
 			items.Add(BuildPlayableItem(shuffleMediaId, "Shuffle", ""));
