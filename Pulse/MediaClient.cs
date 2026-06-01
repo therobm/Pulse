@@ -1,9 +1,12 @@
+using Microsoft.Maui;
 using Microsoft.Maui.Animations;
+using Microsoft.Maui.ApplicationModel;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
+using Thump.Data;
 
 namespace Thump.Pulse
 {
@@ -41,10 +44,8 @@ namespace Thump.Pulse
 			Token,
 			Legacy
 		}
-		//TODO Migrate these to the SQL backed storage
-		Dictionary<string, string> m_stringCache = new Dictionary<string, string>();
-		Dictionary<string, byte[]> m_binaryCache = new Dictionary<string, byte[]>();
 
+		ThumpCache m_cache;
 
 		private Thread m_thread;
 		protected string m_baseUrl;
@@ -57,8 +58,10 @@ namespace Thump.Pulse
 		private bool m_bInitialized = false;
 		protected bool m_bIsOnline = true;
 
-		public MediaClient()
+		public MediaClient(ThumpCache cache)
 		{
+			m_cache = cache;
+
 			m_thread = new Thread(ConnectionLoop);
 			m_thread.IsBackground = true;
 			m_thread.Start();
@@ -147,6 +150,20 @@ namespace Thump.Pulse
 			return url;
 		}
 
+		protected virtual string BuildCoverArtUrl(string coverArtId)
+		{
+			if (string.IsNullOrEmpty(coverArtId))
+			{
+				return null;
+			}
+
+			return BuildRestUrl("getCoverArt", "id=" + Uri.EscapeDataString(coverArtId));
+		}
+		public virtual string GetTrackAudioURL(string trackId)
+		{
+			return BuildStreamUrl(trackId);
+		}
+
 		public abstract void GetTrack(string trackId, Action<PulseTrack> onComplete);
 		public abstract void GetArtists(Action<List<PulseArtist>> onComplete);
 		public abstract void GetArtist(string artistId, Action<PulseArtist> onComplete);
@@ -174,11 +191,15 @@ namespace Thump.Pulse
 			GetTrackAudio(trackId, (bytes)=>
 			{
 				if (onComplete != null)
-				{ 
-					if (bytes != null && bytes.Length > 0)
-					onComplete(true);
-				else
-					onComplete(false);
+				{
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						if (bytes != null && bytes.Length > 0)
+							onComplete(true);
+						else
+							onComplete(false);
+					});
+					
 				}
 			});
 		}
@@ -191,7 +212,7 @@ namespace Thump.Pulse
 		public abstract void GetTopItems(Action<List<PulseObject>> onComplete);
 		public abstract void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete);
 		public abstract void GetFavorites(Action<List<PulseTrack>> onComplete);
-
+	
 
 		public byte[] GetTrackAudioFromCache(string trackId)
 		{
@@ -201,11 +222,10 @@ namespace Thump.Pulse
 			}
 
 			//todo this needs to be the query url not some random bullshit
-			string blobKey = "track:" + trackId;
+			string url = GetTrackAudioURL(trackId);
 
 			//we only stream from disk, whoever wanted this should have cached ahead
-			byte[] trackData = null;
-			m_binaryCache.TryGetValue(blobKey, out trackData);
+			byte[] trackData = m_cache.GetTrackAudioFromCache(url);
 			return trackData;
 		}
 		protected byte[] HttpGetBinary(string url, bool bCacheAllowed)
@@ -266,20 +286,20 @@ namespace Thump.Pulse
 		}
 		public void CacheQueryResults(string url, byte[] data)
 		{
-			m_binaryCache[url] = data;
+			m_cache.CacheQueryResults(url, data);
 		}
 		public bool GetCachedResults(string url, out byte[] data)
 		{
-			return m_binaryCache.TryGetValue(url, out data);
+			return m_cache.GetCachedResults(url, out data);
 		}
 		public void CacheQueryResults(string url, string data)
 		{
-			m_stringCache[url] = data;
+			m_cache.CacheQueryResults(url, data);
 		}
 
 		public bool GetCachedResults(string url, out string data)
 		{
-			return m_stringCache.TryGetValue(url, out data);
+			return m_cache.GetCachedResults(url, out data);
 		}
 	}
 }

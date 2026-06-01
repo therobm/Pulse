@@ -87,14 +87,9 @@ namespace Thump
 			Content = m_rootGrid;
 
 
-			m_mediaClient = new PulseAPI();
+			m_cache = new ThumpCache();
+			m_mediaClient = new PulseAPI(m_cache);
 			m_mediaClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), ThumpSettings.GetUseHttps());
-
-
-			string cacheRoot = FileSystem.CacheDirectory;
-			string databasePath = Path.Combine(cacheRoot, "thump.db");
-			string blobDirectory = Path.Combine(cacheRoot, "blobs");
-			m_cache = new ThumpCache(databasePath, blobDirectory);
 
 #if ANDROID
 			m_player = new ThumpAndroidPlayer(this, m_mediaClient);

@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Maui.ApplicationModel;
+using Thump.Data;
 using Thump.Pulse;
 using Thump.Utility;
 
@@ -18,7 +19,10 @@ namespace Thump.Pulse
 		/// todo this seems dumb now that we have a real cache
 		/// </summary>
 		private ConcurrentDictionary<string, byte[]> m_imageCache = new ConcurrentDictionary<string, byte[]>();
+		public SubsonicAPI(ThumpCache cache) : base(cache)
+		{
 
+		}
 		protected override bool Ping(out JsonElement response)
 		{
 			try
@@ -954,30 +958,30 @@ namespace Thump.Pulse
 						return;
 					}
 
-					if (onComplete != null)
-						onComplete(data);
+					byte[] captured = data;
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						if (onComplete != null)
+							onComplete(captured);
+					});
 				}
 				catch (Exception ex)
 				{
 					Log.Exception(ex);
 
-					if (onComplete != null)
-						onComplete(null);
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						if (onComplete != null)
+							onComplete(null);
+					});
 				}
 			});
 		}
 
 		
 
-		private string BuildCoverArtUrl(string coverArtId)
-		{
-			if (string.IsNullOrEmpty(coverArtId))
-			{
-				return null;
-			}
-
-			return BuildRestUrl("getCoverArt", "id=" + Uri.EscapeDataString(coverArtId));
-		}
+		
+	
 
 		public override void GetRecentlyPlayed(Action<List<PulseObject>> onComplete)
 		{

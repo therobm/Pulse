@@ -629,12 +629,10 @@ namespace Thump.Playback.AndroidOS
 
 		private static MediaClient BuildMediaClient()
 		{
-			MediaClient pulseClient = new PulseAPI();
+			ThumpCache cache = new ThumpCache();
+			MediaClient pulseClient = new PulseAPI(cache);
 			pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), ThumpSettings.GetUseHttps());
-			string cacheRoot = FileSystem.CacheDirectory;
-			string databasePath = Path.Combine(cacheRoot, "thump.db");
-			string blobDirectory = Path.Combine(cacheRoot, "blobs");
-			ThumpCache cache = new ThumpCache(databasePath, blobDirectory);
+
 			return pulseClient;
 		}
 

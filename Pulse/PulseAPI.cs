@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using Thump.Data;
 
 namespace Thump.Pulse
 {
@@ -14,9 +15,9 @@ namespace Thump.Pulse
 
 		private SubsonicAPI m_subsonic;
 
-		public PulseAPI()
+		public PulseAPI(ThumpCache cache) : base(cache)
 		{
-			m_subsonic = new SubsonicAPI();
+			m_subsonic = new SubsonicAPI(cache);
 		}
 
 		public override void SetServerParams(string ip, string port, string username, string password, MediaClient.eAuthType authType, bool enableSSL)
@@ -129,6 +130,11 @@ namespace Thump.Pulse
 		public override void GetTrackAudio(string trackId, Action<byte[]> onComplete)
 		{
 			m_subsonic.GetTrackAudio(trackId, onComplete);
+		}
+
+		public override string GetTrackAudioURL(string trackId)
+		{
+			return m_subsonic.GetTrackAudioURL(trackId);
 		}
 
 		public override void GetRecentlyPlayed(Action<List<PulseObject>> onComplete)
