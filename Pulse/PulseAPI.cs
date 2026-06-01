@@ -52,6 +52,11 @@ namespace Thump.Pulse
 			m_subsonic.GetArtists(onComplete);
 		}
 
+		public void GetArtist(string artistId, Action<PulseArtist> onComplete)
+		{
+			m_subsonic.GetArtist(artistId, onComplete);
+		}
+
 		public void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete)
 		{
 			m_subsonic.GetPodcasts(onComplete);

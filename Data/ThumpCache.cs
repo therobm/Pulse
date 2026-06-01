@@ -376,6 +376,59 @@ namespace Thump.Data
 				}
 			}
 		}
+		public PulseArtist GetArtist(string artistId)
+		{
+			PulseArtist artist = new PulseArtist();
+			lock (m_sqlLock)
+			{
+				using (SqliteCommand cmd = m_connection.CreateCommand())
+				{
+					cmd.CommandText = "SELECT id, name, cover_art, album_count, play_count, score, last_played FROM artists WHERE id = $id";
+					cmd.Parameters.AddWithValue("$id", artistId);
+					using (SqliteDataReader reader = cmd.ExecuteReader())
+					{
+						if (!reader.Read())
+						{
+							return artist;
+						}
+						artist.Id = reader.GetString(0);
+						artist.Name = reader.GetString(1);
+						artist.CoverArt = SqlHelper.ReadNullableString(reader, 2);
+						artist.AlbumCount = reader.GetInt32(3);
+						artist.PlayCount = reader.GetInt32(4);
+						artist.Score = (float)reader.GetDouble(5);
+						artist.LastPlayed = SqlHelper.FromUnixSeconds(reader.GetInt64(6));
+					}
+				}
+			}
+			return artist;
+		}
+
+		public void UpdateArtist(string artistId, PulseArtist artist)
+		{
+			if (artist == null)
+			{
+				return;
+			}
+			long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+			lock (m_sqlLock)
+			{
+				using (SqliteCommand ins = m_connection.CreateCommand())
+				{
+					ins.CommandText = "INSERT OR REPLACE INTO artists (id, name, cover_art, album_count, play_count, score, last_played, fetched_at) VALUES ($id, $name, $ca, $ac, $pc, $score, $lp, $f)";
+					ins.Parameters.AddWithValue("$id", artist.Id);
+					ins.Parameters.AddWithValue("$name", artist.Name);
+					ins.Parameters.AddWithValue("$ca", SqlHelper.NullableParam(artist.CoverArt));
+					ins.Parameters.AddWithValue("$ac", artist.AlbumCount);
+					ins.Parameters.AddWithValue("$pc", artist.PlayCount);
+					ins.Parameters.AddWithValue("$score", artist.Score);
+					ins.Parameters.AddWithValue("$lp", SqlHelper.ToUnixSeconds(artist.LastPlayed));
+					ins.Parameters.AddWithValue("$f", now);
+					ins.ExecuteNonQuery();
+				}
+			}
+		}
+
 		public List<PulseArtist> GetAllArtists()
 		{
 			List<PulseArtist> result = new List<PulseArtist>();

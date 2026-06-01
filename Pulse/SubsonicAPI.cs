@@ -448,6 +448,40 @@ namespace Thump.Pulse
 			});
 		}
 
+		public void GetArtist(string artistId, Action<PulseArtist> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new PulseArtist());
+				return;
+			}
+			Task.Run(() =>
+			{
+				PulseArtist result = new PulseArtist();
+				try
+				{
+					if (SubsonicGet("getArtist", out JsonElement response, "id=" + Uri.EscapeDataString(artistId)))
+					{
+						if (response.TryGetProperty("artist", out JsonElement artistElement))
+						{
+							PulseArtist artist = new PulseArtist();
+							artist.Id = JsonHelper.GetString(artistElement, "id");
+							artist.Name = JsonHelper.GetString(artistElement, "name");
+							artist.CoverArt = JsonHelper.GetString(artistElement, "coverArt");
+							artist.AlbumCount = JsonHelper.GetInt(artistElement, "albumCount");
+							result = artist;
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				PulseArtist captured = result;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
 		public void GetAlbum(string albumId, Action<PulseAlbum> onComplete)
 		{
 			if (!IsOnline())
@@ -1345,9 +1379,35 @@ namespace Thump.Pulse
 			});
 		}
 
+		//"Favorites" in the app maps to Subsonic's getStarred endpoint —
+		//returns starred artists, albums, and songs. We only pull the songs.
 		public void GetFavorites(Action<List<PulseTrack>> onComplete)
 		{
-			MainThread.BeginInvokeOnMainThread(() => { onComplete(null); });
+			if (!IsOnline())
+			{
+				onComplete(new List<PulseTrack>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<PulseTrack> results = new List<PulseTrack>();
+				try
+				{
+					if (SubsonicGet("getStarred", out JsonElement response))
+					{
+						if (response.TryGetProperty("starred", out JsonElement starred))
+						{
+							results = PulseHelper.ParseSongArray(starred, "song");
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				List<PulseTrack> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
 		}
 
 		private void GetRankedPlaylists(string endpoint, int count, Action<List<PulsePlaylist>> onComplete)

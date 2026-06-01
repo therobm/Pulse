@@ -117,7 +117,7 @@ namespace Thump.Views
 			MainView.Data.GetTopPlaylists(OnYourPlaylistsLoaded);
 			MainView.Data.GetPopularArtists(OnPopularArtistsLoaded);
 			MainView.Data.GetRecentlyAdded(OnRecentlyAddedLoaded);
-			MainView.Data.GetFavories(OnFavoritesLoaded);
+			MainView.Data.GetFavorites(OnFavoritesLoaded);
 		}
 
 		private void OnTopItemsLoaded(List<PulseObject> items)
@@ -162,9 +162,9 @@ namespace Thump.Views
 			m_recentlyAdded.ItemsSource = items;
 		}
 
-		private void OnFavoritesLoaded(List<PulseObject> items)
+		private void OnFavoritesLoaded(List<PulseTrack> tracks)
 		{
-			m_favorites.ItemsSource = items;
+			m_favorites.ItemsSource = tracks;
 		}
 	}
 }
