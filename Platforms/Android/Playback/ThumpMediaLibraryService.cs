@@ -415,7 +415,7 @@ namespace Thump.Playback.AndroidOS
 			}
 		}
 
-		public IList<MediaItem> LoadContainer(eAADirectory parent, JObjectCallback request)
+		public void LoadContainer(eAADirectory parent, JObjectCallback request)
 		{
 			switch (parent)
 			{
@@ -559,8 +559,6 @@ namespace Thump.Playback.AndroidOS
 						break;
 					}
 			}
-
-			return new List<MediaItem>();
 		}
 
 		public void LoadObject(eAAObject objectType, string objectID, JObjectCallback request)

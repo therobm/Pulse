@@ -32,7 +32,7 @@ namespace Thump.Playback.AndroidOS
 
 	public class MediaItemBuilder
 	{
-		private static Dictionary<eAADirectory, string> m_directories = new Dictionary<eAADirectory, string>()
+		private static Dictionary<eAADirectory, string> s_directories = new Dictionary<eAADirectory, string>()
 		{
 			{ eAADirectory.Root, "root" },
 			{ eAADirectory.Home, "home" },
@@ -47,7 +47,7 @@ namespace Thump.Playback.AndroidOS
 			{ eAADirectory.TopPlaylists, "home_top" },
 			{ eAADirectory.PopularArtists, "home_popular" },
 		};
-		private static Dictionary<eAAObject, string> m_objects = new Dictionary<eAAObject, string>()
+		private static Dictionary<eAAObject, string> s_objects = new Dictionary<eAAObject, string>()
 		{
 			{ eAAObject.Album, "album" },
 			{ eAAObject.Artist, "artist" },
@@ -68,7 +68,7 @@ namespace Thump.Playback.AndroidOS
 		public static string GetId(eAADirectory directory)
 		{
 			string id;
-			if (m_directories.TryGetValue(directory, out id))
+			if (s_directories.TryGetValue(directory, out id))
 			{
 				return id;
 			}
@@ -77,7 +77,7 @@ namespace Thump.Playback.AndroidOS
 
 		public static bool TryGetDirectory(string id, out eAADirectory directory)
 		{
-			foreach (KeyValuePair<eAADirectory, string> pair in m_directories)
+			foreach (KeyValuePair<eAADirectory, string> pair in s_directories)
 			{
 				if (pair.Value == id)
 				{
@@ -97,7 +97,7 @@ namespace Thump.Playback.AndroidOS
 				mediaId = mediaId.Substring(0, slash);
 			}
 
-			foreach (KeyValuePair<eAAObject, string> pair in m_objects)
+			foreach (KeyValuePair<eAAObject, string> pair in s_objects)
 			{
 				if (pair.Value == mediaId)
 				{
@@ -114,12 +114,12 @@ namespace Thump.Playback.AndroidOS
 		// fires OnSetMediaItems. Shape: "<type>play/<id>" or "<type>shuffle/<id>".
 		public static string BuildPlayMediaId(eAAObject objectType, string objectId)
 		{
-			return m_objects[objectType] + "play/" + objectId;
+			return s_objects[objectType] + "play/" + objectId;
 		}
 
 		public static string BuildShuffleMediaId(eAAObject objectType, string objectId)
 		{
-			return m_objects[objectType] + "shuffle/" + objectId;
+			return s_objects[objectType] + "shuffle/" + objectId;
 		}
 
 		// Inverse of Build*MediaId. Returns false (and leaves outs at defaults)
@@ -141,7 +141,7 @@ namespace Thump.Playback.AndroidOS
 			string prefix = mediaId.Substring(0, slash);
 			string value = mediaId.Substring(slash + 1);
 
-			foreach (KeyValuePair<eAAObject, string> pair in m_objects)
+			foreach (KeyValuePair<eAAObject, string> pair in s_objects)
 			{
 				if (prefix == pair.Value + "play")
 				{
@@ -228,6 +228,12 @@ namespace Thump.Playback.AndroidOS
 							items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.ImageID));
 							break;
 						}
+					case eDataType.Genre:
+						{
+							PulseGenre genre = (PulseGenre)pulseObject;
+							items.Add(BuildBrowsableItem("genre/" + genre.Name, genre.Name));
+							break;
+						}
 				}
 			}
 			return items;
@@ -266,6 +272,12 @@ namespace Thump.Playback.AndroidOS
 						{
 							PulseTrack track = (PulseTrack)pulseObject;
 							items.Add(BuildPlayableItemGrouped("track/" + track.Id, track.Title, track.Artist, track.ImageID, groupTitle));
+							break;
+						}
+					case eDataType.Genre:
+						{
+							PulseGenre genre = (PulseGenre)pulseObject;
+							items.Add(BuildBrowsableItemGrouped("genre/" + genre.Name, genre.Name, null, groupTitle));
 							break;
 						}
 				}

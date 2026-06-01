@@ -73,8 +73,11 @@ namespace Thump.Playback.AndroidOS
 				}
 
 				Java.IO.File cacheDir = Context.CacheDir;
-				Java.IO.File outFile = new Java.IO.File(cacheDir, "coverart_" + artId.GetHashCode() + ".img");
-				System.IO.File.WriteAllBytes(outFile.AbsolutePath, result);
+				Java.IO.File outFile = new Java.IO.File(cacheDir, "coverart_" + artId + ".img");
+				if (!outFile.Exists())
+				{
+					System.IO.File.WriteAllBytes(outFile.AbsolutePath, result);
+				}
 				return Android.OS.ParcelFileDescriptor.Open(outFile, Android.OS.ParcelFileMode.ReadOnly);
 			}
 			catch (Exception exception)
