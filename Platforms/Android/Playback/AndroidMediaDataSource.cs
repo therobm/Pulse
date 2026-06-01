@@ -122,6 +122,11 @@ namespace Thump.Playback.AndroidOS
 
 			if (m_bytes == null)
 			{
+				m_bytes = m_data.ForceFetchTrackAudio(trackId);
+			}
+
+			if (m_bytes == null)
+			{
 				throw new Java.IO.IOException("No audio data for " + m_uri);
 			}
 

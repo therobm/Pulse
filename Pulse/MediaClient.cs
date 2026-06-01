@@ -214,6 +214,15 @@ namespace Thump.Pulse
 		public abstract void GetFavorites(Action<List<PulseTrack>> onComplete);
 	
 
+		public byte[] ForceFetchTrackAudio(string trackId)
+		{
+			if (string.IsNullOrEmpty(trackId))
+			{
+				return null;
+			}
+			string url = GetTrackAudioURL(trackId);
+			return HttpGetBinary(url, true);
+		}
 		public byte[] GetTrackAudioFromCache(string trackId)
 		{
 			if (string.IsNullOrEmpty(trackId))
