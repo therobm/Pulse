@@ -203,7 +203,7 @@ namespace Thump.Playback.AndroidOS
 				else
 					cacheQueue.Enqueue(trackIds[i]);
 
-				Android.Net.Uri uri = ThumpAndroidPlayer.GetURI(trackIds[i]);
+				Android.Net.Uri uri = MediaItemBuilder.GetURI(trackIds[i]);
 				MediaItem outItem = items[i].BuildUpon().SetUri(uri).Build();
 
 				outputItems.Add(outItem);
