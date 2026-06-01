@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,7 +34,7 @@ namespace Thump.Playback.AndroidOS
 		/// <summary>
 		/// A special sneaky global so the media service can access our data
 		/// </summary>
-		public static ThumpData s_thumpData;
+		public static MediaClient s_mediaClient;
 
 		/// <summary>
 		/// A callback identifier used to discard late arrivals
@@ -53,9 +54,9 @@ namespace Thump.Playback.AndroidOS
 		{
 			base.OnCreate();
 
-			if (s_thumpData == null)
+			if (s_mediaClient == null)
 			{
-				s_thumpData = BuildThumpData();
+				s_mediaClient = BuildMediaClient();
 			}
 
 			ExoPlayerBuilder builder = new ExoPlayerBuilder(this);
@@ -71,7 +72,7 @@ namespace Thump.Playback.AndroidOS
 			DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
 			extractorsFactory.SetMp3ExtractorFlags( Mp3Extractor.FlagEnableConstantBitrateSeeking | Mp3Extractor.FlagDisableId3Metadata);
 
-			AndroidMediaDataSourceFactory dataSourceFactory = new AndroidMediaDataSourceFactory(s_thumpData);
+			AndroidMediaDataSourceFactory dataSourceFactory = new AndroidMediaDataSourceFactory(s_mediaClient);
 			DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory);
 			builder.SetMediaSourceFactory(mediaSourceFactory);
 
@@ -208,7 +209,7 @@ namespace Thump.Playback.AndroidOS
 					return;
 				}
 
-				bool isOnline = s_thumpData.IsOnline();
+				bool isOnline = s_mediaClient.IsOnline();
 
 				//grab all our tracks at once
 				Task<List<PulseTrack>>[] fetchedTracks = new Task<List<PulseTrack>>[items.Count];
@@ -233,7 +234,7 @@ namespace Thump.Playback.AndroidOS
 					for (int j = 0; j < tracks.Count; j++)
 					{
 						//filter out unavailable tracks
-						if (!isOnline && !s_thumpData.IsTrackCached(tracks[j]))
+						if (!isOnline && !s_mediaClient.IsTrackCached(tracks[j].Id))
 						{
 							continue;
 						}
@@ -271,7 +272,7 @@ namespace Thump.Playback.AndroidOS
 
 
 				int cacheQueueID = m_currentQueueID;
-				s_thumpData.CacheTrack(startTrack, (success) =>
+				s_mediaClient.CacheTrackAudio(startTrack.Id, (success) =>
 				{
 					if (cacheQueueID != m_currentQueueID)
 						return;
@@ -299,7 +300,7 @@ namespace Thump.Playback.AndroidOS
 				return;
 			}
 			PulseTrack next = queue.Dequeue();
-			s_thumpData.CacheTrack(next, (success)=>
+			s_mediaClient.CacheTrackAudio(next.Id, (success)=>
 			{
 				CacheQueued(queue, queueId);
 			});
@@ -329,7 +330,7 @@ namespace Thump.Playback.AndroidOS
 			{
 				string trackId = AAutoHelper.StripTrackPrefix(mediaId);
 				
-				s_thumpData.GetTrack(trackId, (pulseTrack)=>
+				s_mediaClient.GetTrack(trackId, (pulseTrack)=>
 				{
 					List<PulseTrack> trackList = new List<PulseTrack>();
 					if (pulseTrack != null)
@@ -391,16 +392,28 @@ namespace Thump.Playback.AndroidOS
 			switch (objectType)
 			{
 				case eAAObject.Album:
-					s_thumpData.GetTracksForAlbum(objectId, onDataComplete);
+					s_mediaClient.GetAlbum(objectId, (album) => 
+					{
+						onDataComplete(album.Tracks);
+					});
 					break;
 				case eAAObject.Playlist:
-					s_thumpData.GetTracksForPlaylist(objectId, onDataComplete);
+					s_mediaClient.GetPlaylist(objectId, (playlist) =>
+					{
+						onDataComplete(playlist.Tracks);
+					});
 					break;
 				case eAAObject.Artist:
-					s_thumpData.GetTracksForArtist(objectId, onDataComplete);
+					s_mediaClient.GetArtistTracks(objectId, (trackList) =>
+					{
+						onDataComplete(trackList);
+					});
 					break;
 				case eAAObject.Genre:
-					s_thumpData.GetTracksForGenre(objectId, onDataComplete);
+					s_mediaClient.GetTracksForGenre(objectId, (genre) =>
+					{
+						onDataComplete(genre);
+					});
 					break;
 				default:
 					onDataComplete(new List<PulseTrack>());
@@ -431,7 +444,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						int tileLimit = 10;
 						List<MediaItem> combined = new List<MediaItem>();
-						s_thumpData.GetRecentlyPlayed((A)=>
+						s_mediaClient.GetRecentlyPlayed((A)=>
 						{
 							List<PulseObject> recentlyPlayed = new List<PulseObject>();
 							for(int i = 0; i < A.Count && i < tileLimit; i++)
@@ -439,21 +452,21 @@ namespace Thump.Playback.AndroidOS
 								recentlyPlayed.Add(A[i]);
 							}
 
-							s_thumpData.GetRecentlyAdded((B)=>
+							s_mediaClient.GetRecentlyAdded((B)=>
 							{
 								List<PulseObject> added = new List<PulseObject>();
 								for (int i = 0; i < B.Count && i < tileLimit; i++)
 								{
 									added.Add(B[i]);
 								}
-								s_thumpData.GetTopPlaylists((C)=>
+								s_mediaClient.GetTopPlaylists((C)=>
 								{
 									List<PulseObject> topPlaylists = new List<PulseObject>();
 									for (int i = 0; i < C.Count && i < tileLimit; i++)
 									{
 										topPlaylists.Add(C[i]);
 									}
-									s_thumpData.GetPopularArtists((D)=>
+									s_mediaClient.GetPopularArtists((D)=>
 									{
 										List<PulseObject> artists = new List<PulseObject>();
 										for (int i = 0; i < D.Count && i < tileLimit; i++)
@@ -475,7 +488,7 @@ namespace Thump.Playback.AndroidOS
 					}
 				case eAADirectory.Podcasts:
 					{
-						s_thumpData.GetPodcasts((podcasts) =>
+						s_mediaClient.GetPodcasts((podcasts) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(podcasts, "Podcasts");
 							request.OnComplete(items);
@@ -496,7 +509,7 @@ namespace Thump.Playback.AndroidOS
 					}
 				case eAADirectory.RecentlyPlayed:
 					{
-						s_thumpData.GetRecentlyPlayed((recentlyPlayed) =>
+						s_mediaClient.GetRecentlyPlayed((recentlyPlayed) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played");
 							request.OnComplete(items);
@@ -505,7 +518,7 @@ namespace Thump.Playback.AndroidOS
 					}
 				case eAADirectory.RecentlyAdded:
 					{
-						s_thumpData.GetRecentlyAdded((recentlyAdded) =>
+						s_mediaClient.GetRecentlyAdded((recentlyAdded) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(recentlyAdded, "Recently Added");
 							request.OnComplete(items);
@@ -514,7 +527,7 @@ namespace Thump.Playback.AndroidOS
 					}
 				case eAADirectory.TopPlaylists:
 					{
-						s_thumpData.GetTopPlaylists((topPlaylists) =>
+						s_mediaClient.GetTopPlaylists((topPlaylists) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(topPlaylists, "Top Playlists");
 							request.OnComplete(items);
@@ -523,7 +536,7 @@ namespace Thump.Playback.AndroidOS
 					}
 				case eAADirectory.PopularArtists:
 					{
-						s_thumpData.GetPopularArtists((popularArtists) =>
+						s_mediaClient.GetPopularArtists((popularArtists) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(popularArtists, "Popular Artists");
 							request.OnComplete(items);
@@ -532,7 +545,7 @@ namespace Thump.Playback.AndroidOS
 					}
 				case eAADirectory.Albums:
 					{
-						s_thumpData.GetAlbums((albums) =>
+						s_mediaClient.GetAlbums((albums) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(albums, "Albums");
 							request.OnComplete(items);
@@ -541,7 +554,7 @@ namespace Thump.Playback.AndroidOS
 					}
 				case eAADirectory.Playlists:
 					{
-						s_thumpData.GetPlaylists((playlists) =>
+						s_mediaClient.GetPlaylists((playlists) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(playlists, "Playlists");
 							request.OnComplete(items);
@@ -550,7 +563,7 @@ namespace Thump.Playback.AndroidOS
 					}
 				case eAADirectory.Artists:
 					{
-						s_thumpData.GetArtists((artists) =>
+						s_mediaClient.GetArtists((artists) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(artists, "Artists");
 							request.OnComplete(items);
@@ -559,7 +572,7 @@ namespace Thump.Playback.AndroidOS
 					}
 				case eAADirectory.Genres:
 					{
-						s_thumpData.GetGenres((genres) =>
+						s_mediaClient.GetGenres((genres) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(genres, "Genres");
 							request.OnComplete(items);
@@ -574,26 +587,26 @@ namespace Thump.Playback.AndroidOS
 			switch (objectType)
 			{
 				case eAAObject.Album:
-					s_thumpData.GetAlbum(objectID, (album)=>
+					s_mediaClient.GetAlbum(objectID, (album)=>
 					{
 						request.OnComplete<PulseAlbum>(album.Tracks, objectType, objectID);
 					});
 					break;
 				case eAAObject.Artist:
-					s_thumpData.GetAlbumsForArtist(objectID, (albums) =>
+					s_mediaClient.GetArtistAlbums(objectID, (albums) =>
 					{
 						List<MediaItem> items = MediaItemBuilder.BuildArtistChildren(objectID, albums);
 						request.OnComplete(items);
 					});
 					break;
 				case eAAObject.Playlist:
-					s_thumpData.GetPlaylist(objectID, (playlist) =>
+					s_mediaClient.GetPlaylist(objectID, (playlist) =>
 					{
 						request.OnComplete<PulseAlbum>(playlist.Tracks, objectType, objectID);
 					});
 					break;
 				case eAAObject.Genre:
-					s_thumpData.GetTracksForGenre(objectID, (genreTracks) =>
+					s_mediaClient.GetTracksForGenre(objectID, (genreTracks) =>
 					{
 						request.OnComplete<PulseAlbum>(genreTracks, objectType, objectID);
 					});
@@ -614,15 +627,15 @@ namespace Thump.Playback.AndroidOS
 			m_player.Pause();
 		}
 
-		private static ThumpData BuildThumpData()
+		private static MediaClient BuildMediaClient()
 		{
-			IMediaClient pulseClient = new PulseAPI();
+			MediaClient pulseClient = new PulseAPI();
 			pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), ThumpSettings.GetUseHttps());
 			string cacheRoot = FileSystem.CacheDirectory;
 			string databasePath = Path.Combine(cacheRoot, "thump.db");
 			string blobDirectory = Path.Combine(cacheRoot, "blobs");
 			ThumpCache cache = new ThumpCache(databasePath, blobDirectory);
-			return new ThumpData(pulseClient, cache);
+			return pulseClient;
 		}
 
 		private PendingIntent BuildSessionActivity()

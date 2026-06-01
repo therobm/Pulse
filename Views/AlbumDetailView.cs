@@ -188,7 +188,11 @@ namespace Thump.Views
 			m_artistLabel.Text = m_album.Artist;
 			m_metaLabel.Text = m_album.Year + "  ·  " + m_album.TrackCount + " tracks";
 			m_art.SetCoverArt(m_album.CoverArt);
-			MainView.Data.GetTracksForAlbum(m_album, OnTracksLoaded);
+			MainView.MediaClient.GetAlbum(m_album.Id, (album)=>
+			{
+				if (album != null)
+					OnTracksLoaded(album.Tracks);
+			});
 		}
 
 		private void OnTracksLoaded(List<PulseTrack> tracks)

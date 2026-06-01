@@ -152,7 +152,7 @@ namespace Thump.Views
 			{
 				return;
 			}
-			MainView.Data.Search(query, OnSearchResults);
+			MainView.MediaClient.Search(query, OnSearchResults);
 		}
 
 		private void OnSearchResults(PulseSearchData results)

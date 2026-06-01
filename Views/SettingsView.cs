@@ -40,7 +40,7 @@ namespace Thump.Views
 		private Entry m_passwordEntry;
 		private Button m_authToken;
 		private Button m_authLegacy;
-		private SubsonicAPI.eSubSonicAuthType m_authType = SubsonicAPI.eSubSonicAuthType.Token;
+		private MediaClient.eAuthType m_authType = MediaClient.eAuthType.Token;
 		private Button m_serverSubsonic;
 		private Button m_serverPulse;
 		private PulseAPI.eServerType m_serverType = PulseAPI.eServerType.Subsonic;
@@ -405,21 +405,21 @@ namespace Thump.Views
 
 		private void OnAuthTokenClicked(object sender, EventArgs e)
 		{
-			SetAuthType(SubsonicAPI.eSubSonicAuthType.Token);
+			SetAuthType(MediaClient.eAuthType.Token);
 			ThumpSettings.SetAuthType(m_authType);
 		}
 
 		private void OnAuthLegacyClicked(object sender, EventArgs e)
 		{
-			SetAuthType(SubsonicAPI.eSubSonicAuthType.Legacy);
+			SetAuthType(MediaClient.eAuthType.Legacy);
 			ThumpSettings.SetAuthType(m_authType);
 		}
 
-		private void SetAuthType(SubsonicAPI.eSubSonicAuthType value)
+		private void SetAuthType(MediaClient.eAuthType value)
 		{
 			m_authType = value;
-			StyleSegment(m_authToken, value == SubsonicAPI.eSubSonicAuthType.Token);
-			StyleSegment(m_authLegacy, value == SubsonicAPI.eSubSonicAuthType.Legacy);
+			StyleSegment(m_authToken, value == MediaClient.eAuthType.Token);
+			StyleSegment(m_authLegacy, value == MediaClient.eAuthType.Legacy);
 		}
 
 		private void OnServerSubsonicClicked(object sender, EventArgs e)
@@ -570,8 +570,8 @@ namespace Thump.Views
 			m_connectStatusLabel.Text = "Connecting…";
 			m_connectStatusLabel.TextColor = ThumpColors.TextSecondary;
 
-			IMediaClient pulse = MainView.Data.Pulse;
-			SubsonicAPI.eSubSonicAuthType authType = m_authType;
+			MediaClient pulse = MainView.MediaClient;
+			MediaClient.eAuthType authType = m_authType;
 			bool useHttps = m_useHttps;
 			Task.Run(() =>
 			{

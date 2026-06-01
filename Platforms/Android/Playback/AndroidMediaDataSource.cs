@@ -2,6 +2,7 @@ using System;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.DataSource;
 using Thump.Data;
+using Thump.Pulse;
 
 
 namespace Thump.Playback.AndroidOS
@@ -22,9 +23,9 @@ namespace Thump.Playback.AndroidOS
 		/// The android process needs access to our data pipeline to fetch
 		/// info and track data
 		/// </summary>
-		private ThumpData m_data;
+		private MediaClient m_data;
 
-		public AndroidMediaDataSourceFactory(ThumpData data)
+		public AndroidMediaDataSourceFactory(MediaClient data)
 		{
 			m_data = data;
 		}
@@ -94,13 +95,13 @@ namespace Thump.Playback.AndroidOS
 		/// </summary>
 		public Func<Android.Net.Uri, byte[]> m_onResolveBytes;
 
-		private ThumpData m_data;
+		private MediaClient m_data;
 		private byte[] m_bytes;
 		private Android.Net.Uri m_uri;
 		private int m_readPosition;
 		private int m_bytesRemaining;
 
-		public AndroidMediaDataSource(ThumpData data) : base(false)
+		public AndroidMediaDataSource(MediaClient data) : base(false)
 		{
 			m_data = data;
 		}
@@ -117,7 +118,7 @@ namespace Thump.Playback.AndroidOS
 			}
 
 			//Grab the bytes for the requested track
-			m_bytes = m_data.GetTrackAudioData(trackId);
+			m_bytes = m_data.GetTrackAudioFromCache(trackId);
 
 			if (m_bytes == null)
 			{

@@ -12,7 +12,7 @@ namespace Thump.Views.Tiles
 		private ArtImage m_art;
 		private Label m_titleLabel;
 		private Label m_subtitleLabel;
-		private ThumpDataOb m_item;
+		private MediaDataObject m_item;
 
 		public LibraryGridTile() : base(MainView.Self)
 		{
@@ -79,7 +79,7 @@ namespace Thump.Views.Tiles
 		protected override void OnBindingContextChanged()
 		{
 			base.OnBindingContextChanged();
-			ThumpDataOb item = BindingContext as ThumpDataOb;
+			MediaDataObject item = BindingContext as MediaDataObject;
 			if (item == null)
 			{
 				return;

@@ -182,7 +182,7 @@ namespace Thump.Views
 
 			// The playlist from the list endpoint carries no tracks; fetch the full
 			// playlist (getPlaylist) which includes its songs.
-			MainView.Data.GetPlaylist(m_playlist.Id, OnPlaylistLoaded);
+			MainView.MediaClient.GetPlaylist(m_playlist.Id, OnPlaylistLoaded);
 		}
 
 		private void OnPlaylistLoaded(PulsePlaylist playlist)

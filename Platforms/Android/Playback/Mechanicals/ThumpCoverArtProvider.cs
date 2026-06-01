@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using Android.Content;
 using Thump.Data;
+using Thump.Pulse;
 
 
 namespace Thump.Playback.AndroidOS
@@ -52,7 +53,7 @@ namespace Thump.Playback.AndroidOS
 					return null;
 				}
 
-				ThumpData data = ThumpMediaLibraryService.s_thumpData;
+				MediaClient data = ThumpMediaLibraryService.s_mediaClient;
 				if (data == null)
 				{
 					return null;

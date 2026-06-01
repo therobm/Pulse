@@ -15,7 +15,7 @@ namespace Thump.Views.Tiles
 		private Label m_artistLabel;
 		private Label m_durationLabel;
 		private Label m_cacheIcon;
-		private PulseTrack m_song;
+		private PulseTrack m_track;
 		private bool m_isPlayable = true;
 
 		public TrackRowTile() : base(MainView.Self)
@@ -152,29 +152,29 @@ namespace Thump.Views.Tiles
 			m_titleLabel.Opacity = 1.0;
 			m_artistLabel.Opacity = 1.0;
 			m_isPlayable = true;
-			PulseTrack song = BindingContext as PulseTrack;
-			if (song == null)
+			PulseTrack track = BindingContext as PulseTrack;
+			if (track == null)
 			{
 				return;
 			}
-			m_song = song;
-			m_titleLabel.Text = song.Title;
-			m_artistLabel.Text = song.Artist;
-			m_durationLabel.Text = FormatDuration(song.Duration);
-			m_art.SetCoverArt(song.ImageID);
-			UpdateAvailability(song);
+			m_track = track;
+			m_titleLabel.Text = track.Title;
+			m_artistLabel.Text = track.Artist;
+			m_durationLabel.Text = FormatDuration(track.Duration);
+			m_art.SetCoverArt(track.ImageID);
+			UpdateAvailability(track);
 		}
 
-		private void UpdateAvailability(PulseTrack song)
+		private void UpdateAvailability(PulseTrack track)
 		{
-			bool online = MainView.Data.Pulse.IsOnline();
-			string id = song.Id;
+			bool online = MainView.MediaClient.IsOnline();
+			string id = track.Id;
 			System.Threading.Tasks.Task.Run(() =>
 			{
-				bool cached = MainView.Data.IsTrackCached(song);
+				bool cached = MainView.MediaClient.IsTrackCached(track.Id);
 				MainThread.BeginInvokeOnMainThread(() =>
 				{
-					if (m_song == null || m_song.Id != id)
+					if (m_track == null || m_track.Id != id)
 					{
 						return;
 					}
@@ -223,7 +223,7 @@ namespace Thump.Views.Tiles
 
 		private void OnTapped(object sender, EventArgs e)
 		{
-			if (m_song == null)
+			if (m_track == null)
 			{
 				return;
 			}
@@ -231,16 +231,16 @@ namespace Thump.Views.Tiles
 			{
 				return;
 			}
-			m_mainView.OnTrackSelected(m_song);
+			m_mainView.OnTrackSelected(m_track);
 		}
 
 		private void OnOptionsClicked(object sender, EventArgs e)
 		{
-			if (m_song == null)
+			if (m_track == null)
 			{
 				return;
 			}
-			m_mainView.OnTrackOptions(m_song);
+			m_mainView.OnTrackOptions(m_track);
 		}
 	}
 }
