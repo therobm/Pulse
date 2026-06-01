@@ -341,11 +341,40 @@ namespace Thump.Data
 
 		public PulseTrack GetTrack(string trackId)
 		{
-			throw new NotImplementedException();
+			PulseTrack track = new PulseTrack();
+			lock (m_sqlLock)
+			{
+				using (SqliteCommand cmd = m_connection.CreateCommand())
+				{
+					cmd.CommandText = "SELECT id, title, artist, artist_id, album, album_id, cover_art, duration FROM tracks WHERE id = $id";
+					cmd.Parameters.AddWithValue("$id", trackId);
+					using (SqliteDataReader reader = cmd.ExecuteReader())
+					{
+						if (!reader.Read())
+						{
+							return track;
+						}
+						track = SqlHelper.ReadSongRow(reader);
+					}
+				}
+			}
+			return track;
 		}
 		public void UpdateTrack(string trackId, PulseTrack track)
 		{
-			throw new NotImplementedException();
+			if (track == null)
+			{
+				return;
+			}
+			long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+			lock (m_sqlLock)
+			{
+				using (SqliteTransaction tx = m_connection.BeginTransaction())
+				{
+					WriteTrackRow(tx, track, now);
+					tx.Commit();
+				}
+			}
 		}
 		public List<PulseArtist> GetAllArtists()
 		{
