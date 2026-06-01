@@ -215,16 +215,15 @@ namespace Thump.Playback.AndroidOS
 			return items;
 		}
 
-		public static List<MediaItem> BuildMixedItems(List<PulseObject> objects)
+		public static List<MediaItem> BuildMixedItems(IEnumerable<PulseObject> objects)
 		{
 			List<MediaItem> items = new List<MediaItem>();
 			if (objects == null)
 			{
 				return items;
 			}
-			for (int idx = 0; idx < objects.Count; idx++)
+			foreach (PulseObject pulseObject in objects)
 			{
-				PulseObject pulseObject = objects[idx];
 				switch (pulseObject.Kind)
 				{
 					case eDataType.Album:

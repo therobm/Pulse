@@ -511,7 +511,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetRecentlyPlayed((recentlyPlayed) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(recentlyPlayed);
 							request.OnComplete(items);
 						});
 						break;
@@ -520,7 +520,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetRecentlyAdded((recentlyAdded) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(recentlyAdded, "Recently Added");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(recentlyAdded);
 							request.OnComplete(items);
 						});
 						break;
@@ -529,7 +529,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetTopPlaylists((topPlaylists) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(topPlaylists, "Top Playlists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(topPlaylists);
 							request.OnComplete(items);
 						});
 						break;
@@ -538,7 +538,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetPopularArtists((popularArtists) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(popularArtists, "Popular Artists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(popularArtists);
 							request.OnComplete(items);
 						});
 						break;
@@ -547,7 +547,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetAlbums((albums) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(albums, "Albums");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(albums);
 							request.OnComplete(items);
 						});
 						break;
@@ -556,7 +556,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetPlaylists((playlists) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(playlists, "Playlists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(playlists);
 							request.OnComplete(items);
 						});
 						break;
@@ -565,7 +565,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetArtists((artists) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(artists, "Artists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(artists);
 							request.OnComplete(items);
 						});
 						break;
@@ -574,7 +574,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetGenres((genres) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(genres, "Genres");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(genres);
 							request.OnComplete(items);
 						});
 						break;
