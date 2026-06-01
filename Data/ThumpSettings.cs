@@ -131,12 +131,12 @@ namespace Thump.Data
 			SecureStorage.Default.SetAsync(s_keyPassword, value).GetAwaiter().GetResult();
 		}
 
-		public static SubsonicAPI.eSubSonicAuthType GetAuthType()
+		public static MediaClient.eAuthType GetAuthType()
 		{
-			int stored = Preferences.Get(s_keyAuthType, (int)SubsonicAPI.eSubSonicAuthType.Token);
-			return (SubsonicAPI.eSubSonicAuthType)stored;
+			int stored = Preferences.Get(s_keyAuthType, (int)MediaClient.eAuthType.Token);
+			return (MediaClient.eAuthType)stored;
 		}
-		public static void SetAuthType(SubsonicAPI.eSubSonicAuthType value)
+		public static void SetAuthType(MediaClient.eAuthType value)
 		{
 			Preferences.Set(s_keyAuthType, (int)value);
 		}

@@ -7,101 +7,27 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Maui.ApplicationModel;
+using Thump.Data;
 using Thump.Pulse;
 using Thump.Utility;
 
 namespace Thump.Pulse
 {
-	public class SubsonicAPI : IMediaClient
+	public class SubsonicAPI : MediaClient
 	{
-		public enum eSubSonicAuthType
-		{
-			Token,
-			Legacy
-		}
-		
-		private HttpClient m_httpClient;
-		private string m_baseUrl;
-		private string m_user;
-		private string m_apiParams;
-		private eSubSonicAuthType m_authType;
-		private Thread m_thread;
-		private bool m_bInitialized = false;
-		private bool m_bIsOnline = true;
 		/// <summary>
 		/// todo this seems dumb now that we have a real cache
 		/// </summary>
 		private ConcurrentDictionary<string, byte[]> m_imageCache = new ConcurrentDictionary<string, byte[]>();
-
-		private object m_httpClientLock = new object();
-
-		public SubsonicAPI()
+		public SubsonicAPI(ThumpCache cache) : base(cache)
 		{
-			m_thread = new Thread(ConnectionLoop);
-			m_thread.IsBackground = true;
-			m_thread.Start();
+
 		}
-
-		private void ConnectionLoop()
-		{
-			while (true)
-			{
-				if (m_bInitialized)
-				{
-					Ping(out JsonElement response);
-				}
-				Thread.Sleep(5000);
-			}
-		}
-
-		public void SetServerParams(string ip, string port, string username, string password, eSubSonicAuthType authType, bool enableSSL)
-		{
-			// Accept an IP/host that may have been entered (or stored) with a
-			// scheme and/or trailing slash; strip them so the prefix derived from
-			// enableSSL is authoritative. Otherwise a value like "https://host"
-			// produced "http://https://host:port".
-			ip = ip.Trim().Replace("http://", "").Replace("https://", "").TrimEnd('/');
-
-			string prefix = "http://";
-			if (enableSSL)
-				prefix = "https://";
-
-			m_baseUrl = prefix + ip + ":" + port;
-			m_user = username;
-			m_apiParams = "u=" + Uri.EscapeDataString(m_user) + "&p=enc:" + Uri.EscapeDataString(password) + "&v=1.13.0&c=PulseMaui&f=json";
-			m_authType = authType;
-
-			if (m_httpClient != null)
-				m_httpClient.Dispose();
-
-			HttpClientHandler handler = new HttpClientHandler();
-			handler.ServerCertificateCustomValidationCallback = AcceptAnyServerCertificate;
-
-			HttpClient oldClient;
-			lock(m_httpClientLock)
-			{
-				oldClient = m_httpClient;
-				m_httpClient = new HttpClient(handler);
-				m_httpClient.Timeout = TimeSpan.FromSeconds(10);
-			}
-			if (oldClient != null)
-			{
-				oldClient.Dispose();
-			}
-
-			m_bInitialized = true;
-			Ping(out JsonElement discard);
-		}
-
-		public bool TestConnection(out JsonElement response)
-		{
-			return Ping(out response);
-		}
-		private bool Ping(out JsonElement response)
+		protected override bool Ping(out JsonElement response)
 		{
 			try
 			{
-				if (SubsonicGet("ping", out response))
+				if (SubsonicGet("ping", false, out response))
 				{
 					m_bIsOnline = true;
 					return true;
@@ -116,32 +42,9 @@ namespace Thump.Pulse
 			response = default;
 			return false;
 		}
-		private static bool AcceptAnyServerCertificate(HttpRequestMessage request, System.Security.Cryptography.X509Certificates.X509Certificate2 certificate, System.Security.Cryptography.X509Certificates.X509Chain chain, System.Net.Security.SslPolicyErrors errors)
-		{
-
-			return true;
-		}
-
-		public bool IsOnline()
-		{
-			return m_bIsOnline;
-		}
-		public string BuildStreamUrl(string trackId)
-		{
-			return BuildRestUrl("stream", "id=" + Uri.EscapeDataString(trackId));
-		}
-
-		public string BuildRestUrl(string endpoint, string extraParams = null)
-		{
-			string url = m_baseUrl + "/rest/" + endpoint + "?" + m_apiParams;
-			if (!string.IsNullOrEmpty(extraParams))
-			{
-				url = url + "&" + extraParams;
-			}
-			return url;
-		}
-
-		public void GetTrack(string trackId, Action<PulseTrack> onComplete)
+		
+	
+		public override void GetTrack(string trackId, Action<PulseTrack> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -153,7 +56,7 @@ namespace Thump.Pulse
 				PulseTrack result = new PulseTrack();
 				try
 				{
-					if (SubsonicGet("getSong", out JsonElement response, "id=" + Uri.EscapeDataString(trackId)))
+					if (SubsonicGet("getSong", true, out JsonElement response, "id=" + Uri.EscapeDataString(trackId)))
 					{
 						if (response.TryGetProperty("song", out JsonElement songElement))
 						{
@@ -170,7 +73,45 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetArtists(Action<List<PulseArtist>> onComplete)
+		public override void GetArtistTracks(string artistId, Action<List<PulseTrack>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<PulseTrack>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<PulseTrack> result = new List<PulseTrack>();
+				try
+				{
+					string url = m_baseUrl + "/pulse/artistTracks?id=" + Uri.EscapeDataString(artistId) + "&u=" + Uri.EscapeDataString(m_user);
+					string json = HttpGet(url, true);
+					JsonDocument doc = JsonDocument.Parse(json);
+					JsonElement tracks; 
+					bool validParams = true;
+					if (!doc.RootElement.TryGetProperty("tracks", out tracks))
+						validParams = false;
+					if (tracks.ValueKind != JsonValueKind.Array)
+						validParams = false;
+					if (validParams)
+					{
+						foreach (JsonElement element in tracks.EnumerateArray())
+						{
+							// this is going to fail, recently played includes songs, playlists, artists, etc..
+							result.Add(PulseHelper.ParseSong(element));
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				List<PulseTrack> captured = result;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+		public override void GetArtists(Action<List<PulseArtist>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -182,7 +123,7 @@ namespace Thump.Pulse
 				List<PulseArtist> results = new List<PulseArtist>();
 				try
 				{
-					if (SubsonicGet("getArtists", out JsonElement response))
+					if (SubsonicGet("getArtists", true, out JsonElement response))
 					{
 						JsonElement artists;
 						JsonElement indexes = default;
@@ -231,7 +172,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete)
+		public override void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -243,7 +184,7 @@ namespace Thump.Pulse
 				List<PulsePodcastChannel> results = new List<PulsePodcastChannel>();
 				try
 				{
-					if (SubsonicGet("getPodcasts", out JsonElement response, "includeEpisodes=true"))
+					if (SubsonicGet("getPodcasts", true, out JsonElement response, "includeEpisodes=true"))
 					{
 						JsonElement podcasts;
 						JsonElement channelArray = default;
@@ -315,7 +256,7 @@ namespace Thump.Pulse
 			return episode;
 		}
 
-		public void Search(string query, Action<PulseSearchData> onComplete)
+		public override void Search(string query, Action<PulseSearchData> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -332,7 +273,7 @@ namespace Thump.Pulse
 						+ "&albumCount=20"
 						+ "&songCount=30";
 
-					if (SubsonicGet("search3", out JsonElement response, param))
+					if (SubsonicGet("search3", true, out JsonElement response, param))
 					{
 						if (response.TryGetProperty("searchResult3", out JsonElement searchResult))
 						{
@@ -365,7 +306,7 @@ namespace Thump.Pulse
 						}
 					}
 
-					if (SubsonicGet("getPlaylists", out JsonElement playlistResponse))
+					if (SubsonicGet("getPlaylists", true, out JsonElement playlistResponse))
 					{
 						bool validParams = true;
 
@@ -403,7 +344,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetArtistAlbums(string artistId, Action<List<PulseAlbum>> onComplete)
+		public override void GetArtistAlbums(string artistId, Action<List<PulseAlbum>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -415,7 +356,7 @@ namespace Thump.Pulse
 				List<PulseAlbum> results = new List<PulseAlbum>();
 				try
 				{
-					if (SubsonicGet("getArtist", out JsonElement response, "id=" + Uri.EscapeDataString(artistId)))
+					if (SubsonicGet("getArtist", true, out JsonElement response, "id=" + Uri.EscapeDataString(artistId)))
 					{
 						JsonElement artistElement;
 						JsonElement albumArray = default;
@@ -448,7 +389,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetArtist(string artistId, Action<PulseArtist> onComplete)
+		public override void GetArtist(string artistId, Action<PulseArtist> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -460,7 +401,7 @@ namespace Thump.Pulse
 				PulseArtist result = new PulseArtist();
 				try
 				{
-					if (SubsonicGet("getArtist", out JsonElement response, "id=" + Uri.EscapeDataString(artistId)))
+					if (SubsonicGet("getArtist", true, out JsonElement response, "id=" + Uri.EscapeDataString(artistId)))
 					{
 						if (response.TryGetProperty("artist", out JsonElement artistElement))
 						{
@@ -482,7 +423,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetAlbum(string albumId, Action<PulseAlbum> onComplete)
+		public override void GetAlbum(string albumId, Action<PulseAlbum> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -494,7 +435,7 @@ namespace Thump.Pulse
 				PulseAlbum result = new PulseAlbum();
 				try
 				{
-					if (SubsonicGet("getAlbum", out JsonElement response, "id=" + Uri.EscapeDataString(albumId)))
+					if (SubsonicGet("getAlbum", true, out JsonElement response, "id=" + Uri.EscapeDataString(albumId)))
 					{
 						if (response.TryGetProperty("album", out JsonElement albumElement))
 						{
@@ -528,7 +469,7 @@ namespace Thump.Pulse
 			return album;
 		}
 
-		public void GetAlbums(Action<List<PulseAlbum>> onComplete)
+		public override void GetAlbums(Action<List<PulseAlbum>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -543,7 +484,7 @@ namespace Thump.Pulse
 					for (int page = 0; page < 200; page++)
 					{
 						int offset = page * 500;
-						if (!SubsonicGet("getAlbumList2", out JsonElement response, "type=alphabeticalByName&size=500&offset=" + offset))
+						if (!SubsonicGet("getAlbumList2", true, out JsonElement response, "type=alphabeticalByName&size=500&offset=" + offset))
 						{
 							break;
 						}
@@ -584,7 +525,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void CreatePlaylist(string name, Action<PulsePlaylist> onComplete)
+		public override void CreatePlaylist(string name, Action<PulsePlaylist> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -597,7 +538,7 @@ namespace Thump.Pulse
 				try
 				{
 					string param = "name=" + Uri.EscapeDataString(name);
-					if (SubsonicGet("createPlaylist", out JsonElement response, param))
+					if (SubsonicGet("createPlaylist", false, out JsonElement response, param))
 					{
 						if (response.TryGetProperty("playlist", out JsonElement playlistElement))
 						{
@@ -615,7 +556,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void RenamePlaylist(string playlistId, string newName, Action<bool> onComplete)
+		public override void RenamePlaylist(string playlistId, string newName, Action<bool> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -629,7 +570,7 @@ namespace Thump.Pulse
 				{
 					string param = "playlistId=" + Uri.EscapeDataString(playlistId)
 						+ "&name=" + Uri.EscapeDataString(newName);
-					ok = SubsonicGet("updatePlaylist", out JsonElement response, param);
+					ok = SubsonicGet("updatePlaylist", false, out JsonElement response, param);
 				}
 				catch (Exception ex)
 				{
@@ -641,7 +582,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void Star(string trackId, Action<bool> onComplete)
+		public override void Star(string trackId, Action<bool> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -654,7 +595,7 @@ namespace Thump.Pulse
 				try
 				{
 					string param = "id=" + Uri.EscapeDataString(trackId);
-					ok = SubsonicGet("star", out JsonElement response, param);
+					ok = SubsonicGet("star", false, out JsonElement response, param);
 				}
 				catch (Exception ex)
 				{
@@ -666,7 +607,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void Unstar(string trackId, Action<bool> onComplete)
+		public override void Unstar(string trackId, Action<bool> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -679,7 +620,7 @@ namespace Thump.Pulse
 				try
 				{
 					string param = "id=" + Uri.EscapeDataString(trackId);
-					ok = SubsonicGet("unstar", out JsonElement response, param);
+					ok = SubsonicGet("unstar", false, out JsonElement response, param);
 				}
 				catch (Exception ex)
 				{
@@ -691,7 +632,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void DeletePlaylist(string playlistId, Action<bool> onComplete)
+		public override void DeletePlaylist(string playlistId, Action<bool> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -704,7 +645,7 @@ namespace Thump.Pulse
 				try
 				{
 					string param = "id=" + Uri.EscapeDataString(playlistId);
-					ok = SubsonicGet("deletePlaylist", out JsonElement response, param);
+					ok = SubsonicGet("deletePlaylist", false, out JsonElement response, param);
 				}
 				catch (Exception ex)
 				{
@@ -716,7 +657,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void AddTrackToPlaylist(string playlistId, string songId, Action<bool> onComplete)
+		public override void AddTrackToPlaylist(string playlistId, string songId, Action<bool> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -729,7 +670,7 @@ namespace Thump.Pulse
 				try
 				{
 					string param = "playlistId=" + Uri.EscapeDataString(playlistId) + "&songIdToAdd=" + Uri.EscapeDataString(songId);
-					ok = SubsonicGet("updatePlaylist", out JsonElement response, param);
+					ok = SubsonicGet("updatePlaylist", false, out JsonElement response, param);
 				}
 				catch (Exception ex)
 				{
@@ -741,7 +682,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void RemoveTrackFromPlaylist(string playlistId, int songIndex, Action<bool> onComplete)
+		public override void RemoveTrackFromPlaylist(string playlistId, int songIndex, Action<bool> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -753,9 +694,8 @@ namespace Thump.Pulse
 				bool ok = false;
 				try
 				{
-					string param = "playlistId=" + Uri.EscapeDataString(playlistId)
-						+ "&songIndexToRemove=" + songIndex;
-					ok = SubsonicGet("updatePlaylist", out JsonElement response, param);
+					string param = "playlistId=" + Uri.EscapeDataString(playlistId) + "&songIndexToRemove=" + songIndex;
+					ok = SubsonicGet("updatePlaylist", false, out JsonElement response, param);
 				}
 				catch (Exception ex)
 				{
@@ -767,7 +707,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<PulseTrack> newOrder, Action<bool> onComplete)
+		public override void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<PulseTrack> newOrder, Action<bool> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -794,7 +734,7 @@ namespace Thump.Pulse
 					{
 						param.Append("&songIdToAdd=").Append(Uri.EscapeDataString(newOrder[idx].Id));
 					}
-					ok = SubsonicGet("updatePlaylist", out JsonElement response, param.ToString());
+					ok = SubsonicGet("updatePlaylist", false, out JsonElement response, param.ToString());
 				}
 				catch (Exception ex)
 				{
@@ -806,7 +746,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void MarkPlaylistPlayed(string playlistId, Action<bool> onComplete)
+		public override void MarkPlaylistPlayed(string playlistId, Action<bool> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -820,7 +760,7 @@ namespace Thump.Pulse
 				try
 				{
 					string url = m_baseUrl + "/pulse/markPlaylistPlayed?id=" + Uri.EscapeDataString(playlistId) + "&u=" + Uri.EscapeDataString(m_user);
-					string json = HttpGet(url);
+					string json = HttpGet(url, false);
 					ok = json != null;
 				}
 				catch (Exception ex)
@@ -837,7 +777,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetPlaylists(Action<List<PulsePlaylist>> onComplete)
+		public override void GetPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -849,7 +789,7 @@ namespace Thump.Pulse
 				List<PulsePlaylist> results = new List<PulsePlaylist>();
 				try
 				{
-					if (SubsonicGet("getPlaylists", out JsonElement response))
+					if (SubsonicGet("getPlaylists", true, out JsonElement response))
 					{
 						JsonElement playlists;
 						JsonElement playlistArray = default;
@@ -881,7 +821,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetPlaylist(string playlistId, Action<PulsePlaylist> onComplete)
+		public override void GetPlaylist(string playlistId, Action<PulsePlaylist> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -893,7 +833,7 @@ namespace Thump.Pulse
 				PulsePlaylist result = new PulsePlaylist();
 				try
 				{
-					if (SubsonicGet("getPlaylist", out JsonElement response, "id=" + Uri.EscapeDataString(playlistId)))
+					if (SubsonicGet("getPlaylist", true, out JsonElement response, "id=" + Uri.EscapeDataString(playlistId)))
 					{
 						if (response.TryGetProperty("playlist", out JsonElement playlistElement))
 						{
@@ -956,7 +896,7 @@ namespace Thump.Pulse
 
 	
 
-		public void GetCoverArt(string coverArtId, Action<byte[]> onComplete)
+		public override void GetCoverArt(string coverArtId, Action<byte[]> onComplete)
 		{
 			if (string.IsNullOrEmpty(coverArtId))
 			{
@@ -978,14 +918,13 @@ namespace Thump.Pulse
 			{
 				try
 				{
-					HttpResponseMessage response = m_httpClient.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
-					if (!response.IsSuccessStatusCode)
+					byte[] data = HttpGetBinary(url, true);
+					if (data == null || data.Length <= 0)
 					{
-						Log.Error("Cover art fetch failed: " + url + " status: " + response.StatusCode);
+						Log.Error("Cover art fetch failed: " + url);
 						MainThread.BeginInvokeOnMainThread(() => { onComplete(null); });
 						return;
 					}
-					byte[] data = response.Content.ReadAsByteArrayAsync().Result;
 					m_imageCache[url] = data;
 					MainThread.BeginInvokeOnMainThread(() => { onComplete(data); });
 				}
@@ -998,7 +937,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetTrackAudio(string trackId, Action<byte[]> onComplete)
+		public override void GetTrackAudio(string trackId, Action<byte[]> onComplete)
 		{
 			if (!IsOnline() || string.IsNullOrEmpty(trackId))
 			{
@@ -1011,82 +950,40 @@ namespace Thump.Pulse
 			{
 				try
 				{
-					HttpResponseMessage response = m_httpClient.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
-					if (!response.IsSuccessStatusCode)
+					byte[] data = HttpGetBinary(url, true);
+					if (data == null || data.Length <= 0)
 					{
-						Log.Error("Audio fetch failed: " + url + " status: " + response.StatusCode);
-						onComplete(null);
+						Log.Error("Audio fetch failed: " + url);
+						MainThread.BeginInvokeOnMainThread(() => { onComplete(null); });
 						return;
 					}
-					byte[] data = response.Content.ReadAsByteArrayAsync().Result;
 
-					if (onComplete != null)
-						onComplete(data);
+					byte[] captured = data;
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						if (onComplete != null)
+							onComplete(captured);
+					});
 				}
 				catch (Exception ex)
 				{
 					Log.Exception(ex);
 
-					if (onComplete != null)
-						onComplete(null);
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						if (onComplete != null)
+							onComplete(null);
+					});
 				}
 			});
 		}
 
-		private bool SubsonicGet(string endpoint, out JsonElement jsonElement, string extraParams = null)
-		{
-			bool retVal = false;
-			jsonElement = default;
-			string url = BuildRestUrl(endpoint, extraParams);
+		
 
-			HttpClient client;
-			lock (m_httpClientLock)
-			{
-				client = m_httpClient;
-			}
-			if (client == null)
-			{
-				jsonElement = default;
-				return false;
-			}
-			HttpResponseMessage httpResponse = client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
-			if (!httpResponse.IsSuccessStatusCode)
-			{
-				Log.Error("Subsonic request failed: " + url + " status: " + httpResponse.StatusCode);
-				jsonElement = default;
-				return false;
-			}
-			string json = httpResponse.Content.ReadAsStringAsync().Result;
-			JsonDocument doc = JsonDocument.Parse(json);
-			JsonElement root = doc.RootElement;
+		
+	
 
-			if (root.TryGetProperty("subsonic-response", out JsonElement response))
-			{
-				string status = JsonHelper.GetString(response, "status");
-				if (status == "ok")
-				{
-					jsonElement = response;
-					retVal = true;
-				}
-			}
-			if (!retVal)
-			{
-				Log.Error("Invalid subsonic response: " + json);
-			}
-			return retVal;
-		}
-
-		private string BuildCoverArtUrl(string coverArtId)
-		{
-			if (string.IsNullOrEmpty(coverArtId))
-			{
-				return null;
-			}
-
-			return BuildRestUrl("getCoverArt", "id=" + Uri.EscapeDataString(coverArtId));
-		}
-
-		public void GetRecentlyPlayed(Action<List<PulseObject>> onComplete)
+		public override void GetRecentlyPlayed(Action<List<PulseObject>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -1100,7 +997,7 @@ namespace Thump.Pulse
 				{
 					int count = 50;
 					string url = m_baseUrl + "/pulse/recentlyPlayed?count=" + count + "&u=" + Uri.EscapeDataString(m_user);
-					string json = HttpGet(url);
+					string json = HttpGet(url, false);
 					if (json != null)
 					{
 						JsonDocument doc = JsonDocument.Parse(json);
@@ -1129,7 +1026,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetPopularArtists(Action<List<PulseArtist>> onComplete)
+		public override void GetPopularArtists(Action<List<PulseArtist>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -1143,7 +1040,7 @@ namespace Thump.Pulse
 				{
 					int count = 50;
 					string url = m_baseUrl + "/pulse/popularArtists?count=" + count + "&u=" + Uri.EscapeDataString(m_user);
-					string json = HttpGet(url);
+					string json = HttpGet(url, true);
 					if (json != null)
 					{
 						JsonDocument doc = JsonDocument.Parse(json);
@@ -1179,18 +1076,18 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetTopPlaylists(Action<List<PulsePlaylist>> onComplete)
+		public override void GetTopPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
 			GetRankedPlaylists("topPlaylists", 50, onComplete);
 		}
 
-		public void GetRecentPlaylists(Action<List<PulsePlaylist>> onComplete)
+		public override void GetRecentPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
 			GetRankedPlaylists("recentPlaylists", 50, onComplete);
 		}
 
 	
-		public void GetRecentlyAdded(Action<List<PulseObject>> onComplete)
+		public override void GetRecentlyAdded(Action<List<PulseObject>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -1202,7 +1099,7 @@ namespace Thump.Pulse
 				List<PulseObject> results = new List<PulseObject>();
 				try
 				{
-					if (SubsonicGet("getAlbumList2", out JsonElement response, "type=newest&size=50"))
+					if (SubsonicGet("getAlbumList2", true, out JsonElement response, "type=newest&size=50"))
 					{
 						JsonElement albumList;
 						JsonElement albumArray = default;
@@ -1235,7 +1132,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetGenres(Action<List<PulseGenre>> onComplete)
+		public override void GetGenres(Action<List<PulseGenre>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -1247,7 +1144,7 @@ namespace Thump.Pulse
 				List<PulseGenre> results = new List<PulseGenre>();
 				try
 				{
-					if (SubsonicGet("getGenres", out JsonElement response))
+					if (SubsonicGet("getGenres", true, out JsonElement response))
 					{
 						JsonElement genres;
 						JsonElement genreArray = default;
@@ -1286,7 +1183,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetTopItems(Action<List<PulseObject>> onComplete)
+		public override void GetTopItems(Action<List<PulseObject>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -1300,7 +1197,7 @@ namespace Thump.Pulse
 				{
 					int count = 50;
 					string url = m_baseUrl + "/pulse/topPlaylists?count=" + count + "&u=" + Uri.EscapeDataString(m_user) + "&api=1";
-					string json = HttpGet(url);
+					string json = HttpGet(url, true);
 					if (json != null)
 					{
 						JsonDocument doc = JsonDocument.Parse(json);
@@ -1333,7 +1230,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete)
+		public override void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -1346,7 +1243,7 @@ namespace Thump.Pulse
 				try
 				{
 					string param = "genre=" + Uri.EscapeDataString(genre) + "&count=500&offset=0";
-					if (SubsonicGet("getSongsByGenre", out JsonElement response, param))
+					if (SubsonicGet("getSongsByGenre", true, out JsonElement response, param))
 					{
 						JsonElement songsByGenre;
 						JsonElement songArray = default;
@@ -1381,7 +1278,7 @@ namespace Thump.Pulse
 
 		//"Favorites" in the app maps to Subsonic's getStarred endpoint —
 		//returns starred artists, albums, and songs. We only pull the songs.
-		public void GetFavorites(Action<List<PulseTrack>> onComplete)
+		public override void GetFavorites(Action<List<PulseTrack>> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -1393,7 +1290,7 @@ namespace Thump.Pulse
 				List<PulseTrack> results = new List<PulseTrack>();
 				try
 				{
-					if (SubsonicGet("getStarred", out JsonElement response))
+					if (SubsonicGet("getStarred", true, out JsonElement response))
 					{
 						if (response.TryGetProperty("starred", out JsonElement starred))
 						{
@@ -1423,7 +1320,7 @@ namespace Thump.Pulse
 				try
 				{
 					string url = m_baseUrl + "/pulse/" + endpoint + "?count=" + count + "&u=" + Uri.EscapeDataString(m_user) + "&api=1";
-					string json = HttpGet(url);
+					string json = HttpGet(url, true);
 					if (json != null)
 					{
 						JsonDocument doc = JsonDocument.Parse(json);
@@ -1455,16 +1352,31 @@ namespace Thump.Pulse
 			});
 		}
 
-		private string HttpGet(string url)
+		private bool SubsonicGet(string endpoint, bool bCacheAllowed, out JsonElement jsonElement, string extraParams = null)
 		{
-			HttpResponseMessage response = m_httpClient.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
-			if (!response.IsSuccessStatusCode)
-			{
-				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
-				return null;
-			}
-			return response.Content.ReadAsStringAsync().Result;
-		}
+			bool retVal = false;
+			jsonElement = default;
+			string url = BuildRestUrl(endpoint, extraParams);
 
-	}
+			string json = HttpGet(url, bCacheAllowed);
+			JsonDocument doc = JsonDocument.Parse(json);
+			JsonElement root = doc.RootElement;
+
+			if (root.TryGetProperty("subsonic-response", out JsonElement response))
+			{
+				string status = JsonHelper.GetString(response, "status");
+				if (status == "ok")
+				{
+					jsonElement = response;
+					retVal = true;
+				}
+			}
+			if (!retVal)
+			{
+				Log.Error("Invalid subsonic response: " + json);
+			}
+			
+			return retVal;
+		}
+	}	
 }

@@ -7,7 +7,7 @@ using Thump.Utility;
 
 namespace Thump.Pulse
 {
-	public class PulseObject : ThumpDataOb
+	public class PulseObject : MediaDataObject
 	{
 		public string Id { get; set; }
 	}
@@ -105,7 +105,7 @@ namespace Thump.Pulse
 		public int PlayCount { get; set; }
 		public float Score { get; set; }
 		public DateTime LastPlayed { get; set; }
-
+		public List<string> AlbumIDs { get; set; }
 		public PulseArtist()
 		{
 			Kind = eDataType.Artist;

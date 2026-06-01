@@ -463,7 +463,7 @@ namespace Thump.Views
 			PulseTrack song = m_currentSong;
 			if (song.Starred)
 			{
-				MainView.Data.UnstarTrack(song.Id, (success) =>
+				MainView.MediaClient.Star(song.Id, (success) =>
 				{
 					if (success)
 					{
@@ -474,7 +474,7 @@ namespace Thump.Views
 			}
 			else
 			{
-				MainView.Data.StarTrack(song.Id, (success) =>
+				MainView.MediaClient.Unstar(song.Id, (success) =>
 				{
 					if (success)
 					{

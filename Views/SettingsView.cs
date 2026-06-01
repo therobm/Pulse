@@ -30,8 +30,7 @@ namespace Thump.Views
 		private Label m_cacheSizeValueLabel;
 		private ProgressBar m_usageBar;
 		private Label m_usageLabel;
-		private Label m_tracksCachedLabel;
-		private Label m_coverArtLabel;
+		private Label m_entriesLabel;
 		private Label m_oldestLabel;
 
 		private Entry m_serverIpEntry;
@@ -40,7 +39,7 @@ namespace Thump.Views
 		private Entry m_passwordEntry;
 		private Button m_authToken;
 		private Button m_authLegacy;
-		private SubsonicAPI.eSubSonicAuthType m_authType = SubsonicAPI.eSubSonicAuthType.Token;
+		private MediaClient.eAuthType m_authType = MediaClient.eAuthType.Token;
 		private Button m_serverSubsonic;
 		private Button m_serverPulse;
 		private PulseAPI.eServerType m_serverType = PulseAPI.eServerType.Subsonic;
@@ -201,11 +200,8 @@ namespace Thump.Views
 			m_usageBar.Progress = 0;
 			section.Children.Add(m_usageBar);
 
-			m_tracksCachedLabel = BuildFieldLabel("Tracks Cached: 0");
-			section.Children.Add(m_tracksCachedLabel);
-
-			m_coverArtLabel = BuildFieldLabel("Cover Art: 0");
-			section.Children.Add(m_coverArtLabel);
+			m_entriesLabel = BuildFieldLabel("Cached Entries: 0");
+			section.Children.Add(m_entriesLabel);
 
 			m_oldestLabel = BuildFieldLabel("Oldest Cached Object: —");
 			section.Children.Add(m_oldestLabel);
@@ -405,21 +401,21 @@ namespace Thump.Views
 
 		private void OnAuthTokenClicked(object sender, EventArgs e)
 		{
-			SetAuthType(SubsonicAPI.eSubSonicAuthType.Token);
+			SetAuthType(MediaClient.eAuthType.Token);
 			ThumpSettings.SetAuthType(m_authType);
 		}
 
 		private void OnAuthLegacyClicked(object sender, EventArgs e)
 		{
-			SetAuthType(SubsonicAPI.eSubSonicAuthType.Legacy);
+			SetAuthType(MediaClient.eAuthType.Legacy);
 			ThumpSettings.SetAuthType(m_authType);
 		}
 
-		private void SetAuthType(SubsonicAPI.eSubSonicAuthType value)
+		private void SetAuthType(MediaClient.eAuthType value)
 		{
 			m_authType = value;
-			StyleSegment(m_authToken, value == SubsonicAPI.eSubSonicAuthType.Token);
-			StyleSegment(m_authLegacy, value == SubsonicAPI.eSubSonicAuthType.Legacy);
+			StyleSegment(m_authToken, value == MediaClient.eAuthType.Token);
+			StyleSegment(m_authLegacy, value == MediaClient.eAuthType.Legacy);
 		}
 
 		private void OnServerSubsonicClicked(object sender, EventArgs e)
@@ -570,8 +566,8 @@ namespace Thump.Views
 			m_connectStatusLabel.Text = "Connecting…";
 			m_connectStatusLabel.TextColor = ThumpColors.TextSecondary;
 
-			IMediaClient pulse = MainView.Data.Pulse;
-			SubsonicAPI.eSubSonicAuthType authType = m_authType;
+			MediaClient pulse = MainView.MediaClient;
+			MediaClient.eAuthType authType = m_authType;
 			bool useHttps = m_useHttps;
 			Task.Run(() =>
 			{
@@ -630,8 +626,7 @@ namespace Thump.Views
 			{
 				m_usageBar.Progress = 0;
 			}
-			m_tracksCachedLabel.Text = "Tracks Cached: " + stats.TrackCount;
-			m_coverArtLabel.Text = "Cover Art: " + stats.CoverArtCount;
+			m_entriesLabel.Text = "Cached Entries: " + stats.EntryCount;
 			m_oldestLabel.Text = "Oldest Cached Object: " + FormatAge(stats.OldestFetchedUnix);
 		}
 

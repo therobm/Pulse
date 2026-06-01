@@ -41,16 +41,16 @@ namespace Thump.Playback.AndroidOS
 		private bool m_pendingPlay;
 		private bool m_endHandled;
 		private bool m_shuffleEnabled;
-		private ThumpData m_data;
+		private MediaClient m_data;
 
 		private Queue<PulseTrack> m_cacheQueue = new Queue<PulseTrack>();
 
-		public ThumpAndroidPlayer(MainView mainView, ThumpData thumpData)
+		public ThumpAndroidPlayer(MainView mainView, MediaClient thumpData)
 		{
 			m_mainView = mainView;
 			m_data = thumpData;
 
-			ThumpMediaLibraryService.s_thumpData = m_data;
+			ThumpMediaLibraryService.s_mediaClient = m_data;
 
 			Context context = Android.App.Application.Context;
 			ComponentName componentName = new ComponentName(context, Java.Lang.Class.FromType(typeof(ThumpMediaLibraryService)));
@@ -124,7 +124,7 @@ namespace Thump.Playback.AndroidOS
 			for (int i = 0; i < m_queue.Count; i++)
 			{
 				//If we're not online and we don't have this track locally cached skip it
-				if (!isOnline && !m_data.IsTrackCached(m_queue[i]))
+				if (!isOnline && !m_data.IsTrackCached(m_queue[i].Id))
 					continue;
 
 				if (i == startIndex)
@@ -140,7 +140,8 @@ namespace Thump.Playback.AndroidOS
 
 
 			//kick off caching and start when startIndex is ready
-			m_data.CacheTrack(m_queue[startItemIndex], (firstCached)=>
+			
+			m_data.CacheTrackAudio(m_queue[startItemIndex].Id, (firstCached)=>
 			{
 				//some other queue has been started, we'll just bail on this
 				if (m_currentQueueID != taskQueueID)
@@ -167,7 +168,7 @@ namespace Thump.Playback.AndroidOS
 
 			PulseTrack nextTrack = m_cacheQueue.Dequeue();
 
-			m_data.CacheTrack(nextTrack, (success)=>
+			m_data.CacheTrackAudio(nextTrack.Id, (success)=>
 			{
 				CacheQueued(queueID);
 			});
@@ -282,7 +283,7 @@ namespace Thump.Playback.AndroidOS
 				return;
 			}
 			PulseTrack track = tracks[index];
-			m_data.CacheTrack(track, (isAvailable) =>
+			m_data.CacheTrackAudio(track.Id, (isAvailable) =>
 			{
 				//ditch stale callbacks
 				if (queueID != m_currentQueueID)
@@ -321,7 +322,7 @@ namespace Thump.Playback.AndroidOS
 				return;
 			}
 			PulseTrack track = tracks[index];
-			m_data.CacheTrack(track, (isAvailable) =>
+			m_data.CacheTrackAudio(track.Id, (isAvailable) =>
 			{
 				//ditch stale callbacks
 				if (queueID != m_currentQueueID)

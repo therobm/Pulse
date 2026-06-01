@@ -35,10 +35,9 @@ namespace Thump
 		public const string ServerUser = "Rob";
 
 		public static MainView Self { get { return s_self; } }
-		public static ThumpData Data { get { return Self.m_data; } }
-		
+		public static MediaClient MediaClient { get { return Self.m_mediaClient; } }
 		private static MainView s_self;
-		private IMediaClient m_pulseClient;
+		private MediaClient m_mediaClient;
 		private ThumpCache m_cache;
 		private Grid m_rootGrid;
 		private ContentView m_contentHost;
@@ -55,7 +54,6 @@ namespace Thump
 		private List<PulseTrack> m_currentQueue = new List<PulseTrack>();
 		private int m_currentQueueIndex;
 		private PulseTrack m_currentTrack;
-		private ThumpData m_data;
 		private IMediaPlayer m_player;
 		private ePlaybackState m_playbackState = ePlaybackState.Idle;
 		private long m_currentDurationMs;
@@ -89,18 +87,12 @@ namespace Thump
 			Content = m_rootGrid;
 
 
-			m_pulseClient = new PulseAPI();
-			m_pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), ThumpSettings.GetUseHttps());
-
-
-			string cacheRoot = FileSystem.CacheDirectory;
-			string databasePath = Path.Combine(cacheRoot, "thump.db");
-			string blobDirectory = Path.Combine(cacheRoot, "blobs");
-			m_cache = new ThumpCache(databasePath, blobDirectory);
-			m_data = new ThumpData(m_pulseClient, m_cache);
+			m_cache = new ThumpCache();
+			m_mediaClient = new PulseAPI(m_cache);
+			m_mediaClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), ThumpSettings.GetUseHttps());
 
 #if ANDROID
-			m_player = new ThumpAndroidPlayer(this, m_data);
+			m_player = new ThumpAndroidPlayer(this, m_mediaClient);
 #else
 			m_player = new StubThumpPlayer();
 #endif
@@ -262,7 +254,7 @@ namespace Thump
 			PushDetail(detail);
 		}
 
-		public void OnHomeItemSelected(ThumpDataOb item)
+		public void OnHomeItemSelected(MediaDataObject item)
 		{
 			if (item.Kind == eDataType.Album)
 			{
@@ -328,7 +320,7 @@ namespace Thump
 			switch (source)
 			{
 				case eQueueSource.Playlist:
-					m_pulseClient.MarkPlaylistPlayed(sourceId, null);
+					m_mediaClient.MarkPlaylistPlayed(sourceId, null);
 					break;
 			}
 		}
@@ -609,7 +601,7 @@ namespace Thump
 				return;
 			}
 			bool started = false;
-			m_data.GetAlbumsForArtist(artist, (albums) =>
+			m_mediaClient.GetArtistTracks(artist.Id, (tracks) =>
 			{
 				// The data route can fire its callback more than once (cache fast-path
 				// then network); start the walk only once.
@@ -618,48 +610,19 @@ namespace Thump
 					return;
 				}
 				started = true;
-				if (albums == null || albums.Count == 0)
-				{
-					return;
-				}
-				List<PulseTrack> combined = new List<PulseTrack>();
-				AccumulateArtistTracks(artist.Id, albums, 0, combined, shuffle);
-			});
-		}
-
-		private void AccumulateArtistTracks(string artistId, List<PulseAlbum> albums, int index, List<PulseTrack> combined, bool shuffle)
-		{
-			if (index >= albums.Count)
-			{
-				if (combined.Count == 0)
+				if (tracks == null || tracks.Count == 0)
 				{
 					return;
 				}
 				if (shuffle)
 				{
-					OnPlayTracksShuffled(combined, eQueueSource.Artist, artistId);
+					OnPlayTracksShuffled(tracks, eQueueSource.Artist, artist.Id);
 				}
 				else
 				{
-					OnPlayTracks(combined, 0, eQueueSource.Artist, artistId);
+					OnPlayTracks(tracks, 0, eQueueSource.Artist, artist.Id);
 				}
-				return;
-			}
-			bool advanced = false;
-			m_data.GetTracksForAlbum(albums[index], (tracks) =>
-			{
-				// Guard against the route's double callback: advancing twice here would
-				// branch the recursion and flood requests / duplicate the queue.
-				if (advanced)
-				{
-					return;
-				}
-				advanced = true;
-				if (tracks != null)
-				{
-					combined.AddRange(tracks);
-				}
-				AccumulateArtistTracks(artistId, albums, index + 1, combined, shuffle);
+
 			});
 		}
 

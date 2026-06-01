@@ -112,12 +112,12 @@ namespace Thump.Views
 		public override void Initialize()
 		{
 			base.Initialize();
-			MainView.Data.GetTopItems(OnTopItemsLoaded);
-			MainView.Data.GetRecentlyPlayed(OnRecentlyPlayedLoaded);
-			MainView.Data.GetTopPlaylists(OnYourPlaylistsLoaded);
-			MainView.Data.GetPopularArtists(OnPopularArtistsLoaded);
-			MainView.Data.GetRecentlyAdded(OnRecentlyAddedLoaded);
-			MainView.Data.GetFavorites(OnFavoritesLoaded);
+			MainView.MediaClient.GetTopItems(OnTopItemsLoaded);
+			MainView.MediaClient.GetRecentlyPlayed(OnRecentlyPlayedLoaded);
+			MainView.MediaClient.GetTopPlaylists(OnYourPlaylistsLoaded);
+			MainView.MediaClient.GetPopularArtists(OnPopularArtistsLoaded);
+			MainView.MediaClient.GetRecentlyAdded(OnRecentlyAddedLoaded);
+			MainView.MediaClient.GetFavorites(OnFavoritesLoaded);
 		}
 
 		private void OnTopItemsLoaded(List<PulseObject> items)
