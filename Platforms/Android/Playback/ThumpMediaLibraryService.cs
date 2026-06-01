@@ -187,92 +187,100 @@ namespace Thump.Playback.AndroidOS
 		// stays linear except for the start-track CacheTrack hop at the end.
 		public async void LoadMediaItems(IList<MediaItem> items, int startIndex, long startPositionMs, JObjectCallback callback)
 		{
-			m_currentQueueID = m_currentQueueID + 1;
-
-			List<MediaItem> outputTracks = new List<MediaItem>();
-
-			if (items == null || items.Count == 0)
+			try
 			{
-				MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(outputTracks, 0, startPositionMs);
-				callback.OnComplete(empty);
-				return;
-			}
+				m_currentQueueID = m_currentQueueID + 1;
 
-			bool isOnline = s_thumpData.IsOnline();
+				List<MediaItem> outputTracks = new List<MediaItem>();
 
-			//grab all our tracks at once
-			Task<List<PulseTrack>>[] fetchedTracks = new Task<List<PulseTrack>>[items.Count];
-			for (int i = 0; i < items.Count; i++)
-			{
-				fetchedTracks[i] = GetTrackIdsAsync(items[i]);
-			}
-			await Task.WhenAll(fetchedTracks);
-
-
-			List<PulseTrack> requestedTracks = new List<PulseTrack>();
-			int startItemIndex = 0;
-			for(int i = 0; i < items.Count; i++)
-			{
-				if (i == startIndex)
+				if (items == null || items.Count == 0)
 				{
-					//this is the new potential index if tracks before it weren't included
-					startItemIndex = requestedTracks.Count;
-				}
-
-				List<PulseTrack> tracks = fetchedTracks[i].Result;
-				for (int j = 0; j < tracks.Count; j++)
-				{   
-					//filter out unavailable tracks
-					if (!isOnline && !s_thumpData.IsTrackCached(tracks[j]))
-					{
-						continue;
-					}
-					requestedTracks.Add(tracks[j]);
-				}
-			}
-
-			//our startItem was filtered out so we'll reset our index
-			if (startItemIndex >= requestedTracks.Count)
-			{
-				startItemIndex = 0;
-			}
-
-			//nothing's avialable
-			if (requestedTracks.Count == 0)
-			{
-				MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(outputTracks, 0, startPositionMs);
-				callback.OnComplete(empty);
-				return;
-			}
-
-			Queue<PulseTrack> cacheQueue = new Queue<PulseTrack>();
-			for (int i = 0; i < requestedTracks.Count; i++)
-			{
-				outputTracks.Add(MediaItemBuilder.Build(requestedTracks[i]));
-				if (i != startItemIndex)
-				{
-					cacheQueue.Enqueue(requestedTracks[i]);
-				}
-			}
-
-			PulseTrack startTrack = requestedTracks[startItemIndex];
-			int finalStartIndex = startItemIndex;
-			long finalStartPosition = startPositionMs;
-
-
-			int cacheQueueID = m_currentQueueID;
-			s_thumpData.CacheTrack(startTrack, (success)=>
-			{
-				if (cacheQueueID != m_currentQueueID)
+					MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(outputTracks, 0, startPositionMs);
+					callback.OnComplete(empty);
 					return;
+				}
 
-				MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputTracks, finalStartIndex, finalStartPosition);
-				callback.OnComplete(result);
+				bool isOnline = s_thumpData.IsOnline();
 
-				//Wait for the initial spinup then start caching the rest
-				Task.Delay(5000).ContinueWith((_) => CacheQueued(cacheQueue, cacheQueueID));
-				//CacheQueued(cacheQueue, cacheQueueID);
-			});
+				//grab all our tracks at once
+				Task<List<PulseTrack>>[] fetchedTracks = new Task<List<PulseTrack>>[items.Count];
+				for (int i = 0; i < items.Count; i++)
+				{
+					fetchedTracks[i] = GetTrackIdsAsync(items[i]);
+				}
+				await Task.WhenAll(fetchedTracks);
+
+
+				List<PulseTrack> requestedTracks = new List<PulseTrack>();
+				int startItemIndex = 0;
+				for (int i = 0; i < items.Count; i++)
+				{
+					if (i == startIndex)
+					{
+						//this is the new potential index if tracks before it weren't included
+						startItemIndex = requestedTracks.Count;
+					}
+
+					List<PulseTrack> tracks = fetchedTracks[i].Result;
+					for (int j = 0; j < tracks.Count; j++)
+					{
+						//filter out unavailable tracks
+						if (!isOnline && !s_thumpData.IsTrackCached(tracks[j]))
+						{
+							continue;
+						}
+						requestedTracks.Add(tracks[j]);
+					}
+				}
+
+				//our startItem was filtered out so we'll reset our index
+				if (startItemIndex >= requestedTracks.Count)
+				{
+					startItemIndex = 0;
+				}
+
+				//nothing's avialable
+				if (requestedTracks.Count == 0)
+				{
+					MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(outputTracks, 0, startPositionMs);
+					callback.OnComplete(empty);
+					return;
+				}
+
+				Queue<PulseTrack> cacheQueue = new Queue<PulseTrack>();
+				for (int i = 0; i < requestedTracks.Count; i++)
+				{
+					outputTracks.Add(MediaItemBuilder.Build(requestedTracks[i]));
+					if (i != startItemIndex)
+					{
+						cacheQueue.Enqueue(requestedTracks[i]);
+					}
+				}
+
+				PulseTrack startTrack = requestedTracks[startItemIndex];
+				int finalStartIndex = startItemIndex;
+				long finalStartPosition = startPositionMs;
+
+
+				int cacheQueueID = m_currentQueueID;
+				s_thumpData.CacheTrack(startTrack, (success) =>
+				{
+					if (cacheQueueID != m_currentQueueID)
+						return;
+
+					MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputTracks, finalStartIndex, finalStartPosition);
+					callback.OnComplete(result);
+
+					// Wait for the initial spinup then start caching the rest
+					// kicking this off immidiately was stealing cycles from the codec bootup causing delays
+					Task.Delay(1000).ContinueWith((_) => CacheQueued(cacheQueue, cacheQueueID));
+					//CacheQueued(cacheQueue, cacheQueueID);
+				});
+			}
+			catch(Exception ex)
+			{
+				Log.Exception(ex);
+			}
 		}
 
 		
@@ -292,7 +300,7 @@ namespace Thump.Playback.AndroidOS
 		Task<List<PulseTrack>> GetTrackIdsAsync(MediaItem item)
 		{
 			TaskCompletionSource<List<PulseTrack>> tcs = new TaskCompletionSource<List<PulseTrack>>();
-			GetTrackIds(item, (tracks) => tcs.SetResult(tracks));
+			GetTrackIds(item, (tracks) => tcs.TrySetResult(tracks));
 			return tcs.Task;
 		}
 
@@ -305,6 +313,7 @@ namespace Thump.Playback.AndroidOS
 			if (string.IsNullOrEmpty(mediaId))
 			{
 				onComplete(new List<PulseTrack>());
+				return;
 			}
 
 			// Single track:
@@ -346,7 +355,6 @@ namespace Thump.Playback.AndroidOS
 
 		private void GetTracksFor(eAAObject objectType, string objectId, Action<List<PulseTrack>> onComplete)
 		{
-			List<PulseTrack> outputTracks = new List<PulseTrack>();
 		
 			//Lambda exception to avoid too many indirection calls
 			bool fired = false;
@@ -362,12 +370,13 @@ namespace Thump.Playback.AndroidOS
 
 				fired = true;
 
+				List<PulseTrack> outputTracks = new List<PulseTrack>();
 				if (tracks != null)
 				{
 					//return this to the caller via the closure
 					outputTracks = tracks;
-					onComplete(outputTracks);
 				}
+				onComplete(outputTracks);
 			};
 
 			
@@ -386,6 +395,7 @@ namespace Thump.Playback.AndroidOS
 					s_thumpData.GetTracksForGenre(objectId, onDataComplete);
 					break;
 				default:
+					onDataComplete(new List<PulseTrack>());
 					break;
 			}
 		}
