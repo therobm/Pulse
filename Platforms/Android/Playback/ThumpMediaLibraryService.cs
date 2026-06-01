@@ -41,12 +41,6 @@ namespace Thump.Playback.AndroidOS
 		private MediaLibraryService.MediaLibrarySession m_session;
 		private CarConnectionReceiver m_carReceiver;
 
-		// Bumped at the start of every LoadMediaItems call. Every async hop
-		// captures the value it saw and bails if it no longer matches —
-		// guards against AA firing OnSetMediaItems again while the first
-		// resolve is still in flight.
-		private int m_currentQueueID;
-
 		// Shared shuffle RNG. Field-level rather than per-call so back-to-back
 		// shuffles within the same second don't get identically seeded.
 		private static Random s_shuffleRand = new Random();
@@ -188,9 +182,6 @@ namespace Thump.Playback.AndroidOS
 		// OnSetMediaItems mid-flight.
 		public void LoadMediaItems(IList<MediaItem> items, int startIndex, long startPositionMs, JObjectCallback callback)
 		{
-			m_currentQueueID = m_currentQueueID + 1;
-			int queueID = m_currentQueueID;
-
 			List<MediaItem> outputTracks = new List<MediaItem>();
 
 			if (items == null || items.Count == 0)
@@ -204,62 +195,31 @@ namespace Thump.Playback.AndroidOS
 
 			//determine which object types are being requested so we can fetch the appropriate data
 
-			List<string> requestedTracks = new List<string>();
+			List<PulseTrack> requestedTracks = new List<PulseTrack>();
 			for(int i = 0; i < items.Count; i++)
 			{
-				List<string> tracks = GetTrackIds(items[i], m_currentQueueID);
+				List<PulseTrack> tracks = GetTrackIds(items[i]);
 
 				//filter out unavailable tracks
 				if (!isOnline)
 				{ 
 					for(int j = 0; j < tracks.Count; j++)
 					{
-						if (!isOnline && !s_thumpData.IsTrackCached(tracks[i]))
+						if (!isOnline && !s_thumpData.IsTrackCached(tracks[j]))
 							continue;
-						requestedTracks.Add(tracks[i]);
+						requestedTracks.Add(tracks[j]);
 					}
 				}
 
 			}
-			
-			//todo fill out inline
+
+			throw new NotImplementedException();
 		}
 
-		private void ResolveQueueItems(IList<MediaItem> items, int index, int queueID, List<MediaItem> resolved, int[] expandedStart, int startIndex, long startPositionMs, JObjectCallback callback)
-		{
-			if (queueID != m_currentQueueID)
-			{
-				return;
-			}
-			if (index >= items.Count)
-			{
-				int safeStart = 0;
-				if (startIndex >= 0 && startIndex < expandedStart.Length)
-				{
-					safeStart = expandedStart[startIndex];
-				}
-				FinalizeQueue(resolved, safeStart, startPositionMs, queueID, callback);
-				return;
-			}
 
-			expandedStart[index] = resolved.Count;
-			GetTracks(items[index], queueID, (built)=>
-			{
-				if (queueID != m_currentQueueID)
-				{
-					return;
-				}
-				if (built != null)
-				{
-					resolved.AddRange(built);
-				}
-				ResolveQueueItems(items, index + 1, queueID, resolved, expandedStart, startIndex, startPositionMs, callback);
-			});
-		}
-
-		private List<string> GetTrackIds(MediaItem input, int queueID)
+		private List<PulseTrack> GetTrackIds(MediaItem input)
 		{
-			List<string> trackList = new List<string>();
+			List<PulseTrack> trackList = new List<PulseTrack>();
 
 			string mediaId = input.MediaId;
 			if (string.IsNullOrEmpty(mediaId))
@@ -271,7 +231,16 @@ namespace Thump.Playback.AndroidOS
 			if (mediaId.StartsWith("track/"))
 			{
 				string trackId = AAutoHelper.StripTrackPrefix(mediaId);
-				trackList.Add(trackId);
+				using (ManualResetEventSlim done = new ManualResetEventSlim(false))
+				{
+					s_thumpData.GetTrack(trackId, (pulseTrack)=>
+					{
+						done.Set();
+						if (pulseTrack != null)
+							trackList.Add(pulseTrack);
+					});
+					done.Wait();
+				}
 				return trackList;
 			}
 
@@ -284,15 +253,11 @@ namespace Thump.Playback.AndroidOS
 				return trackList;
 			}
 
-			List<PulseTrack> pulseTracks = GetTracksFor(objectType, objectId, queueID);
-			for(int i = 0; i < pulseTracks.Count; i++)
-			{
-				trackList.Add(pulseTracks[i].Id);
-			}
+			trackList = GetTracksFor(objectType, objectId);
 			return trackList;
 		}
 
-		private List<PulseTrack> GetTracksFor(eAAObject objectType, string objectId, int queueID)
+		private List<PulseTrack> GetTracksFor(eAAObject objectType, string objectId)
 		{
 			List<PulseTrack> outputTracks = new List<PulseTrack>();
 			using (ManualResetEventSlim done = new ManualResetEventSlim(false))
@@ -312,7 +277,7 @@ namespace Thump.Playback.AndroidOS
 					fired = true;
 					done.Set();
 
-					if (queueID != m_currentQueueID || tracks == null)
+					if (tracks == null)
 					{
 						return;
 					}
@@ -603,7 +568,7 @@ namespace Thump.Playback.AndroidOS
 				}
 				catch (Java.Lang.IllegalArgumentException exception)
 				{
-					Thump.Log.Warn("ThumpPlaybackService: car connection receiver was not registered: " + exception.Message);
+					Log.Warn("ThumpPlaybackService: car connection receiver was not registered: " + exception.Message);
 				}
 				m_carReceiver = null;
 			}

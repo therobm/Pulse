@@ -15,6 +15,7 @@ namespace Thump.Pulse
 		bool IsOnline();
 		string BuildStreamUrl(string trackId);
 		string BuildRestUrl(string endpoint, string extraParams = null);
+		void GetTrack(string trackId, Action<PulseTrack> onComplete);
 		void GetArtists(Action<List<PulseArtist>> onComplete);
 		void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete);
 		void Search(string query, Action<PulseSearchData> onComplete);

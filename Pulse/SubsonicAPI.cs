@@ -141,6 +141,11 @@ namespace Thump.Pulse
 			return url;
 		}
 
+		public void GetTrack(string trackId, Action<PulseTrack> onComplete)
+		{
+			throw new NotImplementedException();
+		}
+
 		public void GetArtists(Action<List<PulseArtist>> onComplete)
 		{
 			if (!IsOnline())
@@ -1376,7 +1381,6 @@ namespace Thump.Pulse
 			}
 			return response.Content.ReadAsStringAsync().Result;
 		}
-
 
 	}
 }

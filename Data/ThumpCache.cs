@@ -339,6 +339,14 @@ namespace Thump.Data
 			}
 		}
 
+		public PulseTrack GetTrack(string trackId)
+		{
+			throw new NotImplementedException();
+		}
+		public void UpdateTrack(PulseTrack track)
+		{
+			throw new NotImplementedException();
+		}
 		public List<PulseArtist> GetAllArtists()
 		{
 			List<PulseArtist> result = new List<PulseArtist>();
