@@ -1,13 +1,16 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace PulseAPI
+namespace PulseAPI.CSharp
 {
-	// The single wire codec for the Pulse API. The server writes objects to a
-	// response through Serialize; clients read a response back through Parse.
-	// Both sides share these options so the wire format has exactly one
-	// definition. The object field names ARE the wire names -- no name
-	// transformation is applied.
+
+	/// <summary>
+	/// The single wire codec for the Pulse API. The server writes objects to a
+	/// response through Serialize; clients read a response back through Parse.
+	/// Both sides share these options so the wire format has exactly one
+	/// definition. The object field names ARE the wire names -- no name
+	/// transformation is applied.
+	/// </summary>
 	public static class PulseWire
 	{
 		static JsonSerializerOptions s_options = BuildOptions();
