@@ -56,6 +56,13 @@ namespace Thump.Playback.AndroidOS
 		// string it gave us.
 		private System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>> m_searchResults = new System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>>();
 
+		// Tracks the currently-playing trackId so we can fire ReportTrackAnalytics
+		// for the OUTGOING track on every transition. ExoPlayer's transition
+		// callback hands us the NEW item; we have to remember the previous one
+		// ourselves. Cleared after we report so the same track can't be
+		// double-counted by a state-ended event chasing a transition event.
+		private string m_lastReportedTrackId;
+
 		public override void OnCreate()
 		{
 			base.OnCreate();
@@ -83,6 +90,17 @@ namespace Thump.Playback.AndroidOS
 			builder.SetMediaSourceFactory(mediaSourceFactory);
 
 			m_player = builder.Build();
+
+			//Authoritative track-analytics fire point. ExoPlayer drives the
+			//actual playback regardless of who started the queue (in-app MAUI
+			//via the MediaController, or Android Auto via its own browser),
+			//so wiring the listener here means we catch every transition
+			//exactly once. The in-app ThumpAndroidPlayer used to fire its own
+			//ReportTrackAnalytics from a ticker but that double-counted with
+			//this listener and missed the AA-only case where the MAUI app
+			//never opens - so it's gone, this is the single source of truth.
+			m_player.MediaItemTransition += OnPlayerMediaItemTransition;
+			m_player.PlaybackStateChanged += OnPlayerPlaybackStateChanged;
 
 			AndroidMediaLibraryCallback library = new AndroidMediaLibraryCallback();
 			library.m_onAddMediaItems = null;
@@ -185,6 +203,46 @@ namespace Thump.Playback.AndroidOS
 				AAutoHelper.LoadObjectFunc loadObject = new AAutoHelper.LoadObjectFunc(this, aaObject, mediaId, page, pageSize);
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadObject);
 			}
+		}
+
+		// ExoPlayer fires this when the CURRENT MediaItem changes - auto-advance,
+		// next/prev, explicit SeekTo(index), or a queue replacement. The event
+		// arg's MediaItem is the NEW current; the OUTGOING one (the track that
+		// just finished or got skipped) is what we want to report. Pausing /
+		// resuming does NOT trigger this - pausing isn't a transition.
+		private void OnPlayerMediaItemTransition(object sender, MediaItemTransitionEventArgs e)
+		{
+			string previous = m_lastReportedTrackId;
+			string current = null;
+			if (e.MediaItem != null)
+			{
+				current = e.MediaItem.MediaId;
+			}
+			if (!string.IsNullOrEmpty(previous) && previous != current)
+			{
+				s_mediaClient.ReportTrackAnalytics(previous);
+			}
+			m_lastReportedTrackId = current;
+		}
+
+		// MediaItemTransition does NOT fire when the queue drains naturally past
+		// the last track; ExoPlayer instead transitions playback state to ENDED
+		// and leaves the last item as "current." Catch that here so the final
+		// track of a session still gets reported. We ignore every other state
+		// change - IDLE/READY/BUFFERING don't mean a track was played.
+		private void OnPlayerPlaybackStateChanged(object sender, PlaybackStateChangedEventArgs e)
+		{
+			if (e.PlaybackState != IPlayer.StateEnded)
+			{
+				return;
+			}
+			if (string.IsNullOrEmpty(m_lastReportedTrackId))
+			{
+				return;
+			}
+			string previous = m_lastReportedTrackId;
+			m_lastReportedTrackId = null;
+			s_mediaClient.ReportTrackAnalytics(previous);
 		}
 
 		// Two-step search per the Media3 contract: OnSearch kicks off the

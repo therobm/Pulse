@@ -152,11 +152,6 @@ namespace Thump.Playback.AndroidOS
 				m_controller.Play();
 				m_ticker.Start();
 
-				//If anything was playing before this StartQueue call, the user
-				//is abandoning it in favor of a new queue - count that as a
-				//skip and fire analytics for the outgoing track before we
-				//overwrite m_lastMediaId.
-				ReportPreviousTrackAndClear();
 				m_lastMediaId = startTrack.Id;
 				m_mainView.OnCurrentTrackChanged(startTrack);
 				m_controller.SeekTo(startIndex, 0);
@@ -361,9 +356,6 @@ namespace Thump.Playback.AndroidOS
 			{
 				return;
 			}
-			//Explicit user stop counts as a skip - fire analytics for whatever
-			//was playing before we tear playback down.
-			ReportPreviousTrackAndClear();
 			m_controller.Stop();
 			ReportState(ePlaybackState.Idle);
 		}
@@ -458,11 +450,6 @@ namespace Thump.Playback.AndroidOS
 			{
 				return;
 			}
-			//A different media id means the previous track either auto-advanced
-			//to completion or was skipped (next / prev / explicit track tap).
-			//Either case counts as a play - fire the analytics for the outgoing
-			//track before we lose its id.
-			ReportPreviousTrackAndClear();
 			m_lastMediaId = mediaId;
 			PulseTrack track = FindTrackById(mediaId);
 			if (track != null)
@@ -490,24 +477,8 @@ namespace Thump.Playback.AndroidOS
 				return;
 			}
 			m_endHandled = true;
-			ReportPreviousTrackAndClear();
 			m_ticker.Stop();
 			m_mainView.OnTrackEnded();
-		}
-
-		//Fires the analytics ping for whatever track was last playing and
-		//clears m_lastMediaId so subsequent transitions in the same window
-		//(e.g. ticker re-entry, Stop+Release) can't double-report. Pause /
-		//resume intentionally don't call this - pausing isn't a play.
-		private void ReportPreviousTrackAndClear()
-		{
-			if (string.IsNullOrEmpty(m_lastMediaId))
-			{
-				return;
-			}
-			string previous = m_lastMediaId;
-			m_lastMediaId = null;
-			m_data.ReportTrackAnalytics(previous);
 		}
 
 		private void ReportState(ePlaybackState state)
