@@ -9,7 +9,7 @@ namespace Thump.Playback.AndroidOS
 {
 	/// <summary>
 	/// The minimum boundary between Thump code and the running Media3 session.
-	/// Nothing on this class's surface knows about LegacyPulseTrack, MainView,
+	/// Nothing on this class's surface knows about PulseTrack, MainView,
 	/// ThumpData, or any other Thump concept — every method takes / returns
 	/// Media3 types or primitives. Whoever owns an instance is responsible for
 	/// building MediaItems, maintaining any parallel Thump-side queue, and

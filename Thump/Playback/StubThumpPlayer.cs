@@ -1,3 +1,4 @@
+using PulseAPI.CSharp;
 using System.Collections.Generic;
 using Thump.Pulse;
 
@@ -5,7 +6,7 @@ namespace Thump.Playback
 {
 	public class StubThumpPlayer : IMediaPlayer
 	{
-		public void Play(List<LegacyPulseTrack> tracks, int startIndex)
+		public void Play(List<PulseTrack> tracks, int startIndex)
 		{
 			Log.Warn("StubThumpPlayer.Play: playback is only implemented on Android.");
 		}
@@ -46,11 +47,11 @@ namespace Thump.Playback
 		{
 		}
 
-		public void AddToQueue(List<LegacyPulseTrack> tracks)
+		public void AddToQueue(List<PulseTrack> tracks)
 		{
 		}
 
-		public void PlayNext(List<LegacyPulseTrack> tracks)
+		public void PlayNext(List<PulseTrack> tracks)
 		{
 		}
 

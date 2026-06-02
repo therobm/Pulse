@@ -3,6 +3,7 @@ using Microsoft.Maui;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 using Thump.Views;
 
@@ -15,7 +16,7 @@ namespace Thump.Views.Tiles
 		private Label m_artistLabel;
 		private Label m_durationLabel;
 		private Label m_cacheIcon;
-		private LegacyPulseTrack m_track;
+		private PulseTrack m_track;
 		private bool m_isPlayable = true;
 
 		public TrackRowTile() : base(MainView.Self)
@@ -152,7 +153,7 @@ namespace Thump.Views.Tiles
 			m_titleLabel.Opacity = 1.0;
 			m_artistLabel.Opacity = 1.0;
 			m_isPlayable = true;
-			LegacyPulseTrack track = BindingContext as LegacyPulseTrack;
+			PulseTrack track = BindingContext as PulseTrack;
 			if (track == null)
 			{
 				return;
@@ -161,11 +162,11 @@ namespace Thump.Views.Tiles
 			m_titleLabel.Text = track.Title;
 			m_artistLabel.Text = track.Artist;
 			m_durationLabel.Text = FormatDuration(track.Duration);
-			m_art.SetCoverArt(track.ImageID);
+			m_art.SetCoverArt(track.CoverArt);
 			UpdateAvailability(track);
 		}
 
-		private void UpdateAvailability(LegacyPulseTrack track)
+		private void UpdateAvailability(PulseTrack track)
 		{
 			bool online = MainView.MediaClient.IsOnline();
 			string id = track.Id;

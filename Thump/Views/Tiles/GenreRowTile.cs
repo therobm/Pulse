@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 using Thump.Views;
 
@@ -10,7 +11,7 @@ namespace Thump.Views.Tiles
 	{
 		private Label m_nameLabel;
 		private Label m_subtitleLabel;
-		private LegacyPulseGenre m_genre;
+		private PulseGenre m_genre;
 
 		public GenreRowTile() : base(MainView.Self)
 		{
@@ -85,7 +86,7 @@ namespace Thump.Views.Tiles
 		protected override void OnBindingContextChanged()
 		{
 			base.OnBindingContextChanged();
-			LegacyPulseGenre genre = BindingContext as LegacyPulseGenre;
+			PulseGenre genre = BindingContext as PulseGenre;
 			if (genre == null)
 			{
 				return;

@@ -2,6 +2,7 @@ using System;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 using Thump.Views.Tiles;
 
@@ -163,7 +164,7 @@ namespace Thump.Views
 			MainView.MediaClient.Search(query, OnSearchResults);
 		}
 
-		private void OnSearchResults(LegacyPulseSearchData results)
+		private void OnSearchResults(PulseSearchData results)
 		{
 			if (results == null)
 			{

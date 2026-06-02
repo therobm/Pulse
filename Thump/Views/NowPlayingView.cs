@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
+using PulseAPI.CSharp;
 using Thump.Playback;
 using Thump.Pulse;
 using Thump.Views.Tiles;
@@ -25,7 +26,7 @@ namespace Thump.Views
 		private Button m_repeatButton;
 		private CollectionView m_queueList;
 		private Button m_favoriteButton;
-		private LegacyPulseTrack m_currentSong;
+		private PulseTrack m_currentSong;
 		private bool m_showingQueue;
 		private bool m_userSeeking;
 
@@ -296,13 +297,13 @@ namespace Thump.Views
 		public override void Initialize()
 		{
 			base.Initialize();
-			LegacyPulseTrack song = m_mainView.GetCurrentTrack();
+			PulseTrack song = m_mainView.GetCurrentTrack();
 			SetTrack(song);
 			SetShuffleState(m_mainView.GetShuffleEnabled());
 			SetRepeatState(m_mainView.GetRepeatMode());
 		}
 
-		public void SetTrack(LegacyPulseTrack song)
+		public void SetTrack(PulseTrack song)
 		{
 			m_currentSong = song;
 			UpdateFavoriteButton();
@@ -323,7 +324,7 @@ namespace Thump.Views
 			m_currentTimeLabel.Text = "0:00";
 			m_totalTimeLabel.Text = FormatDuration(song.Duration);
 			m_seekSlider.Value = 0;
-			m_art.SetCoverArt(song.ImageID);
+			m_art.SetCoverArt(song.CoverArt);
 			RefreshQueue();
 			UpdateSkipButtons();
 		}
@@ -460,7 +461,7 @@ namespace Thump.Views
 			{
 				return;
 			}
-			LegacyPulseTrack song = m_currentSong;
+			PulseTrack song = m_currentSong;
 			if (song.Starred)
 			{
 				MainView.MediaClient.Star(song.Id, (success) =>
@@ -559,7 +560,7 @@ namespace Thump.Views
 			{
 				return;
 			}
-			List<LegacyPulseTrack> queue = m_mainView.GetQueue();
+			List<PulseTrack> queue = m_mainView.GetQueue();
 			m_queueList.ItemsSource = null;
 			m_queueList.ItemsSource = queue;
 		}

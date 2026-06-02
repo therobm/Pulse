@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -15,7 +16,9 @@ using AndroidX.Media3.Extractor;
 using AndroidX.Media3.Extractor.Mp3;
 using AndroidX.Media3.Session;
 using Google.Common.Util.Concurrent;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Storage;
+using PulseAPI.CSharp;
 using Thump.Data;
 using Thump.Pulse;
 
@@ -56,6 +59,19 @@ namespace Thump.Playback.AndroidOS
 		// string it gave us.
 		private System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>> m_searchResults = new System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>>();
 
+		// Tracks the currently-playing trackId so we can fire ReportTrackAnalytics
+		// for the OUTGOING track when ExoPlayer transitions to a new item or
+		// hits STATE_ENDED. Cleared after we report so a steady STATE_ENDED
+		// (which sticks for as many ticks as the user leaves it sitting) can't
+		// re-fire the same trackId.
+		private string m_lastReportedTrackId;
+
+		// Polled at this interval against m_player to detect track transitions
+		// and queue-end. ExoPlayer's playback state is the source of truth.
+		private const double s_analyticsTickIntervalMs = 500;
+		private System.Timers.Timer m_analyticsTicker;
+		private const int s_playbackStateEnded = 4;
+
 		public override void OnCreate()
 		{
 			base.OnCreate();
@@ -83,6 +99,23 @@ namespace Thump.Playback.AndroidOS
 			builder.SetMediaSourceFactory(mediaSourceFactory);
 
 			m_player = builder.Build();
+
+			//Authoritative track-analytics fire point. ExoPlayer drives the
+			//actual playback regardless of who started the queue (in-app MAUI
+			//via the MediaController, or Android Auto via its own browser),
+			//so polling its state from a single timer here catches every
+			//transition exactly once. The in-app ThumpAndroidPlayer used to
+			//fire its own ReportTrackAnalytics from a ticker but that
+			//double-counted with this one and missed the AA-only case where
+			//the MAUI app never opens - so it's gone, this is the single
+			//source of truth. Polling instead of a Player.Listener because
+			//the Xamarin binding doesn't expose Listener callbacks as C#
+			//events on IExoPlayer and implementing IPlayerListener requires
+			//stubbing all 38 methods.
+			m_analyticsTicker = new System.Timers.Timer(s_analyticsTickIntervalMs);
+			m_analyticsTicker.AutoReset = true;
+			m_analyticsTicker.Elapsed += OnAnalyticsTick;
+			m_analyticsTicker.Start();
 
 			AndroidMediaLibraryCallback library = new AndroidMediaLibraryCallback();
 			library.m_onAddMediaItems = null;
@@ -187,6 +220,54 @@ namespace Thump.Playback.AndroidOS
 			}
 		}
 
+		// Timer fires on a thread-pool thread; ExoPlayer requires its API to
+		// be called on the application's main thread, so bounce there before
+		// reading state.
+		private void OnAnalyticsTick(object sender, ElapsedEventArgs e)
+		{
+			MainThread.BeginInvokeOnMainThread(AnalyticsTickMainThread);
+		}
+
+		// Compares ExoPlayer's current MediaItem to the last one we saw and
+		// fires ReportTrackAnalytics for the outgoing track on any change.
+		// Auto-advance, next/prev/seek, and queue replacement all show up as
+		// "current MediaItem changed." Queue end shows up as STATE_ENDED with
+		// the last item still sitting as current, so we handle that branch
+		// separately and clear m_lastReportedTrackId to keep subsequent ticks
+		// from re-firing. Pausing/resuming changes neither, so it doesn't
+		// trigger - which matches the directive that pausing isn't a play.
+		private void AnalyticsTickMainThread()
+		{
+			if (m_player == null)
+			{
+				return;
+			}
+			MediaItem currentItem = m_player.CurrentMediaItem;
+			string current = null;
+			if (currentItem != null)
+			{
+				current = currentItem.MediaId;
+			}
+			if (current != m_lastReportedTrackId)
+			{
+				if (!string.IsNullOrEmpty(m_lastReportedTrackId))
+				{
+					s_mediaClient.ReportTrackAnalytics(m_lastReportedTrackId);
+				}
+				m_lastReportedTrackId = current;
+				return;
+			}
+			if (m_player.PlaybackState == s_playbackStateEnded)
+			{
+				if (!string.IsNullOrEmpty(m_lastReportedTrackId))
+				{
+					string previous = m_lastReportedTrackId;
+					m_lastReportedTrackId = null;
+					s_mediaClient.ReportTrackAnalytics(previous);
+				}
+			}
+		}
+
 		// Two-step search per the Media3 contract: OnSearch kicks off the
 		// async query and returns an OfVoid future immediately so AA knows
 		// the request was accepted; once results land we cache them keyed
@@ -261,7 +342,7 @@ namespace Thump.Playback.AndroidOS
 				bool isOnline = s_mediaClient.IsOnline();
 
 				//grab all our tracks at once
-				Task<List<LegacyPulseTrack>>[] fetchedTracks = new Task<List<LegacyPulseTrack>>[items.Count];
+				Task<List<PulseTrack>>[] fetchedTracks = new Task<List<PulseTrack>>[items.Count];
 				for (int i = 0; i < items.Count; i++)
 				{
 					fetchedTracks[i] = GetTrackIdsAsync(items[i]);
@@ -269,7 +350,7 @@ namespace Thump.Playback.AndroidOS
 				await Task.WhenAll(fetchedTracks);
 
 
-				List<LegacyPulseTrack> requestedTracks = new List<LegacyPulseTrack>();
+				List<PulseTrack> requestedTracks = new List<PulseTrack>();
 				int startItemIndex = 0;
 				for (int i = 0; i < items.Count; i++)
 				{
@@ -279,7 +360,7 @@ namespace Thump.Playback.AndroidOS
 						startItemIndex = requestedTracks.Count;
 					}
 
-					List<LegacyPulseTrack> tracks = fetchedTracks[i].Result;
+					List<PulseTrack> tracks = fetchedTracks[i].Result;
 					for (int j = 0; j < tracks.Count; j++)
 					{
 						//filter out unavailable tracks
@@ -305,7 +386,7 @@ namespace Thump.Playback.AndroidOS
 					return;
 				}
 
-				Queue<LegacyPulseTrack> cacheQueue = new Queue<LegacyPulseTrack>();
+				Queue<PulseTrack> cacheQueue = new Queue<PulseTrack>();
 				for (int i = 0; i < requestedTracks.Count; i++)
 				{
 					outputTracks.Add(MediaItemBuilder.Build(requestedTracks[i]));
@@ -315,7 +396,7 @@ namespace Thump.Playback.AndroidOS
 					}
 				}
 
-				LegacyPulseTrack startTrack = requestedTracks[startItemIndex];
+				PulseTrack startTrack = requestedTracks[startItemIndex];
 				int finalStartIndex = startItemIndex;
 				long finalStartPosition = startPositionMs;
 
@@ -342,27 +423,27 @@ namespace Thump.Playback.AndroidOS
 		}
 
 		
-		private void CacheQueued(Queue<LegacyPulseTrack> queue, int queueId)
+		private void CacheQueued(Queue<PulseTrack> queue, int queueId)
 		{
 			if (queue == null || queue.Count == 0 || queueId != m_currentQueueID)
 			{
 				return;
 			}
-			LegacyPulseTrack next = queue.Dequeue();
+			PulseTrack next = queue.Dequeue();
 			s_mediaClient.CacheTrackAudio(next.Id, (success)=>
 			{
 				CacheQueued(queue, queueId);
 			});
 		}
 
-		Task<List<LegacyPulseTrack>> GetTrackIdsAsync(MediaItem item)
+		Task<List<PulseTrack>> GetTrackIdsAsync(MediaItem item)
 		{
-			TaskCompletionSource<List<LegacyPulseTrack>> tcs = new TaskCompletionSource<List<LegacyPulseTrack>>();
+			TaskCompletionSource<List<PulseTrack>> tcs = new TaskCompletionSource<List<PulseTrack>>();
 			GetTrackIds(item, (tracks) => tcs.TrySetResult(tracks));
 			return tcs.Task;
 		}
 
-		private void GetTrackIds(MediaItem input, Action<List<LegacyPulseTrack>> onComplete)
+		private void GetTrackIds(MediaItem input, Action<List<PulseTrack>> onComplete)
 		{
 			if (onComplete == null)
 				return;
@@ -370,7 +451,7 @@ namespace Thump.Playback.AndroidOS
 			string mediaId = input.MediaId;
 			if (string.IsNullOrEmpty(mediaId))
 			{
-				onComplete(new List<LegacyPulseTrack>());
+				onComplete(new List<PulseTrack>());
 				return;
 			}
 
@@ -381,7 +462,7 @@ namespace Thump.Playback.AndroidOS
 				
 				s_mediaClient.GetTrack(trackId, (pulseTrack)=>
 				{
-					List<LegacyPulseTrack> trackList = new List<LegacyPulseTrack>();
+					List<PulseTrack> trackList = new List<PulseTrack>();
 					if (pulseTrack != null)
 						trackList.Add(pulseTrack);
 					onComplete(trackList);
@@ -395,13 +476,13 @@ namespace Thump.Playback.AndroidOS
 			if (!MediaItemBuilder.TryParsePlayMediaId(mediaId, out objectType, out objectId, out isShuffle))
 			{
 				Log.Warn("ThumpMediaLibraryService.LoadMediaItems: unknown mediaId prefix '" + mediaId + "', skipping");
-				onComplete(new List<LegacyPulseTrack>());
+				onComplete(new List<PulseTrack>());
 				return;
 			}
 
 			GetTracksFor(objectType, objectId, (list) =>
 			{
-				List<LegacyPulseTrack> trackList = new List<LegacyPulseTrack>(list);
+				List<PulseTrack> trackList = new List<PulseTrack>(list);
 				if (isShuffle)
 				{
 					ShuffleInPlace(trackList);
@@ -411,7 +492,7 @@ namespace Thump.Playback.AndroidOS
 			
 		}
 
-		private void GetTracksFor(eAAObject objectType, string objectId, Action<List<LegacyPulseTrack>> onComplete)
+		private void GetTracksFor(eAAObject objectType, string objectId, Action<List<PulseTrack>> onComplete)
 		{
 		
 			//Lambda exception to avoid too many indirection calls
@@ -419,7 +500,7 @@ namespace Thump.Playback.AndroidOS
 			// ThumpData NetworkAuthorative routes can fire the callback twice
 			// (cached burst + refresh) by design; this is a one-shot consumer
 			// so guard against the second hit.
-			Action<List<LegacyPulseTrack>> onDataComplete = (tracks) =>
+			Action<List<PulseTrack>> onDataComplete = (tracks) =>
 			{
 				if (fired)
 				{
@@ -428,7 +509,7 @@ namespace Thump.Playback.AndroidOS
 
 				fired = true;
 
-				List<LegacyPulseTrack> outputTracks = new List<LegacyPulseTrack>();
+				List<PulseTrack> outputTracks = new List<PulseTrack>();
 				if (tracks != null)
 				{
 					//return this to the caller via the closure
@@ -465,7 +546,7 @@ namespace Thump.Playback.AndroidOS
 					});
 					break;
 				default:
-					onDataComplete(new List<LegacyPulseTrack>());
+					onDataComplete(new List<PulseTrack>());
 					break;
 			}
 		}
@@ -495,7 +576,7 @@ namespace Thump.Playback.AndroidOS
 						List<MediaItem> combined = new List<MediaItem>();
 						s_mediaClient.GetRecentlyPlayed((A)=>
 						{
-							List<LegacyPulseObject> recentlyPlayed = new List<LegacyPulseObject>();
+							List<PulseObject> recentlyPlayed = new List<PulseObject>();
 							for(int i = 0; i < A.Count && i < tileLimit; i++)
 							{
 								recentlyPlayed.Add(A[i]);
@@ -503,21 +584,21 @@ namespace Thump.Playback.AndroidOS
 
 							s_mediaClient.GetRecentlyAdded((B)=>
 							{
-								List<LegacyPulseObject> added = new List<LegacyPulseObject>();
+								List<PulseObject> added = new List<PulseObject>();
 								for (int i = 0; i < B.Count && i < tileLimit; i++)
 								{
 									added.Add(B[i]);
 								}
 								s_mediaClient.GetTopPlaylists((C)=>
 								{
-									List<LegacyPulseObject> topPlaylists = new List<LegacyPulseObject>();
+									List<PulseObject> topPlaylists = new List<PulseObject>();
 									for (int i = 0; i < C.Count && i < tileLimit; i++)
 									{
 										topPlaylists.Add(C[i]);
 									}
 									s_mediaClient.GetPopularArtists((D)=>
 									{
-										List<LegacyPulseObject> artists = new List<LegacyPulseObject>();
+										List<PulseObject> artists = new List<PulseObject>();
 										for (int i = 0; i < D.Count && i < tileLimit; i++)
 										{
 											artists.Add(D[i]);
@@ -638,7 +719,7 @@ namespace Thump.Playback.AndroidOS
 				case eAAObject.Album:
 					s_mediaClient.GetAlbum(objectID, (album)=>
 					{
-						request.OnComplete<LegacyPulseAlbum>(album.Tracks, objectType, objectID);
+						request.OnComplete<PulseAlbum>(album.Tracks, objectType, objectID);
 					});
 					break;
 				case eAAObject.Artist:
@@ -651,13 +732,13 @@ namespace Thump.Playback.AndroidOS
 				case eAAObject.Playlist:
 					s_mediaClient.GetPlaylist(objectID, (playlist) =>
 					{
-						request.OnComplete<LegacyPulseAlbum>(playlist.Tracks, objectType, objectID);
+						request.OnComplete<PulseAlbum>(playlist.Tracks, objectType, objectID);
 					});
 					break;
 				case eAAObject.Genre:
 					s_mediaClient.GetTracksForGenre(objectID, (genreTracks) =>
 					{
-						request.OnComplete<LegacyPulseAlbum>(genreTracks, objectType, objectID);
+						request.OnComplete<PulseAlbum>(genreTracks, objectType, objectID);
 					});
 					break;
 			}
@@ -679,8 +760,8 @@ namespace Thump.Playback.AndroidOS
 		private static MediaClient BuildMediaClient()
 		{
 			ThumpCache cache = new ThumpCache();
-			MediaClient pulseClient = new LegacyPulseClient(cache);
-			pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), ThumpSettings.GetUseHttps());
+			MediaClient pulseClient = new PulseClient(cache);
+			pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetUseHttps());
 
 			return pulseClient;
 		}

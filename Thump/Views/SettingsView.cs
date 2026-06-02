@@ -18,7 +18,6 @@ namespace Thump.Views
 		private static readonly Color s_successColor = Color.FromArgb("#3ddc84");
 		private static readonly Color s_failColor = Color.FromArgb("#ef4444");
 
-		private Switch m_scrobbleSwitch;
 		private Button m_normalizeOff;
 		private Button m_normalizePerTrack;
 		private Button m_normalizePerAlbum;
@@ -37,12 +36,8 @@ namespace Thump.Views
 		private Entry m_serverPortEntry;
 		private Entry m_usernameEntry;
 		private Entry m_passwordEntry;
-		private Button m_authToken;
-		private Button m_authLegacy;
-		private MediaClient.eAuthType m_authType = MediaClient.eAuthType.Token;
 		private Button m_serverSubsonic;
 		private Button m_serverPulse;
-		private LegacyPulseClient.eServerType m_serverType = LegacyPulseClient.eServerType.Subsonic;
 		private Button m_httpsHttps;
 		private Button m_httpsHttp;
 		private bool m_useHttps = true;
@@ -130,22 +125,6 @@ namespace Thump.Views
 			VerticalStackLayout section = new VerticalStackLayout();
 			section.Spacing = 12;
 			section.Children.Add(BuildSectionHeader("Playback"));
-
-			HorizontalStackLayout scrobbleRow = new HorizontalStackLayout();
-			scrobbleRow.Spacing = 12;
-
-			Label scrobbleLabel = new Label();
-			scrobbleLabel.Text = "Enable Scrobble";
-			scrobbleLabel.TextColor = ThumpColors.OnBackground;
-			scrobbleLabel.FontSize = 15;
-			scrobbleLabel.VerticalOptions = LayoutOptions.Center;
-			scrobbleRow.Children.Add(scrobbleLabel);
-
-			m_scrobbleSwitch = new Switch();
-			m_scrobbleSwitch.IsToggled = true;
-			m_scrobbleSwitch.Toggled += OnScrobbleToggled;
-			scrobbleRow.Children.Add(m_scrobbleSwitch);
-			section.Children.Add(scrobbleRow);
 
 			section.Children.Add(BuildFieldLabel("Normalize Volume"));
 
@@ -276,32 +255,6 @@ namespace Thump.Views
 			m_passwordEntry.IsPassword = true;
 			section.Children.Add(m_passwordEntry);
 
-			section.Children.Add(BuildFieldLabel("Auth Type"));
-			HorizontalStackLayout authRow = new HorizontalStackLayout();
-			authRow.Spacing = 8;
-
-			m_authToken = BuildSegmentButton("Token");
-			m_authToken.Clicked += OnAuthTokenClicked;
-			authRow.Children.Add(m_authToken);
-
-			m_authLegacy = BuildSegmentButton("Legacy");
-			m_authLegacy.Clicked += OnAuthLegacyClicked;
-			authRow.Children.Add(m_authLegacy);
-			section.Children.Add(authRow);
-
-			section.Children.Add(BuildFieldLabel("Server Type"));
-			HorizontalStackLayout serverRow = new HorizontalStackLayout();
-			serverRow.Spacing = 8;
-
-			m_serverSubsonic = BuildSegmentButton("Subsonic");
-			m_serverSubsonic.Clicked += OnServerSubsonicClicked;
-			serverRow.Children.Add(m_serverSubsonic);
-
-			m_serverPulse = BuildSegmentButton("Pulse");
-			m_serverPulse.Clicked += OnServerPulseClicked;
-			serverRow.Children.Add(m_serverPulse);
-			section.Children.Add(serverRow);
-
 			section.Children.Add(BuildFieldLabel("Connection"));
 			HorizontalStackLayout httpsRow = new HorizontalStackLayout();
 			httpsRow.Spacing = 8;
@@ -339,7 +292,6 @@ namespace Thump.Views
 		{
 			base.Initialize();
 
-			m_scrobbleSwitch.IsToggled = ThumpSettings.GetScrobbleEnabled();
 			SetNormalize(ThumpSettings.GetNormalizeVolume());
 
 			int prefetch = ThumpSettings.GetPrefetchCount();
@@ -356,8 +308,6 @@ namespace Thump.Views
 			m_serverPortEntry.Text = ThumpSettings.GetServerPort();
 			m_usernameEntry.Text = ThumpSettings.GetUsername();
 			m_passwordEntry.Text = ThumpSettings.GetPassword();
-			SetAuthType(ThumpSettings.GetAuthType());
-			SetServerType(ThumpSettings.GetServerType());
 			SetUseHttps(ThumpSettings.GetUseHttps());
 
 			RefreshCacheStats();
@@ -366,11 +316,6 @@ namespace Thump.Views
 		public void OnNavigatedTo()
 		{
 			RefreshCacheStats();
-		}
-
-		private void OnScrobbleToggled(object sender, ToggledEventArgs e)
-		{
-			ThumpSettings.SetScrobbleEnabled(e.Value);
 		}
 
 		private void OnNormalizeOffClicked(object sender, EventArgs e)
@@ -397,44 +342,6 @@ namespace Thump.Views
 			StyleSegment(m_normalizeOff, value == eNormalizeVolume.Off);
 			StyleSegment(m_normalizePerTrack, value == eNormalizeVolume.PerTrack);
 			StyleSegment(m_normalizePerAlbum, value == eNormalizeVolume.PerAlbum);
-		}
-
-		private void OnAuthTokenClicked(object sender, EventArgs e)
-		{
-			SetAuthType(MediaClient.eAuthType.Token);
-			ThumpSettings.SetAuthType(m_authType);
-		}
-
-		private void OnAuthLegacyClicked(object sender, EventArgs e)
-		{
-			SetAuthType(MediaClient.eAuthType.Legacy);
-			ThumpSettings.SetAuthType(m_authType);
-		}
-
-		private void SetAuthType(MediaClient.eAuthType value)
-		{
-			m_authType = value;
-			StyleSegment(m_authToken, value == MediaClient.eAuthType.Token);
-			StyleSegment(m_authLegacy, value == MediaClient.eAuthType.Legacy);
-		}
-
-		private void OnServerSubsonicClicked(object sender, EventArgs e)
-		{
-			SetServerType(LegacyPulseClient.eServerType.Subsonic);
-			ThumpSettings.SetServerType(m_serverType);
-		}
-
-		private void OnServerPulseClicked(object sender, EventArgs e)
-		{
-			SetServerType(LegacyPulseClient.eServerType.Pulse);
-			ThumpSettings.SetServerType(m_serverType);
-		}
-
-		private void SetServerType(LegacyPulseClient.eServerType value)
-		{
-			m_serverType = value;
-			StyleSegment(m_serverSubsonic, value == LegacyPulseClient.eServerType.Subsonic);
-			StyleSegment(m_serverPulse, value == LegacyPulseClient.eServerType.Pulse);
 		}
 
 		private void OnHttpsHttpsClicked(object sender, EventArgs e)
@@ -560,18 +467,16 @@ namespace Thump.Views
 			ThumpSettings.SetServerPort(port);
 			ThumpSettings.SetUsername(user);
 			ThumpSettings.SetPassword(password);
-			ThumpSettings.SetAuthType(m_authType);
 			ThumpSettings.SetUseHttps(m_useHttps);
 
 			m_connectStatusLabel.Text = "Connecting…";
 			m_connectStatusLabel.TextColor = ThumpColors.TextSecondary;
 
 			MediaClient pulse = MainView.MediaClient;
-			MediaClient.eAuthType authType = m_authType;
 			bool useHttps = m_useHttps;
 			Task.Run(() =>
 			{
-				pulse.SetServerParams(ip, port, user, password, authType, useHttps);
+				pulse.SetServerParams(ip, port, user, password,  useHttps);
 				bool success = pulse.TestConnection(out JsonElement response);
 				string message = "Unknown";
 				if (!success && response.TryGetProperty("error", out JsonElement error))

@@ -1,5 +1,6 @@
 ﻿using AndroidX.Media3.Common;
 using AndroidX.Media3.Session;
+using PulseAPI.CSharp;
 using System.Collections.Generic;
 using Thump.Data;
 using Thump.Pulse;
@@ -162,7 +163,7 @@ namespace Thump.Playback.AndroidOS
 		}
 
 
-		public static List<MediaItem> BuildTrackItems(List<LegacyPulseTrack> tracks)
+		public static List<MediaItem> BuildTrackItems(List<PulseTrack> tracks)
 		{
 			List<MediaItem> items = new List<MediaItem>();
 			if (tracks == null)
@@ -171,13 +172,13 @@ namespace Thump.Playback.AndroidOS
 			}
 			for (int i = 0; i < tracks.Count; i++)
 			{
-				LegacyPulseTrack track = tracks[i];
-				items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.ImageID));
+				PulseTrack track = tracks[i];
+				items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.CoverArt));
 			}
 			return items;
 		}
 
-		public static List<MediaItem> BuildContainerChildren(eAAObject objectType, string objectId, List<LegacyPulseTrack> tracks)
+		public static List<MediaItem> BuildContainerChildren(eAAObject objectType, string objectId, List<PulseTrack> tracks)
 		{
 			string playMediaId = BuildPlayMediaId(objectType, objectId);
 			string shuffleMediaId = BuildShuffleMediaId(objectType, objectId);
@@ -197,7 +198,7 @@ namespace Thump.Playback.AndroidOS
 		// into that album's tracks via the standard album/<id> route; tapping
 		// Play all / Shuffle plays every artist track via artistplay/<id> /
 		// artistshuffle/<id> through OnSetMediaItems.
-		public static List<MediaItem> BuildArtistChildren(string artistId, List<LegacyPulseAlbum> albums)
+		public static List<MediaItem> BuildArtistChildren(string artistId, List<PulseAlbum> albums)
 		{
 			string playMediaId = BuildPlayMediaId(eAAObject.Artist, artistId);
 			string shuffleMediaId = BuildShuffleMediaId(eAAObject.Artist, artistId);
@@ -208,18 +209,18 @@ namespace Thump.Playback.AndroidOS
 			{
 				for (int i = 0; i < albums.Count; i++)
 				{
-					LegacyPulseAlbum album = albums[i];
+					PulseAlbum album = albums[i];
 					items.Add(BuildAlbumItem("album/" + album.Id, album.Name, album.Artist, album.CoverArt));
 				}
 			}
 			return items;
 		}
 
-		//Flattens a LegacyPulseSearchData into a single MediaItem list ordered
+		//Flattens a PulseSearchData into a single MediaItem list ordered
 		//playlists -> artists -> albums -> tracks. Same order as the
 		//in-app SearchView so a user gets a consistent ranking across
 		//phone and car.
-		public static List<MediaItem> BuildSearchItems(LegacyPulseSearchData results)
+		public static List<MediaItem> BuildSearchItems(PulseSearchData results)
 		{
 			List<MediaItem> items = new List<MediaItem>();
 			if (results == null)
@@ -230,7 +231,7 @@ namespace Thump.Playback.AndroidOS
 			{
 				for (int idx = 0; idx < results.Playlists.Count; idx++)
 				{
-					LegacyPulsePlaylist playlist = results.Playlists[idx];
+					PulsePlaylist playlist = results.Playlists[idx];
 					items.Add(BuildBrowsableItem("playlist/" + playlist.Id, playlist.Name, playlist.CoverArt));
 				}
 			}
@@ -238,7 +239,7 @@ namespace Thump.Playback.AndroidOS
 			{
 				for (int idx = 0; idx < results.Artists.Count; idx++)
 				{
-					LegacyPulseArtist artist = results.Artists[idx];
+					PulseArtist artist = results.Artists[idx];
 					items.Add(BuildBrowsableItem("artist/" + artist.Id, artist.Name, artist.CoverArt));
 				}
 			}
@@ -246,7 +247,7 @@ namespace Thump.Playback.AndroidOS
 			{
 				for (int idx = 0; idx < results.Albums.Count; idx++)
 				{
-					LegacyPulseAlbum album = results.Albums[idx];
+					PulseAlbum album = results.Albums[idx];
 					items.Add(BuildAlbumItem("album/" + album.Id, album.Name, album.Artist, album.CoverArt));
 				}
 			}
@@ -254,51 +255,51 @@ namespace Thump.Playback.AndroidOS
 			{
 				for (int idx = 0; idx < results.Tracks.Count; idx++)
 				{
-					LegacyPulseTrack track = results.Tracks[idx];
-					items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.ImageID));
+					PulseTrack track = results.Tracks[idx];
+					items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.CoverArt));
 				}
 			}
 			return items;
 		}
 
-		public static List<MediaItem> BuildMixedItems(IEnumerable<LegacyPulseObject> objects)
+		public static List<MediaItem> BuildMixedItems(IEnumerable<PulseObject> objects)
 		{
 			List<MediaItem> items = new List<MediaItem>();
 			if (objects == null)
 			{
 				return items;
 			}
-			foreach (LegacyPulseObject pulseObject in objects)
+			foreach (PulseObject pulseObject in objects)
 			{
 				switch (pulseObject.Kind)
 				{
 					case eDataType.Album:
 						{
-							LegacyPulseAlbum album = (LegacyPulseAlbum)pulseObject;
+							PulseAlbum album = (PulseAlbum)pulseObject;
 							items.Add(BuildAlbumItem("album/" + album.Id, album.Name, album.Artist, album.CoverArt));
 							break;
 						}
 					case eDataType.Artist:
 						{
-							LegacyPulseArtist artist = (LegacyPulseArtist)pulseObject;
+							PulseArtist artist = (PulseArtist)pulseObject;
 							items.Add(BuildBrowsableItem("artist/" + artist.Id, artist.Name, artist.CoverArt));
 							break;
 						}
 					case eDataType.Playlist:
 						{
-							LegacyPulsePlaylist playlist = (LegacyPulsePlaylist)pulseObject;
+							PulsePlaylist playlist = (PulsePlaylist)pulseObject;
 							items.Add(BuildBrowsableItem("playlist/" + playlist.Id, playlist.Name, playlist.CoverArt));
 							break;
 						}
 					case eDataType.Track:
 						{
-							LegacyPulseTrack track = (LegacyPulseTrack)pulseObject;
-							items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.ImageID));
+							PulseTrack track = (PulseTrack)pulseObject;
+							items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.CoverArt));
 							break;
 						}
 					case eDataType.Genre:
 						{
-							LegacyPulseGenre genre = (LegacyPulseGenre)pulseObject;
+							PulseGenre genre = (PulseGenre)pulseObject;
 							items.Add(BuildBrowsableItem("genre/" + genre.Name, genre.Name));
 							break;
 						}
@@ -307,44 +308,44 @@ namespace Thump.Playback.AndroidOS
 			return items;
 		}
 
-		public static List<MediaItem> BuildMixedItemsGrouped(IEnumerable<LegacyPulseObject> objects, string groupTitle)
+		public static List<MediaItem> BuildMixedItemsGrouped(IEnumerable<PulseObject> objects, string groupTitle)
 		{
 			List<MediaItem> items = new List<MediaItem>();
 			if (objects == null)
 			{
 				return items;
 			}
-			foreach (LegacyPulseObject pulseObject in objects)
+			foreach (PulseObject pulseObject in objects)
 			{
 				switch (pulseObject.Kind)
 				{
 					case eDataType.Album:
 						{
-							LegacyPulseAlbum album = (LegacyPulseAlbum)pulseObject;
+							PulseAlbum album = (PulseAlbum)pulseObject;
 							items.Add(BuildAlbumItemGrouped("album/" + album.Id, album.Name, album.Artist, album.CoverArt, groupTitle));
 							break;
 						}
 					case eDataType.Artist:
 						{
-							LegacyPulseArtist artist = (LegacyPulseArtist)pulseObject;
+							PulseArtist artist = (PulseArtist)pulseObject;
 							items.Add(BuildBrowsableItemGrouped("artist/" + artist.Id, artist.Name, artist.CoverArt, groupTitle));
 							break;
 						}
 					case eDataType.Playlist:
 						{
-							LegacyPulsePlaylist playlist = (LegacyPulsePlaylist)pulseObject;
+							PulsePlaylist playlist = (PulsePlaylist)pulseObject;
 							items.Add(BuildBrowsableItemGrouped("playlist/" + playlist.Id, playlist.Name, playlist.CoverArt, groupTitle));
 							break;
 						}
 					case eDataType.Track:
 						{
-							LegacyPulseTrack track = (LegacyPulseTrack)pulseObject;
-							items.Add(BuildPlayableItemGrouped("track/" + track.Id, track.Title, track.Artist, track.ImageID, groupTitle));
+							PulseTrack track = (PulseTrack)pulseObject;
+							items.Add(BuildPlayableItemGrouped("track/" + track.Id, track.Title, track.Artist, track.CoverArt, groupTitle));
 							break;
 						}
 					case eDataType.Genre:
 						{
-							LegacyPulseGenre genre = (LegacyPulseGenre)pulseObject;
+							PulseGenre genre = (PulseGenre)pulseObject;
 							items.Add(BuildBrowsableItemGrouped("genre/" + genre.Name, genre.Name, null, groupTitle));
 							break;
 						}
@@ -505,7 +506,7 @@ namespace Thump.Playback.AndroidOS
 			return Android.Net.Uri.Parse("content://com.therobm.thump.coverart/" + Android.Net.Uri.Encode(coverArtId));
 		}
 
-		public static MediaItem Build(LegacyPulseTrack track)
+		public static MediaItem Build(PulseTrack track)
 		{
 			MediaMetadata.Builder metadata = new MediaMetadata.Builder();
 			metadata.SetTitle(track.Title);
@@ -514,7 +515,7 @@ namespace Thump.Playback.AndroidOS
 			{
 				metadata.SetAlbumTitle(track.Album);
 			}
-			Android.Net.Uri artworkUri = BuildArtworkUri(track.ImageID);
+			Android.Net.Uri artworkUri = BuildArtworkUri(track.CoverArt);
 			if (artworkUri != null)
 			{
 				metadata.SetArtworkUri(artworkUri);

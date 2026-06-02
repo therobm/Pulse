@@ -2,6 +2,7 @@ using System;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 
 namespace Thump.Views.Tiles
@@ -11,7 +12,7 @@ namespace Thump.Views.Tiles
 		private Grid m_rowGrid;
 		private Label m_titleLabel;
 		private Label m_artistLabel;
-		private LegacyPulseTrack m_song;
+		private PulseTrack m_song;
 
 		public QueueRowTile() : base(MainView.Self)
 		{
@@ -63,7 +64,7 @@ namespace Thump.Views.Tiles
 		protected override void OnBindingContextChanged()
 		{
 			base.OnBindingContextChanged();
-			LegacyPulseTrack song = BindingContext as LegacyPulseTrack;
+			PulseTrack song = BindingContext as PulseTrack;
 			if (song == null)
 			{
 				return;
@@ -72,7 +73,7 @@ namespace Thump.Views.Tiles
 			m_titleLabel.Text = song.Title;
 			m_artistLabel.Text = song.Artist;
 
-			LegacyPulseTrack current = MainView.Self.GetCurrentTrack();
+			PulseTrack current = MainView.Self.GetCurrentTrack();
 			bool isCurrent = current != null && current == song;
 			if (isCurrent)
 			{

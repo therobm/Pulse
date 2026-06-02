@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
+using PulseAPI.CSharp;
 using Thump.Data;
 using Thump.Pulse;
 using Thump.Views;
@@ -12,7 +13,7 @@ namespace Thump.Views.Tiles
 		private ArtImage m_art;
 		private Label m_titleLabel;
 		private Label m_subtitleLabel;
-		private MediaDataObject m_item;
+		private PulseObject m_item;
 
 		public LibraryGridTile() : base(MainView.Self)
 		{
@@ -79,7 +80,7 @@ namespace Thump.Views.Tiles
 		protected override void OnBindingContextChanged()
 		{
 			base.OnBindingContextChanged();
-			MediaDataObject item = BindingContext as MediaDataObject;
+			PulseObject item = BindingContext as PulseObject;
 			if (item == null)
 			{
 				return;
@@ -88,7 +89,7 @@ namespace Thump.Views.Tiles
 
 			if (item.Kind == eDataType.Album)
 			{
-				LegacyPulseAlbum album = item as LegacyPulseAlbum;
+				PulseAlbum album = item as PulseAlbum;
 				if (album != null)
 				{
 					m_art.SetShape(eArtShape.RoundedRect);
@@ -99,7 +100,7 @@ namespace Thump.Views.Tiles
 			}
 			else if (item.Kind == eDataType.Playlist)
 			{
-				LegacyPulsePlaylist playlist = item as LegacyPulsePlaylist;
+				PulsePlaylist playlist = item as PulsePlaylist;
 				if (playlist != null)
 				{
 					m_art.SetShape(eArtShape.RoundedRect);
@@ -110,7 +111,7 @@ namespace Thump.Views.Tiles
 			}
 			else if (item.Kind == eDataType.Artist)
 			{
-				LegacyPulseArtist artist = item as LegacyPulseArtist;
+				PulseArtist artist = item as PulseArtist;
 				if (artist != null)
 				{
 					m_art.SetShape(eArtShape.Circle);
@@ -121,7 +122,7 @@ namespace Thump.Views.Tiles
 			}
 			else if (item.Kind == eDataType.Genre)
 			{
-				LegacyPulseGenre genre = item as LegacyPulseGenre;
+				PulseGenre genre = item as PulseGenre;
 				if (genre != null)
 				{
 					m_art.SetShape(eArtShape.RoundedRect);
@@ -139,7 +140,7 @@ namespace Thump.Views.Tiles
 			}
 			if (m_item.Kind == eDataType.Genre)
 			{
-				LegacyPulseGenre genre = m_item as LegacyPulseGenre;
+				PulseGenre genre = m_item as PulseGenre;
 				if (genre != null)
 				{
 					m_mainView.OnGenreSelected(genre);
