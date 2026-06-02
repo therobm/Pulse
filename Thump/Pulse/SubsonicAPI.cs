@@ -1,0 +1,1382 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Maui.ApplicationModel;
+using Thump.Data;
+using Thump.Pulse;
+using Thump.Utility;
+
+namespace Thump.Pulse
+{
+	public class SubsonicAPI : MediaClient
+	{
+		/// <summary>
+		/// todo this seems dumb now that we have a real cache
+		/// </summary>
+		private ConcurrentDictionary<string, byte[]> m_imageCache = new ConcurrentDictionary<string, byte[]>();
+		public SubsonicAPI(ThumpCache cache) : base(cache)
+		{
+
+		}
+		protected override bool Ping(out JsonElement response)
+		{
+			try
+			{
+				if (SubsonicGet("ping", false, out response))
+				{
+					m_bIsOnline = true;
+					return true;
+				}
+			}
+			catch (Exception ex)
+			{
+				//Don't log ping failures, this is our online/offline state polling
+				Log.Exception(ex);
+			}
+			m_bIsOnline = false;
+			response = default;
+			return false;
+		}
+		
+	
+		public override void GetTrack(string trackId, Action<LegacyPulseTrack> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new LegacyPulseTrack());
+				return;
+			}
+			Task.Run(() =>
+			{
+				LegacyPulseTrack result = new LegacyPulseTrack();
+				try
+				{
+					if (SubsonicGet("getSong", true, out JsonElement response, "id=" + Uri.EscapeDataString(trackId)))
+					{
+						if (response.TryGetProperty("song", out JsonElement songElement))
+						{
+							result = LegacyPulseHelper.ParseSong(songElement);
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				LegacyPulseTrack captured = result;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		public override void GetArtistTracks(string artistId, Action<List<LegacyPulseTrack>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulseTrack>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulseTrack> result = new List<LegacyPulseTrack>();
+				try
+				{
+					string url = m_baseUrl + "/pulse/artistTracks?id=" + Uri.EscapeDataString(artistId) + "&u=" + Uri.EscapeDataString(m_user);
+					string json = HttpGet(url, true);
+					JsonDocument doc = JsonDocument.Parse(json);
+					JsonElement tracks; 
+					bool validParams = true;
+					if (!doc.RootElement.TryGetProperty("tracks", out tracks))
+						validParams = false;
+					if (tracks.ValueKind != JsonValueKind.Array)
+						validParams = false;
+					if (validParams)
+					{
+						foreach (JsonElement element in tracks.EnumerateArray())
+						{
+							// this is going to fail, recently played includes songs, playlists, artists, etc..
+							result.Add(LegacyPulseHelper.ParseSong(element));
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				List<LegacyPulseTrack> captured = result;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+		public override void GetArtists(Action<List<LegacyPulseArtist>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulseArtist>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulseArtist> results = new List<LegacyPulseArtist>();
+				try
+				{
+					if (SubsonicGet("getArtists", true, out JsonElement response))
+					{
+						JsonElement artists;
+						JsonElement indexes = default;
+						bool validParams = true;
+						if (!response.TryGetProperty("artists", out artists))
+							validParams = false;
+						if (validParams)
+						{
+							if (!artists.TryGetProperty("index", out indexes))
+								validParams = false;
+						}
+						if (indexes.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement index in indexes.EnumerateArray())
+							{
+								JsonElement artistArray;
+								bool validArtist = true;
+								if (!index.TryGetProperty("artist", out artistArray))
+									validArtist = false;
+								if (artistArray.ValueKind != JsonValueKind.Array)
+									validArtist = false;
+								if (validArtist)
+								{
+									foreach (JsonElement artistElement in artistArray.EnumerateArray())
+									{
+										LegacyPulseArtist artist = new LegacyPulseArtist();
+										artist.Id = JsonHelper.GetString(artistElement, "id");
+										artist.Name = JsonHelper.GetString(artistElement, "name");
+										artist.CoverArt = JsonHelper.GetString(artistElement, "coverArt");
+										artist.AlbumCount = JsonHelper.GetInt(artistElement, "albumCount");
+										results.Add(artist);
+									}
+								}
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
+			});
+		}
+
+		public override void GetPodcasts(Action<List<LegacyPulsePodcastChannel>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulsePodcastChannel>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulsePodcastChannel> results = new List<LegacyPulsePodcastChannel>();
+				try
+				{
+					if (SubsonicGet("getPodcasts", true, out JsonElement response, "includeEpisodes=true"))
+					{
+						JsonElement podcasts;
+						JsonElement channelArray = default;
+						bool validParams = true;
+						if (!response.TryGetProperty("podcasts", out podcasts))
+							validParams = false;
+						if (validParams)
+						{
+							if (!podcasts.TryGetProperty("channel", out channelArray))
+								validParams = false;
+						}
+						if (channelArray.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement element in channelArray.EnumerateArray())
+							{
+								results.Add(ParsePodcastChannel(element));
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				List<LegacyPulsePodcastChannel> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		private LegacyPulsePodcastChannel ParsePodcastChannel(JsonElement element)
+		{
+			LegacyPulsePodcastChannel channel = new LegacyPulsePodcastChannel();
+			channel.Id = JsonHelper.GetString(element, "id");
+			channel.Title = JsonHelper.GetString(element, "title");
+			channel.Description = JsonHelper.GetString(element, "description");
+			channel.CoverArt = JsonHelper.GetString(element, "coverArt");
+			channel.Url = JsonHelper.GetString(element, "url");
+			channel.Status = JsonHelper.GetString(element, "status");
+			JsonElement episodeArray;
+			bool validEpisodes = true;
+			if (!element.TryGetProperty("episode", out episodeArray))
+				validEpisodes = false;
+			if (episodeArray.ValueKind != JsonValueKind.Array)
+				validEpisodes = false;
+			if (validEpisodes)
+			{
+				foreach (JsonElement episodeElement in episodeArray.EnumerateArray())
+				{
+					channel.Episodes.Add(ParsePodcastEpisode(episodeElement));
+				}
+			}
+			return channel;
+		}
+
+		private LegacyPulsePodcastEpisode ParsePodcastEpisode(JsonElement element)
+		{
+			LegacyPulsePodcastEpisode episode = new LegacyPulsePodcastEpisode();
+			episode.Id = JsonHelper.GetString(element, "id");
+			episode.StreamId = JsonHelper.GetString(element, "streamId");
+			episode.Title = JsonHelper.GetString(element, "title");
+			episode.Description = JsonHelper.GetString(element, "description");
+			episode.CoverArt = JsonHelper.GetString(element, "coverArt");
+			episode.PublishDate = JsonHelper.GetString(element, "publishDate");
+			episode.Status = JsonHelper.GetString(element, "status");
+			episode.Duration = JsonHelper.GetInt(element, "duration");
+			return episode;
+		}
+
+		public override void Search(string query, Action<LegacyPulseSearchData> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new LegacyPulseSearchData());
+				return;
+			}
+			Task.Run(() =>
+			{
+				LegacyPulseSearchData result = new LegacyPulseSearchData();
+				try
+				{
+					string param = "query=" + Uri.EscapeDataString(query)
+						+ "&artistCount=10"
+						+ "&albumCount=20"
+						+ "&songCount=30";
+
+					if (SubsonicGet("search3", true, out JsonElement response, param))
+					{
+						if (response.TryGetProperty("searchResult3", out JsonElement searchResult))
+						{
+							if (searchResult.TryGetProperty("artist", out JsonElement artistArray) && artistArray.ValueKind == JsonValueKind.Array)
+							{
+								foreach (JsonElement element in artistArray.EnumerateArray())
+								{
+									LegacyPulseArtist artist = new LegacyPulseArtist();
+									artist.Id = JsonHelper.GetString(element, "id");
+									artist.Name = JsonHelper.GetString(element, "name");
+									artist.CoverArt = JsonHelper.GetString(element, "coverArt");
+									artist.AlbumCount = JsonHelper.GetInt(element, "albumCount");
+									result.Artists.Add(artist);
+								}
+							}
+							if (searchResult.TryGetProperty("album", out JsonElement albumArray) && albumArray.ValueKind == JsonValueKind.Array)
+							{
+								foreach (JsonElement element in albumArray.EnumerateArray())
+								{
+									result.Albums.Add(ParseAlbum(element));
+								}
+							}
+							if (searchResult.TryGetProperty("song", out JsonElement songArray) && songArray.ValueKind == JsonValueKind.Array)
+							{
+								foreach (JsonElement element in songArray.EnumerateArray())
+								{
+									result.Tracks.Add(LegacyPulseHelper.ParseSong(element));
+								}
+							}
+						}
+					}
+
+					if (SubsonicGet("getPlaylists", true, out JsonElement playlistResponse))
+					{
+						bool validParams = true;
+
+						JsonElement playlists = default;
+						if (!playlistResponse.TryGetProperty("playlists", out playlists))
+							validParams = false;
+
+						JsonElement playlistArray = default;
+						if (validParams && !playlists.TryGetProperty("playlist", out playlistArray))
+							validParams = false;						
+											
+						if (validParams && playlistArray.ValueKind != JsonValueKind.Array)
+							validParams = false;
+
+						if (validParams)
+						{
+							string lowerQuery = query.ToLowerInvariant();
+							foreach (JsonElement element in playlistArray.EnumerateArray())
+							{
+								LegacyPulsePlaylist playlist = LegacyPulseHelper.ParsePlaylist(element);
+								if (playlist.Name != null && playlist.Name.ToLowerInvariant().Contains(lowerQuery))
+								{
+									result.Playlists.Add(playlist);
+								}
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				LegacyPulseSearchData captured = result;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		public override void GetArtistAlbums(string artistId, Action<List<LegacyPulseAlbum>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulseAlbum>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulseAlbum> results = new List<LegacyPulseAlbum>();
+				try
+				{
+					if (SubsonicGet("getArtist", true, out JsonElement response, "id=" + Uri.EscapeDataString(artistId)))
+					{
+						JsonElement artistElement;
+						JsonElement albumArray = default;
+						bool validParams = true;
+						if (!response.TryGetProperty("artist", out artistElement))
+							validParams = false;
+						if (validParams)
+						{
+							if (!artistElement.TryGetProperty("album", out albumArray))
+								validParams = false;
+						}
+						if (albumArray.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement element in albumArray.EnumerateArray())
+							{
+								results.Add(ParseAlbum(element));
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				List<LegacyPulseAlbum> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		public override void GetArtist(string artistId, Action<LegacyPulseArtist> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new LegacyPulseArtist());
+				return;
+			}
+			Task.Run(() =>
+			{
+				LegacyPulseArtist result = new LegacyPulseArtist();
+				try
+				{
+					if (SubsonicGet("getArtist", true, out JsonElement response, "id=" + Uri.EscapeDataString(artistId)))
+					{
+						if (response.TryGetProperty("artist", out JsonElement artistElement))
+						{
+							LegacyPulseArtist artist = new LegacyPulseArtist();
+							artist.Id = JsonHelper.GetString(artistElement, "id");
+							artist.Name = JsonHelper.GetString(artistElement, "name");
+							artist.CoverArt = JsonHelper.GetString(artistElement, "coverArt");
+							artist.AlbumCount = JsonHelper.GetInt(artistElement, "albumCount");
+							result = artist;
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				LegacyPulseArtist captured = result;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		public override void GetAlbum(string albumId, Action<LegacyPulseAlbum> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new LegacyPulseAlbum());
+				return;
+			}
+			Task.Run(() =>
+			{
+				LegacyPulseAlbum result = new LegacyPulseAlbum();
+				try
+				{
+					if (SubsonicGet("getAlbum", true, out JsonElement response, "id=" + Uri.EscapeDataString(albumId)))
+					{
+						if (response.TryGetProperty("album", out JsonElement albumElement))
+						{
+							LegacyPulseAlbum album = ParseAlbum(albumElement);
+							album.Tracks = LegacyPulseHelper.ParseSongArray(albumElement, "song");
+							result = album;
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				LegacyPulseAlbum captured = result;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		private LegacyPulseAlbum ParseAlbum(JsonElement element)
+		{
+			LegacyPulseAlbum album = new LegacyPulseAlbum();
+			album.Id = JsonHelper.GetString(element, "id");
+			album.Name = JsonHelper.GetString(element, "name");
+			album.Artist = JsonHelper.GetString(element, "artist");
+			album.ArtistId = JsonHelper.GetString(element, "artistId");
+			album.CoverArt = JsonHelper.GetString(element, "coverArt");
+			album.Year = JsonHelper.GetInt(element, "year");
+			album.TrackCount = JsonHelper.GetInt(element, "songCount");
+			album.Duration = JsonHelper.GetInt(element, "duration");
+			return album;
+		}
+
+		public override void GetAlbums(Action<List<LegacyPulseAlbum>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulseAlbum>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulseAlbum> results = new List<LegacyPulseAlbum>();
+				try
+				{
+					for (int page = 0; page < 200; page++)
+					{
+						int offset = page * 500;
+						if (!SubsonicGet("getAlbumList2", true, out JsonElement response, "type=alphabeticalByName&size=500&offset=" + offset))
+						{
+							break;
+						}
+						int pageCount = 0;
+						JsonElement albumList;
+						JsonElement albumArray = default;
+						bool validParams = true;
+						if (!response.TryGetProperty("albumList2", out albumList))
+							validParams = false;
+						if (validParams)
+						{
+							if (!albumList.TryGetProperty("album", out albumArray))
+								validParams = false;
+						}
+						if (albumArray.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement element in albumArray.EnumerateArray())
+							{
+								results.Add(ParseAlbum(element));
+								pageCount++;
+							}
+						}
+						if (pageCount < 500)
+						{
+							break;
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				List<LegacyPulseAlbum> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		public override void CreatePlaylist(string name, Action<LegacyPulsePlaylist> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(null);
+				return;
+			}
+			Task.Run(() =>
+			{
+				LegacyPulsePlaylist created = null;
+				try
+				{
+					string param = "name=" + Uri.EscapeDataString(name);
+					if (SubsonicGet("createPlaylist", false, out JsonElement response, param))
+					{
+						if (response.TryGetProperty("playlist", out JsonElement playlistElement))
+						{
+							created = LegacyPulseHelper.ParsePlaylist(playlistElement);
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				LegacyPulsePlaylist captured = created;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		public override void RenamePlaylist(string playlistId, string newName, Action<bool> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(false);
+				return;
+			}
+			Task.Run(() =>
+			{
+				bool ok = false;
+				try
+				{
+					string param = "playlistId=" + Uri.EscapeDataString(playlistId)
+						+ "&name=" + Uri.EscapeDataString(newName);
+					ok = SubsonicGet("updatePlaylist", false, out JsonElement response, param);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				bool result = ok;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(result); });
+			});
+		}
+
+		public override void Star(string trackId, Action<bool> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(false);
+				return;
+			}
+			Task.Run(() =>
+			{
+				bool ok = false;
+				try
+				{
+					string param = "id=" + Uri.EscapeDataString(trackId);
+					ok = SubsonicGet("star", false, out JsonElement response, param);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				bool result = ok;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(result); });
+			});
+		}
+
+		public override void Unstar(string trackId, Action<bool> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(false);
+				return;
+			}
+			Task.Run(() =>
+			{
+				bool ok = false;
+				try
+				{
+					string param = "id=" + Uri.EscapeDataString(trackId);
+					ok = SubsonicGet("unstar", false, out JsonElement response, param);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				bool result = ok;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(result); });
+			});
+		}
+
+		public override void DeletePlaylist(string playlistId, Action<bool> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(false);
+				return;
+			}
+			Task.Run(() =>
+			{
+				bool ok = false;
+				try
+				{
+					string param = "id=" + Uri.EscapeDataString(playlistId);
+					ok = SubsonicGet("deletePlaylist", false, out JsonElement response, param);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				bool result = ok;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(result); });
+			});
+		}
+
+		public override void AddTrackToPlaylist(string playlistId, string songId, Action<bool> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(false);
+				return;
+			}
+			Task.Run(() =>
+			{
+				bool ok = false;
+				try
+				{
+					string param = "playlistId=" + Uri.EscapeDataString(playlistId) + "&songIdToAdd=" + Uri.EscapeDataString(songId);
+					ok = SubsonicGet("updatePlaylist", false, out JsonElement response, param);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				bool result = ok;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(result); });
+			});
+		}
+
+		public override void RemoveTrackFromPlaylist(string playlistId, int songIndex, Action<bool> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(false);
+				return;
+			}
+			Task.Run(() =>
+			{
+				bool ok = false;
+				try
+				{
+					string param = "playlistId=" + Uri.EscapeDataString(playlistId) + "&songIndexToRemove=" + songIndex;
+					ok = SubsonicGet("updatePlaylist", false, out JsonElement response, param);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				bool result = ok;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(result); });
+			});
+		}
+
+		public override void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<LegacyPulseTrack> newOrder, Action<bool> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(false);
+				return;
+			}
+			Task.Run(() =>
+			{
+				bool ok = false;
+				try
+				{
+					int divergence = fromIndex;
+					if (toIndex < divergence)
+					{
+						divergence = toIndex;
+					}
+					StringBuilder param = new StringBuilder();
+					param.Append("playlistId=").Append(Uri.EscapeDataString(playlistId));
+					for (int idx = newOrder.Count - 1; idx >= divergence; idx--)
+					{
+						param.Append("&songIndexToRemove=").Append(idx);
+					}
+					for (int idx = divergence; idx < newOrder.Count; idx++)
+					{
+						param.Append("&songIdToAdd=").Append(Uri.EscapeDataString(newOrder[idx].Id));
+					}
+					ok = SubsonicGet("updatePlaylist", false, out JsonElement response, param.ToString());
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				bool result = ok;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(result); });
+			});
+		}
+
+		public override void MarkPlaylistPlayed(string playlistId, Action<bool> onComplete)
+		{
+			if (!IsOnline())
+			{
+				if (onComplete != null)
+					onComplete(false);
+				return;
+			}
+			Task.Run(() =>
+			{
+				bool ok = false;
+				try
+				{
+					string url = m_baseUrl + "/pulse/markPlaylistPlayed?id=" + Uri.EscapeDataString(playlistId) + "&u=" + Uri.EscapeDataString(m_user);
+					string json = HttpGet(url, false);
+					ok = json != null;
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				bool result = ok;
+				MainThread.BeginInvokeOnMainThread(() => 
+				{
+					if (onComplete != null)
+						onComplete(result); 
+				});
+			});
+		}
+
+		public override void GetPlaylists(Action<List<LegacyPulsePlaylist>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulsePlaylist>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulsePlaylist> results = new List<LegacyPulsePlaylist>();
+				try
+				{
+					if (SubsonicGet("getPlaylists", true, out JsonElement response))
+					{
+						JsonElement playlists;
+						JsonElement playlistArray = default;
+						bool validParams = true;
+						if (!response.TryGetProperty("playlists", out playlists))
+							validParams = false;
+						if (validParams)
+						{
+							if (!playlists.TryGetProperty("playlist", out playlistArray))
+								validParams = false;
+						}
+						if (playlistArray.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement item in playlistArray.EnumerateArray())
+							{
+								results.Add(LegacyPulseHelper.ParsePlaylist(item));
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
+			});
+		}
+
+		public override void GetPlaylist(string playlistId, Action<LegacyPulsePlaylist> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new LegacyPulsePlaylist());
+				return;
+			}
+			Task.Run(() =>
+			{
+				LegacyPulsePlaylist result = new LegacyPulsePlaylist();
+				try
+				{
+					if (SubsonicGet("getPlaylist", true, out JsonElement response, "id=" + Uri.EscapeDataString(playlistId)))
+					{
+						if (response.TryGetProperty("playlist", out JsonElement playlistElement))
+						{
+							result = LegacyPulseHelper.ParsePlaylist(playlistElement);
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				LegacyPulsePlaylist captured = result;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+
+		// Pulse-native playlist envelope: typed PlaylistInfo serialized with
+		// PascalCase fields. The synthetic Subsonic-style coverArt id is
+		// derived locally; the per-user LastPlayed (when present) wins over
+		// the aggregate.
+		private LegacyPulsePlaylist ParsePulsePlaylist(JsonElement element)
+		{
+			LegacyPulsePlaylist playlist = new LegacyPulsePlaylist();
+			playlist.Id = JsonHelper.GetString(element, "Id");
+			playlist.Name = JsonHelper.GetString(element, "Name");
+			playlist.CoverArt = "pl-" + playlist.Id;
+			int songCount = 0;
+			JsonElement trackIds = default;
+			bool hasTrackIds = element.TryGetProperty("TrackIds", out trackIds);
+			if (hasTrackIds && trackIds.ValueKind == JsonValueKind.Array)
+			{
+				songCount = trackIds.GetArrayLength();
+			}
+			playlist.TrackCount = songCount;
+			playlist.Duration = JsonHelper.GetInt(element, "DurationSeconds");
+			playlist.Score = 0f;
+			DateTime lastPlayed = DateTime.MinValue;
+			JsonElement userMap = default;
+			bool hasUserMap = element.TryGetProperty("UserLastPlayed", out userMap);
+			if (hasUserMap && userMap.ValueKind == JsonValueKind.Object && !string.IsNullOrEmpty(m_user))
+			{
+				JsonElement userValue = default;
+				bool hasUserEntry = userMap.TryGetProperty(m_user, out userValue);
+				if (hasUserEntry && userValue.ValueKind == JsonValueKind.String)
+				{
+					DateTime.TryParse(userValue.GetString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed);
+				}
+			}
+			if (lastPlayed == DateTime.MinValue)
+			{
+				lastPlayed = JsonHelper.GetDateTime(element, "LastPlayed");
+			}
+			playlist.LastPlayed = lastPlayed;
+			return playlist;
+		}
+
+
+
+	
+
+		public override void GetCoverArt(string coverArtId, Action<byte[]> onComplete)
+		{
+			if (string.IsNullOrEmpty(coverArtId))
+			{
+				onComplete(null);
+				return;
+			}
+			string url = BuildCoverArtUrl(coverArtId);
+			if (m_imageCache.TryGetValue(url, out byte[] cached))
+			{
+				onComplete(cached);
+				return;
+			}
+			if (!IsOnline())
+			{
+				onComplete(null);
+				return;
+			}
+			Task.Run(() =>
+			{
+				try
+				{
+					byte[] data = HttpGetBinary(url, true);
+					if (data == null || data.Length <= 0)
+					{
+						Log.Error("Cover art fetch failed: " + url);
+						MainThread.BeginInvokeOnMainThread(() => { onComplete(null); });
+						return;
+					}
+					m_imageCache[url] = data;
+					MainThread.BeginInvokeOnMainThread(() => { onComplete(data); });
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+					MainThread.BeginInvokeOnMainThread(() => { onComplete(null); });
+				}
+			});
+		}
+
+		public override void GetTrackAudio(string trackId, Action<byte[]> onComplete)
+		{
+			if (!IsOnline() || string.IsNullOrEmpty(trackId))
+			{
+				if (onComplete != null)	
+					onComplete(null);
+				return;
+			}
+			string url = BuildStreamUrl(trackId);
+			Task.Run(() =>
+			{
+				try
+				{
+					byte[] data = HttpGetBinary(url, true);
+					if (data == null || data.Length <= 0)
+					{
+						Log.Error("Audio fetch failed: " + url);
+						MainThread.BeginInvokeOnMainThread(() => { onComplete(null); });
+						return;
+					}
+
+					byte[] captured = data;
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						if (onComplete != null)
+							onComplete(captured);
+					});
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						if (onComplete != null)
+							onComplete(null);
+					});
+				}
+			});
+		}
+
+		
+
+		
+	
+
+		public override void GetRecentlyPlayed(Action<List<LegacyPulseObject>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulseObject>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulseObject> results = new List<LegacyPulseObject>();
+				try
+				{
+					int count = 50;
+					string url = m_baseUrl + "/pulse/recentlyPlayed?count=" + count + "&u=" + Uri.EscapeDataString(m_user);
+					string json = HttpGet(url, false);
+					if (json != null)
+					{
+						JsonDocument doc = JsonDocument.Parse(json);
+						JsonElement tracks;
+						bool validParams = true;
+						if (!doc.RootElement.TryGetProperty("tracks", out tracks))
+							validParams = false;
+						if (tracks.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement element in tracks.EnumerateArray())
+							{
+								// this is going to fail, recently played includes songs, playlists, artists, etc..
+								results.Add(LegacyPulseHelper.ParseSong(element));
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
+			});
+		}
+
+		public override void GetPopularArtists(Action<List<LegacyPulseArtist>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulseArtist>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulseArtist> results = new List<LegacyPulseArtist>();
+				try
+				{
+					int count = 50;
+					string url = m_baseUrl + "/pulse/popularArtists?count=" + count + "&u=" + Uri.EscapeDataString(m_user);
+					string json = HttpGet(url, true);
+					if (json != null)
+					{
+						JsonDocument doc = JsonDocument.Parse(json);
+						JsonElement artists;
+						bool validParams = true;
+						if (!doc.RootElement.TryGetProperty("artists", out artists))
+							validParams = false;
+						if (artists.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement element in artists.EnumerateArray())
+							{
+								LegacyPulseArtist artist = new LegacyPulseArtist();
+								artist.Id = JsonHelper.GetString(element, "id");
+								artist.Name = JsonHelper.GetString(element, "name");
+								artist.CoverArt = JsonHelper.GetString(element, "coverArt");
+								artist.AlbumCount = JsonHelper.GetInt(element, "albumCount");
+								artist.PlayCount = JsonHelper.GetInt(element, "playCount");
+								artist.Score = JsonHelper.GetFloat(element, "score");
+								artist.LastPlayed = JsonHelper.GetDateTime(element, "lastPlayed");
+								results.Add(artist);
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
+			});
+		}
+
+		public override void GetTopPlaylists(Action<List<LegacyPulsePlaylist>> onComplete)
+		{
+			GetRankedPlaylists("topPlaylists", 50, onComplete);
+		}
+
+		public override void GetRecentPlaylists(Action<List<LegacyPulsePlaylist>> onComplete)
+		{
+			GetRankedPlaylists("recentPlaylists", 50, onComplete);
+		}
+
+	
+		public override void GetRecentlyAdded(Action<List<LegacyPulseObject>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulseObject>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulseObject> results = new List<LegacyPulseObject>();
+				try
+				{
+					if (SubsonicGet("getAlbumList2", true, out JsonElement response, "type=newest&size=50"))
+					{
+						JsonElement albumList;
+						JsonElement albumArray = default;
+						bool validParams = true;
+						if (!response.TryGetProperty("albumList2", out albumList))
+							validParams = false;
+						if (validParams)
+						{
+							if (!albumList.TryGetProperty("album", out albumArray))
+								validParams = false;
+						}
+						if (albumArray.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement element in albumArray.EnumerateArray())
+							{
+								results.Add(ParseAlbum(element));
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				List<LegacyPulseObject> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		public override void GetGenres(Action<List<LegacyPulseGenre>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulseGenre>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulseGenre> results = new List<LegacyPulseGenre>();
+				try
+				{
+					if (SubsonicGet("getGenres", true, out JsonElement response))
+					{
+						JsonElement genres;
+						JsonElement genreArray = default;
+						bool validParams = true;
+						if (!response.TryGetProperty("genres", out genres))
+							validParams = false;
+						if (validParams)
+						{
+							if (!genres.TryGetProperty("genre", out genreArray))
+								validParams = false;
+						}
+						if (genreArray.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement element in genreArray.EnumerateArray())
+							{
+								string value = JsonHelper.GetString(element, "value");
+								LegacyPulseGenre genre = new LegacyPulseGenre();
+								genre.Id = value;
+								genre.Name = value;
+								genre.TrackCount = JsonHelper.GetInt(element, "songCount");
+								genre.AlbumCount = JsonHelper.GetInt(element, "albumCount");
+								results.Add(genre);
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				List<LegacyPulseGenre> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		public override void GetTopItems(Action<List<LegacyPulseObject>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulseObject>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulseObject> results = new List<LegacyPulseObject>();
+				try
+				{
+					int count = 50;
+					string url = m_baseUrl + "/pulse/topPlaylists?count=" + count + "&u=" + Uri.EscapeDataString(m_user) + "&api=1";
+					string json = HttpGet(url, true);
+					if (json != null)
+					{
+						JsonDocument doc = JsonDocument.Parse(json);
+						JsonElement item = default;
+						JsonElement playlists = default;
+						bool validParams = true;
+						if (!doc.RootElement.TryGetProperty("item", out item))
+							validParams = false;
+						if (validParams && !item.TryGetProperty("Playlists", out playlists))
+							validParams = false;
+						if (validParams && playlists.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement element in playlists.EnumerateArray())
+							{
+								LegacyPulsePlaylist playlist = ParsePulsePlaylist(element);
+								results.Add(playlist);
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				List<LegacyPulseObject> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		public override void GetTracksForGenre(string genre, Action<List<LegacyPulseTrack>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulseTrack>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulseTrack> results = new List<LegacyPulseTrack>();
+				try
+				{
+					string param = "genre=" + Uri.EscapeDataString(genre) + "&count=500&offset=0";
+					if (SubsonicGet("getSongsByGenre", true, out JsonElement response, param))
+					{
+						JsonElement songsByGenre;
+						JsonElement songArray = default;
+						bool validParams = true;
+						if (!response.TryGetProperty("songsByGenre", out songsByGenre))
+							validParams = false;
+						if (validParams)
+						{
+							if (!songsByGenre.TryGetProperty("song", out songArray))
+								validParams = false;
+						}
+						if (songArray.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement element in songArray.EnumerateArray())
+							{
+								results.Add(LegacyPulseHelper.ParseSong(element));
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				List<LegacyPulseTrack> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		//"Favorites" in the app maps to Subsonic's getStarred endpoint —
+		//returns starred artists, albums, and songs. We only pull the songs.
+		public override void GetFavorites(Action<List<LegacyPulseTrack>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulseTrack>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulseTrack> results = new List<LegacyPulseTrack>();
+				try
+				{
+					if (SubsonicGet("getStarred", true, out JsonElement response))
+					{
+						if (response.TryGetProperty("starred", out JsonElement starred))
+						{
+							results = LegacyPulseHelper.ParseSongArray(starred, "song");
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				List<LegacyPulseTrack> captured = results;
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
+			});
+		}
+
+		private void GetRankedPlaylists(string endpoint, int count, Action<List<LegacyPulsePlaylist>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				onComplete(new List<LegacyPulsePlaylist>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<LegacyPulsePlaylist> results = new List<LegacyPulsePlaylist>();
+				try
+				{
+					string url = m_baseUrl + "/pulse/" + endpoint + "?count=" + count + "&u=" + Uri.EscapeDataString(m_user) + "&api=1";
+					string json = HttpGet(url, true);
+					if (json != null)
+					{
+						JsonDocument doc = JsonDocument.Parse(json);
+						JsonElement item = default;
+						JsonElement playlists = default;
+						bool validParams = true;
+						if (!doc.RootElement.TryGetProperty("item", out item))
+							validParams = false;
+						if (validParams && !item.TryGetProperty("Playlists", out playlists))
+							validParams = false;
+						if (validParams && playlists.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
+						{
+							foreach (JsonElement element in playlists.EnumerateArray())
+							{
+								LegacyPulsePlaylist playlist = ParsePulsePlaylist(element);
+								results.Add(playlist);
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+
+				}
+				MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
+			});
+		}
+
+		private bool SubsonicGet(string endpoint, bool bCacheAllowed, out JsonElement jsonElement, string extraParams = null)
+		{
+			bool retVal = false;
+			jsonElement = default;
+			string url = BuildRestUrl(endpoint, extraParams);
+
+			string json = HttpGet(url, bCacheAllowed);
+			JsonDocument doc = JsonDocument.Parse(json);
+			JsonElement root = doc.RootElement;
+
+			if (root.TryGetProperty("subsonic-response", out JsonElement response))
+			{
+				string status = JsonHelper.GetString(response, "status");
+				if (status == "ok")
+				{
+					jsonElement = response;
+					retVal = true;
+				}
+			}
+			if (!retVal)
+			{
+				Log.Error("Invalid subsonic response: " + json);
+			}
+			
+			return retVal;
+		}
+	}	
+}
