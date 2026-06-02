@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 using Thump.Views;
 
@@ -11,7 +12,7 @@ namespace Thump.Views.Tiles
 		private ArtImage m_art;
 		private Label m_nameLabel;
 		private Label m_subtitleLabel;
-		private LegacyPulsePlaylist m_playlist;
+		private PulsePlaylist m_playlist;
 
 		public PlaylistRowTile() : base(MainView.Self)
 		{
@@ -84,7 +85,7 @@ namespace Thump.Views.Tiles
 		protected override void OnBindingContextChanged()
 		{
 			base.OnBindingContextChanged();
-			LegacyPulsePlaylist playlist = BindingContext as LegacyPulsePlaylist;
+			PulsePlaylist playlist = BindingContext as PulsePlaylist;
 			if (playlist == null)
 			{
 				return;

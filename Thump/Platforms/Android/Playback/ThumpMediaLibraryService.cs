@@ -18,6 +18,7 @@ using AndroidX.Media3.Session;
 using Google.Common.Util.Concurrent;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Storage;
+using PulseAPI.CSharp;
 using Thump.Data;
 using Thump.Pulse;
 
@@ -341,7 +342,7 @@ namespace Thump.Playback.AndroidOS
 				bool isOnline = s_mediaClient.IsOnline();
 
 				//grab all our tracks at once
-				Task<List<LegacyPulseTrack>>[] fetchedTracks = new Task<List<LegacyPulseTrack>>[items.Count];
+				Task<List<PulseTrack>>[] fetchedTracks = new Task<List<PulseTrack>>[items.Count];
 				for (int i = 0; i < items.Count; i++)
 				{
 					fetchedTracks[i] = GetTrackIdsAsync(items[i]);
@@ -349,7 +350,7 @@ namespace Thump.Playback.AndroidOS
 				await Task.WhenAll(fetchedTracks);
 
 
-				List<LegacyPulseTrack> requestedTracks = new List<LegacyPulseTrack>();
+				List<PulseTrack> requestedTracks = new List<PulseTrack>();
 				int startItemIndex = 0;
 				for (int i = 0; i < items.Count; i++)
 				{
@@ -359,7 +360,7 @@ namespace Thump.Playback.AndroidOS
 						startItemIndex = requestedTracks.Count;
 					}
 
-					List<LegacyPulseTrack> tracks = fetchedTracks[i].Result;
+					List<PulseTrack> tracks = fetchedTracks[i].Result;
 					for (int j = 0; j < tracks.Count; j++)
 					{
 						//filter out unavailable tracks
@@ -385,7 +386,7 @@ namespace Thump.Playback.AndroidOS
 					return;
 				}
 
-				Queue<LegacyPulseTrack> cacheQueue = new Queue<LegacyPulseTrack>();
+				Queue<PulseTrack> cacheQueue = new Queue<PulseTrack>();
 				for (int i = 0; i < requestedTracks.Count; i++)
 				{
 					outputTracks.Add(MediaItemBuilder.Build(requestedTracks[i]));
@@ -395,7 +396,7 @@ namespace Thump.Playback.AndroidOS
 					}
 				}
 
-				LegacyPulseTrack startTrack = requestedTracks[startItemIndex];
+				PulseTrack startTrack = requestedTracks[startItemIndex];
 				int finalStartIndex = startItemIndex;
 				long finalStartPosition = startPositionMs;
 
@@ -422,27 +423,27 @@ namespace Thump.Playback.AndroidOS
 		}
 
 		
-		private void CacheQueued(Queue<LegacyPulseTrack> queue, int queueId)
+		private void CacheQueued(Queue<PulseTrack> queue, int queueId)
 		{
 			if (queue == null || queue.Count == 0 || queueId != m_currentQueueID)
 			{
 				return;
 			}
-			LegacyPulseTrack next = queue.Dequeue();
+			PulseTrack next = queue.Dequeue();
 			s_mediaClient.CacheTrackAudio(next.Id, (success)=>
 			{
 				CacheQueued(queue, queueId);
 			});
 		}
 
-		Task<List<LegacyPulseTrack>> GetTrackIdsAsync(MediaItem item)
+		Task<List<PulseTrack>> GetTrackIdsAsync(MediaItem item)
 		{
-			TaskCompletionSource<List<LegacyPulseTrack>> tcs = new TaskCompletionSource<List<LegacyPulseTrack>>();
+			TaskCompletionSource<List<PulseTrack>> tcs = new TaskCompletionSource<List<PulseTrack>>();
 			GetTrackIds(item, (tracks) => tcs.TrySetResult(tracks));
 			return tcs.Task;
 		}
 
-		private void GetTrackIds(MediaItem input, Action<List<LegacyPulseTrack>> onComplete)
+		private void GetTrackIds(MediaItem input, Action<List<PulseTrack>> onComplete)
 		{
 			if (onComplete == null)
 				return;
@@ -450,7 +451,7 @@ namespace Thump.Playback.AndroidOS
 			string mediaId = input.MediaId;
 			if (string.IsNullOrEmpty(mediaId))
 			{
-				onComplete(new List<LegacyPulseTrack>());
+				onComplete(new List<PulseTrack>());
 				return;
 			}
 
@@ -461,7 +462,7 @@ namespace Thump.Playback.AndroidOS
 				
 				s_mediaClient.GetTrack(trackId, (pulseTrack)=>
 				{
-					List<LegacyPulseTrack> trackList = new List<LegacyPulseTrack>();
+					List<PulseTrack> trackList = new List<PulseTrack>();
 					if (pulseTrack != null)
 						trackList.Add(pulseTrack);
 					onComplete(trackList);
@@ -475,13 +476,13 @@ namespace Thump.Playback.AndroidOS
 			if (!MediaItemBuilder.TryParsePlayMediaId(mediaId, out objectType, out objectId, out isShuffle))
 			{
 				Log.Warn("ThumpMediaLibraryService.LoadMediaItems: unknown mediaId prefix '" + mediaId + "', skipping");
-				onComplete(new List<LegacyPulseTrack>());
+				onComplete(new List<PulseTrack>());
 				return;
 			}
 
 			GetTracksFor(objectType, objectId, (list) =>
 			{
-				List<LegacyPulseTrack> trackList = new List<LegacyPulseTrack>(list);
+				List<PulseTrack> trackList = new List<PulseTrack>(list);
 				if (isShuffle)
 				{
 					ShuffleInPlace(trackList);
@@ -491,7 +492,7 @@ namespace Thump.Playback.AndroidOS
 			
 		}
 
-		private void GetTracksFor(eAAObject objectType, string objectId, Action<List<LegacyPulseTrack>> onComplete)
+		private void GetTracksFor(eAAObject objectType, string objectId, Action<List<PulseTrack>> onComplete)
 		{
 		
 			//Lambda exception to avoid too many indirection calls
@@ -499,7 +500,7 @@ namespace Thump.Playback.AndroidOS
 			// ThumpData NetworkAuthorative routes can fire the callback twice
 			// (cached burst + refresh) by design; this is a one-shot consumer
 			// so guard against the second hit.
-			Action<List<LegacyPulseTrack>> onDataComplete = (tracks) =>
+			Action<List<PulseTrack>> onDataComplete = (tracks) =>
 			{
 				if (fired)
 				{
@@ -508,7 +509,7 @@ namespace Thump.Playback.AndroidOS
 
 				fired = true;
 
-				List<LegacyPulseTrack> outputTracks = new List<LegacyPulseTrack>();
+				List<PulseTrack> outputTracks = new List<PulseTrack>();
 				if (tracks != null)
 				{
 					//return this to the caller via the closure
@@ -545,7 +546,7 @@ namespace Thump.Playback.AndroidOS
 					});
 					break;
 				default:
-					onDataComplete(new List<LegacyPulseTrack>());
+					onDataComplete(new List<PulseTrack>());
 					break;
 			}
 		}
@@ -575,7 +576,7 @@ namespace Thump.Playback.AndroidOS
 						List<MediaItem> combined = new List<MediaItem>();
 						s_mediaClient.GetRecentlyPlayed((A)=>
 						{
-							List<LegacyPulseObject> recentlyPlayed = new List<LegacyPulseObject>();
+							List<PulseObject> recentlyPlayed = new List<PulseObject>();
 							for(int i = 0; i < A.Count && i < tileLimit; i++)
 							{
 								recentlyPlayed.Add(A[i]);
@@ -583,21 +584,21 @@ namespace Thump.Playback.AndroidOS
 
 							s_mediaClient.GetRecentlyAdded((B)=>
 							{
-								List<LegacyPulseObject> added = new List<LegacyPulseObject>();
+								List<PulseObject> added = new List<PulseObject>();
 								for (int i = 0; i < B.Count && i < tileLimit; i++)
 								{
 									added.Add(B[i]);
 								}
 								s_mediaClient.GetTopPlaylists((C)=>
 								{
-									List<LegacyPulseObject> topPlaylists = new List<LegacyPulseObject>();
+									List<PulseObject> topPlaylists = new List<PulseObject>();
 									for (int i = 0; i < C.Count && i < tileLimit; i++)
 									{
 										topPlaylists.Add(C[i]);
 									}
 									s_mediaClient.GetPopularArtists((D)=>
 									{
-										List<LegacyPulseObject> artists = new List<LegacyPulseObject>();
+										List<PulseObject> artists = new List<PulseObject>();
 										for (int i = 0; i < D.Count && i < tileLimit; i++)
 										{
 											artists.Add(D[i]);
@@ -718,7 +719,7 @@ namespace Thump.Playback.AndroidOS
 				case eAAObject.Album:
 					s_mediaClient.GetAlbum(objectID, (album)=>
 					{
-						request.OnComplete<LegacyPulseAlbum>(album.Tracks, objectType, objectID);
+						request.OnComplete<PulseAlbum>(album.Tracks, objectType, objectID);
 					});
 					break;
 				case eAAObject.Artist:
@@ -731,13 +732,13 @@ namespace Thump.Playback.AndroidOS
 				case eAAObject.Playlist:
 					s_mediaClient.GetPlaylist(objectID, (playlist) =>
 					{
-						request.OnComplete<LegacyPulseAlbum>(playlist.Tracks, objectType, objectID);
+						request.OnComplete<PulseAlbum>(playlist.Tracks, objectType, objectID);
 					});
 					break;
 				case eAAObject.Genre:
 					s_mediaClient.GetTracksForGenre(objectID, (genreTracks) =>
 					{
-						request.OnComplete<LegacyPulseAlbum>(genreTracks, objectType, objectID);
+						request.OnComplete<PulseAlbum>(genreTracks, objectType, objectID);
 					});
 					break;
 			}
@@ -759,8 +760,8 @@ namespace Thump.Playback.AndroidOS
 		private static MediaClient BuildMediaClient()
 		{
 			ThumpCache cache = new ThumpCache();
-			MediaClient pulseClient = new LegacyPulseClient(cache);
-			pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), ThumpSettings.GetUseHttps());
+			MediaClient pulseClient = new PulseClient(cache);
+			pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetUseHttps());
 
 			return pulseClient;
 		}

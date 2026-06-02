@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 using Thump.Views.Tiles;
 
@@ -15,10 +16,10 @@ namespace Thump.Views
 		private Label m_artistLabel;
 		private Label m_metaLabel;
 		private CollectionView m_trackList;
-		private LegacyPulseAlbum m_album;
-		private List<LegacyPulseTrack> m_tracks;
+		private PulseAlbum m_album;
+		private List<PulseTrack> m_tracks;
 
-		public AlbumDetailView(MainView mainView, LegacyPulseAlbum album) : base(mainView)
+		public AlbumDetailView(MainView mainView, PulseAlbum album) : base(mainView)
 		{
 			m_album = album;
 			
@@ -195,7 +196,7 @@ namespace Thump.Views
 			});
 		}
 
-		private void OnTracksLoaded(List<LegacyPulseTrack> tracks)
+		private void OnTracksLoaded(List<PulseTrack> tracks)
 		{
 			Log.Info("OnTracksLoaded");
 			m_tracks = tracks;

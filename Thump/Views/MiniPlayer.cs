@@ -2,6 +2,7 @@ using System;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 
 namespace Thump.Views
@@ -147,18 +148,18 @@ namespace Thump.Views
 			base.Initialize();
 		}
 
-		public void SetTrack(LegacyPulseTrack song)
+		public void SetTrack(PulseTrack track)
 		{
-			if (song == null)
+			if (track == null)
 			{
 				m_titleLabel.Text = "Nothing playing";
 				m_artistLabel.Text = "";
 				UpdateSkipButtons();
 				return;
 			}
-			m_titleLabel.Text = song.Title;
-			m_artistLabel.Text = song.Artist;
-			m_art.SetCoverArt(song.ImageID);
+			m_titleLabel.Text = track.Title;
+			m_artistLabel.Text = track.Artist;
+			m_art.SetCoverArt(track.CoverArt);
 			UpdateSkipButtons();
 		}
 

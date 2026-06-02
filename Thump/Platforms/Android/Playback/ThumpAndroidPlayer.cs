@@ -5,6 +5,7 @@ using Android.Runtime;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.Session;
 using Microsoft.Maui.ApplicationModel;
+using PulseAPI.CSharp;
 using Thump.Data;
 using Thump.Pulse;
 
@@ -26,7 +27,7 @@ namespace Thump.Playback.AndroidOS
 		private Google.Common.Util.Concurrent.IListenableFuture m_onControllerConnected;
 		private Timer m_ticker;
 
-		private List<LegacyPulseTrack> m_queue = new List<LegacyPulseTrack>();
+		private List<PulseTrack> m_queue = new List<PulseTrack>();
 	
 
 		/// <summary>
@@ -43,7 +44,7 @@ namespace Thump.Playback.AndroidOS
 		private bool m_shuffleEnabled;
 		private MediaClient m_data;
 
-		private Queue<LegacyPulseTrack> m_cacheQueue = new Queue<LegacyPulseTrack>();
+		private Queue<PulseTrack> m_cacheQueue = new Queue<PulseTrack>();
 
 		public ThumpAndroidPlayer(MainView mainView, MediaClient thumpData)
 		{
@@ -85,7 +86,7 @@ namespace Thump.Playback.AndroidOS
 			}
 		}
 
-		public void Play(List<LegacyPulseTrack> tracks, int startIndex)
+		public void Play(List<PulseTrack> tracks, int startIndex)
 		{
 			if (tracks == null || tracks.Count == 0)
 			{
@@ -113,7 +114,7 @@ namespace Thump.Playback.AndroidOS
 			int taskQueueID = m_currentQueueID;
 			m_controller.ClearMediaItems();
 
-			LegacyPulseTrack startTrack = m_queue[startIndex];
+			PulseTrack startTrack = m_queue[startIndex];
 			bool isOnline = m_data.IsOnline();
 
 			m_cacheQueue.Clear();
@@ -166,7 +167,7 @@ namespace Thump.Playback.AndroidOS
 			if (m_cacheQueue == null || m_cacheQueue.Count <= 0 || m_currentQueueID != queueID)
 				return;
 
-			LegacyPulseTrack nextTrack = m_cacheQueue.Dequeue();
+			PulseTrack nextTrack = m_cacheQueue.Dequeue();
 
 			m_data.CacheTrackAudio(nextTrack.Id, (success)=>
 			{
@@ -265,7 +266,7 @@ namespace Thump.Playback.AndroidOS
 			m_controller.RepeatMode = mapped;
 		}
 
-		public void AddToQueue(List<LegacyPulseTrack> tracks)
+		public void AddToQueue(List<PulseTrack> tracks)
 		{
 			if (m_controller == null || tracks == null || tracks.Count == 0)
 			{
@@ -276,13 +277,13 @@ namespace Thump.Playback.AndroidOS
 			m_queue.AddRange(tracks);
 		}
 
-		private void AppendQueueItem(List<LegacyPulseTrack> tracks, int index, int queueID)
+		private void AppendQueueItem(List<PulseTrack> tracks, int index, int queueID)
 		{
 			if (queueID != m_currentQueueID || index >= tracks.Count)
 			{
 				return;
 			}
-			LegacyPulseTrack track = tracks[index];
+			PulseTrack track = tracks[index];
 			m_data.CacheTrackAudio(track.Id, (isAvailable) =>
 			{
 				//ditch stale callbacks
@@ -298,7 +299,7 @@ namespace Thump.Playback.AndroidOS
 			});
 		}
 
-		public void PlayNext(List<LegacyPulseTrack> tracks)
+		public void PlayNext(List<PulseTrack> tracks)
 		{
 			if (m_controller == null || tracks == null || tracks.Count == 0)
 			{
@@ -315,13 +316,13 @@ namespace Thump.Playback.AndroidOS
 			m_queue.InsertRange(insertAt, tracks);
 		}
 
-		private void InsertQueueItem(List<LegacyPulseTrack> tracks, int index, int insertAt, int queueID)
+		private void InsertQueueItem(List<PulseTrack> tracks, int index, int insertAt, int queueID)
 		{
 			if (queueID != m_currentQueueID || index >= tracks.Count)
 			{
 				return;
 			}
-			LegacyPulseTrack track = tracks[index];
+			PulseTrack track = tracks[index];
 			m_data.CacheTrackAudio(track.Id, (isAvailable) =>
 			{
 				//ditch stale callbacks
@@ -451,14 +452,14 @@ namespace Thump.Playback.AndroidOS
 				return;
 			}
 			m_lastMediaId = mediaId;
-			LegacyPulseTrack track = FindTrackById(mediaId);
+			PulseTrack track = FindTrackById(mediaId);
 			if (track != null)
 			{
 				m_mainView.OnCurrentTrackChanged(track);
 			}
 		}
 
-		private LegacyPulseTrack FindTrackById(string trackId)
+		private PulseTrack FindTrackById(string trackId)
 		{
 			for (int idx = 0; idx < m_queue.Count; idx++)
 			{

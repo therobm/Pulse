@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 using Thump.Views.Tiles;
 
@@ -13,10 +14,10 @@ namespace Thump.Views
 		private Label m_titleLabel;
 		private Label m_metaLabel;
 		private CollectionView m_trackList;
-		private LegacyPulseGenre m_genre;
-		private List<LegacyPulseTrack> m_tracks;
+		private PulseGenre m_genre;
+		private List<PulseTrack> m_tracks;
 
-		public GenreDetailView(MainView mainView, LegacyPulseGenre genre) : base(mainView)
+		public GenreDetailView(MainView mainView, PulseGenre genre) : base(mainView)
 		{
 			m_genre = genre;
 		}
@@ -161,7 +162,7 @@ namespace Thump.Views
 			MainView.MediaClient.GetTracksForGenre(m_genre.Id, OnTracksLoaded);
 		}
 
-		private void OnTracksLoaded(List<LegacyPulseTrack> tracks)
+		private void OnTracksLoaded(List<PulseTrack> tracks)
 		{
 			m_tracks = tracks;
 			m_trackList.ItemsSource = tracks;

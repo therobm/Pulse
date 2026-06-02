@@ -1,6 +1,7 @@
 using Microsoft.Maui;
 using Microsoft.Maui.Animations;
 using Microsoft.Maui.ApplicationModel;
+using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -10,24 +11,6 @@ using Thump.Data;
 
 namespace Thump.Pulse
 {
-	public enum eDataType
-	{
-		Track,
-		Album,
-		Playlist,
-		Artist,
-		CoverArt,
-		SongData,
-		Genre,
-		Podcast,
-		PodcastEpisode
-	}
-
-	public class MediaDataObject
-	{
-		public eDataType Kind { get; set; }
-	}
-
 	// The single API surface every media-server client (Subsonic today, Pulse-native
 	// in the future) must implement. Consumers (ThumpData, MainView, the playback
 	// service, settings) hold an MediaClient, so the concrete implementation can
@@ -39,11 +22,7 @@ namespace Thump.Pulse
 			return true;
 		}
 
-		public enum eAuthType
-		{
-			Token,
-			Legacy
-		}
+
 
 		ThumpCache m_cache;
 
@@ -51,7 +30,6 @@ namespace Thump.Pulse
 		protected string m_baseUrl;
 		protected string m_user;
 		private string m_apiParams;
-		private eAuthType m_authType;
 		private HttpClient m_httpClient;
 		private object m_httpClientLock = new object();
 
@@ -80,7 +58,7 @@ namespace Thump.Pulse
 		}
 
 
-		public virtual void SetServerParams(string ip, string port, string username, string password, MediaClient.eAuthType authType, bool enableSSL)
+		public virtual void SetServerParams(string ip, string port, string username, string password,  bool enableSSL)
 		{
 			// Accept an IP/host that may have been entered (or stored) with a
 			// scheme and/or trailing slash; strip them so the prefix derived from
@@ -95,7 +73,7 @@ namespace Thump.Pulse
 			m_baseUrl = prefix + ip + ":" + port;
 			m_user = username;
 			m_apiParams = "u=" + Uri.EscapeDataString(m_user) + "&p=enc:" + Uri.EscapeDataString(password) + "&v=1.13.0&c=PulseMaui&f=json";
-			m_authType = authType;
+		
 
 			if (m_httpClient != null)
 				m_httpClient.Dispose();
@@ -164,26 +142,26 @@ namespace Thump.Pulse
 			return BuildStreamUrl(trackId);
 		}
 
-		public abstract void GetTrack(string trackId, Action<LegacyPulseTrack> onComplete);
-		public abstract void GetArtists(Action<List<LegacyPulseArtist>> onComplete);
-		public abstract void GetArtist(string artistId, Action<LegacyPulseArtist> onComplete);
-		public abstract void GetPodcasts(Action<List<LegacyPulsePodcastChannel>> onComplete);
-		public abstract void Search(string query, Action<LegacyPulseSearchData> onComplete);
-		public abstract void GetArtistAlbums(string artistId, Action<List<LegacyPulseAlbum>> onComplete);
-		public abstract void GetArtistTracks(string artistId, Action<List<LegacyPulseTrack>> onComplete);
-		public abstract void GetAlbum(string albumId, Action<LegacyPulseAlbum> onComplete);
-		public abstract void GetAlbums(Action<List<LegacyPulseAlbum>> onComplete);
-		public abstract void CreatePlaylist(string name, Action<LegacyPulsePlaylist> onComplete);
+		public abstract void GetTrack(string trackId, Action<PulseTrack> onComplete);
+		public abstract void GetArtists(Action<List<PulseArtist>> onComplete);
+		public abstract void GetArtist(string artistId, Action<PulseArtistDetails> onComplete);
+		public abstract void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete);
+		public abstract void Search(string query, Action<PulseSearchData> onComplete);
+		public abstract void GetArtistAlbums(string artistId, Action<List<PulseAlbum>> onComplete);
+		public abstract void GetArtistTracks(string artistId, Action<List<PulseTrack>> onComplete);
+		public abstract void GetAlbum(string albumId, Action<PulseAlbumDetails> onComplete);
+		public abstract void GetAlbums(Action<List<PulseAlbum>> onComplete);
+		public abstract void CreatePlaylist(string name, Action<PulsePlaylist> onComplete);
 		public abstract void RenamePlaylist(string playlistId, string newName, Action<bool> onComplete);
 		public abstract void Star(string trackId, Action<bool> onComplete);
 		public abstract void Unstar(string trackId, Action<bool> onComplete);
 		public abstract void DeletePlaylist(string playlistId, Action<bool> onComplete);
 		public abstract void AddTrackToPlaylist(string playlistId, string songId, Action<bool> onComplete);
 		public abstract void RemoveTrackFromPlaylist(string playlistId, int songIndex, Action<bool> onComplete);
-		public abstract void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<LegacyPulseTrack> newOrder, Action<bool> onComplete);
+		public abstract void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<PulseTrack> newOrder, Action<bool> onComplete);
 		public abstract void MarkPlaylistPlayed(string playlistId, Action<bool> onComplete);
-		public abstract void GetPlaylists(Action<List<LegacyPulsePlaylist>> onComplete);
-		public abstract void GetPlaylist(string playlistId, Action<LegacyPulsePlaylist> onComplete);
+		public abstract void GetPlaylists(Action<List<PulsePlaylist>> onComplete);
+		public abstract void GetPlaylist(string playlistId, Action<PulsePlaylistDetails> onComplete);
 		public abstract void GetCoverArt(string coverArtId, Action<byte[]> onComplete);
 		public abstract void GetTrackAudio(string trackId, Action<byte[]> onComplete);
 		public void CacheTrackAudio(string trackId, Action<bool> onComplete)
@@ -203,22 +181,22 @@ namespace Thump.Pulse
 				}
 			});
 		}
-		public abstract void GetRecentlyPlayed(Action<List<LegacyPulseObject>> onComplete);
-		public abstract void GetPopularArtists(Action<List<LegacyPulseArtist>> onComplete);
-		public abstract void GetTopPlaylists(Action<List<LegacyPulsePlaylist>> onComplete);
-		public abstract void GetRecentPlaylists(Action<List<LegacyPulsePlaylist>> onComplete);
-		public abstract void GetRecentlyAdded(Action<List<LegacyPulseObject>> onComplete);
-		public abstract void GetGenres(Action<List<LegacyPulseGenre>> onComplete);
-		public abstract void GetTopItems(Action<List<LegacyPulseObject>> onComplete);
-		public abstract void GetTracksForGenre(string genre, Action<List<LegacyPulseTrack>> onComplete);
-		public abstract void GetFavorites(Action<List<LegacyPulseTrack>> onComplete);
+		public abstract void GetRecentlyPlayed(Action<List<PulseObject>> onComplete);
+		public abstract void GetPopularArtists(Action<List<PulseArtist>> onComplete);
+		public abstract void GetTopPlaylists(Action<List<PulsePlaylist>> onComplete);
+		public abstract void GetRecentPlaylists(Action<List<PulsePlaylist>> onComplete);
+		public abstract void GetRecentlyAdded(Action<List<PulseObject>> onComplete);
+		public abstract void GetGenres(Action<List<PulseGenre>> onComplete);
+		public abstract void GetTopItems(Action<List<PulseObject>> onComplete);
+		public abstract void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete);
+		public abstract void GetFavorites(Action<List<PulseTrack>> onComplete);
 
 		// Fire-and-forget play / skip notification. Called by the player when
 		// a track ends naturally, when the user skips, or when a new queue
 		// replaces the current one mid-track. NOT called for pause/resume -
 		// pausing does not register as a play. Virtual + no-op default so
 		// Subsonic-flavored backends (which don't have a native analytics
-		// route) silently inherit a do-nothing - only LegacyPulseClient overrides.
+		// route) silently inherit a do-nothing - only PulseClient overrides.
 		public virtual void ReportTrackAnalytics(string trackId)
 		{
 		}

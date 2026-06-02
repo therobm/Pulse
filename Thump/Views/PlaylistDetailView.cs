@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 using Thump.Views.Tiles;
 
@@ -14,13 +15,17 @@ namespace Thump.Views
 		private Label m_titleLabel;
 		private Label m_metaLabel;
 		private CollectionView m_trackList;
-		private LegacyPulsePlaylist m_playlist;
-		private List<LegacyPulseTrack> m_tracks;
+		private PulsePlaylistDetails m_playlistDetails;
+		private List<PulseTrack> m_tracks;
 
-		public PlaylistDetailView(MainView mainView, LegacyPulsePlaylist playlist) : base(mainView)
+		public PlaylistDetailView(MainView mainView, PulsePlaylist playlist) : base(mainView)
 		{
-			m_playlist = playlist;
-			
+			// The list endpoints hand back a summary PulsePlaylist; wrap it so the
+			// header can render immediately. Initialize() then fetches the full
+			// PulsePlaylistDetails (with tracks) via GetPlaylist.
+			m_playlistDetails = new PulsePlaylistDetails();
+			m_playlistDetails.Playlist = playlist;
+			m_playlistDetails.Id = playlist.Id;
 		}
 
 		protected override void BuildLayout()
@@ -176,25 +181,25 @@ namespace Thump.Views
 		public override void Initialize()
 		{
 			base.Initialize();
-			m_titleLabel.Text = m_playlist.Name;
-			m_metaLabel.Text = m_playlist.TrackCount + " tracks";
-			m_art.SetCoverArt(m_playlist.CoverArt);
+			m_titleLabel.Text = m_playlistDetails.Playlist.Name;
+			m_metaLabel.Text = m_playlistDetails.Playlist.TrackCount + " tracks";
+			m_art.SetCoverArt(m_playlistDetails.Playlist.CoverArt);
 
 			// The playlist from the list endpoint carries no tracks; fetch the full
 			// playlist (getPlaylist) which includes its songs.
-			MainView.MediaClient.GetPlaylist(m_playlist.Id, OnPlaylistLoaded);
+			MainView.MediaClient.GetPlaylist(m_playlistDetails.Id, OnPlaylistLoaded);
 		}
 
-		private void OnPlaylistLoaded(LegacyPulsePlaylist playlist)
+		private void OnPlaylistLoaded(PulsePlaylistDetails playlistDetails)
 		{
-			if (playlist == null)
+			if (playlistDetails == null)
 			{
 				return;
 			}
-			m_playlist = playlist;
-			m_titleLabel.Text = playlist.Name;
-			m_metaLabel.Text = playlist.TrackCount + " tracks";
-			m_tracks = playlist.Tracks;
+			m_playlistDetails = playlistDetails;
+			m_titleLabel.Text = playlistDetails.Playlist.Name;
+			m_metaLabel.Text = playlistDetails.Tracks.Count + " tracks";
+			m_tracks = playlistDetails.Tracks;
 			m_trackList.ItemsSource = m_tracks;
 		}
 
@@ -205,22 +210,22 @@ namespace Thump.Views
 
 		private void OnPlayClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayTracks(m_tracks, 0, eQueueSource.Playlist, m_playlist.Id);
+			m_mainView.OnPlayTracks(m_tracks, 0, eQueueSource.Playlist, m_playlistDetails.Id);
 		}
 
 		private void OnShuffleClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayTracksShuffled(m_tracks, eQueueSource.Playlist, m_playlist.Id);
+			m_mainView.OnPlayTracksShuffled(m_tracks, eQueueSource.Playlist, m_playlistDetails.Id);
 		}
 
 		private void OnAddToQueueClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnAddToQueue(m_tracks, eQueueSource.Playlist, m_playlist.Id);
+			m_mainView.OnAddToQueue(m_tracks, eQueueSource.Playlist, m_playlistDetails.Id);
 		}
 
 		private void OnPlayNextClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayNext(m_tracks, eQueueSource.Playlist, m_playlist.Id);
+			m_mainView.OnPlayNext(m_tracks, eQueueSource.Playlist, m_playlistDetails.Id);
 		}
 	}
 }

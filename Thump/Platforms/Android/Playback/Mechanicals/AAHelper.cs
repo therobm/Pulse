@@ -2,6 +2,7 @@
 using AndroidX.Concurrent.Futures;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.Session;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 
 namespace Thump.Playback.AndroidOS
@@ -27,7 +28,7 @@ namespace Thump.Playback.AndroidOS
 			m_pageSize = pageSize;
 		}
 
-		public void OnComplete<T>(List<LegacyPulseTrack> data, eAAObject objectType, string objectId)
+		public void OnComplete<T>(List<PulseTrack> data, eAAObject objectType, string objectId)
 		{
 			List<MediaItem> items = MediaItemBuilder.BuildContainerChildren(objectType, objectId, data);
 			List<MediaItem> sliced = SlicePage(items);

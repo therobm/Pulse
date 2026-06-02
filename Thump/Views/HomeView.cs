@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 using Thump.Views.Tiles;
 
@@ -120,7 +121,7 @@ namespace Thump.Views
 			MainView.MediaClient.GetFavorites(OnFavoritesLoaded);
 		}
 
-		private void OnTopItemsLoaded(List<LegacyPulseObject> items)
+		private void OnTopItemsLoaded(List<PulseObject> items)
 		{
 			if (items == null)
 			{
@@ -142,27 +143,27 @@ namespace Thump.Views
 			}
 		}
 
-		private void OnRecentlyPlayedLoaded(List<LegacyPulseObject> items)
+		private void OnRecentlyPlayedLoaded(List<PulseObject> items)
 		{
 			m_recentlyPlayed.ItemsSource = items;
 		}
 
-		private void OnYourPlaylistsLoaded(List<LegacyPulsePlaylist> items)
+		private void OnYourPlaylistsLoaded(List<PulsePlaylist> items)
 		{
 			m_yourPlaylists.ItemsSource = items;
 		}
 
-		private void OnPopularArtistsLoaded(List<LegacyPulseArtist> items)
+		private void OnPopularArtistsLoaded(List<PulseArtist> items)
 		{
 			m_popularArtists.ItemsSource = items;
 		}
 
-		private void OnRecentlyAddedLoaded(List<LegacyPulseObject> items)
+		private void OnRecentlyAddedLoaded(List<PulseObject> items)
 		{
 			m_recentlyAdded.ItemsSource = items;
 		}
 
-		private void OnFavoritesLoaded(List<LegacyPulseTrack> tracks)
+		private void OnFavoritesLoaded(List<PulseTrack> tracks)
 		{
 			m_favorites.ItemsSource = tracks;
 		}

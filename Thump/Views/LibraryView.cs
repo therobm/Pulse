@@ -4,6 +4,7 @@ using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
 using Microsoft.Maui.Graphics;
+using PulseAPI.CSharp;
 using Thump.Pulse;
 using Thump.Views.Tiles;
 
@@ -59,10 +60,10 @@ namespace Thump.Views
 		private CollectionView m_genresList;
 		private Grid m_letterOverlay;
 
-		private List<LegacyPulseArtist> m_artists;
-		private List<LegacyPulseAlbum> m_albums;
-		private List<LegacyPulsePlaylist> m_playlists;
-		private List<LegacyPulseGenre> m_genres;
+		private List<PulseArtist> m_artists;
+		private List<PulseAlbum> m_albums;
+		private List<PulsePlaylist> m_playlists;
+		private List<PulseGenre> m_genres;
 
 		public LibraryView(MainView mainView) : base(mainView)
 		{
@@ -352,25 +353,25 @@ namespace Thump.Views
 			MainView.MediaClient.GetGenres(OnGenresLoaded);
 		}
 
-		private void OnArtistsLoaded(List<LegacyPulseArtist> artists)
+		private void OnArtistsLoaded(List<PulseArtist> artists)
 		{
 			m_artists = artists;
 			BindArtists();
 		}
 
-		private void OnAlbumsLoaded(List<LegacyPulseAlbum> albums)
+		private void OnAlbumsLoaded(List<PulseAlbum> albums)
 		{
 			m_albums = albums;
 			BindAlbums();
 		}
 
-		private void OnPlaylistsLoaded(List<LegacyPulsePlaylist> playlists)
+		private void OnPlaylistsLoaded(List<PulsePlaylist> playlists)
 		{
 			m_playlists = playlists;
 			BindPlaylists();
 		}
 
-		private void OnGenresLoaded(List<LegacyPulseGenre> genres)
+		private void OnGenresLoaded(List<PulseGenre> genres)
 		{
 			m_genres = genres;
 			BindGenres();
@@ -383,7 +384,7 @@ namespace Thump.Views
 				return;
 			}
 			m_artists.Sort(CompareArtistByName);
-			m_artistsList.ItemsSource = new List<LegacyPulseArtist>(m_artists);
+			m_artistsList.ItemsSource = new List<PulseArtist>(m_artists);
 		}
 
 		private void BindAlbums()
@@ -400,7 +401,7 @@ namespace Thump.Views
 			{
 				m_albums.Sort(CompareAlbumByName);
 			}
-			m_albumsList.ItemsSource = new List<LegacyPulseAlbum>(m_albums);
+			m_albumsList.ItemsSource = new List<PulseAlbum>(m_albums);
 		}
 
 		private void BindPlaylists()
@@ -410,7 +411,7 @@ namespace Thump.Views
 				return;
 			}
 			m_playlists.Sort(ComparePlaylistByName);
-			m_playlistsList.ItemsSource = new List<LegacyPulsePlaylist>(m_playlists);
+			m_playlistsList.ItemsSource = new List<PulsePlaylist>(m_playlists);
 		}
 
 		private void BindGenres()
@@ -420,20 +421,20 @@ namespace Thump.Views
 				return;
 			}
 			m_genres.Sort(CompareGenreByName);
-			m_genresList.ItemsSource = new List<LegacyPulseGenre>(m_genres);
+			m_genresList.ItemsSource = new List<PulseGenre>(m_genres);
 		}
 
-		private static int CompareArtistByName(LegacyPulseArtist first, LegacyPulseArtist second)
+		private static int CompareArtistByName(PulseArtist first, PulseArtist second)
 		{
 			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}
 
-		private static int CompareAlbumByName(LegacyPulseAlbum first, LegacyPulseAlbum second)
+		private static int CompareAlbumByName(PulseAlbum first, PulseAlbum second)
 		{
 			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}
 
-		private static int CompareAlbumByYear(LegacyPulseAlbum first, LegacyPulseAlbum second)
+		private static int CompareAlbumByYear(PulseAlbum first, PulseAlbum second)
 		{
 			if (first.Year != second.Year)
 			{
@@ -442,12 +443,12 @@ namespace Thump.Views
 			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}
 
-		private static int ComparePlaylistByName(LegacyPulsePlaylist first, LegacyPulsePlaylist second)
+		private static int ComparePlaylistByName(PulsePlaylist first, PulsePlaylist second)
 		{
 			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}
 
-		private static int CompareGenreByName(LegacyPulseGenre first, LegacyPulseGenre second)
+		private static int CompareGenreByName(PulseGenre first, PulseGenre second)
 		{
 			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}

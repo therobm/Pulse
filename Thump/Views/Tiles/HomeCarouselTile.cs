@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
+using PulseAPI.CSharp;
 using Thump.Data;
 using Thump.Pulse;
 using Thump.Views;
@@ -12,7 +13,7 @@ namespace Thump.Views.Tiles
 		private ArtImage m_art;
 		private Label m_titleLabel;
 		private Label m_subtitleLabel;
-		private MediaDataObject m_item;
+		private PulseObject m_item;
 
 		public HomeCarouselTile() : base(MainView.Self)
 		{
@@ -78,7 +79,7 @@ namespace Thump.Views.Tiles
 		protected override void OnBindingContextChanged()
 		{
 			base.OnBindingContextChanged();
-			MediaDataObject item = BindingContext as MediaDataObject;
+			PulseObject item = BindingContext as PulseObject;
 			if (item == null)
 			{
 				return;
@@ -87,18 +88,18 @@ namespace Thump.Views.Tiles
 
 			if (item.Kind == eDataType.Track)
 			{
-				LegacyPulseTrack song = item as LegacyPulseTrack;
-				if (song != null)
+				PulseTrack track = item as PulseTrack;
+				if (track != null)
 				{
 					m_art.SetShape(eArtShape.RoundedRect);
-					m_titleLabel.Text = song.Title;
-					m_subtitleLabel.Text = song.Artist;
-					m_art.SetCoverArt(song.ImageID);
+					m_titleLabel.Text = track.Title;
+					m_subtitleLabel.Text = track.Artist;
+					m_art.SetCoverArt(track.CoverArt);
 				}
 			}
 			else if (item.Kind == eDataType.Album)
 			{
-				LegacyPulseAlbum album = item as LegacyPulseAlbum;
+				PulseAlbum album = item as PulseAlbum;
 				if (album != null)
 				{
 					m_art.SetShape(eArtShape.RoundedRect);
@@ -109,7 +110,7 @@ namespace Thump.Views.Tiles
 			}
 			else if (item.Kind == eDataType.Playlist)
 			{
-				LegacyPulsePlaylist playlist = item as LegacyPulsePlaylist;
+				PulsePlaylist playlist = item as PulsePlaylist;
 				if (playlist != null)
 				{
 					m_art.SetShape(eArtShape.RoundedRect);
@@ -120,7 +121,7 @@ namespace Thump.Views.Tiles
 			}
 			else if (item.Kind == eDataType.Artist)
 			{
-				LegacyPulseArtist artist = item as LegacyPulseArtist;
+				PulseArtist artist = item as PulseArtist;
 				if (artist != null)
 				{
 					m_art.SetShape(eArtShape.Circle);
