@@ -216,10 +216,9 @@ namespace Thump.Playback.AndroidOS
 		}
 
 		//Flattens a PulseSearchData into a single MediaItem list ordered
-		//tracks -> albums -> artists -> playlists. Tracks lead because the
-		//most common AA voice query ("Play <song>") expects the top result
-		//to be playable so AA can auto-play it; broader browseables follow
-		//for "Play <album>" / "<artist>" / "<playlist>" intents.
+		//playlists -> artists -> albums -> tracks. Same order as the
+		//in-app SearchView so a user gets a consistent ranking across
+		//phone and car.
 		public static List<MediaItem> BuildSearchItems(PulseSearchData results)
 		{
 			List<MediaItem> items = new List<MediaItem>();
@@ -227,20 +226,12 @@ namespace Thump.Playback.AndroidOS
 			{
 				return items;
 			}
-			if (results.Tracks != null)
+			if (results.Playlists != null)
 			{
-				for (int idx = 0; idx < results.Tracks.Count; idx++)
+				for (int idx = 0; idx < results.Playlists.Count; idx++)
 				{
-					PulseTrack track = results.Tracks[idx];
-					items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.ImageID));
-				}
-			}
-			if (results.Albums != null)
-			{
-				for (int idx = 0; idx < results.Albums.Count; idx++)
-				{
-					PulseAlbum album = results.Albums[idx];
-					items.Add(BuildAlbumItem("album/" + album.Id, album.Name, album.Artist, album.CoverArt));
+					PulsePlaylist playlist = results.Playlists[idx];
+					items.Add(BuildBrowsableItem("playlist/" + playlist.Id, playlist.Name, playlist.CoverArt));
 				}
 			}
 			if (results.Artists != null)
@@ -251,12 +242,20 @@ namespace Thump.Playback.AndroidOS
 					items.Add(BuildBrowsableItem("artist/" + artist.Id, artist.Name, artist.CoverArt));
 				}
 			}
-			if (results.Playlists != null)
+			if (results.Albums != null)
 			{
-				for (int idx = 0; idx < results.Playlists.Count; idx++)
+				for (int idx = 0; idx < results.Albums.Count; idx++)
 				{
-					PulsePlaylist playlist = results.Playlists[idx];
-					items.Add(BuildBrowsableItem("playlist/" + playlist.Id, playlist.Name, playlist.CoverArt));
+					PulseAlbum album = results.Albums[idx];
+					items.Add(BuildAlbumItem("album/" + album.Id, album.Name, album.Artist, album.CoverArt));
+				}
+			}
+			if (results.Tracks != null)
+			{
+				for (int idx = 0; idx < results.Tracks.Count; idx++)
+				{
+					PulseTrack track = results.Tracks[idx];
+					items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.ImageID));
 				}
 			}
 			return items;
