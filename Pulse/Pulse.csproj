@@ -44,6 +44,12 @@
 			<Link>Content\%(RecursiveDir)%(Filename)%(Extension)</Link>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+		<!-- Canonical pulse_v1 JS client lives in the PulseAPI submodule; serve it
+		     from Content/Web next to pulse.html without duplicating the file. -->
+		<None Include="..\PulseAPI\PulseAPI\JS\pulse-api.js">
+			<Link>Content\Web\pulse-api.js</Link>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 	</ItemGroup>
 	<ItemGroup>
 	  <Folder Include="Content\Media\" />

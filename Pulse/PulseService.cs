@@ -17,7 +17,8 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Threading;
-using Pulse.Protocols.Pulse;
+using Pulse.Protocols.LegacyPulse;
+using Pulse.Protocols.PulseAPI;
 
 namespace Pulse
 {
@@ -73,7 +74,8 @@ namespace Pulse
 		static PulseConfig m_config;
 		static MusicManager s_musicManager;
 		private Subsonic m_subsonic;
-		private Pulse.Protocols.Pulse.PulseAPI m_pulseAPI;
+		private PulseEndpoints m_pulseEndpoints;
+		private Pulse.Protocols.LegacyPulse.LegacyPulseAPI m_legacyPulse;
 		private MusicManager m_musicManager;
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 		private object m_spotifySyncsLock = new object();
@@ -95,9 +97,10 @@ namespace Pulse
 			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
 
-			m_pulseAPI = new global::Pulse.Protocols.Pulse.PulseAPI(this, m_musicManager);
-			m_subsonic = new Subsonic(m_pulseAPI);
-			
+
+			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager);
+			m_legacyPulse = new global::Pulse.Protocols.LegacyPulse.LegacyPulseAPI(this, m_musicManager);
+			m_subsonic = new Subsonic(m_legacyPulse);
 
 			RegisterRoutes(webServer);
 			SyncSpotify();
@@ -107,6 +110,8 @@ namespace Pulse
 	
 		private void RegisterRoutes(IPulseRouteHost host)
 		{
+			m_pulseEndpoints.RegisterRoutes(host);
+
 			host.RegisterResultRoute("rest/ping.view", m_subsonic.HandlePing);
 			host.RegisterResultRoute("rest/ping", m_subsonic.HandlePing);
 			host.RegisterResultRoute("rest/getLicense.view", m_subsonic.HandleGetLicense);
@@ -202,47 +207,47 @@ namespace Pulse
 			host.RegisterResultRoute("rest/deletePlaylist", m_subsonic.HandleDeletePlaylist);
 
 			//Pulse API
-			host.RegisterResultRoute("pulse/recentlyPlayed", m_pulseAPI.HandleRecentlyPlayed);
-			host.RegisterResultRoute("pulse/popularArtists", m_pulseAPI.HandlePopularArtists);
-			host.RegisterResultRoute("pulse/topPlaylists", m_pulseAPI.GetTopPlaylists);
-			host.RegisterResultRoute("pulse/recentPlaylists", m_pulseAPI.GetRecentPlaylists);
-			host.RegisterResultRoute("pulse/artistTracks", m_pulseAPI.HandleArtistTracks);
-			host.RegisterResultRoute("pulse/markPlaylistPlayed", m_pulseAPI.HandleMarkPlaylistPlayed);
+			host.RegisterResultRoute("pulse/recentlyPlayed", m_legacyPulse.HandleRecentlyPlayed);
+			host.RegisterResultRoute("pulse/popularArtists", m_legacyPulse.HandlePopularArtists);
+			host.RegisterResultRoute("pulse/topPlaylists", m_legacyPulse.GetTopPlaylists);
+			host.RegisterResultRoute("pulse/recentPlaylists", m_legacyPulse.GetRecentPlaylists);
+			host.RegisterResultRoute("pulse/artistTracks", m_legacyPulse.HandleArtistTracks);
+			host.RegisterResultRoute("pulse/markPlaylistPlayed", m_legacyPulse.HandleMarkPlaylistPlayed);
 
-			host.RegisterResultRoute("pulse/ping", m_pulseAPI.Ping);
-			host.RegisterResultRoute("pulse/me", m_pulseAPI.GetUser);
-			host.RegisterResultRoute("pulse/stream", m_pulseAPI.GetStream);
-			host.RegisterResultRoute("pulse/download", m_pulseAPI.GetDownload);
-			host.RegisterResultRoute("pulse/coverArt", m_pulseAPI.GetCoverArt);
-			host.RegisterResultRoute("pulse/search", m_pulseAPI.Search);
-			host.RegisterResultRoute("pulse/track", m_pulseAPI.GetTrack);
-			host.RegisterResultRoute("pulse/topTracks", m_pulseAPI.GetTopTracks);
-			host.RegisterResultRoute("pulse/artists", m_pulseAPI.GetArtists);
-			host.RegisterResultRoute("pulse/artist", m_pulseAPI.GetArtist);
-			host.RegisterResultRoute("pulse/albums", m_pulseAPI.GetAlbums);
-			host.RegisterResultRoute("pulse/album", m_pulseAPI.GetAlbum);
-			host.RegisterResultRoute("pulse/genres", m_pulseAPI.GetGenres);
-			host.RegisterResultRoute("pulse/genreTracks", m_pulseAPI.GetGenreTracks);
-			host.RegisterResultRoute("pulse/favorites", m_pulseAPI.GetFavorites);
-			host.RegisterResultRoute("pulse/favorite", m_pulseAPI.Favorite);
-			host.RegisterResultRoute("pulse/unfavorite", m_pulseAPI.Unfavorite);
-			host.RegisterResultRoute("pulse/reportTrackAnalytics", m_pulseAPI.ReportTrackAnalytics);
-			host.RegisterResultRoute("pulse/playlists", m_pulseAPI.GetPlaylists);
-			host.RegisterResultRoute("pulse/playlist", m_pulseAPI.GetPlaylist);
-			host.RegisterResultRoute("pulse/createPlaylist", m_pulseAPI.CreatePlaylist);
-			host.RegisterResultRoute("pulse/updatePlaylist", m_pulseAPI.UpdatePlaylist);
-			host.RegisterResultRoute("pulse/deletePlaylist", m_pulseAPI.DeletePlaylist);
-			host.RegisterResultRoute("pulse/podcasts", m_pulseAPI.GetPodcasts);
+			host.RegisterResultRoute("pulse/ping", m_legacyPulse.Ping);
+			host.RegisterResultRoute("pulse/me", m_legacyPulse.GetUser);
+			host.RegisterResultRoute("pulse/stream", m_legacyPulse.GetStream);
+			host.RegisterResultRoute("pulse/download", m_legacyPulse.GetDownload);
+			host.RegisterResultRoute("pulse/coverArt", m_legacyPulse.GetCoverArt);
+			host.RegisterResultRoute("pulse/search", m_legacyPulse.Search);
+			host.RegisterResultRoute("pulse/track", m_legacyPulse.GetTrack);
+			host.RegisterResultRoute("pulse/topTracks", m_legacyPulse.GetTopTracks);
+			host.RegisterResultRoute("pulse/artists", m_legacyPulse.GetArtists);
+			host.RegisterResultRoute("pulse/artist", m_legacyPulse.GetArtist);
+			host.RegisterResultRoute("pulse/albums", m_legacyPulse.GetAlbums);
+			host.RegisterResultRoute("pulse/album", m_legacyPulse.GetAlbum);
+			host.RegisterResultRoute("pulse/genres", m_legacyPulse.GetGenres);
+			host.RegisterResultRoute("pulse/genreTracks", m_legacyPulse.GetGenreTracks);
+			host.RegisterResultRoute("pulse/favorites", m_legacyPulse.GetFavorites);
+			host.RegisterResultRoute("pulse/favorite", m_legacyPulse.Favorite);
+			host.RegisterResultRoute("pulse/unfavorite", m_legacyPulse.Unfavorite);
+			host.RegisterResultRoute("pulse/reportTrackAnalytics", m_legacyPulse.ReportTrackAnalytics);
+			host.RegisterResultRoute("pulse/playlists", m_legacyPulse.GetPlaylists);
+			host.RegisterResultRoute("pulse/playlist", m_legacyPulse.GetPlaylist);
+			host.RegisterResultRoute("pulse/createPlaylist", m_legacyPulse.CreatePlaylist);
+			host.RegisterResultRoute("pulse/updatePlaylist", m_legacyPulse.UpdatePlaylist);
+			host.RegisterResultRoute("pulse/deletePlaylist", m_legacyPulse.DeletePlaylist);
+			host.RegisterResultRoute("pulse/podcasts", m_legacyPulse.GetPodcasts);
 			
 			host.RegisterResultRoute("pulse/stats", HandleStats);
 			host.RegisterRoute("web/stats.html", HandleStatsPage);
 
 			host.RegisterResultRoute("pulse/version", HandleVersion);
 
-			host.RegisterResultRoute("pulse/listUsers", m_pulseAPI.HandleListUsers);
-			host.RegisterResultRoute("pulse/createUser", m_pulseAPI.HandleCreateUser);
-			host.RegisterResultRoute("pulse/updateUser", m_pulseAPI.HandleUpdateUser);
-			host.RegisterResultRoute("pulse/deleteUser", m_pulseAPI.HandleDeleteUser);
+			host.RegisterResultRoute("pulse/listUsers", m_legacyPulse.HandleListUsers);
+			host.RegisterResultRoute("pulse/createUser", m_legacyPulse.HandleCreateUser);
+			host.RegisterResultRoute("pulse/updateUser", m_legacyPulse.HandleUpdateUser);
+			host.RegisterResultRoute("pulse/deleteUser", m_legacyPulse.HandleDeleteUser);
 			host.RegisterRoute("web/settings.html", HandleSettingsPage);
 
 
