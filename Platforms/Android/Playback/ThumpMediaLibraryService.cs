@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -15,6 +16,7 @@ using AndroidX.Media3.Extractor;
 using AndroidX.Media3.Extractor.Mp3;
 using AndroidX.Media3.Session;
 using Google.Common.Util.Concurrent;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Storage;
 using Thump.Data;
 using Thump.Pulse;
@@ -56,6 +58,19 @@ namespace Thump.Playback.AndroidOS
 		// string it gave us.
 		private System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>> m_searchResults = new System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>>();
 
+		// Tracks the currently-playing trackId so we can fire ReportTrackAnalytics
+		// for the OUTGOING track when ExoPlayer transitions to a new item or
+		// hits STATE_ENDED. Cleared after we report so a steady STATE_ENDED
+		// (which sticks for as many ticks as the user leaves it sitting) can't
+		// re-fire the same trackId.
+		private string m_lastReportedTrackId;
+
+		// Polled at this interval against m_player to detect track transitions
+		// and queue-end. ExoPlayer's playback state is the source of truth.
+		private const double s_analyticsTickIntervalMs = 500;
+		private System.Timers.Timer m_analyticsTicker;
+		private const int s_playbackStateEnded = 4;
+
 		public override void OnCreate()
 		{
 			base.OnCreate();
@@ -83,6 +98,23 @@ namespace Thump.Playback.AndroidOS
 			builder.SetMediaSourceFactory(mediaSourceFactory);
 
 			m_player = builder.Build();
+
+			//Authoritative track-analytics fire point. ExoPlayer drives the
+			//actual playback regardless of who started the queue (in-app MAUI
+			//via the MediaController, or Android Auto via its own browser),
+			//so polling its state from a single timer here catches every
+			//transition exactly once. The in-app ThumpAndroidPlayer used to
+			//fire its own ReportTrackAnalytics from a ticker but that
+			//double-counted with this one and missed the AA-only case where
+			//the MAUI app never opens - so it's gone, this is the single
+			//source of truth. Polling instead of a Player.Listener because
+			//the Xamarin binding doesn't expose Listener callbacks as C#
+			//events on IExoPlayer and implementing IPlayerListener requires
+			//stubbing all 38 methods.
+			m_analyticsTicker = new System.Timers.Timer(s_analyticsTickIntervalMs);
+			m_analyticsTicker.AutoReset = true;
+			m_analyticsTicker.Elapsed += OnAnalyticsTick;
+			m_analyticsTicker.Start();
 
 			AndroidMediaLibraryCallback library = new AndroidMediaLibraryCallback();
 			library.m_onAddMediaItems = null;
@@ -184,6 +216,54 @@ namespace Thump.Playback.AndroidOS
 				string mediaId = AAutoHelper.ParseValue(parentId);
 				AAutoHelper.LoadObjectFunc loadObject = new AAutoHelper.LoadObjectFunc(this, aaObject, mediaId, page, pageSize);
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadObject);
+			}
+		}
+
+		// Timer fires on a thread-pool thread; ExoPlayer requires its API to
+		// be called on the application's main thread, so bounce there before
+		// reading state.
+		private void OnAnalyticsTick(object sender, ElapsedEventArgs e)
+		{
+			MainThread.BeginInvokeOnMainThread(AnalyticsTickMainThread);
+		}
+
+		// Compares ExoPlayer's current MediaItem to the last one we saw and
+		// fires ReportTrackAnalytics for the outgoing track on any change.
+		// Auto-advance, next/prev/seek, and queue replacement all show up as
+		// "current MediaItem changed." Queue end shows up as STATE_ENDED with
+		// the last item still sitting as current, so we handle that branch
+		// separately and clear m_lastReportedTrackId to keep subsequent ticks
+		// from re-firing. Pausing/resuming changes neither, so it doesn't
+		// trigger - which matches the directive that pausing isn't a play.
+		private void AnalyticsTickMainThread()
+		{
+			if (m_player == null)
+			{
+				return;
+			}
+			MediaItem currentItem = m_player.CurrentMediaItem;
+			string current = null;
+			if (currentItem != null)
+			{
+				current = currentItem.MediaId;
+			}
+			if (current != m_lastReportedTrackId)
+			{
+				if (!string.IsNullOrEmpty(m_lastReportedTrackId))
+				{
+					s_mediaClient.ReportTrackAnalytics(m_lastReportedTrackId);
+				}
+				m_lastReportedTrackId = current;
+				return;
+			}
+			if (m_player.PlaybackState == s_playbackStateEnded)
+			{
+				if (!string.IsNullOrEmpty(m_lastReportedTrackId))
+				{
+					string previous = m_lastReportedTrackId;
+					m_lastReportedTrackId = null;
+					s_mediaClient.ReportTrackAnalytics(previous);
+				}
 			}
 		}
 

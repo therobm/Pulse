@@ -32,7 +32,7 @@ Standard auth and standard endpoint behavior. The full list of endpoints used:
 
 **Favorites:** getStarred2, star, unstar, setRating
 
-**Playback:** stream, getCoverArt, scrobble
+**Playback:** stream, getCoverArt
 
 ### Pulse extensions (optional)
 
@@ -87,7 +87,7 @@ Browse tree: Home, Playlists, Artists, Albums, Recently Played. Android Auto ren
 ## Playback
 
 - Gapless playback
-- Scrobble to the server on play and completion
+- Report track plays / skips to the server (Pulse `reportTrackAnalytics`) on finish or skip
 - Volume normalization if the audio files have the tags for it (ReplayGain)
 - Queue survives app restarts
 - Resume last track, position, and queue on restart
@@ -99,7 +99,6 @@ Browse tree: Home, Playlists, Artists, Albums, Recently Played. Android Auto ren
 - Prefetch limit — how many upcoming tracks to pre-download during playback (default 10)
 - Audio cache size (default 500 MB, 100 MB – 5 GB)
 - Clear cache
-- Scrobble on/off
 - Normalize volume — off / per track / per album
 
 ## Not included

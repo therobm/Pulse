@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Thump.Data;
 
 namespace Thump.Pulse
@@ -23,6 +24,39 @@ namespace Thump.Pulse
 		public override void SetServerParams(string ip, string port, string username, string password, MediaClient.eAuthType authType, bool enableSSL)
 		{
 			m_subsonic.SetServerParams(ip, port, username, password, authType, enableSSL);
+			base.SetServerParams(ip, port, username, password, authType, enableSSL);
+		}
+
+		//Pulse-native connection probe. Hits /pulse/ping?u=<user> directly so
+		//PulseAPI has its own m_bIsOnline signal instead of borrowing
+		//m_subsonic's. Endpoint returns a plain JSON object (no subsonic-response
+		//envelope) - the body shape doesn't matter to us, only that the GET
+		//succeeded.
+		protected override bool Ping(out JsonElement response)
+		{
+			response = default;
+			try
+			{
+				string url = m_baseUrl + "/pulse/ping?u=" + Uri.EscapeDataString(m_user);
+				string json = HttpGet(url, false);
+				if (string.IsNullOrEmpty(json))
+				{
+					m_bIsOnline = false;
+					return false;
+				}
+				JsonDocument doc = JsonDocument.Parse(json);
+				response = doc.RootElement;
+				m_bIsOnline = true;
+				return true;
+			}
+			catch (Exception ex)
+			{
+				//Don't log ping failures - this is online/offline polling and
+				//noisy logs while disconnected aren't useful.
+				Log.Exception(ex);
+			}
+			m_bIsOnline = false;
+			return false;
 		}
 
 		public override void GetTrack(string trackId, Action<PulseTrack> onComplete)
@@ -182,6 +216,29 @@ namespace Thump.Pulse
 			m_subsonic.GetFavorites(onComplete);
 		}
 
-	
+		
+		public override void ReportTrackAnalytics(string trackId)
+		{
+			if (string.IsNullOrEmpty(trackId))
+			{
+				return;
+			}
+			if (!IsOnline())
+			{
+				return;
+			}
+			Task.Run(() =>
+			{
+				try
+				{
+					string url = m_baseUrl + "/pulse/reportTrackAnalytics?id=" + Uri.EscapeDataString(trackId) + "&u=" + Uri.EscapeDataString(m_user);
+					HttpGet(url, false);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+			});
+		}
 	}
 }

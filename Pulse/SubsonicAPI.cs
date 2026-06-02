@@ -586,6 +586,7 @@ namespace Thump.Pulse
 			});
 		}
 
+
 		public override void Star(string trackId, Action<bool> onComplete)
 		{
 			if (!IsOnline())

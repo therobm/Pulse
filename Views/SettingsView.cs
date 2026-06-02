@@ -18,7 +18,6 @@ namespace Thump.Views
 		private static readonly Color s_successColor = Color.FromArgb("#3ddc84");
 		private static readonly Color s_failColor = Color.FromArgb("#ef4444");
 
-		private Switch m_scrobbleSwitch;
 		private Button m_normalizeOff;
 		private Button m_normalizePerTrack;
 		private Button m_normalizePerAlbum;
@@ -130,22 +129,6 @@ namespace Thump.Views
 			VerticalStackLayout section = new VerticalStackLayout();
 			section.Spacing = 12;
 			section.Children.Add(BuildSectionHeader("Playback"));
-
-			HorizontalStackLayout scrobbleRow = new HorizontalStackLayout();
-			scrobbleRow.Spacing = 12;
-
-			Label scrobbleLabel = new Label();
-			scrobbleLabel.Text = "Enable Scrobble";
-			scrobbleLabel.TextColor = ThumpColors.OnBackground;
-			scrobbleLabel.FontSize = 15;
-			scrobbleLabel.VerticalOptions = LayoutOptions.Center;
-			scrobbleRow.Children.Add(scrobbleLabel);
-
-			m_scrobbleSwitch = new Switch();
-			m_scrobbleSwitch.IsToggled = true;
-			m_scrobbleSwitch.Toggled += OnScrobbleToggled;
-			scrobbleRow.Children.Add(m_scrobbleSwitch);
-			section.Children.Add(scrobbleRow);
 
 			section.Children.Add(BuildFieldLabel("Normalize Volume"));
 
@@ -339,7 +322,6 @@ namespace Thump.Views
 		{
 			base.Initialize();
 
-			m_scrobbleSwitch.IsToggled = ThumpSettings.GetScrobbleEnabled();
 			SetNormalize(ThumpSettings.GetNormalizeVolume());
 
 			int prefetch = ThumpSettings.GetPrefetchCount();
@@ -366,11 +348,6 @@ namespace Thump.Views
 		public void OnNavigatedTo()
 		{
 			RefreshCacheStats();
-		}
-
-		private void OnScrobbleToggled(object sender, ToggledEventArgs e)
-		{
-			ThumpSettings.SetScrobbleEnabled(e.Value);
 		}
 
 		private void OnNormalizeOffClicked(object sender, EventArgs e)
