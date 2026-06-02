@@ -8,9 +8,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace Pulse.Protocols.Pulse
+namespace Pulse.Protocols.LegacyPulse
 {
-	public partial class PulseAPI
+	public partial class LegacyPulseAPI
 	{
 		MusicManager m_musicManager;
 		PulseService m_pulseService;
@@ -20,7 +20,7 @@ namespace Pulse.Protocols.Pulse
 
 
 
-		public PulseAPI(PulseService pulse, MusicManager musicManager)
+		public LegacyPulseAPI(PulseService pulse, MusicManager musicManager)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;

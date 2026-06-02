@@ -1702,20 +1702,41 @@
 			<button class="btn-danger" id="confirm-ok-btn">Delete</button>
 		</div>
 	</div>
+	<script src="/web/pulse-api.js"></script>
 	<script>
 		let API_USER = 'Rob';
-		let API_PARAMS = 'u=' + API_USER + '&p=enc:&v=1.13.0&c=PulseWeb&f=json';
-		function apiUrl(ep, ex) { let url = '/rest/' + ep + '?' + API_PARAMS; if (ex) { url = url + '&' + ex; } return url; }
-		function apiGet(ep, ex, cb) { let xhr = new XMLHttpRequest(); xhr.open('GET', apiUrl(ep, ex)); xhr.onload = function () { if (xhr.status === 200) { let data = JSON.parse(xhr.responseText); let resp = data['subsonic-response']; if (resp && resp.status === 'ok') { cb(resp); } else { console.error('API error:', ep, resp); } } else { console.error('HTTP error:', ep, xhr.status); } }; xhr.send(); }
-		function apiGetWithError(ep, ex, cb, errCb) { let xhr = new XMLHttpRequest(); xhr.open('GET', apiUrl(ep, ex)); xhr.onload = function () { if (xhr.status === 200) { let data = JSON.parse(xhr.responseText); let resp = data['subsonic-response']; if (resp && resp.status === 'ok') { cb(resp); } else { let msg = (resp && resp.error && resp.error.message) ? resp.error.message : 'Request failed'; if (errCb) { errCb(msg); } else { console.error('API error:', ep, resp); } } } else { if (errCb) { errCb('HTTP ' + xhr.status); } else { console.error('HTTP error:', ep, xhr.status); } } }; xhr.send(); }
-		function pulseGet(ep, cb) { let xhr = new XMLHttpRequest(); xhr.open('GET', '/pulse/' + ep); xhr.onload = function () { if (xhr.status === 200) { cb(JSON.parse(xhr.responseText)); } }; xhr.send(); }
-		function coverArtUrl(artId, size) {
-			if (!artId) { return ''; }
-			let sizeParam = '';
-			if (size) { sizeParam = '&size=' + size; }
-			return apiUrl('getCoverArt', 'id=' + encodeURIComponent(artId) + sizeParam);
+		let pulse = PulseAPI.create({ user: API_USER, client: 'PulseWeb' });
+
+		/* The pulse_v1 contract is the wire ("object is the wire"): fields are
+		   PascalCase. These adapters map contract objects onto the lowercase shape
+		   the render/playback code consumes, so only the data layer changed. */
+		function normalizeLastPlayed(raw) { if (!raw) { return ''; } if (raw.indexOf('0001-') === 0) { return ''; } return raw; }
+		function adaptTrack(track) {
+			if (!track) { return null; }
+			return { id: track.Id, title: track.Title, artist: track.Artist, artistId: track.ArtistId, album: track.Album, albumId: track.AlbumId, coverArt: track.CoverArt || track.AlbumId || null, duration: track.Duration, starred: track.Starred };
 		}
-		function streamUrl(trackId) { return apiUrl('stream', 'id=' + encodeURIComponent(trackId)); }
+		function adaptTracks(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptTrack(list[idx])); } } return out; }
+		function adaptAlbum(album) {
+			if (!album) { return null; }
+			return { id: album.Id, name: album.Name, artist: album.Artist, artistId: album.ArtistId, coverArt: album.CoverArt || null, year: album.Year, trackCount: album.TrackCount, duration: album.Duration };
+		}
+		function adaptAlbums(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptAlbum(list[idx])); } } return out; }
+		function adaptArtist(artist) {
+			if (!artist) { return null; }
+			return { id: artist.Id, name: artist.Name, coverArt: artist.CoverArt || null, albumCount: artist.AlbumCount, trackCount: artist.TrackCount, score: artist.Score, lastPlayed: normalizeLastPlayed(artist.LastPlayed) };
+		}
+		function adaptArtists(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptArtist(list[idx])); } } return out; }
+		function adaptPlaylist(playlist) {
+			if (!playlist) { return null; }
+			return { id: playlist.Id, name: playlist.Name, coverArt: playlist.CoverArt || null, songCount: playlist.TrackCount, duration: playlist.Duration, comment: playlist.Comment || '', score: playlist.Score, lastPlayed: normalizeLastPlayed(playlist.LastPlayed) };
+		}
+		function adaptPlaylists(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptPlaylist(list[idx])); } } return out; }
+		/* Map an envelope status code onto a user-facing message. */
+		function apiErrorMessage(err) { let status = (err && err.status) || ''; if (status === 'name_taken') { return 'A playlist with that name already exists.'; } if (status === 'missing_name') { return 'Please enter a name.'; } return 'Request failed'; }
+		function logApiError(label, err) { console.error(label, (err && err.status) || err); }
+
+		function coverArtUrl(artId, size) { return pulse.coverArtUrl(artId, size); }
+		function streamUrl(trackId) { return pulse.streamUrl(trackId); }
 
 		let currentView = 'home'; let navStack = []; let searchTimeout = null;
 		let cachedArtists = null; let cachedPlaylists = null;
@@ -1808,8 +1829,8 @@
 		function switchLeftTab(tab) { leftTab = tab; let tabs = document.querySelectorAll('.left-tab'); for (let idx = 0; idx < tabs.length; idx++) { tabs[idx].classList.remove('active'); if ((tab === 'playlists' && idx === 0) || (tab === 'artists' && idx === 1)) { tabs[idx].classList.add('active'); } } document.getElementById('left-new-playlist-bar').style.display = (tab === 'playlists') ? 'flex' : 'none'; if (tab !== 'playlists') { hideNewPlaylistForm(); } renderLeftList(); }
 		function setLeftSort(sort) { leftSort = sort; let btns = document.querySelectorAll('.sort-btn'); for (let idx = 0; idx < btns.length; idx++) { btns[idx].classList.remove('active'); if (btns[idx].getAttribute('data-sort') === sort) { btns[idx].classList.add('active'); } } renderLeftList(); }
 		function renderLeftList() { let container = document.getElementById('left-list'); container.innerHTML = ''; if (leftTab === 'playlists') { renderLeftPlaylists(container); } else { renderLeftArtists(container); } }
-		function renderLeftPlaylists(container) { if (!cachedPlaylists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; apiGet('getPlaylists', null, function (resp) { cachedPlaylists = resp.playlists.playlist || []; pulseGet('topPlaylists?count=100000&u=' + API_USER + '&api=1', function (td) { let meta = {}; let tlist = (td.item && td.item.Playlists) || []; for (let tidx = 0; tidx < tlist.length; tidx++) { meta[tlist[tidx].Id] = tlist[tidx]; } for (let pidx = 0; pidx < cachedPlaylists.length; pidx++) { let m = meta[cachedPlaylists[pidx].id]; cachedPlaylists[pidx].score = 0; cachedPlaylists[pidx].lastPlayed = extractPlaylistLastPlayed(m, API_USER); } renderLeftPlaylists(container); }); }); return; } let sorted = cachedPlaylists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); } else if (leftSort === 'recent') { sorted.sort(function (left, right) { return (right.lastPlayed || '').localeCompare(left.lastPlayed || ''); }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let playlist = sorted[idx]; let item = document.createElement('div'); item.className = 'left-item'; item.onclick = (function (pid) { return function () { navStack = []; openPlaylist(pid); }; })(playlist.id); item.innerHTML = '<div class="left-item-art">' + artHtml(playlist.coverArt, 80) + '</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(playlist.name) + '</div><div class="left-item-sub">' + playlist.songCount + ' tracks</div></div>'; container.appendChild(item); } }
-		function renderLeftArtists(container) { if (!cachedArtists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; apiGet('getArtists', null, function (resp) { cachedArtists = []; let indexes = resp.artists.index; for (let idx = 0; idx < indexes.length; idx++) { let list = indexes[idx].artist; for (let aidx = 0; aidx < list.length; aidx++) { cachedArtists.push(list[aidx]); } } pulseGet('popularArtists?count=100000&u=' + API_USER, function (sd) { let meta = {}; let scoredList = sd.artists || []; for (let sidx = 0; sidx < scoredList.length; sidx++) { meta[scoredList[sidx].id] = scoredList[sidx]; } for (let aidx = 0; aidx < cachedArtists.length; aidx++) { let m = meta[cachedArtists[aidx].id]; cachedArtists[aidx].score = (m && m.score) || 0; cachedArtists[aidx].lastPlayed = (m && m.lastPlayed) || ''; } renderLeftArtists(container); }); }); return; } let sorted = cachedArtists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); } else if (leftSort === 'recent') { sorted.sort(function (left, right) { return (right.lastPlayed || '').localeCompare(left.lastPlayed || ''); }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let artist = sorted[idx]; let avatarHtml;
+		function renderLeftPlaylists(container) { if (!cachedPlaylists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; pulse.playlists().then(function (list) { cachedPlaylists = adaptPlaylists(list); renderLeftPlaylists(container); }).catch(function (err) { logApiError('playlists', err); container.innerHTML = '<div class="loading-text">Failed to load</div>'; }); return; } let sorted = cachedPlaylists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); } else if (leftSort === 'recent') { sorted.sort(function (left, right) { return (right.lastPlayed || '').localeCompare(left.lastPlayed || ''); }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let playlist = sorted[idx]; let item = document.createElement('div'); item.className = 'left-item'; item.onclick = (function (pid) { return function () { navStack = []; openPlaylist(pid); }; })(playlist.id); item.innerHTML = '<div class="left-item-art">' + artHtml(playlist.coverArt, 80) + '</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(playlist.name) + '</div><div class="left-item-sub">' + playlist.songCount + ' tracks</div></div>'; container.appendChild(item); } }
+		function renderLeftArtists(container) { if (!cachedArtists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; pulse.artists().then(function (list) { cachedArtists = adaptArtists(list); renderLeftArtists(container); }).catch(function (err) { logApiError('artists', err); container.innerHTML = '<div class="loading-text">Failed to load</div>'; }); return; } let sorted = cachedArtists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); } else if (leftSort === 'recent') { sorted.sort(function (left, right) { return (right.lastPlayed || '').localeCompare(left.lastPlayed || ''); }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let artist = sorted[idx]; let avatarHtml;
 				if (artist.coverArt) { avatarHtml = '<img src="' + coverArtUrl(artist.coverArt, 80) + '" style="border-radius:50%;" />'; }
 				else { avatarHtml = makeArtistInitials(artist.name); } let item = document.createElement('div'); item.className = 'left-item'; item.onclick = (function (aid) { return function () { navStack = []; openArtist(aid); }; })(artist.id); item.innerHTML = '<div class="left-item-art round">' + avatarHtml + '</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(artist.name) + '</div><div class="left-item-sub">' + artist.albumCount + ' albums</div></div>'; container.appendChild(item); } }
 
@@ -1817,10 +1838,10 @@
 		function loadHomeScreen() { loadQuickGrid(); loadRecentCarousel(); loadPlaylistCarousel(); loadPopularArtistsCarousel(); }
 		function loadQuickGrid() {
 			let grid = document.getElementById('home-quick-grid');
-			grid.innerHTML = ''; apiGet('getPlaylists', null,
-				function (resp)
+			grid.innerHTML = ''; pulse.playlists().then(
+				function (list)
 				{
-					let playlists = resp.playlists.playlist || [];
+					let playlists = adaptPlaylists(list);
 					let limit = Math.min(8, playlists.length);
 					for (let idx = 0; idx < limit; idx++)
 					{
@@ -1841,44 +1862,69 @@
 				});
 		}
 		function quickPlayPlaylist(playlistId) {
-			apiGet('getPlaylist', 'id=' + encodeURIComponent(playlistId), function(resp) {
-				let songs = resp.playlist.entry || [];
+			pulse.playlist(playlistId).then(function (details) {
+				let songs = adaptTracks(details && details.Tracks);
 				if (songs.length > 0) {
 					markPlaylistPlayed(playlistId);
 					playTrackList(songs, 0);
 				}
-			});
+			}).catch(function (err) { logApiError('playlist', err); });
 		}
+		/* Mixed-kind recents: each item is a concrete Pulse* object tagged with
+		   Kind. Tracks play in place; the rest navigate to their detail view. */
 		function loadRecentCarousel()
 		{
 			let scroll = document.getElementById('home-recent-scroll');
 			scroll.innerHTML = '<div class="loading-text">Loading...</div>';
-			pulseGet('recentlyPlayed?count=10&u=' + API_USER, function (data) {
-				let tracks = data.tracks || []; scroll.innerHTML = '';
-				if (tracks.length === 0)
+			pulse.recentlyPlayed({ count: 10 }).then(function (items) {
+				items = items || []; scroll.innerHTML = '';
+				if (items.length === 0)
 				{
 					scroll.innerHTML = '<div class="loading-text">No recent plays yet</div>';
 					return;
 				}
-				for (let idx = 0; idx < tracks.length; idx++)
+				for (let idx = 0; idx < items.length; idx++)
 				{
-					let song = tracks[idx];
-					let card = buildCarouselCard(song.coverArt, song.title, song.artist, (function (tl, ti) {
-								return function ()
-								{
-									playTrackList(tl, ti);
-								};
-							})(tracks, idx), false); scroll.appendChild(card);
+					let card = buildRecentCard(items[idx]);
+					if (card) { scroll.appendChild(card); }
 				}
-			});
+			}).catch(function (err) { logApiError('recentlyPlayed', err); scroll.innerHTML = '<div class="loading-text">Failed to load</div>'; });
+		}
+		function buildRecentCard(item)
+		{
+			if (!item) { return null; }
+			if (item.Kind === PulseAPI.DataType.Track)
+			{
+				let song = adaptTrack(item);
+				return buildCarouselCard(song.coverArt, song.title, song.artist, function () { playTrackList([song], 0); }, false);
+			}
+			if (item.Kind === PulseAPI.DataType.Album)
+			{
+				let album = adaptAlbum(item);
+				return buildCarouselCard(album.coverArt, album.name, album.artist, function () { navStack = []; openAlbum(album.id); }, false);
+			}
+			if (item.Kind === PulseAPI.DataType.Artist)
+			{
+				let artist = adaptArtist(item);
+				return buildCarouselCard(artist.coverArt, artist.name, formatScorePercent(artist.score), function () { navStack = []; openArtist(artist.id); }, true);
+			}
+			if (item.Kind === PulseAPI.DataType.Playlist)
+			{
+				let playlist = adaptPlaylist(item);
+				return buildCarouselCard(playlist.coverArt, playlist.name, playlist.songCount + ' tracks', function () { navStack = []; openPlaylist(playlist.id); }, false);
+			}
+			return null;
 		}
 		function loadPlaylistCarousel()
 		{
 			let scroll = document.getElementById('home-playlists-scroll');
 			scroll.innerHTML = '<div class="loading-text">Loading...</div>';
-			pulseGet('topPlaylists?count=10&u=' + API_USER + '&api=1', function (data)
+			pulse.playlists().then(function (list)
 			{
-				let playlists = (data.item && data.item.Playlists) || []; scroll.innerHTML = '';
+				let playlists = adaptPlaylists(list);
+				playlists.sort(function (left, right) { return (right.score || 0) - (left.score || 0); });
+				if (playlists.length > 10) { playlists = playlists.slice(0, 10); }
+				scroll.innerHTML = '';
 				if (playlists.length === 0)
 				{
 					scroll.innerHTML = '<div class="loading-text">No playlists yet</div>';
@@ -1888,31 +1934,33 @@
 				{
 					(function (playlist)
 					{
-						let card = buildCarouselCard('pl-' + playlist.Id, playlist.Name, formatScorePercent(0), function () {
+						let card = buildCarouselCard(playlist.coverArt, playlist.name, formatScorePercent(playlist.score), function () {
 								navStack = [];
-								openPlaylist(playlist.Id);
+								openPlaylist(playlist.id);
 						}, false); scroll.appendChild(card);
 					})(playlists[idx]);
 				}
-			});
+			}).catch(function (err) { logApiError('playlists', err); scroll.innerHTML = '<div class="loading-text">Failed to load</div>'; });
 		}
-		function loadPopularArtistsCarousel() { let scroll = document.getElementById('home-artists-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulseGet('popularArtists?count=20&u=' + API_USER, function (data) { let all = data.artists || []; let artists = []; for (let i = 0; i < all.length && artists.length < 10; i++) { if ((all[i].score || 0) > 0) { artists.push(all[i]); } } scroll.innerHTML = ''; if (artists.length === 0) { scroll.innerHTML = '<div class="loading-text">Play some music first</div>'; return; } for (let idx = 0; idx < artists.length; idx++) { let artist = artists[idx]; let card = buildCarouselCard(artist.coverArt || null, artist.name, formatScorePercent(artist.score), (function (aid) { return function () { navStack = []; openArtist(aid); }; })(artist.id), true); scroll.appendChild(card); } }); }
+		function loadPopularArtistsCarousel() { let scroll = document.getElementById('home-artists-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulse.artists().then(function (list) { let all = adaptArtists(list); all.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); let artists = []; for (let i = 0; i < all.length && artists.length < 10; i++) { if ((all[i].score || 0) > 0) { artists.push(all[i]); } } scroll.innerHTML = ''; if (artists.length === 0) { scroll.innerHTML = '<div class="loading-text">Play some music first</div>'; return; } for (let idx = 0; idx < artists.length; idx++) { let artist = artists[idx]; let card = buildCarouselCard(artist.coverArt || null, artist.name, formatScorePercent(artist.score), (function (aid) { return function () { navStack = []; openArtist(aid); }; })(artist.id), true); scroll.appendChild(card); } }).catch(function (err) { logApiError('artists', err); scroll.innerHTML = '<div class="loading-text">Failed to load</div>'; }); }
 		function formatScorePercent(score) { let n = Number(score) || 0; if (n <= 0) { return '—'; } return Math.round(n * 100) + '%'; }
-		function extractPlaylistLastPlayed(playlist, user) { if (!playlist) { return ''; } let raw = ''; if (playlist.UserLastPlayed && user && playlist.UserLastPlayed[user]) { raw = playlist.UserLastPlayed[user]; } else if (playlist.LastPlayed) { raw = playlist.LastPlayed; } if (raw && raw.indexOf('0001-') === 0) { return ''; } return raw; }
 
 		/* Artist Detail */
-		function openArtist(artistId) { currentArtistId = artistId; apiGet('getArtist', 'id=' + encodeURIComponent(artistId), function (resp) { let artist = resp.artist; document.getElementById('artist-detail-name').textContent = artist.name; document.getElementById('artist-detail-count').textContent = artist.albumCount + ' albums'; let grid = document.getElementById('artist-album-grid'); grid.innerHTML = ''; let albums = artist.album || []; for (let idx = 0; idx < albums.length; idx++) { let album = albums[idx]; let card = document.createElement('div'); card.className = 'carousel-card'; card.onclick = (function (aid) { return function () { openAlbum(aid); }; })(album.id); card.innerHTML = '<div class="carousel-card-art">' + artHtml(album.coverArt, 300) + '</div><div class="carousel-card-name">' + escapeHtml(album.name) + '</div><div class="carousel-card-sub">' + (album.year || '') + '</div>'; grid.appendChild(card); } navigateWithHistory('artist-detail'); }); }
-		function playArtist() { if (!currentArtistId) { return; } pulseGet('artistTracks?id=' + encodeURIComponent(currentArtistId), function (data) { let tracks = data.tracks || []; if (tracks.length === 0) { return; } playTrackList(tracks, 0); }); }
-		function shuffleArtist() { if (!currentArtistId) { return; } pulseGet('artistTracks?id=' + encodeURIComponent(currentArtistId), function (data) { let tracks = data.tracks || []; if (tracks.length === 0) { return; } let shuffled = tracks.slice(); shuffleArray(shuffled); playTrackList(shuffled, 0); }); }
+		function openArtist(artistId) { currentArtistId = artistId; pulse.artist(artistId).then(function (details) { let artist = adaptArtist(details.Artist); document.getElementById('artist-detail-name').textContent = artist.name; document.getElementById('artist-detail-count').textContent = artist.albumCount + ' albums'; let grid = document.getElementById('artist-album-grid'); grid.innerHTML = ''; let albums = adaptAlbums(details.Albums); for (let idx = 0; idx < albums.length; idx++) { let album = albums[idx]; let card = document.createElement('div'); card.className = 'carousel-card'; card.onclick = (function (aid) { return function () { openAlbum(aid); }; })(album.id); card.innerHTML = '<div class="carousel-card-art">' + artHtml(album.coverArt, 300) + '</div><div class="carousel-card-name">' + escapeHtml(album.name) + '</div><div class="carousel-card-sub">' + (album.year || '') + '</div>'; grid.appendChild(card); } navigateWithHistory('artist-detail'); }).catch(function (err) { logApiError('artist', err); }); }
+		/* artistTracks returns ArtistFullDetails: tracks grouped per album. Flatten
+		   in album order for queue playback. */
+		function flattenArtistTracks(details) { let out = []; let groups = (details && details.AlbumDetails) || []; for (let gi = 0; gi < groups.length; gi++) { let tracks = adaptTracks(groups[gi].Tracks); for (let ti = 0; ti < tracks.length; ti++) { out.push(tracks[ti]); } } return out; }
+		function playArtist() { if (!currentArtistId) { return; } pulse.artistTracks(currentArtistId).then(function (details) { let tracks = flattenArtistTracks(details); if (tracks.length === 0) { return; } playTrackList(tracks, 0); }).catch(function (err) { logApiError('artistTracks', err); }); }
+		function shuffleArtist() { if (!currentArtistId) { return; } pulse.artistTracks(currentArtistId).then(function (details) { let tracks = flattenArtistTracks(details); if (tracks.length === 0) { return; } shuffleArray(tracks); playTrackList(tracks, 0); }).catch(function (err) { logApiError('artistTracks', err); }); }
 
 		/* Album Detail */
-		function openAlbum(albumId) { apiGet('getAlbum', 'id=' + encodeURIComponent(albumId), function (resp) { currentAlbumDetail = resp.album; let album = currentAlbumDetail; document.getElementById('album-detail-name').textContent = album.name; document.getElementById('album-detail-artist').textContent = album.artist; document.getElementById('album-detail-artist').setAttribute('data-artist-id', album.artistId); let songs = album.song || []; let totalDuration = 0; for (let idx = 0; idx < songs.length; idx++) { totalDuration = totalDuration + songs[idx].duration; } document.getElementById('album-detail-meta').textContent = songs.length + ' tracks \u00b7 ' + Math.floor(totalDuration / 60) + ' min'; document.getElementById('album-detail-art').innerHTML = artHtml(album.coverArt, 400); let tracksEl = document.getElementById('album-detail-tracks'); tracksEl.innerHTML = ''; for (let idx = 0; idx < songs.length; idx++) { let row = buildTrackRow(songs[idx], idx + 1, (function (sl, si) { return function () { playTrackList(sl, si); }; })(songs, idx)); tracksEl.appendChild(row); } navigateWithHistory('album-detail'); }); }
+		function openAlbum(albumId) { pulse.album(albumId).then(function (details) { currentAlbumDetail = Object.assign(adaptAlbum(details.Album), { song: adaptTracks(details.Tracks) }); let album = currentAlbumDetail; document.getElementById('album-detail-name').textContent = album.name; document.getElementById('album-detail-artist').textContent = album.artist; document.getElementById('album-detail-artist').setAttribute('data-artist-id', album.artistId); let songs = album.song || []; let totalDuration = 0; for (let idx = 0; idx < songs.length; idx++) { totalDuration = totalDuration + songs[idx].duration; } document.getElementById('album-detail-meta').textContent = songs.length + ' tracks \u00b7 ' + Math.floor(totalDuration / 60) + ' min'; document.getElementById('album-detail-art').innerHTML = artHtml(album.coverArt, 400); let tracksEl = document.getElementById('album-detail-tracks'); tracksEl.innerHTML = ''; for (let idx = 0; idx < songs.length; idx++) { let row = buildTrackRow(songs[idx], idx + 1, (function (sl, si) { return function () { playTrackList(sl, si); }; })(songs, idx)); tracksEl.appendChild(row); } navigateWithHistory('album-detail'); }).catch(function (err) { logApiError('album', err); }); }
 		function onAlbumArtistClick() { let artistId = document.getElementById('album-detail-artist').getAttribute('data-artist-id'); if (artistId) { openArtist(artistId); } }
 		function playAlbum() { if (currentAlbumDetail && currentAlbumDetail.song) { playTrackList(currentAlbumDetail.song, 0); } }
 		function shuffleAlbum() { if (currentAlbumDetail && currentAlbumDetail.song) { let shuffled = currentAlbumDetail.song.slice(); shuffleArray(shuffled); playTrackList(shuffled, 0); } }
 
 		/* Playlist Detail */
-		function openPlaylist(playlistId) { apiGet('getPlaylist', 'id=' + encodeURIComponent(playlistId), function (resp) { currentPlaylistDetail = resp.playlist; let playlist = currentPlaylistDetail; document.getElementById('playlist-detail-name').textContent = playlist.name; document.getElementById('playlist-detail-meta').textContent = playlist.songCount + ' tracks \u00b7 ' + Math.floor(playlist.duration / 60) + ' min'; document.getElementById('playlist-detail-comment').textContent = playlist.comment || ''; document.getElementById('playlist-rename-form').style.display = 'none'; document.getElementById('playlist-comment-form').style.display = 'none'; document.getElementById('playlist-detail-art').innerHTML = artHtml(playlist.coverArt, 400); renderPlaylistTracks(); navigateWithHistory('playlist-detail'); }); }
+		function openPlaylist(playlistId) { pulse.playlist(playlistId).then(function (details) { currentPlaylistDetail = Object.assign(adaptPlaylist(details.Playlist), { entry: adaptTracks(details.Tracks) }); let playlist = currentPlaylistDetail; document.getElementById('playlist-detail-name').textContent = playlist.name; document.getElementById('playlist-detail-meta').textContent = playlist.songCount + ' tracks \u00b7 ' + Math.floor(playlist.duration / 60) + ' min'; document.getElementById('playlist-detail-comment').textContent = playlist.comment || ''; document.getElementById('playlist-rename-form').style.display = 'none'; document.getElementById('playlist-comment-form').style.display = 'none'; document.getElementById('playlist-detail-art').innerHTML = artHtml(playlist.coverArt, 400); renderPlaylistTracks(); navigateWithHistory('playlist-detail'); }).catch(function (err) { logApiError('playlist', err); }); }
 		function renderPlaylistTracks() {
 			let tracksEl = document.getElementById('playlist-tracks');
 			tracksEl.innerHTML = '';
@@ -2021,22 +2069,25 @@
 		function persistPlaylistOrder(fromIndex, toIndex, newSongs) {
 			let divergence = fromIndex;
 			if (toIndex < divergence) { divergence = toIndex; }
-			let qs = 'playlistId=' + encodeURIComponent(currentPlaylistDetail.id);
+			let indexesToRemove = [];
 			for (let idx = newSongs.length - 1; idx >= divergence; idx--) {
-				qs = qs + '&songIndexToRemove=' + idx;
+				indexesToRemove.push(idx);
 			}
+			let idsToAdd = [];
 			for (let idx = divergence; idx < newSongs.length; idx++) {
-				qs = qs + '&songIdToAdd=' + encodeURIComponent(newSongs[idx].id);
+				idsToAdd.push(newSongs[idx].id);
 			}
-			apiGet('updatePlaylist', qs, function (resp) { });
+			pulse.updatePlaylist({ playlistId: currentPlaylistDetail.id, songIndexesToRemove: indexesToRemove, songIdsToAdd: idsToAdd }).catch(function (err) { logApiError('updatePlaylist', err); });
 		}
 		function playPlaylist() { if (currentPlaylistDetail && currentPlaylistDetail.entry) { markPlaylistPlayed(currentPlaylistDetail.id); playTrackList(currentPlaylistDetail.entry, 0); } }
 		function shufflePlaylist() { if (currentPlaylistDetail && currentPlaylistDetail.entry) { markPlaylistPlayed(currentPlaylistDetail.id); let shuffled = currentPlaylistDetail.entry.slice(); shuffleArray(shuffled); playTrackList(shuffled, 0); } }
-		function markPlaylistPlayed(playlistId) { pulseGet('markPlaylistPlayed?id=' + encodeURIComponent(playlistId) + '&u=' + encodeURIComponent(API_USER), function () { cachedPlaylists = null; }); }
+		/* No pulse_v1 equivalent yet — stays on the legacy /pulse/ surface until the
+		   planned reportAnalytics(objectType, payload) generalization lands. */
+		function markPlaylistPlayed(playlistId) { fetch('/pulse/markPlaylistPlayed?id=' + encodeURIComponent(playlistId) + '&u=' + encodeURIComponent(API_USER)).then(function () { cachedPlaylists = null; }).catch(function (err) { logApiError('markPlaylistPlayed', err); }); }
 
 		/* Search */
 		function onSearchInput(value) { if (searchTimeout) { clearTimeout(searchTimeout); } if (value.length === 0) { if (currentView === 'search') { navStack = []; showView('home'); } return; } searchTimeout = setTimeout(function () { performSearch(value); }, 300); }
-		function performSearch(query) { navStack.push(currentView); showView('search'); document.getElementById('search-input').value = query; document.getElementById('search-result-count').textContent = 'Searching...'; document.getElementById('search-results').innerHTML = ''; apiGet('search3', 'query=' + encodeURIComponent(query) + '&artistCount=10&albumCount=20&songCount=30', function (resp) { let results = resp.searchResult3; let container = document.getElementById('search-results'); container.innerHTML = ''; let artists = results.artist || []; let albums = results.album || []; let songs = results.song || []; let totalHits = artists.length + albums.length + songs.length; document.getElementById('search-result-count').textContent = totalHits + ' results for "' + query + '"'; if (artists.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Artists'; container.appendChild(heading); let scroll = document.createElement('div'); scroll.className = 'carousel-scroll'; for (let idx = 0; idx < artists.length; idx++) { let card = buildCarouselCard(artists[idx].coverArt || null, artists[idx].name, artists[idx].albumCount + ' albums', (function (aid) { return function () { openArtist(aid); }; })(artists[idx].id), true); scroll.appendChild(card); } container.appendChild(scroll); } if (albums.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Albums'; container.appendChild(heading); let scroll = document.createElement('div'); scroll.className = 'carousel-scroll'; for (let idx = 0; idx < albums.length; idx++) { let card = buildCarouselCard(albums[idx].coverArt, albums[idx].name, albums[idx].artist, (function (aid) { return function () { openAlbum(aid); }; })(albums[idx].id), false); scroll.appendChild(card); } container.appendChild(scroll); } if (songs.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Songs'; container.appendChild(heading); for (let idx = 0; idx < songs.length; idx++) { let row = buildTrackRow(songs[idx], idx + 1, (function (sl, si) { return function () { playTrackList(sl, si); }; })(songs, idx)); container.appendChild(row); } } if (totalHits === 0) { container.innerHTML = '<div class="empty-state"><div class="empty-state-text">No results found</div></div>'; } }); }
+		function performSearch(query) { navStack.push(currentView); showView('search'); document.getElementById('search-input').value = query; document.getElementById('search-result-count').textContent = 'Searching...'; document.getElementById('search-results').innerHTML = ''; pulse.search(query, { artistCount: 10, albumCount: 20, songCount: 30 }).then(function (data) { let container = document.getElementById('search-results'); container.innerHTML = ''; let artists = adaptArtists(data.Artists); let albums = adaptAlbums(data.Albums); let songs = adaptTracks(data.Tracks); let totalHits = artists.length + albums.length + songs.length; document.getElementById('search-result-count').textContent = totalHits + ' results for "' + query + '"'; if (artists.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Artists'; container.appendChild(heading); let scroll = document.createElement('div'); scroll.className = 'carousel-scroll'; for (let idx = 0; idx < artists.length; idx++) { let card = buildCarouselCard(artists[idx].coverArt || null, artists[idx].name, artists[idx].albumCount + ' albums', (function (aid) { return function () { openArtist(aid); }; })(artists[idx].id), true); scroll.appendChild(card); } container.appendChild(scroll); } if (albums.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Albums'; container.appendChild(heading); let scroll = document.createElement('div'); scroll.className = 'carousel-scroll'; for (let idx = 0; idx < albums.length; idx++) { let card = buildCarouselCard(albums[idx].coverArt, albums[idx].name, albums[idx].artist, (function (aid) { return function () { openAlbum(aid); }; })(albums[idx].id), false); scroll.appendChild(card); } container.appendChild(scroll); } if (songs.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Songs'; container.appendChild(heading); for (let idx = 0; idx < songs.length; idx++) { let row = buildTrackRow(songs[idx], idx + 1, (function (sl, si) { return function () { playTrackList(sl, si); }; })(songs, idx)); container.appendChild(row); } } if (totalHits === 0) { container.innerHTML = '<div class="empty-state"><div class="empty-state-text">No results found</div></div>'; } }).catch(function (err) { logApiError('search', err); }); }
 
 		/* Track Menu */
 		function openTrackMenu(event, buttonEl, trackId) {
@@ -2064,13 +2115,14 @@
 			document.getElementById('picker-new-form').style.display = 'none';
 			document.getElementById('picker-new-name').value = '';
 			pickerList.innerHTML = '';
-			apiGet('getPlaylists', null, function (resp) {
+			pulse.playlists().then(function (list) {
+				let playlists = adaptPlaylists(list);
+				cachedPlaylists = playlists;
 				let newItem = document.createElement('div');
 				newItem.className = 'picker-item new-playlist';
 				newItem.textContent = '+ New playlist';
 				newItem.setAttribute('data-action', 'show-picker-new-form');
 				pickerList.appendChild(newItem);
-				let playlists = resp.playlists.playlist || [];
 				for (let idx = 0; idx < playlists.length; idx++) {
 					let item = document.createElement('div');
 					item.className = 'picker-item';
@@ -2079,7 +2131,7 @@
 					pickerList.appendChild(item);
 				}
 				picker.style.display = 'block';
-			});
+			}).catch(function (err) { logApiError('playlists', err); });
 		}
 		function showPickerNewForm() {
 			document.getElementById('picker-list').style.display = 'none';
@@ -2100,19 +2152,17 @@
 			if (!name) { return; }
 			if (playlistNameExists(name, null)) { errEl.textContent = 'A playlist with that name already exists.'; return; }
 			let trackId = menuTrackId;
-			let extra = 'name=' + encodeURIComponent(name);
-			if (trackId) { extra = extra + '&songId=' + encodeURIComponent(trackId); }
-			apiGetWithError('createPlaylist', extra, function (resp) {
+			pulse.createPlaylist({ name: name, songIds: trackId ? [trackId] : [] }).then(function () {
 				document.getElementById('playlist-picker').style.display = 'none';
 				document.getElementById('picker-new-form').style.display = 'none';
 				document.getElementById('picker-list').style.display = 'block';
 				cachedPlaylists = null;
 				if (leftTab === 'playlists') { renderLeftList(); }
 				menuTrackId = null;
-			}, function (msg) { errEl.textContent = msg; });
+			}).catch(function (err) { errEl.textContent = apiErrorMessage(err); });
 		}
-		function addTrackToPlaylist(playlistId) { document.getElementById('playlist-picker').style.display = 'none'; if (!menuTrackId) { return; } apiGet('updatePlaylist', 'playlistId=' + encodeURIComponent(playlistId) + '&songIdToAdd=' + encodeURIComponent(menuTrackId), function (resp) { menuTrackId = null; }); }
-		function removeFromPlaylist() { document.getElementById('track-menu').style.display = 'none'; if (!menuTrackId || !currentPlaylistDetail) { return; } let songs = currentPlaylistDetail.entry || []; let removeIndex = -1; for (let idx = 0; idx < songs.length; idx++) { if (songs[idx].id === menuTrackId) { removeIndex = idx; break; } } if (removeIndex < 0) { return; } apiGet('updatePlaylist', 'playlistId=' + encodeURIComponent(currentPlaylistDetail.id) + '&songIndexToRemove=' + removeIndex, function (resp) { openPlaylist(currentPlaylistDetail.id); menuTrackId = null; }); }
+		function addTrackToPlaylist(playlistId) { document.getElementById('playlist-picker').style.display = 'none'; if (!menuTrackId) { return; } pulse.updatePlaylist({ playlistId: playlistId, songIdsToAdd: [menuTrackId] }).then(function () { menuTrackId = null; }).catch(function (err) { logApiError('updatePlaylist', err); }); }
+		function removeFromPlaylist() { document.getElementById('track-menu').style.display = 'none'; if (!menuTrackId || !currentPlaylistDetail) { return; } let songs = currentPlaylistDetail.entry || []; let removeIndex = -1; for (let idx = 0; idx < songs.length; idx++) { if (songs[idx].id === menuTrackId) { removeIndex = idx; break; } } if (removeIndex < 0) { return; } pulse.updatePlaylist({ playlistId: currentPlaylistDetail.id, songIndexesToRemove: [removeIndex] }).then(function () { openPlaylist(currentPlaylistDetail.id); menuTrackId = null; }).catch(function (err) { logApiError('updatePlaylist', err); }); }
 
 		/* Returns true if any existing playlist matches name case-insensitively (optionally skipping a given id). */
 		function playlistNameExists(name, skipId) {
@@ -2142,11 +2192,11 @@
 			errEl.textContent = '';
 			if (!name) { return; }
 			if (playlistNameExists(name, null)) { errEl.textContent = 'A playlist with that name already exists.'; return; }
-			apiGetWithError('createPlaylist', 'name=' + encodeURIComponent(name), function (resp) {
+			pulse.createPlaylist({ name: name }).then(function () {
 				hideNewPlaylistForm();
 				cachedPlaylists = null;
 				if (leftTab !== 'playlists') { switchLeftTab('playlists'); } else { renderLeftList(); }
-			}, function (msg) { errEl.textContent = msg; });
+			}).catch(function (err) { errEl.textContent = apiErrorMessage(err); });
 		}
 
 		/* Playlist detail menu (rename / edit description / delete) */
@@ -2182,13 +2232,13 @@
 			errEl.textContent = '';
 			if (!name) { return; }
 			if (playlistNameExists(name, currentPlaylistDetail.id)) { errEl.textContent = 'A playlist with that name already exists.'; return; }
-			apiGetWithError('updatePlaylist', 'playlistId=' + encodeURIComponent(currentPlaylistDetail.id) + '&name=' + encodeURIComponent(name), function (resp) {
+			pulse.updatePlaylist({ playlistId: currentPlaylistDetail.id, name: name }).then(function () {
 				cancelPlaylistRename();
 				cachedPlaylists = null;
 				let pid = currentPlaylistDetail.id;
 				openPlaylist(pid);
 				renderLeftList();
-			}, function (msg) { errEl.textContent = msg; });
+			}).catch(function (err) { errEl.textContent = apiErrorMessage(err); });
 		}
 		function startPlaylistComment() {
 			document.getElementById('playlist-menu').style.display = 'none';
@@ -2206,23 +2256,23 @@
 		function commitPlaylistComment() {
 			if (!currentPlaylistDetail) { return; }
 			let comment = document.getElementById('playlist-comment-input').value;
-			apiGet('updatePlaylist', 'playlistId=' + encodeURIComponent(currentPlaylistDetail.id) + '&comment=' + encodeURIComponent(comment), function (resp) {
+			pulse.updatePlaylist({ playlistId: currentPlaylistDetail.id, comment: comment }).then(function () {
 				cancelPlaylistComment();
 				let pid = currentPlaylistDetail.id;
 				openPlaylist(pid);
-			});
+			}).catch(function (err) { logApiError('updatePlaylist', err); });
 		}
 		function confirmDeletePlaylist() {
 			document.getElementById('playlist-menu').style.display = 'none';
 			if (!currentPlaylistDetail) { return; }
 			let name = currentPlaylistDetail.name || '(unnamed)';
 			showConfirm('Delete playlist "' + name + '"? Tracks themselves are not affected.', 'Delete', function () {
-				apiGet('deletePlaylist', 'id=' + encodeURIComponent(currentPlaylistDetail.id), function (resp) {
+				pulse.deletePlaylist(currentPlaylistDetail.id).then(function () {
 					currentPlaylistDetail = null;
 					cachedPlaylists = null;
 					renderLeftList();
 					showView('home');
-				});
+				}).catch(function (err) { logApiError('deletePlaylist', err); });
 			});
 		}
 
@@ -2429,17 +2479,17 @@
 			}
 			currentPage = page;
 		}
+		/* Build/assembly version, not the API contract version — served by the
+		   dedicated /pulse/version endpoint (Flatline #229). No pulse_v1 equivalent. */
 		function loadVersionTag() {
-			let request = new XMLHttpRequest();
-			request.open('GET', '/pulse/version');
-			request.onload = function () {
-				if (request.status !== 200) { return; }
-				let data = JSON.parse(request.responseText);
+			fetch('/pulse/version').then(function (response) {
+				if (!response.ok) { return null; }
+				return response.json();
+			}).then(function (data) {
 				if (!data || !data.version) { return; }
 				let tagEl = document.getElementById('pulse-version-tag');
 				if (tagEl) { tagEl.textContent = 'v' + data.version; }
-			};
-			request.send();
+			}).catch(function (err) { logApiError('version', err); });
 		}
 		document.addEventListener('DOMContentLoaded', function () {
 			wireUpStaticHandlers();

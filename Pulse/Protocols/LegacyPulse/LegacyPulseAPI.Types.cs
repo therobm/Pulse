@@ -1,7 +1,7 @@
 ﻿using Pulse.MusicLibrary;
 using System.Collections.Generic;
 
-namespace Pulse.Protocols.Pulse
+namespace Pulse.Protocols.LegacyPulse
 {
 	public class PulseResponse
 	{
