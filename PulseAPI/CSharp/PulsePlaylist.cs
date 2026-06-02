@@ -6,6 +6,7 @@ namespace PulseAPI.CSharp
 	public class PulsePlaylist : PulseObject
 	{
 		public string Name;
+		public string Comment;
 		public string CoverArt;
 		public int TrackCount;
 		public int Duration;
