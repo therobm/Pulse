@@ -1,5 +1,5 @@
 ﻿
-namespace Pulse.Protocols.Pulse
+namespace Pulse.Protocols.LegacyPulse
 {
 	public enum ePulseCode
 	{

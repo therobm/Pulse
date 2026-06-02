@@ -10,9 +10,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Pulse.Protocols.Pulse
+namespace Pulse.Protocols.LegacyPulse
 {
-	public partial class PulseAPI
+	public partial class LegacyPulseAPI
 	{
 		static JsonSerializerOptions s_jsonOptions = new JsonSerializerOptions()
 		{

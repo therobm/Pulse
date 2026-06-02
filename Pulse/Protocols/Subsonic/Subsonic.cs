@@ -10,7 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Pulse.Protocols.Pulse;
+using Pulse.Protocols.LegacyPulse;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Primitives;
 using Microsoft.AspNetCore.Routing.Matching;
@@ -47,9 +47,9 @@ namespace Pulse.Protocols.Subsonic
 			return error != null;
 		}
 
-		global::Pulse.Protocols.Pulse.PulseAPI m_pulseAPI;
+		global::Pulse.Protocols.LegacyPulse.LegacyPulseAPI m_pulseAPI;
 
-		public Subsonic(global::Pulse.Protocols.Pulse.PulseAPI pulseAPI)
+		public Subsonic(global::Pulse.Protocols.LegacyPulse.LegacyPulseAPI pulseAPI)
 		{
 			m_pulseAPI = pulseAPI;
 		}
