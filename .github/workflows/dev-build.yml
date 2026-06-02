@@ -20,6 +20,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # PulseAPI is a submodule the app references; fetch it for the build.
+          submodules: recursive
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -53,7 +55,7 @@ jobs:
       - name: Publish signed APK
         shell: bash
         run: |
-          dotnet publish Thump.csproj \
+          dotnet publish Thump/Thump.csproj \
             -f net10.0-android \
             -c Release \
             -p:ApplicationDisplayVersion="${{ steps.version.outputs.version }}" \
