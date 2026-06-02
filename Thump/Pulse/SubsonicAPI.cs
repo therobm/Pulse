@@ -87,19 +87,22 @@ namespace Thump.Pulse
 				{
 					string url = m_baseUrl + "/pulse/artistTracks?id=" + Uri.EscapeDataString(artistId) + "&u=" + Uri.EscapeDataString(m_user);
 					string json = HttpGet(url, true);
-					JsonDocument doc = JsonDocument.Parse(json);
-					JsonElement tracks; 
-					bool validParams = true;
-					if (!doc.RootElement.TryGetProperty("tracks", out tracks))
-						validParams = false;
-					if (tracks.ValueKind != JsonValueKind.Array)
-						validParams = false;
-					if (validParams)
+					if (json != null)
 					{
-						foreach (JsonElement element in tracks.EnumerateArray())
+						JsonDocument doc = JsonDocument.Parse(json);
+						JsonElement tracks;
+						bool validParams = true;
+						if (!doc.RootElement.TryGetProperty("tracks", out tracks))
+							validParams = false;
+						if (tracks.ValueKind != JsonValueKind.Array)
+							validParams = false;
+						if (validParams)
 						{
-							// this is going to fail, recently played includes songs, playlists, artists, etc..
-							result.Add(LegacyPulseHelper.ParseSong(element));
+							foreach (JsonElement element in tracks.EnumerateArray())
+							{
+								// this is going to fail, recently played includes songs, playlists, artists, etc..
+								result.Add(LegacyPulseHelper.ParseSong(element));
+							}
 						}
 					}
 				}
@@ -1367,6 +1370,11 @@ namespace Thump.Pulse
 			string url = BuildRestUrl(endpoint, extraParams);
 
 			string json = HttpGet(url, bCacheAllowed);
+			if (string.IsNullOrEmpty(json))
+			{
+				Log.Error("No response from subsonic endpoint: " + endpoint);
+				return false;
+			}
 			JsonDocument doc = JsonDocument.Parse(json);
 			JsonElement root = doc.RootElement;
 
