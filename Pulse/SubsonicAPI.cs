@@ -582,35 +582,6 @@ namespace Thump.Pulse
 			});
 		}
 
-		//Fire-and-forget play notification. On Pulse-as-Subsonic the server
-		//intercepts /rest/scrobble?submission=false and forwards it to
-		//ReportTrackAnalytics; on plain Subsonic backends this is just a
-		//normal scrobble call (no return signal we care about). Either way
-		//we hand the trackId to the server and move on - the caller (the
-		//player) doesn't wait.
-		public override void ReportTrackAnalytics(string trackId)
-		{
-			if (string.IsNullOrEmpty(trackId))
-			{
-				return;
-			}
-			if (!IsOnline())
-			{
-				return;
-			}
-			Task.Run(() =>
-			{
-				try
-				{
-					string param = "id=" + Uri.EscapeDataString(trackId) + "&submission=false";
-					SubsonicGet("scrobble", false, out JsonElement response, param);
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
-			});
-		}
 
 		public override void Star(string trackId, Action<bool> onComplete)
 		{
