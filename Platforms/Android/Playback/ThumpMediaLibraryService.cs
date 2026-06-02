@@ -50,6 +50,12 @@ namespace Thump.Playback.AndroidOS
 		// shuffles within the same second don't get identically seeded.
 		private static Random s_shuffleRand = new Random();
 
+		// Two-step search: OnSearch kicks off the async fetch and parks the
+		// resolved items under the query string; OnGetSearchResult reads them
+		// out. Keyed by exact query text since AA calls back with the same
+		// string it gave us.
+		private System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>> m_searchResults = new System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>>();
+
 		public override void OnCreate()
 		{
 			base.OnCreate();
@@ -93,6 +99,8 @@ namespace Thump.Playback.AndroidOS
 			library.m_onSubscribe = null;
 			library.m_onUnsubscribe = null;
 			library.m_onMediaButtonEvent = null;
+			library.m_onSearch = OnSearch;
+			library.m_onGetSearchResult = OnGetSearchResult;
 
 
 			MediaLibrarySession.Builder sessionBuilder = new MediaLibrarySession.Builder(this, m_player, library);
@@ -159,9 +167,9 @@ namespace Thump.Playback.AndroidOS
 				AAutoHelper.LoadJavaObjectFunc loadHome = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfItemList(categories, MediaItemBuilder.BuildContentStyleParams()));
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadHome);
 			}
-			if (isDir) 
-			{ 
-				AAutoHelper.LoadContainerFunc loadContainer = new AAutoHelper.LoadContainerFunc(this, dir, parentId);
+			if (isDir)
+			{
+				AAutoHelper.LoadContainerFunc loadContainer = new AAutoHelper.LoadContainerFunc(this, dir, parentId, page, pageSize);
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadContainer);
 			}
 			else
@@ -174,9 +182,50 @@ namespace Thump.Playback.AndroidOS
 					return (IListenableFuture)CallbackToFutureAdapter.GetFuture(unknown);
 				}
 				string mediaId = AAutoHelper.ParseValue(parentId);
-				AAutoHelper.LoadObjectFunc loadObject = new AAutoHelper.LoadObjectFunc(this, aaObject, mediaId);
+				AAutoHelper.LoadObjectFunc loadObject = new AAutoHelper.LoadObjectFunc(this, aaObject, mediaId, page, pageSize);
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadObject);
 			}
+		}
+
+		// Two-step search per the Media3 contract: OnSearch kicks off the
+		// async query and returns an OfVoid future immediately so AA knows
+		// the request was accepted; once results land we cache them keyed
+		// by query and call NotifySearchResultChanged on the session,
+		// which prompts AA to come back via OnGetSearchResult and pick the
+		// items up. The cache survives across calls so a follow-up query
+		// for the same string is a free hit.
+		public IListenableFuture OnSearch(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string query, MediaLibraryService.LibraryParams libraryParams)
+		{
+			MediaLibraryService.MediaLibrarySession capturedSession = session;
+			MediaSession.ControllerInfo capturedBrowser = browser;
+			string capturedQuery = query;
+			MediaLibraryService.LibraryParams capturedParams = libraryParams;
+			s_mediaClient.Search(query, (results) =>
+			{
+				List<MediaItem> items = MediaItemBuilder.BuildSearchItems(results);
+				m_searchResults[capturedQuery] = items;
+				try
+				{
+					capturedSession.NotifySearchResultChanged(capturedBrowser, capturedQuery, items.Count, capturedParams);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+			});
+			AAutoHelper.LoadJavaObjectFunc accepted = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfVoid(libraryParams));
+			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(accepted);
+		}
+
+		public IListenableFuture OnGetSearchResult(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string query, int page, int pageSize, MediaLibraryService.LibraryParams libraryParams)
+		{
+			List<MediaItem> items;
+			if (!m_searchResults.TryGetValue(query, out items))
+			{
+				items = new List<MediaItem>();
+			}
+			AAutoHelper.LoadJavaObjectFunc result = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfItemList(items, MediaItemBuilder.BuildContentStyleParams()));
+			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(result);
 		}
 
 		// AA's OnSetMediaItems hands us a mixed bag of input MediaItems: a
@@ -511,7 +560,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetRecentlyPlayed((recentlyPlayed) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(recentlyPlayed);
 							request.OnComplete(items);
 						});
 						break;
@@ -520,7 +569,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetRecentlyAdded((recentlyAdded) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(recentlyAdded, "Recently Added");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(recentlyAdded);
 							request.OnComplete(items);
 						});
 						break;
@@ -529,7 +578,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetTopPlaylists((topPlaylists) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(topPlaylists, "Top Playlists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(topPlaylists);
 							request.OnComplete(items);
 						});
 						break;
@@ -538,7 +587,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetPopularArtists((popularArtists) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(popularArtists, "Popular Artists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(popularArtists);
 							request.OnComplete(items);
 						});
 						break;
@@ -547,7 +596,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetAlbums((albums) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(albums, "Albums");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(albums);
 							request.OnComplete(items);
 						});
 						break;
@@ -556,7 +605,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetPlaylists((playlists) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(playlists, "Playlists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(playlists);
 							request.OnComplete(items);
 						});
 						break;
@@ -565,7 +614,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetArtists((artists) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(artists, "Artists");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(artists);
 							request.OnComplete(items);
 						});
 						break;
@@ -574,7 +623,7 @@ namespace Thump.Playback.AndroidOS
 					{
 						s_mediaClient.GetGenres((genres) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(genres, "Genres");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(genres);
 							request.OnComplete(items);
 						});
 						break;

@@ -68,6 +68,14 @@ namespace Thump.Views
 			m_searchEntry.BackgroundColor = ThumpColors.Surface;
 			m_searchEntry.FontSize = 15;
 			m_searchEntry.Margin = new Thickness(16, 0, 16, 12);
+			//Tapping a suggestion in Android's predictive bar counts as the
+			//keyboard's submit action and fires Completed - so a single
+			//character + suggestion-tap was kicking the search and tearing
+			//the keyboard down. Turn prediction / spell check off so only
+			//the explicit Search return key submits.
+			m_searchEntry.IsTextPredictionEnabled = false;
+			m_searchEntry.IsSpellCheckEnabled = false;
+			m_searchEntry.ReturnType = ReturnType.Search;
 			m_searchEntry.Completed += OnSearchCompleted;
 
 			Grid.SetRow(m_searchEntry, 1);
@@ -80,6 +88,17 @@ namespace Thump.Views
 
 			StackLayout stack = new StackLayout();
 			stack.Spacing = 16;
+
+			m_playlistsHeader = new Label();
+			m_playlistsHeader.Text = "Playlists";
+			m_playlistsHeader.FontSize = 16;
+			m_playlistsHeader.TextColor = ThumpColors.OnBackground;
+			m_playlistsHeader.Padding = new Thickness(16, 0);
+			stack.Children.Add(m_playlistsHeader);
+
+			m_playlistResults = new CollectionView();
+			m_playlistResults.ItemTemplate = new DataTemplate(typeof(PlaylistRowTile));
+			stack.Children.Add(m_playlistResults);
 
 			m_artistsHeader = new Label();
 			m_artistsHeader.Text = "Artists";
@@ -113,17 +132,6 @@ namespace Thump.Views
 			m_songResults = new CollectionView();
 			m_songResults.ItemTemplate = new DataTemplate(typeof(TrackRowTile));
 			stack.Children.Add(m_songResults);
-
-			m_playlistsHeader = new Label();
-			m_playlistsHeader.Text = "Playlists";
-			m_playlistsHeader.FontSize = 16;
-			m_playlistsHeader.TextColor = ThumpColors.OnBackground;
-			m_playlistsHeader.Padding = new Thickness(16, 0);
-			stack.Children.Add(m_playlistsHeader);
-
-			m_playlistResults = new CollectionView();
-			m_playlistResults.ItemTemplate = new DataTemplate(typeof(PlaylistRowTile));
-			stack.Children.Add(m_playlistResults);
 
 			m_artistsHeader.IsVisible = false;
 			m_artistResults.IsVisible = false;

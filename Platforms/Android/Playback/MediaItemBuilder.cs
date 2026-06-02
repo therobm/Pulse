@@ -215,16 +215,61 @@ namespace Thump.Playback.AndroidOS
 			return items;
 		}
 
-		public static List<MediaItem> BuildMixedItems(List<PulseObject> objects)
+		//Flattens a PulseSearchData into a single MediaItem list ordered
+		//playlists -> artists -> albums -> tracks. Same order as the
+		//in-app SearchView so a user gets a consistent ranking across
+		//phone and car.
+		public static List<MediaItem> BuildSearchItems(PulseSearchData results)
+		{
+			List<MediaItem> items = new List<MediaItem>();
+			if (results == null)
+			{
+				return items;
+			}
+			if (results.Playlists != null)
+			{
+				for (int idx = 0; idx < results.Playlists.Count; idx++)
+				{
+					PulsePlaylist playlist = results.Playlists[idx];
+					items.Add(BuildBrowsableItem("playlist/" + playlist.Id, playlist.Name, playlist.CoverArt));
+				}
+			}
+			if (results.Artists != null)
+			{
+				for (int idx = 0; idx < results.Artists.Count; idx++)
+				{
+					PulseArtist artist = results.Artists[idx];
+					items.Add(BuildBrowsableItem("artist/" + artist.Id, artist.Name, artist.CoverArt));
+				}
+			}
+			if (results.Albums != null)
+			{
+				for (int idx = 0; idx < results.Albums.Count; idx++)
+				{
+					PulseAlbum album = results.Albums[idx];
+					items.Add(BuildAlbumItem("album/" + album.Id, album.Name, album.Artist, album.CoverArt));
+				}
+			}
+			if (results.Tracks != null)
+			{
+				for (int idx = 0; idx < results.Tracks.Count; idx++)
+				{
+					PulseTrack track = results.Tracks[idx];
+					items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.ImageID));
+				}
+			}
+			return items;
+		}
+
+		public static List<MediaItem> BuildMixedItems(IEnumerable<PulseObject> objects)
 		{
 			List<MediaItem> items = new List<MediaItem>();
 			if (objects == null)
 			{
 				return items;
 			}
-			for (int idx = 0; idx < objects.Count; idx++)
+			foreach (PulseObject pulseObject in objects)
 			{
-				PulseObject pulseObject = objects[idx];
 				switch (pulseObject.Kind)
 				{
 					case eDataType.Album:
