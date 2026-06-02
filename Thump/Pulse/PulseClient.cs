@@ -13,7 +13,7 @@ namespace Thump.Pulse
 {
 	// Pulse-native media client. Speaks the pulse_v1 API and consumes the
 	// shared PulseAPI.CSharp contract types directly, then maps them onto the
-	// Legacy* domain objects the MediaClient contract still hands back to the
+	// * domain objects the MediaClient contract still hands back to the
 	// app. Auth is a single u=<username> query parameter on every request; the
 	// response is always a PulseResponse envelope whose contents field carries
 	// the payload (a single PulseObject or a list of them).
@@ -132,16 +132,16 @@ namespace Thump.Pulse
 			return BuildPulseUrl("coverArt", "id=" + Uri.EscapeDataString(coverArtId));
 		}
 
-		public override void GetTrack(string trackId, Action<LegacyPulseTrack> onComplete)
+		public override void GetTrack(string trackId, Action<PulseTrack> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new LegacyPulseTrack());
+				CompleteOnMain(onComplete, new PulseTrack());
 				return;
 			}
 			Task.Run(() =>
 			{
-				LegacyPulseTrack result = new LegacyPulseTrack();
+				PulseTrack result = new PulseTrack();
 				try
 				{
 					string url = BuildPulseUrl("track", "id=" + Uri.EscapeDataString(trackId));
@@ -155,91 +155,70 @@ namespace Thump.Pulse
 				{
 					Log.Exception(ex);
 				}
-				LegacyPulseTrack captured = result;
+				PulseTrack captured = result;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void GetArtists(Action<List<LegacyPulseArtist>> onComplete)
+		public override void GetArtists(Action<List<PulseArtist>> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<LegacyPulseArtist>());
+				CompleteOnMain(onComplete, new List<PulseArtist>());
 				return;
 			}
 			Task.Run(() =>
 			{
-				List<LegacyPulseArtist> results = new List<LegacyPulseArtist>();
+				List<PulseArtist> results = new List<PulseArtist>();
 				try
 				{
 					string url = BuildPulseUrl("artists", null);
-					List<PulseArtist> artists;
-					if (TryGetObject(url, true, out artists) && artists != null)
-					{
-						for (int index = 0; index < artists.Count; index++)
-						{
-							results.Add(MapArtist(artists[index]));
-						}
-					}
+					TryGetObject(url, true, out results);
 				}
 				catch (Exception ex)
 				{
 					Log.Exception(ex);
 				}
 				results.Sort(CompareArtistByName);
-				List<LegacyPulseArtist> captured = results;
+				List<PulseArtist> captured = results;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void GetArtist(string artistId, Action<LegacyPulseArtist> onComplete)
+		public override void GetArtist(string artistId, Action<PulseArtistDetails> onComplete)
 		{
+			PulseArtistDetails artistDetails = null;
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new LegacyPulseArtist());
+				CompleteOnMain(onComplete, new PulseArtistDetails());
 				return;
 			}
 			Task.Run(() =>
 			{
-				LegacyPulseArtist result = new LegacyPulseArtist();
+				PulseArtist result = new PulseArtist();
 				try
 				{
 					string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
-					PulseArtistDetails details;
-					if (TryGetObject(url, true, out details) && details != null && details.Artist != null)
-					{
-						LegacyPulseArtist artist = MapArtist(details.Artist);
-						List<string> albumIds = new List<string>();
-						if (details.Albums != null)
-						{
-							for (int index = 0; index < details.Albums.Count; index++)
-							{
-								albumIds.Add(details.Albums[index].Id);
-							}
-						}
-						artist.AlbumIDs = albumIds;
-						result = artist;
-					}
+					TryGetObject(url, true, out artistDetails);
 				}
 				catch (Exception ex)
 				{
 					Log.Exception(ex);
 				}
-				LegacyPulseArtist captured = result;
-				CompleteOnMain(onComplete, captured);
+				CompleteOnMain(onComplete, artistDetails);
 			});
 		}
 
-		public override void GetArtistTracks(string artistId, Action<List<LegacyPulseTrack>> onComplete)
+		public override void GetArtistTracks(string artistId, Action<List<PulseTrack>> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<LegacyPulseTrack>());
+				CompleteOnMain(onComplete, new List<PulseTrack>());
 				return;
 			}
 			Task.Run(() =>
 			{
-				List<LegacyPulseTrack> results = new List<LegacyPulseTrack>();
+				List<PulseTrack> results = new List<PulseTrack>();
 				try
 				{
 					string url = BuildPulseUrl("artistTracks", "id=" + Uri.EscapeDataString(artistId));
@@ -265,28 +244,28 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 				}
 				results.Sort(CompareTrackByTitle);
-				List<LegacyPulseTrack> captured = results;
+				List<PulseTrack> captured = results;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void GetPodcasts(Action<List<LegacyPulsePodcastChannel>> onComplete)
+		public override void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete)
 		{
 			// The pulse_v1 server returns status "not_implemented" for podcasts.
 			// Complete with an empty list rather than calling the endpoint.
-			CompleteOnMain(onComplete, new List<LegacyPulsePodcastChannel>());
+			CompleteOnMain(onComplete, new List<PulsePodcastChannel>());
 		}
 
-		public override void Search(string query, Action<LegacyPulseSearchData> onComplete)
+		public override void Search(string query, Action<PulseSearchData> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new LegacyPulseSearchData());
+				CompleteOnMain(onComplete, new PulseSearchData());
 				return;
 			}
 			Task.Run(() =>
 			{
-				LegacyPulseSearchData result = new LegacyPulseSearchData();
+				PulseSearchData result = new PulseSearchData();
 				try
 				{
 					string param = "query=" + Uri.EscapeDataString(query)
@@ -304,21 +283,21 @@ namespace Thump.Pulse
 				{
 					Log.Exception(ex);
 				}
-				LegacyPulseSearchData captured = result;
+				PulseSearchData captured = result;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void GetArtistAlbums(string artistId, Action<List<LegacyPulseAlbum>> onComplete)
+		public override void GetArtistAlbums(string artistId, Action<List<PulseAlbum>> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<LegacyPulseAlbum>());
+				CompleteOnMain(onComplete, new List<PulseAlbum>());
 				return;
 			}
 			Task.Run(() =>
 			{
-				List<LegacyPulseAlbum> results = new List<LegacyPulseAlbum>();
+				List<PulseAlbum> results = new List<PulseAlbum>();
 				try
 				{
 					string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
@@ -335,21 +314,21 @@ namespace Thump.Pulse
 				{
 					Log.Exception(ex);
 				}
-				List<LegacyPulseAlbum> captured = results;
+				List<PulseAlbum> captured = results;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void GetAlbum(string albumId, Action<LegacyPulseAlbum> onComplete)
+		public override void GetAlbum(string albumId, Action<PulseAlbum> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new LegacyPulseAlbum());
+				CompleteOnMain(onComplete, new PulseAlbum());
 				return;
 			}
 			Task.Run(() =>
 			{
-				LegacyPulseAlbum result = new LegacyPulseAlbum();
+				PulseAlbum result = new PulseAlbum();
 				try
 				{
 					string url = BuildPulseUrl("album", "id=" + Uri.EscapeDataString(albumId));
@@ -363,21 +342,21 @@ namespace Thump.Pulse
 				{
 					Log.Exception(ex);
 				}
-				LegacyPulseAlbum captured = result;
+				PulseAlbum captured = result;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void GetAlbums(Action<List<LegacyPulseAlbum>> onComplete)
+		public override void GetAlbums(Action<List<PulseAlbum>> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<LegacyPulseAlbum>());
+				CompleteOnMain(onComplete, new List<PulseAlbum>());
 				return;
 			}
 			Task.Run(() =>
 			{
-				List<LegacyPulseAlbum> results = new List<LegacyPulseAlbum>();
+				List<PulseAlbum> results = new List<PulseAlbum>();
 				try
 				{
 					// Page until the server stops handing back rows. Advance the
@@ -406,12 +385,12 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 				}
 				results.Sort(CompareAlbumByName);
-				List<LegacyPulseAlbum> captured = results;
+				List<PulseAlbum> captured = results;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void CreatePlaylist(string name, Action<LegacyPulsePlaylist> onComplete)
+		public override void CreatePlaylist(string name, Action<PulsePlaylist> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -420,7 +399,7 @@ namespace Thump.Pulse
 			}
 			Task.Run(() =>
 			{
-				LegacyPulsePlaylist created = null;
+				PulsePlaylist created = null;
 				try
 				{
 					string url = BuildPulseUrl("createPlaylist", "name=" + Uri.EscapeDataString(name));
@@ -434,7 +413,7 @@ namespace Thump.Pulse
 				{
 					Log.Exception(ex);
 				}
-				LegacyPulsePlaylist captured = created;
+				PulsePlaylist captured = created;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
@@ -586,7 +565,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public override void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<LegacyPulseTrack> newOrder, Action<bool> onComplete)
+		public override void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<PulseTrack> newOrder, Action<bool> onComplete)
 		{
 			if (!IsOnline())
 			{
@@ -636,16 +615,16 @@ namespace Thump.Pulse
 			CompleteOnMain(onComplete, true);
 		}
 
-		public override void GetPlaylists(Action<List<LegacyPulsePlaylist>> onComplete)
+		public override void GetPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<LegacyPulsePlaylist>());
+				CompleteOnMain(onComplete, new List<PulsePlaylist>());
 				return;
 			}
 			Task.Run(() =>
 			{
-				List<LegacyPulsePlaylist> results = new List<LegacyPulsePlaylist>();
+				List<PulsePlaylist> results = new List<PulsePlaylist>();
 				try
 				{
 					string url = BuildPulseUrl("playlists", null);
@@ -663,36 +642,31 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 				}
 				results.Sort(ComparePlaylistByName);
-				List<LegacyPulsePlaylist> captured = results;
+				List<PulsePlaylist> captured = results;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void GetPlaylist(string playlistId, Action<LegacyPulsePlaylist> onComplete)
+		public override void GetPlaylist(string playlistId, Action<PulsePlaylistDetails> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new LegacyPulsePlaylist());
+				CompleteOnMain(onComplete, new PulsePlaylistDetails());
 				return;
 			}
 			Task.Run(() =>
 			{
-				LegacyPulsePlaylist result = new LegacyPulsePlaylist();
+				PulsePlaylistDetails result = new PulsePlaylistDetails();
 				try
 				{
 					string url = BuildPulseUrl("playlist", "id=" + Uri.EscapeDataString(playlistId));
-					PulsePlaylistDetails details;
-					if (TryGetObject(url, true, out details) && details != null && details.Playlist != null)
-					{
-						result = MapPlaylistDetails(details);
-					}
+					TryGetObject(url, true, out result);
 				}
 				catch (Exception ex)
 				{
 					Log.Exception(ex);
 				}
-				LegacyPulsePlaylist captured = result;
-				CompleteOnMain(onComplete, captured);
+				CompleteOnMain(onComplete, result);
 			});
 		}
 
@@ -767,16 +741,16 @@ namespace Thump.Pulse
 			});
 		}
 
-		public override void GetRecentlyPlayed(Action<List<LegacyPulseObject>> onComplete)
+		public override void GetRecentlyPlayed(Action<List<PulseObject>> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<LegacyPulseObject>());
+				CompleteOnMain(onComplete, new List<PulseObject>());
 				return;
 			}
 			Task.Run(() =>
 			{
-				List<LegacyPulseObject> results = new List<LegacyPulseObject>();
+				List<PulseObject> results = new List<PulseObject>();
 				try
 				{
 					string url = BuildPulseUrl("recentlyPlayed", "count=50");
@@ -785,7 +759,7 @@ namespace Thump.Pulse
 					{
 						foreach (JsonElement element in contents.EnumerateArray())
 						{
-							LegacyPulseObject mapped = MapMixedObject(element);
+							PulseObject mapped = MapMixedObject(element);
 							if (mapped != null)
 							{
 								results.Add(mapped);
@@ -797,39 +771,39 @@ namespace Thump.Pulse
 				{
 					Log.Exception(ex);
 				}
-				List<LegacyPulseObject> captured = results;
+				List<PulseObject> captured = results;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void GetPopularArtists(Action<List<LegacyPulseArtist>> onComplete)
+		public override void GetPopularArtists(Action<List<PulseArtist>> onComplete)
 		{
 			// No pulse_v1 endpoint exposes popularity-ranked artists.
-			CompleteOnMain(onComplete, new List<LegacyPulseArtist>());
+			CompleteOnMain(onComplete, new List<PulseArtist>());
 		}
 
-		public override void GetTopPlaylists(Action<List<LegacyPulsePlaylist>> onComplete)
+		public override void GetTopPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
 			// No pulse_v1 endpoint exposes score-ranked playlists.
-			CompleteOnMain(onComplete, new List<LegacyPulsePlaylist>());
+			CompleteOnMain(onComplete, new List<PulsePlaylist>());
 		}
 
-		public override void GetRecentPlaylists(Action<List<LegacyPulsePlaylist>> onComplete)
+		public override void GetRecentPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
 			// No pulse_v1 endpoint exposes recently-played playlists.
-			CompleteOnMain(onComplete, new List<LegacyPulsePlaylist>());
+			CompleteOnMain(onComplete, new List<PulsePlaylist>());
 		}
 
-		public override void GetRecentlyAdded(Action<List<LegacyPulseObject>> onComplete)
+		public override void GetRecentlyAdded(Action<List<PulseObject>> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<LegacyPulseObject>());
+				CompleteOnMain(onComplete, new List<PulseObject>());
 				return;
 			}
 			Task.Run(() =>
 			{
-				List<LegacyPulseObject> results = new List<LegacyPulseObject>();
+				List<PulseObject> results = new List<PulseObject>();
 				try
 				{
 					string url = BuildPulseUrl("albums", "type=newest&size=50&offset=0");
@@ -846,21 +820,21 @@ namespace Thump.Pulse
 				{
 					Log.Exception(ex);
 				}
-				List<LegacyPulseObject> captured = results;
+				List<PulseObject> captured = results;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void GetGenres(Action<List<LegacyPulseGenre>> onComplete)
+		public override void GetGenres(Action<List<PulseGenre>> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<LegacyPulseGenre>());
+				CompleteOnMain(onComplete, new List<PulseGenre>());
 				return;
 			}
 			Task.Run(() =>
 			{
-				List<LegacyPulseGenre> results = new List<LegacyPulseGenre>();
+				List<PulseGenre> results = new List<PulseGenre>();
 				try
 				{
 					string url = BuildPulseUrl("genres", null);
@@ -878,27 +852,27 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 				}
 				results.Sort(CompareGenreByName);
-				List<LegacyPulseGenre> captured = results;
+				List<PulseGenre> captured = results;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void GetTopItems(Action<List<LegacyPulseObject>> onComplete)
+		public override void GetTopItems(Action<List<PulseObject>> onComplete)
 		{
 			// No pulse_v1 endpoint exposes a ranked "top items" feed.
-			CompleteOnMain(onComplete, new List<LegacyPulseObject>());
+			CompleteOnMain(onComplete, new List<PulseObject>());
 		}
 
-		public override void GetTracksForGenre(string genre, Action<List<LegacyPulseTrack>> onComplete)
+		public override void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<LegacyPulseTrack>());
+				CompleteOnMain(onComplete, new List<PulseTrack>());
 				return;
 			}
 			Task.Run(() =>
 			{
-				List<LegacyPulseTrack> results = new List<LegacyPulseTrack>();
+				List<PulseTrack> results = new List<PulseTrack>();
 				try
 				{
 					string param = "genre=" + Uri.EscapeDataString(genre) + "&count=500&offset=0";
@@ -917,21 +891,21 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 				}
 				results.Sort(CompareTrackByTitle);
-				List<LegacyPulseTrack> captured = results;
+				List<PulseTrack> captured = results;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
 
-		public override void GetFavorites(Action<List<LegacyPulseTrack>> onComplete)
+		public override void GetFavorites(Action<List<PulseTrack>> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<LegacyPulseTrack>());
+				CompleteOnMain(onComplete, new List<PulseTrack>());
 				return;
 			}
 			Task.Run(() =>
 			{
-				List<LegacyPulseTrack> results = new List<LegacyPulseTrack>();
+				List<PulseTrack> results = new List<PulseTrack>();
 				try
 				{
 					string url = BuildPulseUrl("favorites", null);
@@ -948,7 +922,7 @@ namespace Thump.Pulse
 				{
 					Log.Exception(ex);
 				}
-				List<LegacyPulseTrack> captured = results;
+				List<PulseTrack> captured = results;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
@@ -977,195 +951,6 @@ namespace Thump.Pulse
 			});
 		}
 
-		private LegacyPulseObject MapMixedObject(JsonElement element)
-		{
-			JsonElement kindElement;
-			if (!element.TryGetProperty("Kind", out kindElement))
-			{
-				return null;
-			}
-			if (kindElement.ValueKind != JsonValueKind.String)
-			{
-				return null;
-			}
-			string kind = kindElement.GetString();
-			string raw = element.GetRawText();
-			if (kind == "Track")
-			{
-				return MapTrack(PulseWire.Parse<PulseTrack>(raw));
-			}
-			if (kind == "Album")
-			{
-				return MapAlbum(PulseWire.Parse<PulseAlbum>(raw));
-			}
-			if (kind == "Artist")
-			{
-				return MapArtist(PulseWire.Parse<PulseArtist>(raw));
-			}
-			if (kind == "Playlist")
-			{
-				return MapPlaylist(PulseWire.Parse<PulsePlaylist>(raw));
-			}
-			return null;
-		}
-
-		private LegacyPulseTrack MapTrack(PulseTrack source)
-		{
-			LegacyPulseTrack track = new LegacyPulseTrack();
-			if (source == null)
-			{
-				return track;
-			}
-			track.Id = source.Id;
-			track.Title = source.Title;
-			track.Artist = source.Artist;
-			track.ArtistId = source.ArtistId;
-			track.Album = source.Album;
-			track.AlbumId = source.AlbumId;
-			track.CoverArt = source.CoverArt;
-			track.Duration = source.Duration;
-			track.Starred = source.Starred;
-			return track;
-		}
-
-		private LegacyPulseAlbum MapAlbum(PulseAlbum source)
-		{
-			LegacyPulseAlbum album = new LegacyPulseAlbum();
-			if (source == null)
-			{
-				return album;
-			}
-			album.Id = source.Id;
-			album.Name = source.Name;
-			album.Artist = source.Artist;
-			album.ArtistId = source.ArtistId;
-			album.CoverArt = source.CoverArt;
-			album.Year = source.Year;
-			album.TrackCount = source.TrackCount;
-			album.Duration = source.Duration;
-			return album;
-		}
-
-		private LegacyPulseAlbum MapAlbumDetails(PulseAlbumDetails source)
-		{
-			LegacyPulseAlbum album = MapAlbum(source.Album);
-			album.Id = source.Id;
-			List<LegacyPulseTrack> tracks = new List<LegacyPulseTrack>();
-			if (source.Tracks != null)
-			{
-				for (int index = 0; index < source.Tracks.Count; index++)
-				{
-					tracks.Add(MapTrack(source.Tracks[index]));
-				}
-			}
-			album.Tracks = tracks;
-			return album;
-		}
-
-		private LegacyPulseArtist MapArtist(PulseArtist source)
-		{
-			LegacyPulseArtist artist = new LegacyPulseArtist();
-			if (source == null)
-			{
-				return artist;
-			}
-			artist.Id = source.Id;
-			artist.Name = source.Name;
-			artist.CoverArt = source.CoverArt;
-			artist.AlbumCount = source.AlbumCount;
-			// PlayCount has no PulseArtist counterpart; the contract carries
-			// TrackCount instead. Leave PlayCount at zero.
-			artist.PlayCount = 0;
-			artist.Score = source.Score;
-			artist.LastPlayed = source.LastPlayed;
-			return artist;
-		}
-
-		private LegacyPulsePlaylist MapPlaylist(PulsePlaylist source)
-		{
-			LegacyPulsePlaylist playlist = new LegacyPulsePlaylist();
-			if (source == null)
-			{
-				return playlist;
-			}
-			playlist.Id = source.Id;
-			playlist.Name = source.Name;
-			playlist.CoverArt = source.CoverArt;
-			playlist.TrackCount = source.TrackCount;
-			playlist.Duration = source.Duration;
-			playlist.Score = source.Score;
-			playlist.LastPlayed = source.LastPlayed;
-			return playlist;
-		}
-
-		private LegacyPulsePlaylist MapPlaylistDetails(PulsePlaylistDetails source)
-		{
-			LegacyPulsePlaylist playlist = MapPlaylist(source.Playlist);
-			playlist.Id = source.Id;
-			List<LegacyPulseTrack> tracks = new List<LegacyPulseTrack>();
-			if (source.Tracks != null)
-			{
-				for (int index = 0; index < source.Tracks.Count; index++)
-				{
-					tracks.Add(MapTrack(source.Tracks[index]));
-				}
-			}
-			playlist.Tracks = tracks;
-			return playlist;
-		}
-
-		private LegacyPulseGenre MapGenre(PulseGenre source)
-		{
-			LegacyPulseGenre genre = new LegacyPulseGenre();
-			if (source == null)
-			{
-				return genre;
-			}
-			genre.Id = source.Id;
-			if (string.IsNullOrEmpty(genre.Id))
-			{
-				genre.Id = source.Name;
-			}
-			genre.Name = source.Name;
-			genre.TrackCount = source.TrackCount;
-			genre.AlbumCount = source.AlbumCount;
-			return genre;
-		}
-
-		private LegacyPulseSearchData MapSearchData(PulseSearchData source)
-		{
-			LegacyPulseSearchData data = new LegacyPulseSearchData();
-			if (source.Artists != null)
-			{
-				for (int index = 0; index < source.Artists.Count; index++)
-				{
-					data.Artists.Add(MapArtist(source.Artists[index]));
-				}
-			}
-			if (source.Albums != null)
-			{
-				for (int index = 0; index < source.Albums.Count; index++)
-				{
-					data.Albums.Add(MapAlbum(source.Albums[index]));
-				}
-			}
-			if (source.Tracks != null)
-			{
-				for (int index = 0; index < source.Tracks.Count; index++)
-				{
-					data.Tracks.Add(MapTrack(source.Tracks[index]));
-				}
-			}
-			if (source.Playlists != null)
-			{
-				for (int index = 0; index < source.Playlists.Count; index++)
-				{
-					data.Playlists.Add(MapPlaylist(source.Playlists[index]));
-				}
-			}
-			return data;
-		}
-
 		private static void CompleteOnMain<T>(Action<T> onComplete, T value)
 		{
 			if (onComplete == null)
@@ -1178,27 +963,27 @@ namespace Thump.Pulse
 			});
 		}
 
-		private static int CompareArtistByName(LegacyPulseArtist first, LegacyPulseArtist second)
+		private static int CompareArtistByName(PulseArtist first, PulseArtist second)
 		{
 			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}
 
-		private static int CompareAlbumByName(LegacyPulseAlbum first, LegacyPulseAlbum second)
+		private static int CompareAlbumByName(PulseAlbum first, PulseAlbum second)
 		{
 			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}
 
-		private static int ComparePlaylistByName(LegacyPulsePlaylist first, LegacyPulsePlaylist second)
+		private static int ComparePlaylistByName(PulsePlaylist first, PulsePlaylist second)
 		{
 			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}
 
-		private static int CompareGenreByName(LegacyPulseGenre first, LegacyPulseGenre second)
+		private static int CompareGenreByName(PulseGenre first, PulseGenre second)
 		{
 			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}
 
-		private static int CompareTrackByTitle(LegacyPulseTrack first, LegacyPulseTrack second)
+		private static int CompareTrackByTitle(PulseTrack first, PulseTrack second)
 		{
 			return string.Compare(first.Title, second.Title, StringComparison.OrdinalIgnoreCase);
 		}

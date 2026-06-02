@@ -22,8 +22,6 @@ namespace Thump.Data
 		private const string s_keyServerPort = "thump.login.port";
 		private const string s_keyUsername = "thump.login.username";
 		private const string s_keyPassword = "thump.login.password";
-		private const string s_keyAuthType = "thump.login.authType";
-		private const string s_keyServerType = "thump.login.serverType";
 		private const string s_keyUseHttps = "thump.login.useHttps";
 
 		public static eNormalizeVolume GetNormalizeVolume()
@@ -119,26 +117,6 @@ namespace Thump.Data
 		public static void SetPassword(string value)
 		{
 			SecureStorage.Default.SetAsync(s_keyPassword, value).GetAwaiter().GetResult();
-		}
-
-		public static MediaClient.eAuthType GetAuthType()
-		{
-			int stored = Preferences.Get(s_keyAuthType, (int)MediaClient.eAuthType.Token);
-			return (MediaClient.eAuthType)stored;
-		}
-		public static void SetAuthType(MediaClient.eAuthType value)
-		{
-			Preferences.Set(s_keyAuthType, (int)value);
-		}
-
-		public static LegacyPulseClient.eServerType GetServerType()
-		{
-			int stored = Preferences.Get(s_keyServerType, (int)LegacyPulseClient.eServerType.Subsonic);
-			return (LegacyPulseClient.eServerType)stored;
-		}
-		public static void SetServerType(LegacyPulseClient.eServerType value)
-		{
-			Preferences.Set(s_keyServerType, (int)value);
 		}
 
 		public static bool GetUseHttps()

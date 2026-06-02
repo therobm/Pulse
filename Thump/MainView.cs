@@ -3,6 +3,7 @@ using System.IO;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Storage;
+using PulseAPI.CSharp;
 using Thump.Data;
 using Thump.Playback;
 #if ANDROID
@@ -51,9 +52,9 @@ namespace Thump
 		private eTab m_activeTab = eTab.Home;
 		private List<View> m_detailStack = new List<View>();
 
-		private List<LegacyPulseTrack> m_currentQueue = new List<LegacyPulseTrack>();
+		private List<PulseTrack> m_currentQueue = new List<PulseTrack>();
 		private int m_currentQueueIndex;
-		private LegacyPulseTrack m_currentTrack;
+		private PulseTrack m_currentTrack;
 		private IMediaPlayer m_player;
 		private ePlaybackState m_playbackState = ePlaybackState.Idle;
 		private long m_currentDurationMs;
@@ -88,8 +89,8 @@ namespace Thump
 
 
 			m_cache = new ThumpCache();
-			m_mediaClient = new LegacyPulseClient(m_cache);
-			m_mediaClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), ThumpSettings.GetUseHttps());
+			m_mediaClient = new PulseClient(m_cache);
+			m_mediaClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetUseHttps());
 
 #if ANDROID
 			m_player = new ThumpAndroidPlayer(this, m_mediaClient);
@@ -226,39 +227,39 @@ namespace Thump
 			return base.OnBackButtonPressed();
 		}
 
-		public void OnArtistSelected(LegacyPulseArtist artist)
+		public void OnArtistSelected(PulseArtist artist)
 		{
 			ArtistDetailView detail = new ArtistDetailView(this, artist);
 			detail.Initialize();
 			PushDetail(detail);
 		}
 
-		public void OnAlbumSelected(LegacyPulseAlbum album)
+		public void OnAlbumSelected(PulseAlbum album)
 		{
 			AlbumDetailView detail = new AlbumDetailView(this, album);
 			detail.Initialize();
 			PushDetail(detail);
 		}
 
-		public void OnPlaylistSelected(LegacyPulsePlaylist playlist)
+		public void OnPlaylistSelected(PulsePlaylist playlist)
 		{
 			PlaylistDetailView detail = new PlaylistDetailView(this, playlist);
 			detail.Initialize();
 			PushDetail(detail);
 		}
 		
-		public void OnGenreSelected(LegacyPulseGenre genre)
+		public void OnGenreSelected(PulseGenre genre)
 		{
 			GenreDetailView detail = new GenreDetailView(this, genre);
 			detail.Initialize();
 			PushDetail(detail);
 		}
 
-		public void OnHomeItemSelected(MediaDataObject item)
+		public void OnHomeItemSelected(PulseObject item)
 		{
 			if (item.Kind == eDataType.Album)
 			{
-				LegacyPulseAlbum album = item as LegacyPulseAlbum;
+				PulseAlbum album = item as PulseAlbum;
 				if (album != null)
 				{
 					OnAlbumSelected(album);
@@ -266,7 +267,7 @@ namespace Thump
 			}
 			else if (item.Kind == eDataType.Playlist)
 			{
-				LegacyPulsePlaylist playlist = item as LegacyPulsePlaylist;
+				PulsePlaylistDetails playlist = item as PulsePlaylistDetails;
 				if (playlist != null)
 				{
 					OnPlaylistSelected(playlist);
@@ -274,7 +275,7 @@ namespace Thump
 			}
 			else if (item.Kind == eDataType.Artist)
 			{
-				LegacyPulseArtist artist = item as LegacyPulseArtist;
+				PulseArtist artist = item as PulseArtist;
 				if (artist != null)
 				{
 					OnArtistSelected(artist);
@@ -282,24 +283,24 @@ namespace Thump
 			}
 			else if (item.Kind == eDataType.Track)
 			{
-				LegacyPulseTrack track = item as LegacyPulseTrack;
+				PulseTrack track = item as PulseTrack;
 				if (track != null)
 				{
-					List<LegacyPulseTrack> oneShotQueue = new List<LegacyPulseTrack>();
+					List<PulseTrack> oneShotQueue = new List<PulseTrack>();
 					oneShotQueue.Add(track);
 					OnPlayTracks(oneShotQueue, 0, eQueueSource.Track, track.Id);
 				}
 			}
 		}
 
-		public void OnTrackSelected(LegacyPulseTrack track)
+		public void OnTrackSelected(PulseTrack track)
 		{
-			List<LegacyPulseTrack> oneShotQueue = new List<LegacyPulseTrack>();
+			List<PulseTrack> oneShotQueue = new List<PulseTrack>();
 			oneShotQueue.Add(track);
 			OnPlayTracks(oneShotQueue, 0, eQueueSource.Track, track.Id);
 		}
 
-		public void OnPlayTracks(List<LegacyPulseTrack> tracks, int startIndex, eQueueSource source, string sourceId = "")
+		public void OnPlayTracks(List<PulseTrack> tracks, int startIndex, eQueueSource source, string sourceId = "")
 		{
 			if (tracks == null || tracks.Count == 0)
 			{
@@ -310,7 +311,7 @@ namespace Thump
 			{
 				clampedIndex = 0;
 			}
-			m_currentQueue = new List<LegacyPulseTrack>(tracks);
+			m_currentQueue = new List<PulseTrack>(tracks);
 			m_currentQueueIndex = clampedIndex;
 			m_currentTrack = m_currentQueue[clampedIndex];
 			m_miniPlayer.SetTrack(m_currentTrack);
@@ -325,7 +326,7 @@ namespace Thump
 			}
 		}
 
-		public void OnPlayTracksShuffled(List<LegacyPulseTrack> tracks, eQueueSource source, string sourceId = "")
+		public void OnPlayTracksShuffled(List<PulseTrack> tracks, eQueueSource source, string sourceId = "")
 		{
 			if (tracks == null || tracks.Count == 0)
 			{
@@ -335,12 +336,12 @@ namespace Thump
 			// player's persistent ShuffleModeEnabled — that is a separate user-controlled
 			// setting (the Now Playing ⇋ button). The album/playlist/etc. Shuffle button
 			// is meant to randomize this one queue submission, not flip a mode.
-			List<LegacyPulseTrack> shuffled = new List<LegacyPulseTrack>(tracks);
+			List<PulseTrack> shuffled = new List<PulseTrack>(tracks);
 			System.Random random = new System.Random();
 			for (int idx = shuffled.Count - 1; idx > 0; idx--)
 			{
 				int swap = random.Next(idx + 1);
-				LegacyPulseTrack tmp = shuffled[idx];
+				PulseTrack tmp = shuffled[idx];
 				shuffled[idx] = shuffled[swap];
 				shuffled[swap] = tmp;
 			}
@@ -430,7 +431,7 @@ namespace Thump
 			return m_repeatMode;
 		}
 
-		public void OnAddToQueue(List<LegacyPulseTrack> tracks, eQueueSource source, string sourceId = "")
+		public void OnAddToQueue(List<PulseTrack> tracks, eQueueSource source, string sourceId = "")
 		{
 			if (tracks == null || tracks.Count == 0)
 			{
@@ -451,7 +452,7 @@ namespace Thump
 			}
 		}
 
-		public void OnPlayNext(List<LegacyPulseTrack> tracks, eQueueSource source, string sourceId = "")
+		public void OnPlayNext(List<PulseTrack> tracks, eQueueSource source, string sourceId = "")
 		{
 			if (tracks == null || tracks.Count == 0)
 			{
@@ -497,7 +498,7 @@ namespace Thump
 			m_player.SeekToQueueItem(index);
 		}
 
-		public List<LegacyPulseTrack> GetQueue()
+		public List<PulseTrack> GetQueue()
 		{
 			return m_currentQueue;
 		}
@@ -507,7 +508,7 @@ namespace Thump
 			return m_currentQueueIndex;
 		}
 
-		public void OnQueueTrackSelected(LegacyPulseTrack track)
+		public void OnQueueTrackSelected(PulseTrack track)
 		{
 			int index = m_currentQueue.IndexOf(track);
 			if (index < 0)
@@ -517,7 +518,7 @@ namespace Thump
 			OnSeekToQueueItem(index);
 		}
 
-		public async void OnTrackOptions(LegacyPulseTrack track)
+		public async void OnTrackOptions(PulseTrack track)
 		{
 			if (track == null)
 			{
@@ -526,7 +527,7 @@ namespace Thump
 			string playNext = "Play Next";
 			string addToQueue = "Add to Queue";
 			string choice = await DisplayActionSheet(track.Title, "Cancel", null, playNext, addToQueue);
-			List<LegacyPulseTrack> single = new List<LegacyPulseTrack>();
+			List<PulseTrack> single = new List<PulseTrack>();
 			single.Add(track);
 			if (choice == playNext)
 			{
@@ -564,7 +565,7 @@ namespace Thump
 			}
 		}
 
-		public void OnCurrentTrackChanged(LegacyPulseTrack track)
+		public void OnCurrentTrackChanged(PulseTrack track)
 		{
 			if (track == null)
 			{
@@ -594,7 +595,7 @@ namespace Thump
 			}
 		}
 
-		public void OnPlayArtist(LegacyPulseArtist artist, bool shuffle)
+		public void OnPlayArtist(PulseArtist artist, bool shuffle)
 		{
 			if (artist == null)
 			{
@@ -626,7 +627,7 @@ namespace Thump
 			});
 		}
 
-		public LegacyPulseTrack GetCurrentTrack()
+		public PulseTrack GetCurrentTrack()
 		{
 			return m_currentTrack;
 		}

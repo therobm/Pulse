@@ -1,3 +1,4 @@
+using PulseAPI.CSharp;
 using System.Collections.Generic;
 using Thump.Pulse;
 
@@ -21,7 +22,7 @@ namespace Thump.Playback
 
 	public interface IMediaPlayer
 	{
-		void Play(List<LegacyPulseTrack> tracks, int startIndex);
+		void Play(List<PulseTrack> tracks, int startIndex);
 		void Pause();
 		void Resume();
 		void SeekTo(long positionMilliseconds);
@@ -31,8 +32,8 @@ namespace Thump.Playback
 		void Release();
 		void SetShuffleEnabled(bool enabled);
 		void SetRepeatMode(eRepeatMode mode);
-		void AddToQueue(List<LegacyPulseTrack> tracks);
-		void PlayNext(List<LegacyPulseTrack> tracks);
+		void AddToQueue(List<PulseTrack> tracks);
+		void PlayNext(List<PulseTrack> tracks);
 		void SeekToQueueItem(int index);
 	}
 }
