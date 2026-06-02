@@ -73,7 +73,7 @@ namespace Pulse
 		static PulseConfig m_config;
 		static MusicManager s_musicManager;
 		private Subsonic m_subsonic;
-		private PulseAPI m_pulseAPI;
+		private Pulse.Protocols.Pulse.PulseAPI m_pulseAPI;
 		private MusicManager m_musicManager;
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 		private object m_spotifySyncsLock = new object();
@@ -95,7 +95,7 @@ namespace Pulse
 			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
 
-			m_pulseAPI = new PulseAPI(this, m_musicManager);
+			m_pulseAPI = new global::Pulse.Protocols.Pulse.PulseAPI(this, m_musicManager);
 			m_subsonic = new Subsonic(m_pulseAPI);
 			
 

@@ -47,9 +47,9 @@ namespace Pulse.Protocols.Subsonic
 			return error != null;
 		}
 
-		PulseAPI m_pulseAPI;
+		global::Pulse.Protocols.Pulse.PulseAPI m_pulseAPI;
 
-		public Subsonic(PulseAPI pulseAPI)
+		public Subsonic(global::Pulse.Protocols.Pulse.PulseAPI pulseAPI)
 		{
 			m_pulseAPI = pulseAPI;
 		}
