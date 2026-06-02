@@ -926,9 +926,9 @@ namespace Thump.Pulse
 			});
 		}
 
-		public override void ReportTrackAnalytics(string trackId)
+		public override void ReportAnalytics(string mediaId, PulseAPI.CSharp.eDataType mediaType, PulseAnalytics.eAction action)
 		{
-			if (string.IsNullOrEmpty(trackId))
+			if (string.IsNullOrEmpty(mediaId))
 			{
 				return;
 			}
@@ -940,8 +940,21 @@ namespace Thump.Pulse
 			{
 				try
 				{
-					string url = BuildPulseUrl("reportTrackAnalytics", "id=" + Uri.EscapeDataString(trackId));
-					HttpGet(url, false);
+					PulseAnalytics analytics = new PulseAnalytics();
+					analytics.MediaId = mediaId;
+					analytics.MediaType = mediaType;
+					analytics.Action = action;
+
+					string json = PulseWire.Serialize(analytics);
+
+
+					string url = BuildPulseUrl("reportAnalytics", null);
+
+					// The analytics payload is the PulseAnalytics object itself,
+					// serialized through the shared wire codec and POSTed as the
+					// request body (GET can't carry one). The server re-parses it
+					// with PulseWire.Parse<PulseAnalytics>.
+					HttpPostJson(url, json);
 				}
 				catch (Exception ex)
 				{

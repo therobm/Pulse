@@ -318,9 +318,22 @@ namespace Thump
 			ShowMiniPlayer();
 			m_player.Play(m_currentQueue, clampedIndex);
 
+			// Collection-level Started analytics. Only albums, artists, and
+			// playlists report here -- a Track source is a single-track queue
+			// whose play is already captured track-side by the playback
+			// service, and Genre has no collection identity to attribute a
+			// play to. The per-track Started/Paused/Skipped/Completed events
+			// still come from the service ticker regardless of source.
 			switch (source)
 			{
+				case eQueueSource.Album:
+					m_mediaClient.ReportAnalytics(sourceId, eDataType.Album, PulseAnalytics.eAction.Started);
+					break;
+				case eQueueSource.Artist:
+					m_mediaClient.ReportAnalytics(sourceId, eDataType.Artist, PulseAnalytics.eAction.Started);
+					break;
 				case eQueueSource.Playlist:
+					m_mediaClient.ReportAnalytics(sourceId, eDataType.Playlist, PulseAnalytics.eAction.Started);
 					m_mediaClient.MarkPlaylistPlayed(sourceId, null);
 					break;
 			}

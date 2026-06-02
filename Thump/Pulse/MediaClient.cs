@@ -191,13 +191,8 @@ namespace Thump.Pulse
 		public abstract void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete);
 		public abstract void GetFavorites(Action<List<PulseTrack>> onComplete);
 
-		// Fire-and-forget play / skip notification. Called by the player when
-		// a track ends naturally, when the user skips, or when a new queue
-		// replaces the current one mid-track. NOT called for pause/resume -
-		// pausing does not register as a play. Virtual + no-op default so
-		// Subsonic-flavored backends (which don't have a native analytics
-		// route) silently inherit a do-nothing - only PulseClient overrides.
-		public virtual void ReportTrackAnalytics(string trackId)
+	
+		public virtual void ReportAnalytics(string mediaId, eDataType mediaType, PulseAnalytics.eAction action)
 		{
 		}
 	
@@ -282,6 +277,49 @@ namespace Thump.Pulse
 				// AggregateException out of .Result. Left unhandled it unwinds
 				// to the thread root and crashes the app to desktop. Mark offline
 				// and return an error response so callers see a clean failure.
+				Log.Exception(ex);
+				m_bIsOnline = false;
+				return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
+			}
+		}
+
+		// POST a JSON body to a command endpoint. The GET helpers above can't
+		// carry a payload, so anything that ships a serialized object (e.g.
+		// analytics) goes through here. Commands are never cached. Mirrors
+		// HttpGet's offline handling: a dropped/refused connection marks the
+		// client offline and returns null rather than unwinding to the thread
+		// root. Returns the response body on success, null on failure.
+		protected string HttpPostJson(string url, string json)
+		{
+			HttpResponseMessage response = HttpPostJson_Internal(url, json);
+			if (!response.IsSuccessStatusCode)
+			{
+				Log.Error("HTTP POST failed: " + url + " status: " + response.StatusCode);
+				return null;
+			}
+			return response.Content.ReadAsStringAsync().Result;
+		}
+
+		private HttpResponseMessage HttpPostJson_Internal(string url, string json)
+		{
+			HttpClient client;
+			lock (m_httpClientLock)
+			{
+				client = m_httpClient;
+			}
+			if (client == null)
+			{
+				return new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed);
+			}
+
+			try
+			{
+				HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url);
+				request.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+				return client.SendAsync(request).Result;
+			}
+			catch (Exception ex)
+			{
 				Log.Exception(ex);
 				m_bIsOnline = false;
 				return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
