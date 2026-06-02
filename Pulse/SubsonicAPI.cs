@@ -107,6 +107,7 @@ namespace Thump.Pulse
 				{
 					Log.Exception(ex);
 				}
+				result.Sort(CompareTrackByTitle);
 				List<PulseTrack> captured = result;
 				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
 			});
@@ -168,6 +169,7 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 
 				}
+				results.Sort(CompareArtistByName);
 				MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
 			});
 		}
@@ -212,6 +214,7 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 
 				}
+				results.Sort(ComparePodcastByTitle);
 				List<PulsePodcastChannel> captured = results;
 				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
 			});
@@ -520,6 +523,7 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 
 				}
+				results.Sort(CompareAlbumByName);
 				List<PulseAlbum> captured = results;
 				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
 			});
@@ -817,6 +821,7 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 
 				}
+				results.Sort(ComparePlaylistByName);
 				MainThread.BeginInvokeOnMainThread(() => { onComplete(results); });
 			});
 		}
@@ -1178,6 +1183,7 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 
 				}
+				results.Sort(CompareGenreByName);
 				List<PulseGenre> captured = results;
 				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
 			});
@@ -1271,6 +1277,7 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 
 				}
+				results.Sort(CompareTrackByTitle);
 				List<PulseTrack> captured = results;
 				MainThread.BeginInvokeOnMainThread(() => { onComplete(captured); });
 			});
@@ -1375,8 +1382,45 @@ namespace Thump.Pulse
 			{
 				Log.Error("Invalid subsonic response: " + json);
 			}
-			
+
 			return retVal;
 		}
-	}	
+
+		//Default-ordering comparers for the generic flat-list browses. The
+		//Subsonic API doesn't promise any ordering for the *get-everything*
+		//endpoints (getArtists, getAlbumList2, getPlaylists, getGenres,
+		//getPodcasts, getSongsByGenre) so we impose alphabetical here once,
+		//and every consumer (LibraryView, AA browse, any future view) gets
+		//the same default. Views that want a different sort (e.g. the
+		//Albums tab's "Released" mode) re-sort the list themselves.
+		private static int CompareArtistByName(PulseArtist first, PulseArtist second)
+		{
+			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
+		}
+
+		private static int CompareAlbumByName(PulseAlbum first, PulseAlbum second)
+		{
+			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
+		}
+
+		private static int ComparePlaylistByName(PulsePlaylist first, PulsePlaylist second)
+		{
+			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
+		}
+
+		private static int CompareGenreByName(PulseGenre first, PulseGenre second)
+		{
+			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
+		}
+
+		private static int CompareTrackByTitle(PulseTrack first, PulseTrack second)
+		{
+			return string.Compare(first.Title, second.Title, StringComparison.OrdinalIgnoreCase);
+		}
+
+		private static int ComparePodcastByTitle(PulsePodcastChannel first, PulsePodcastChannel second)
+		{
+			return string.Compare(first.Title, second.Title, StringComparison.OrdinalIgnoreCase);
+		}
+	}
 }
