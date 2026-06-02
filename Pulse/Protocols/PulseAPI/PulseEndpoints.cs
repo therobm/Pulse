@@ -53,6 +53,7 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("updatePlaylist", UpdatePlaylist);
 			RegisterRoute("deletePlaylist", DeletePlaylist);
 
+			RegisterRoute("recentlyPlayed", GetRecentlyPlayed);
 			RegisterRoute("search", Search);
 			RegisterRoute("favorites", GetFavorites);
 			RegisterRoute("favorite", Favorite);
@@ -1102,6 +1103,155 @@ namespace Pulse.Protocols.PulseAPI
 
 			m_musicManager.OnTrackStreamed(user, id);
 			return Respond(context, new PulseResponse());
+		}
+
+		// Mixed-kind recents shelf: tracks, artists, albums, and playlists ranked
+		// together by recency, newest first. The `types` query param is a CSV of
+		// any combination of "track", "artist", "album", "playlist"; when omitted
+		// all four are included (the pulse_v1 surface has no pre-#223 callers to
+		// stay tracks-only for). Each item serializes as its concrete Pulse* type
+		// with a Kind discriminator, so the client branches on Kind.
+		public IResult GetRecentlyPlayed(HttpContext context)
+		{
+			int count = QueryParameters.GetInt(context, "count", 10);
+			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
+			string typesParam = context.Request.Query["types"].FirstOrDefault();
+
+			bool includeTracks;
+			bool includeArtists;
+			bool includeAlbums;
+			bool includePlaylists;
+			ParseRecentTypes(typesParam, out includeTracks, out includeArtists, out includeAlbums, out includePlaylists);
+
+			List<RecentCandidate> candidates = new List<RecentCandidate>();
+
+			if (includeTracks)
+			{
+				PulseAnalyticsInfo analytics = m_musicManager.GetAnalytics();
+				List<string> recentIds = new List<string>(analytics.RecentlyPlayed);
+				for (int idx = 0; idx < recentIds.Count; idx++)
+				{
+					TrackInfo track = m_musicManager.GetTrack(recentIds[idx]);
+					if (track == null)
+					{
+						continue;
+					}
+					RecentCandidate candidate = new RecentCandidate();
+					candidate.Item = BuildTrack(track, user);
+					// RecentlyPlayed is FIFO-ordered; if a track has no LastPlayed,
+					// fall back to its position so it still slots in roughly right.
+					if (track.LastPlayed != default(DateTime))
+					{
+						candidate.RankTime = track.LastPlayed;
+					}
+					else
+					{
+						candidate.RankTime = DateTime.UtcNow.AddSeconds(-idx);
+					}
+					candidates.Add(candidate);
+				}
+			}
+
+			if (includeArtists)
+			{
+				List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+				for (int idx = 0; idx < allArtists.Count; idx++)
+				{
+					ArtistInfo artist = allArtists[idx];
+					if (artist.LastPlayed == default(DateTime))
+					{
+						continue;
+					}
+					RecentCandidate candidate = new RecentCandidate();
+					candidate.Item = BuildArtist(artist, user);
+					candidate.RankTime = artist.LastPlayed;
+					candidates.Add(candidate);
+				}
+			}
+
+			if (includeAlbums)
+			{
+				List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+				for (int idx = 0; idx < allAlbums.Count; idx++)
+				{
+					AlbumInfo album = allAlbums[idx];
+					DateTime albumLastPlayed = default(DateTime);
+					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+					{
+						DateTime trackLastPlayed = album.Tracks[trackIndex].LastPlayed;
+						if (trackLastPlayed > albumLastPlayed)
+						{
+							albumLastPlayed = trackLastPlayed;
+						}
+					}
+					if (albumLastPlayed == default(DateTime))
+					{
+						continue;
+					}
+					RecentCandidate candidate = new RecentCandidate();
+					candidate.Item = BuildAlbum(album);
+					candidate.RankTime = albumLastPlayed;
+					candidates.Add(candidate);
+				}
+			}
+
+			if (includePlaylists)
+			{
+				List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(user);
+				for (int idx = 0; idx < allPlaylists.Count; idx++)
+				{
+					PlaylistInfo playlist = allPlaylists[idx];
+					DateTime playlistLastPlayed = playlist.GetLastPlayed(user);
+					if (playlistLastPlayed == default(DateTime))
+					{
+						continue;
+					}
+					RecentCandidate candidate = new RecentCandidate();
+					candidate.Item = BuildPlaylist(playlist, user);
+					candidate.RankTime = playlistLastPlayed;
+					candidates.Add(candidate);
+				}
+			}
+
+			candidates.Sort(CompareRecentCandidateDescending);
+
+			List<object> items = new List<object>();
+			int emit = Math.Min(count, candidates.Count);
+			for (int idx = 0; idx < emit; idx++)
+			{
+				items.Add(candidates[idx].Item);
+			}
+			return RespondList(context, items);
+		}
+
+		private static void ParseRecentTypes(string raw, out bool track, out bool artist, out bool album, out bool playlist)
+		{
+			if (string.IsNullOrWhiteSpace(raw))
+			{
+				track = true; artist = true; album = true; playlist = true;
+				return;
+			}
+			track = false; artist = false; album = false; playlist = false;
+			string[] parts = raw.Split(',');
+			for (int idx = 0; idx < parts.Length; idx++)
+			{
+				string part = parts[idx].Trim();
+				if (string.Equals(part, "track", StringComparison.OrdinalIgnoreCase)) { track = true; }
+				else if (string.Equals(part, "artist", StringComparison.OrdinalIgnoreCase)) { artist = true; }
+				else if (string.Equals(part, "album", StringComparison.OrdinalIgnoreCase)) { album = true; }
+				else if (string.Equals(part, "playlist", StringComparison.OrdinalIgnoreCase)) { playlist = true; }
+			}
+		}
+
+		private static int CompareRecentCandidateDescending(RecentCandidate left, RecentCandidate right)
+		{
+			return right.RankTime.CompareTo(left.RankTime);
+		}
+
+		private class RecentCandidate
+		{
+			public DateTime RankTime;
+			public object Item;
 		}
 
 		public IResult GetPodcasts(HttpContext context)
