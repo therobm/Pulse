@@ -81,12 +81,12 @@ namespace Thump.Views
 				m_image.IsVisible = false;
 				return;
 			}
-			if (MainView.Data == null)
+			if (MainView.MediaClient == null)
 			{
 				m_image.IsVisible = false;
 				return;
 			}
-			MainView.Data.GetCoverArt(coverArtId, OnArtLoaded);
+			MainView.MediaClient.GetCoverArt(coverArtId, OnArtLoaded);
 		}
 
 		private void OnArtLoaded(byte[] data)

@@ -346,10 +346,10 @@ namespace Thump.Views
 			ApplyLayout();
 			SetActiveButton(eLibraryButton.Artists);
 			SetActiveSort(eLibrarySort.Alphabetical);
-			MainView.Data.GetArtists(OnArtistsLoaded);
-			MainView.Data.GetAlbums(OnAlbumsLoaded);
-			MainView.Data.GetPlaylists(OnPlaylistsLoaded);
-			MainView.Data.GetGenres(OnGenresLoaded);
+			MainView.MediaClient.GetArtists(OnArtistsLoaded);
+			MainView.MediaClient.GetAlbums(OnAlbumsLoaded);
+			MainView.MediaClient.GetPlaylists(OnPlaylistsLoaded);
+			MainView.MediaClient.GetGenres(OnGenresLoaded);
 		}
 
 		private void OnArtistsLoaded(List<PulseArtist> artists)

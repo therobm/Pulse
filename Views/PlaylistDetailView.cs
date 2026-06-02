@@ -177,12 +177,12 @@ namespace Thump.Views
 		{
 			base.Initialize();
 			m_titleLabel.Text = m_playlist.Name;
-			m_metaLabel.Text = m_playlist.SongCount + " tracks";
+			m_metaLabel.Text = m_playlist.TrackCount + " tracks";
 			m_art.SetCoverArt(m_playlist.CoverArt);
 
 			// The playlist from the list endpoint carries no tracks; fetch the full
 			// playlist (getPlaylist) which includes its songs.
-			MainView.Data.GetPlaylist(m_playlist.Id, OnPlaylistLoaded);
+			MainView.MediaClient.GetPlaylist(m_playlist.Id, OnPlaylistLoaded);
 		}
 
 		private void OnPlaylistLoaded(PulsePlaylist playlist)
@@ -193,8 +193,8 @@ namespace Thump.Views
 			}
 			m_playlist = playlist;
 			m_titleLabel.Text = playlist.Name;
-			m_metaLabel.Text = playlist.SongCount + " tracks";
-			m_tracks = playlist.Songs;
+			m_metaLabel.Text = playlist.TrackCount + " tracks";
+			m_tracks = playlist.Tracks;
 			m_trackList.ItemsSource = m_tracks;
 		}
 
@@ -205,22 +205,22 @@ namespace Thump.Views
 
 		private void OnPlayClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayTracks(m_tracks, 0);
+			m_mainView.OnPlayTracks(m_tracks, 0, eQueueSource.Playlist, m_playlist.Id);
 		}
 
 		private void OnShuffleClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayTracksShuffled(m_tracks);
+			m_mainView.OnPlayTracksShuffled(m_tracks, eQueueSource.Playlist, m_playlist.Id);
 		}
 
 		private void OnAddToQueueClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnAddToQueue(m_tracks);
+			m_mainView.OnAddToQueue(m_tracks, eQueueSource.Playlist, m_playlist.Id);
 		}
 
 		private void OnPlayNextClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayNext(m_tracks);
+			m_mainView.OnPlayNext(m_tracks, eQueueSource.Playlist, m_playlist.Id);
 		}
 	}
 }

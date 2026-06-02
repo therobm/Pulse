@@ -12,7 +12,7 @@ namespace Thump.Views.Tiles
 		private ArtImage m_art;
 		private Label m_titleLabel;
 		private Label m_subtitleLabel;
-		private ThumpDataOb m_item;
+		private MediaDataObject m_item;
 
 		public LibraryGridTile() : base(MainView.Self)
 		{
@@ -79,7 +79,7 @@ namespace Thump.Views.Tiles
 		protected override void OnBindingContextChanged()
 		{
 			base.OnBindingContextChanged();
-			ThumpDataOb item = BindingContext as ThumpDataOb;
+			MediaDataObject item = BindingContext as MediaDataObject;
 			if (item == null)
 			{
 				return;
@@ -104,7 +104,7 @@ namespace Thump.Views.Tiles
 				{
 					m_art.SetShape(eArtShape.RoundedRect);
 					m_titleLabel.Text = playlist.Name;
-					m_subtitleLabel.Text = playlist.SongCount + " tracks";
+					m_subtitleLabel.Text = playlist.TrackCount + " tracks";
 					m_art.SetCoverArt(playlist.CoverArt);
 				}
 			}
@@ -126,7 +126,7 @@ namespace Thump.Views.Tiles
 				{
 					m_art.SetShape(eArtShape.RoundedRect);
 					m_titleLabel.Text = genre.Name;
-					m_subtitleLabel.Text = genre.SongCount + " songs";
+					m_subtitleLabel.Text = genre.TrackCount + " songs";
 				}
 			}
 		}

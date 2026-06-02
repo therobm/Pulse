@@ -5,11 +5,22 @@ using Microsoft.Maui.Controls;
 using Microsoft.Maui.Storage;
 using Thump.Data;
 using Thump.Playback;
+#if ANDROID
+using Thump.Playback.AndroidOS;
+#endif
 using Thump.Pulse;
 using Thump.Views;
 
 namespace Thump
 {
+	public enum eQueueSource
+	{
+		Track,
+		Album,
+		Artist,
+		Playlist,
+		Genre,
+	}
 	public enum eTab
 	{
 		Home,
@@ -24,10 +35,9 @@ namespace Thump
 		public const string ServerUser = "Rob";
 
 		public static MainView Self { get { return s_self; } }
-		public static ThumpData Data { get { return Self.m_data; } }
-		
+		public static MediaClient MediaClient { get { return Self.m_mediaClient; } }
 		private static MainView s_self;
-		private PulseClient m_pulseClient;
+		private MediaClient m_mediaClient;
 		private ThumpCache m_cache;
 		private Grid m_rootGrid;
 		private ContentView m_contentHost;
@@ -44,8 +54,7 @@ namespace Thump
 		private List<PulseTrack> m_currentQueue = new List<PulseTrack>();
 		private int m_currentQueueIndex;
 		private PulseTrack m_currentTrack;
-		private ThumpData m_data;
-		private IThumpPlayer m_player;
+		private IMediaPlayer m_player;
 		private ePlaybackState m_playbackState = ePlaybackState.Idle;
 		private long m_currentDurationMs;
 		private NowPlayingView m_nowPlayingView;
@@ -78,18 +87,12 @@ namespace Thump
 			Content = m_rootGrid;
 
 
-			m_pulseClient = new PulseClient();
-			m_pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), true);
-
-
-			string cacheRoot = FileSystem.CacheDirectory;
-			string databasePath = Path.Combine(cacheRoot, "thump.db");
-			string blobDirectory = Path.Combine(cacheRoot, "blobs");
-			m_cache = new ThumpCache(databasePath, blobDirectory);
-			m_data = new ThumpData(m_pulseClient, m_cache);
+			m_cache = new ThumpCache();
+			m_mediaClient = new PulseAPI(m_cache);
+			m_mediaClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetAuthType(), ThumpSettings.GetUseHttps());
 
 #if ANDROID
-			m_player = new AndroidThumpPlayer(this, m_data);
+			m_player = new ThumpAndroidPlayer(this, m_mediaClient);
 #else
 			m_player = new StubThumpPlayer();
 #endif
@@ -159,6 +162,7 @@ namespace Thump
 			m_activeTab = eTab.Settings;
 			m_detailStack.Clear();
 			m_contentHost.Content = m_settingsView;
+			m_settingsView.OnNavigatedTo();
 			m_navFooter.SetActiveTab(eTab.Settings);
 			RestoreMiniPlayerIfActive();
 		}
@@ -242,7 +246,7 @@ namespace Thump
 			detail.Initialize();
 			PushDetail(detail);
 		}
-
+		
 		public void OnGenreSelected(PulseGenre genre)
 		{
 			GenreDetailView detail = new GenreDetailView(this, genre);
@@ -250,7 +254,7 @@ namespace Thump
 			PushDetail(detail);
 		}
 
-		public void OnHomeItemSelected(ThumpDataOb item)
+		public void OnHomeItemSelected(MediaDataObject item)
 		{
 			if (item.Kind == eDataType.Album)
 			{
@@ -278,24 +282,24 @@ namespace Thump
 			}
 			else if (item.Kind == eDataType.Track)
 			{
-				PulseTrack song = item as PulseTrack;
-				if (song != null)
+				PulseTrack track = item as PulseTrack;
+				if (track != null)
 				{
 					List<PulseTrack> oneShotQueue = new List<PulseTrack>();
-					oneShotQueue.Add(song);
-					OnPlayTracks(oneShotQueue, 0);
+					oneShotQueue.Add(track);
+					OnPlayTracks(oneShotQueue, 0, eQueueSource.Track, track.Id);
 				}
 			}
 		}
 
-		public void OnTrackSelected(PulseTrack song)
+		public void OnTrackSelected(PulseTrack track)
 		{
 			List<PulseTrack> oneShotQueue = new List<PulseTrack>();
-			oneShotQueue.Add(song);
-			OnPlayTracks(oneShotQueue, 0);
+			oneShotQueue.Add(track);
+			OnPlayTracks(oneShotQueue, 0, eQueueSource.Track, track.Id);
 		}
 
-		public void OnPlayTracks(List<PulseTrack> tracks, int startIndex)
+		public void OnPlayTracks(List<PulseTrack> tracks, int startIndex, eQueueSource source, string sourceId = "")
 		{
 			if (tracks == null || tracks.Count == 0)
 			{
@@ -312,16 +316,35 @@ namespace Thump
 			m_miniPlayer.SetTrack(m_currentTrack);
 			ShowMiniPlayer();
 			m_player.Play(m_currentQueue, clampedIndex);
+
+			switch (source)
+			{
+				case eQueueSource.Playlist:
+					m_mediaClient.MarkPlaylistPlayed(sourceId, null);
+					break;
+			}
 		}
 
-		public void OnPlayTracksShuffled(List<PulseTrack> tracks)
+		public void OnPlayTracksShuffled(List<PulseTrack> tracks, eQueueSource source, string sourceId = "")
 		{
 			if (tracks == null || tracks.Count == 0)
 			{
 				return;
 			}
-			SetShuffleState(true);
-			OnPlayTracks(tracks, 0);
+			// Shuffle the list ONCE here and submit the shuffled queue. Do NOT toggle the
+			// player's persistent ShuffleModeEnabled — that is a separate user-controlled
+			// setting (the Now Playing ⇋ button). The album/playlist/etc. Shuffle button
+			// is meant to randomize this one queue submission, not flip a mode.
+			List<PulseTrack> shuffled = new List<PulseTrack>(tracks);
+			System.Random random = new System.Random();
+			for (int idx = shuffled.Count - 1; idx > 0; idx--)
+			{
+				int swap = random.Next(idx + 1);
+				PulseTrack tmp = shuffled[idx];
+				shuffled[idx] = shuffled[swap];
+				shuffled[swap] = tmp;
+			}
+			OnPlayTracks(shuffled, 0, source, sourceId);
 		}
 
 		public void OnTogglePlayPause()
@@ -407,7 +430,7 @@ namespace Thump
 			return m_repeatMode;
 		}
 
-		public void OnAddToQueue(List<PulseTrack> tracks)
+		public void OnAddToQueue(List<PulseTrack> tracks, eQueueSource source, string sourceId = "")
 		{
 			if (tracks == null || tracks.Count == 0)
 			{
@@ -415,7 +438,7 @@ namespace Thump
 			}
 			if (m_currentQueue.Count == 0)
 			{
-				OnPlayTracks(tracks, 0);
+				OnPlayTracks(tracks, 0, source, sourceId);
 				return;
 			}
 			m_currentQueue.AddRange(tracks);
@@ -428,7 +451,7 @@ namespace Thump
 			}
 		}
 
-		public void OnPlayNext(List<PulseTrack> tracks)
+		public void OnPlayNext(List<PulseTrack> tracks, eQueueSource source, string sourceId = "")
 		{
 			if (tracks == null || tracks.Count == 0)
 			{
@@ -436,7 +459,7 @@ namespace Thump
 			}
 			if (m_currentQueue.Count == 0)
 			{
-				OnPlayTracks(tracks, 0);
+				OnPlayTracks(tracks, 0, source, sourceId);
 				return;
 			}
 			int insertAt = m_currentQueueIndex + 1;
@@ -452,6 +475,9 @@ namespace Thump
 				m_nowPlayingView.RefreshQueue();
 				m_nowPlayingView.RefreshSkipButtons();
 			}
+
+			//todo this should also fire MarkAsPlayed for recency tracking
+			//or things should be unified cause this is silly
 		}
 
 		public void OnSeekToQueueItem(int index)
@@ -504,11 +530,11 @@ namespace Thump
 			single.Add(track);
 			if (choice == playNext)
 			{
-				OnPlayNext(single);
+				OnPlayNext(single, eQueueSource.Track, track.Id);
 			}
 			else if (choice == addToQueue)
 			{
-				OnAddToQueue(single);
+				OnAddToQueue(single, eQueueSource.Track, track.Id);
 			}
 		}
 
@@ -575,7 +601,7 @@ namespace Thump
 				return;
 			}
 			bool started = false;
-			m_data.GetAlbumsForArtist(artist, (albums) =>
+			m_mediaClient.GetArtistTracks(artist.Id, (tracks) =>
 			{
 				// The data route can fire its callback more than once (cache fast-path
 				// then network); start the walk only once.
@@ -584,48 +610,19 @@ namespace Thump
 					return;
 				}
 				started = true;
-				if (albums == null || albums.Count == 0)
-				{
-					return;
-				}
-				List<PulseTrack> combined = new List<PulseTrack>();
-				AccumulateArtistTracks(albums, 0, combined, shuffle);
-			});
-		}
-
-		private void AccumulateArtistTracks(List<PulseAlbum> albums, int index, List<PulseTrack> combined, bool shuffle)
-		{
-			if (index >= albums.Count)
-			{
-				if (combined.Count == 0)
+				if (tracks == null || tracks.Count == 0)
 				{
 					return;
 				}
 				if (shuffle)
 				{
-					OnPlayTracksShuffled(combined);
+					OnPlayTracksShuffled(tracks, eQueueSource.Artist, artist.Id);
 				}
 				else
 				{
-					OnPlayTracks(combined, 0);
+					OnPlayTracks(tracks, 0, eQueueSource.Artist, artist.Id);
 				}
-				return;
-			}
-			bool advanced = false;
-			m_data.GetTracksForAlbum(albums[index], (tracks) =>
-			{
-				// Guard against the route's double callback: advancing twice here would
-				// branch the recursion and flood requests / duplicate the queue.
-				if (advanced)
-				{
-					return;
-				}
-				advanced = true;
-				if (tracks != null)
-				{
-					combined.AddRange(tracks);
-				}
-				AccumulateArtistTracks(albums, index + 1, combined, shuffle);
+
 			});
 		}
 
@@ -652,6 +649,10 @@ namespace Thump
 
 		public void ShowMiniPlayer()
 		{
+			if (m_nowPlayingView != null && m_contentHost.Content == m_nowPlayingView)
+			{
+				return;
+			}
 			m_miniPlayer.IsVisible = true;
 		}
 

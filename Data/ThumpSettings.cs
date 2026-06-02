@@ -24,6 +24,8 @@ namespace Thump.Data
 		private const string s_keyUsername = "thump.login.username";
 		private const string s_keyPassword = "thump.login.password";
 		private const string s_keyAuthType = "thump.login.authType";
+		private const string s_keyServerType = "thump.login.serverType";
+		private const string s_keyUseHttps = "thump.login.useHttps";
 
 		public static bool GetScrobbleEnabled()
 		{
@@ -129,14 +131,33 @@ namespace Thump.Data
 			SecureStorage.Default.SetAsync(s_keyPassword, value).GetAwaiter().GetResult();
 		}
 
-		public static PulseClient.eSubSonicAuthType GetAuthType()
+		public static MediaClient.eAuthType GetAuthType()
 		{
-			int stored = Preferences.Get(s_keyAuthType, (int)PulseClient.eSubSonicAuthType.Token);
-			return (PulseClient.eSubSonicAuthType)stored;
+			int stored = Preferences.Get(s_keyAuthType, (int)MediaClient.eAuthType.Token);
+			return (MediaClient.eAuthType)stored;
 		}
-		public static void SetAuthType(PulseClient.eSubSonicAuthType value)
+		public static void SetAuthType(MediaClient.eAuthType value)
 		{
 			Preferences.Set(s_keyAuthType, (int)value);
+		}
+
+		public static PulseAPI.eServerType GetServerType()
+		{
+			int stored = Preferences.Get(s_keyServerType, (int)PulseAPI.eServerType.Subsonic);
+			return (PulseAPI.eServerType)stored;
+		}
+		public static void SetServerType(PulseAPI.eServerType value)
+		{
+			Preferences.Set(s_keyServerType, (int)value);
+		}
+
+		public static bool GetUseHttps()
+		{
+			return Preferences.Get(s_keyUseHttps, true);
+		}
+		public static void SetUseHttps(bool value)
+		{
+			Preferences.Set(s_keyUseHttps, value);
 		}
 	}
 }

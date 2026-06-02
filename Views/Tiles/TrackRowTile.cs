@@ -1,5 +1,6 @@
 using System;
 using Microsoft.Maui;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using Thump.Pulse;
@@ -13,7 +14,9 @@ namespace Thump.Views.Tiles
 		private Label m_titleLabel;
 		private Label m_artistLabel;
 		private Label m_durationLabel;
-		private PulseTrack m_song;
+		private Label m_cacheIcon;
+		private PulseTrack m_track;
+		private bool m_isPlayable = true;
 
 		public TrackRowTile() : base(MainView.Self)
 		{
@@ -52,13 +55,20 @@ namespace Thump.Views.Tiles
 
 		private View BuildArt()
 		{
+			Grid artGrid = new Grid();
+			artGrid.WidthRequest = 44;
+			artGrid.HeightRequest = 44;
+			artGrid.VerticalOptions = LayoutOptions.Center;
+
 			m_art = new ArtImage();
 			m_art.WidthRequest = 44;
 			m_art.HeightRequest = 44;
-			m_art.VerticalOptions = LayoutOptions.Center;
+			artGrid.Children.Add(m_art);
 
-			Grid.SetColumn(m_art, 0);
-			return m_art;
+			artGrid.Children.Add(BuildCacheIcon());
+
+			Grid.SetColumn(artGrid, 0);
+			return artGrid;
 		}
 
 		private View BuildText()
@@ -98,6 +108,21 @@ namespace Thump.Views.Tiles
 			return m_durationLabel;
 		}
 
+		private View BuildCacheIcon()
+		{
+			m_cacheIcon = new Label();
+			m_cacheIcon.FontFamily = "MaterialIcons";
+			m_cacheIcon.Text = "\uE837";
+			m_cacheIcon.FontSize = 12;
+			m_cacheIcon.TextColor = ThumpColors.Accent;
+			m_cacheIcon.HorizontalOptions = LayoutOptions.End;
+			m_cacheIcon.VerticalOptions = LayoutOptions.End;
+			m_cacheIcon.Margin = new Thickness(0, 0, 2, 2);
+			m_cacheIcon.IsVisible = false;
+
+			return m_cacheIcon;
+		}
+
 		private View BuildOptions()
 		{
 			Button optionsButton = new Button();
@@ -123,16 +148,61 @@ namespace Thump.Views.Tiles
 		protected override void OnBindingContextChanged()
 		{
 			base.OnBindingContextChanged();
-			PulseTrack song = BindingContext as PulseTrack;
-			if (song == null)
+			m_cacheIcon.IsVisible = false;
+			m_titleLabel.Opacity = 1.0;
+			m_artistLabel.Opacity = 1.0;
+			m_isPlayable = true;
+			PulseTrack track = BindingContext as PulseTrack;
+			if (track == null)
 			{
 				return;
 			}
-			m_song = song;
-			m_titleLabel.Text = song.Title;
-			m_artistLabel.Text = song.Artist;
-			m_durationLabel.Text = FormatDuration(song.Duration);
-			m_art.SetCoverArt(song.ImageID);
+			m_track = track;
+			m_titleLabel.Text = track.Title;
+			m_artistLabel.Text = track.Artist;
+			m_durationLabel.Text = FormatDuration(track.Duration);
+			m_art.SetCoverArt(track.ImageID);
+			UpdateAvailability(track);
+		}
+
+		private void UpdateAvailability(PulseTrack track)
+		{
+			bool online = MainView.MediaClient.IsOnline();
+			string id = track.Id;
+			System.Threading.Tasks.Task.Run(() =>
+			{
+				bool cached = MainView.MediaClient.IsTrackCached(track.Id);
+				MainThread.BeginInvokeOnMainThread(() =>
+				{
+					if (m_track == null || m_track.Id != id)
+					{
+						return;
+					}
+					m_cacheIcon.IsVisible = cached;
+					double opacity;
+					if (!online && !cached)
+					{
+						opacity = 0.4;
+					}
+					else
+					{
+						opacity = 1.0;
+					}
+					m_art.Opacity = opacity;
+					m_titleLabel.Opacity = opacity;
+					m_artistLabel.Opacity = opacity;
+					bool playable;
+					if (!online && !cached)
+					{
+						playable = false;
+					}
+					else
+					{
+						playable = true;
+					}
+					m_isPlayable = playable;
+				});
+			});
 		}
 
 		private static string FormatDuration(int totalSeconds)
@@ -153,20 +223,24 @@ namespace Thump.Views.Tiles
 
 		private void OnTapped(object sender, EventArgs e)
 		{
-			if (m_song == null)
+			if (m_track == null)
 			{
 				return;
 			}
-			m_mainView.OnTrackSelected(m_song);
+			if (!m_isPlayable)
+			{
+				return;
+			}
+			m_mainView.OnTrackSelected(m_track);
 		}
 
 		private void OnOptionsClicked(object sender, EventArgs e)
 		{
-			if (m_song == null)
+			if (m_track == null)
 			{
 				return;
 			}
-			m_mainView.OnTrackOptions(m_song);
+			m_mainView.OnTrackOptions(m_track);
 		}
 	}
 }

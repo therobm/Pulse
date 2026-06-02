@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Maui;
 using Microsoft.Maui.ApplicationModel;
@@ -29,8 +30,7 @@ namespace Thump.Views
 		private Label m_cacheSizeValueLabel;
 		private ProgressBar m_usageBar;
 		private Label m_usageLabel;
-		private Label m_tracksCachedLabel;
-		private Label m_coverArtLabel;
+		private Label m_entriesLabel;
 		private Label m_oldestLabel;
 
 		private Entry m_serverIpEntry;
@@ -39,7 +39,13 @@ namespace Thump.Views
 		private Entry m_passwordEntry;
 		private Button m_authToken;
 		private Button m_authLegacy;
-		private PulseClient.eSubSonicAuthType m_authType = PulseClient.eSubSonicAuthType.Token;
+		private MediaClient.eAuthType m_authType = MediaClient.eAuthType.Token;
+		private Button m_serverSubsonic;
+		private Button m_serverPulse;
+		private PulseAPI.eServerType m_serverType = PulseAPI.eServerType.Subsonic;
+		private Button m_httpsHttps;
+		private Button m_httpsHttp;
+		private bool m_useHttps = true;
 		private Label m_connectStatusLabel;
 
 		public SettingsView(MainView mainView) : base(mainView)
@@ -194,14 +200,22 @@ namespace Thump.Views
 			m_usageBar.Progress = 0;
 			section.Children.Add(m_usageBar);
 
-			m_tracksCachedLabel = BuildFieldLabel("Tracks Cached: 0");
-			section.Children.Add(m_tracksCachedLabel);
-
-			m_coverArtLabel = BuildFieldLabel("Cover Art: 0");
-			section.Children.Add(m_coverArtLabel);
+			m_entriesLabel = BuildFieldLabel("Cached Entries: 0");
+			section.Children.Add(m_entriesLabel);
 
 			m_oldestLabel = BuildFieldLabel("Oldest Cached Object: —");
 			section.Children.Add(m_oldestLabel);
+
+			Button refreshButton = new Button();
+			refreshButton.Text = "Refresh";
+			refreshButton.TextColor = ThumpColors.OnBackground;
+			refreshButton.BackgroundColor = ThumpColors.Surface;
+			refreshButton.CornerRadius = 8;
+			refreshButton.FontSize = 15;
+			refreshButton.HeightRequest = 44;
+			refreshButton.Margin = new Thickness(0, 4, 0, 0);
+			refreshButton.Clicked += OnRefreshCacheClicked;
+			section.Children.Add(refreshButton);
 
 			Button clearButton = new Button();
 			clearButton.Text = "Clear Cache";
@@ -275,6 +289,32 @@ namespace Thump.Views
 			authRow.Children.Add(m_authLegacy);
 			section.Children.Add(authRow);
 
+			section.Children.Add(BuildFieldLabel("Server Type"));
+			HorizontalStackLayout serverRow = new HorizontalStackLayout();
+			serverRow.Spacing = 8;
+
+			m_serverSubsonic = BuildSegmentButton("Subsonic");
+			m_serverSubsonic.Clicked += OnServerSubsonicClicked;
+			serverRow.Children.Add(m_serverSubsonic);
+
+			m_serverPulse = BuildSegmentButton("Pulse");
+			m_serverPulse.Clicked += OnServerPulseClicked;
+			serverRow.Children.Add(m_serverPulse);
+			section.Children.Add(serverRow);
+
+			section.Children.Add(BuildFieldLabel("Connection"));
+			HorizontalStackLayout httpsRow = new HorizontalStackLayout();
+			httpsRow.Spacing = 8;
+
+			m_httpsHttps = BuildSegmentButton("HTTPS");
+			m_httpsHttps.Clicked += OnHttpsHttpsClicked;
+			httpsRow.Children.Add(m_httpsHttps);
+
+			m_httpsHttp = BuildSegmentButton("HTTP");
+			m_httpsHttp.Clicked += OnHttpsHttpClicked;
+			httpsRow.Children.Add(m_httpsHttp);
+			section.Children.Add(httpsRow);
+
 			Button connectButton = new Button();
 			connectButton.Text = "Connect";
 			connectButton.TextColor = ThumpColors.Background;
@@ -317,7 +357,14 @@ namespace Thump.Views
 			m_usernameEntry.Text = ThumpSettings.GetUsername();
 			m_passwordEntry.Text = ThumpSettings.GetPassword();
 			SetAuthType(ThumpSettings.GetAuthType());
+			SetServerType(ThumpSettings.GetServerType());
+			SetUseHttps(ThumpSettings.GetUseHttps());
 
+			RefreshCacheStats();
+		}
+
+		public void OnNavigatedTo()
+		{
 			RefreshCacheStats();
 		}
 
@@ -354,21 +401,59 @@ namespace Thump.Views
 
 		private void OnAuthTokenClicked(object sender, EventArgs e)
 		{
-			SetAuthType(PulseClient.eSubSonicAuthType.Token);
+			SetAuthType(MediaClient.eAuthType.Token);
 			ThumpSettings.SetAuthType(m_authType);
 		}
 
 		private void OnAuthLegacyClicked(object sender, EventArgs e)
 		{
-			SetAuthType(PulseClient.eSubSonicAuthType.Legacy);
+			SetAuthType(MediaClient.eAuthType.Legacy);
 			ThumpSettings.SetAuthType(m_authType);
 		}
 
-		private void SetAuthType(PulseClient.eSubSonicAuthType value)
+		private void SetAuthType(MediaClient.eAuthType value)
 		{
 			m_authType = value;
-			StyleSegment(m_authToken, value == PulseClient.eSubSonicAuthType.Token);
-			StyleSegment(m_authLegacy, value == PulseClient.eSubSonicAuthType.Legacy);
+			StyleSegment(m_authToken, value == MediaClient.eAuthType.Token);
+			StyleSegment(m_authLegacy, value == MediaClient.eAuthType.Legacy);
+		}
+
+		private void OnServerSubsonicClicked(object sender, EventArgs e)
+		{
+			SetServerType(PulseAPI.eServerType.Subsonic);
+			ThumpSettings.SetServerType(m_serverType);
+		}
+
+		private void OnServerPulseClicked(object sender, EventArgs e)
+		{
+			SetServerType(PulseAPI.eServerType.Pulse);
+			ThumpSettings.SetServerType(m_serverType);
+		}
+
+		private void SetServerType(PulseAPI.eServerType value)
+		{
+			m_serverType = value;
+			StyleSegment(m_serverSubsonic, value == PulseAPI.eServerType.Subsonic);
+			StyleSegment(m_serverPulse, value == PulseAPI.eServerType.Pulse);
+		}
+
+		private void OnHttpsHttpsClicked(object sender, EventArgs e)
+		{
+			SetUseHttps(true);
+			ThumpSettings.SetUseHttps(m_useHttps);
+		}
+
+		private void OnHttpsHttpClicked(object sender, EventArgs e)
+		{
+			SetUseHttps(false);
+			ThumpSettings.SetUseHttps(m_useHttps);
+		}
+
+		private void SetUseHttps(bool value)
+		{
+			m_useHttps = value;
+			StyleSegment(m_httpsHttps, value == true);
+			StyleSegment(m_httpsHttp, value == false);
 		}
 
 		private void StyleSegment(Button button, bool active)
@@ -401,10 +486,15 @@ namespace Thump.Views
 			MainView.Self.GetCache().SetSizeLimitBytes(bytes);
 		}
 
+		private void OnRefreshCacheClicked(object sender, EventArgs e)
+		{
+			RefreshCacheStats();
+		}
+
 		private void OnClearCacheClicked(object sender, EventArgs e)
 		{
 			ThumpCache cache = MainView.Self.GetCache();
-			cache.Enqueue(() =>
+			cache.ExecuteSync(() =>
 			{
 				cache.ClearCache();
 			});
@@ -426,9 +516,8 @@ namespace Thump.Views
 			}
 		}
 
-		private static string ValidateAndNormalizeServer(string ip, string port, out string normalizedIp)
+		private string ValidateAndNormalizeServer(ref string ip, ref string port)
 		{
-			normalizedIp = "";
 			if (string.IsNullOrWhiteSpace(ip))
 			{
 				return "Server IP is required.";
@@ -442,29 +531,13 @@ namespace Thump.Views
 			{
 				return "Server port must be a number between 1 and 65535.";
 			}
-			string host = ip.Trim();
-			if (host.IndexOf(' ') >= 0)
-			{
-				return "Server IP cannot contain spaces.";
-			}
-			if (!host.StartsWith("http://") && !host.StartsWith("https://"))
-			{
-				host = "https://" + host;
-			}
-			Uri parsed;
-			if (!Uri.TryCreate(host + ":" + portNumber, UriKind.Absolute, out parsed))
+
+			Match match = Regex.Match(ip, @"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}");
+			if (!match.Success)
 			{
 				return "Server IP is not a valid address.";
 			}
-			if (parsed.Scheme != "http" && parsed.Scheme != "https")
-			{
-				return "Server address must be http or https.";
-			}
-			if (string.IsNullOrEmpty(parsed.Host))
-			{
-				return "Server IP is not a valid address.";
-			}
-			normalizedIp = host;
+			ip = match.Value;
 			return "";
 		}
 
@@ -475,30 +548,30 @@ namespace Thump.Views
 			string user = m_usernameEntry.Text;
 			string password = m_passwordEntry.Text;
 
-			string normalizedIp;
-			string validationError = ValidateAndNormalizeServer(ip, port, out normalizedIp);
+			string validationError = ValidateAndNormalizeServer(ref ip, ref port);
 			if (!string.IsNullOrEmpty(validationError))
 			{
 				m_connectStatusLabel.Text = validationError;
 				m_connectStatusLabel.TextColor = s_failColor;
 				return;
 			}
-			ip = normalizedIp;
 
 			ThumpSettings.SetServerIp(ip);
 			ThumpSettings.SetServerPort(port);
 			ThumpSettings.SetUsername(user);
 			ThumpSettings.SetPassword(password);
 			ThumpSettings.SetAuthType(m_authType);
+			ThumpSettings.SetUseHttps(m_useHttps);
 
 			m_connectStatusLabel.Text = "Connecting…";
 			m_connectStatusLabel.TextColor = ThumpColors.TextSecondary;
 
-			PulseClient pulse = MainView.Data.Pulse;
-			PulseClient.eSubSonicAuthType authType = m_authType;
+			MediaClient pulse = MainView.MediaClient;
+			MediaClient.eAuthType authType = m_authType;
+			bool useHttps = m_useHttps;
 			Task.Run(() =>
 			{
-				pulse.SetServerParams(ip, port, user, password, authType, true);
+				pulse.SetServerParams(ip, port, user, password, authType, useHttps);
 				bool success = pulse.TestConnection(out JsonElement response);
 				string message = "Unknown";
 				if (!success && response.TryGetProperty("error", out JsonElement error))
@@ -526,7 +599,7 @@ namespace Thump.Views
 		private void RefreshCacheStats()
 		{
 			ThumpCache cache = MainView.Self.GetCache();
-			cache.Enqueue(() =>
+			cache.ExecuteSync(() =>
 			{
 				ThumpCacheStats stats = cache.GetCacheStats();
 				MainThread.BeginInvokeOnMainThread(() =>
@@ -553,8 +626,7 @@ namespace Thump.Views
 			{
 				m_usageBar.Progress = 0;
 			}
-			m_tracksCachedLabel.Text = "Tracks Cached: " + stats.TrackCount;
-			m_coverArtLabel.Text = "Cover Art: " + stats.CoverArtCount;
+			m_entriesLabel.Text = "Cached Entries: " + stats.EntryCount;
 			m_oldestLabel.Text = "Oldest Cached Object: " + FormatAge(stats.OldestFetchedUnix);
 		}
 
