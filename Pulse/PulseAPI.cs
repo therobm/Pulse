@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Thump.Data;
 
 namespace Thump.Pulse
@@ -23,6 +24,13 @@ namespace Thump.Pulse
 		public override void SetServerParams(string ip, string port, string username, string password, MediaClient.eAuthType authType, bool enableSSL)
 		{
 			m_subsonic.SetServerParams(ip, port, username, password, authType, enableSSL);
+			//Also bring up the base MediaClient's own HttpClient / m_baseUrl / m_user
+			//so PulseAPI can call pulse-native endpoints directly without going
+			//through the SubsonicAPI wrapper (e.g. ReportTrackAnalytics below).
+			//PulseAPI's default Ping is a no-op so the inherited ConnectionLoop
+			//doesn't toggle our online state - m_subsonic owns the connection
+			//health signal for now.
+			base.SetServerParams(ip, port, username, password, authType, enableSSL);
 		}
 
 		public override void GetTrack(string trackId, Action<PulseTrack> onComplete)
@@ -182,6 +190,35 @@ namespace Thump.Pulse
 			m_subsonic.GetFavorites(onComplete);
 		}
 
-	
+		//Pulse-native track analytics endpoint. Skips the Subsonic scrobble
+		//compat path entirely and posts straight to /pulse/reportTrackAnalytics
+		//with the trackId + user. Fire-and-forget; the player doesn't wait.
+		public override void ReportTrackAnalytics(string trackId)
+		{
+			if (string.IsNullOrEmpty(trackId))
+			{
+				return;
+			}
+			//Defer to m_subsonic for the actual online signal - PulseAPI's own
+			//m_bIsOnline isn't driven by anything since PulseAPI.Ping is a no-op,
+			//so calling IsOnline() on ourselves always reports true and would
+			//waste an HTTP attempt when we're actually offline.
+			if (!m_subsonic.IsOnline())
+			{
+				return;
+			}
+			Task.Run(() =>
+			{
+				try
+				{
+					string url = m_baseUrl + "/pulse/reportTrackAnalytics?id=" + Uri.EscapeDataString(trackId) + "&u=" + Uri.EscapeDataString(m_user);
+					HttpGet(url, false);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+			});
+		}
 	}
 }

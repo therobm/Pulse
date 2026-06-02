@@ -13,7 +13,6 @@ namespace Thump.Data
 
 	public static class ThumpSettings
 	{
-		private const string s_keyScrobble = "thump.playback.scrobble";
 		private const string s_keyNormalize = "thump.playback.normalize";
 		private const string s_keyShuffle = "thump.playback.shuffle";
 		private const string s_keyRepeat = "thump.playback.repeat";
@@ -26,15 +25,6 @@ namespace Thump.Data
 		private const string s_keyAuthType = "thump.login.authType";
 		private const string s_keyServerType = "thump.login.serverType";
 		private const string s_keyUseHttps = "thump.login.useHttps";
-
-		public static bool GetScrobbleEnabled()
-		{
-			return Preferences.Get(s_keyScrobble, true);
-		}
-		public static void SetScrobbleEnabled(bool value)
-		{
-			Preferences.Set(s_keyScrobble, value);
-		}
 
 		public static eNormalizeVolume GetNormalizeVolume()
 		{

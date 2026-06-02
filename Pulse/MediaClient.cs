@@ -212,6 +212,12 @@ namespace Thump.Pulse
 		public abstract void GetTopItems(Action<List<PulseObject>> onComplete);
 		public abstract void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete);
 		public abstract void GetFavorites(Action<List<PulseTrack>> onComplete);
+
+		// Fire-and-forget play / skip notification. Called by the player when
+		// a track ends naturally, when the user skips, or when a new queue
+		// replaces the current one mid-track. NOT called for pause/resume -
+		// pausing does not register as a play.
+		public abstract void ReportTrackAnalytics(string trackId);
 	
 
 		public byte[] ForceFetchTrackAudio(string trackId)
