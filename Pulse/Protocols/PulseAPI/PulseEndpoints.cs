@@ -157,6 +157,7 @@ namespace Pulse.Protocols.PulseAPI
 			PulsePlaylist pulsePlaylist = new PulsePlaylist();
 			pulsePlaylist.Id = playlist.Id;
 			pulsePlaylist.Name = playlist.Name;
+			pulsePlaylist.Comment = playlist.Comment;
 			pulsePlaylist.CoverArt = "pl-" + playlist.Id;
 			pulsePlaylist.TrackCount = playlist.GetSongCount();
 			pulsePlaylist.Duration = (int)playlist.DurationSeconds;
