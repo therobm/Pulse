@@ -294,7 +294,20 @@ namespace Thump.Pulse
 				return new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed);
 			}
 
-			return m_httpClient.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
+			try
+			{
+				return client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
+			}
+			catch (Exception ex)
+			{
+				// A dropped/refused/timed-out connection surfaces here as an
+				// AggregateException out of .Result. Left unhandled it unwinds
+				// to the thread root and crashes the app to desktop. Mark offline
+				// and return an error response so callers see a clean failure.
+				Log.Exception(ex);
+				m_bIsOnline = false;
+				return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
+			}
 		}
 
 		public bool IsTrackCached(string trackID)
