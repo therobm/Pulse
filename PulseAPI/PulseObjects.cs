@@ -3,27 +3,33 @@ using System.Collections.Generic;
 
 namespace PulseAPI
 {
+	/// <summary>
+	/// 1:1 mapping of PulseObject type
+	/// useful for avoiding string comparisons and reflection
+	/// </summary>
 	public enum eDataType
 	{
 		Track,
 		Album,
+		AlbumTracks,
 		Playlist,
+		PlaylistTracks,
 		Artist,
-		CoverArt,
-		SongData,
+		ArtistAlbums,
+		ArtistTracks,
 		Genre,
+		GenreTracks,
 		Podcast,
-		PodcastEpisode
+		PodcastEpisodes,
+		PodcastEpisode,
+		CoverArt,
+		SongData
 	}
 
-	public class MediaDataObject
-	{
-		public eDataType Kind;
-	}
-
-	public class PulseObject : MediaDataObject
+	public class PulseObject
 	{
 		public string Id;
+		public eDataType Kind;
 	}
 
 	public class PulseSearchData
@@ -81,12 +87,22 @@ namespace PulseAPI
 		public int Year;
 		public int TrackCount;
 		public int Duration;
-		public List<PulseTrack> Tracks;
 
 		public PulseAlbum()
 		{
-			Tracks = new List<PulseTrack>();
 			Kind = eDataType.Album;
+		}
+	}
+
+	public class PulseAlbumDetail : PulseObject
+	{
+		public PulseAlbum Album;
+		public List<PulseTrack> Tracks;
+
+		public PulseAlbumDetail()
+		{
+			Tracks = new List<PulseTrack>();
+			Kind = eDataType.AlbumTracks;
 		}
 	}
 
@@ -98,12 +114,22 @@ namespace PulseAPI
 		public int Duration;
 		public float Score;
 		public DateTime LastPlayed;
-		public List<PulseTrack> Tracks;
 
 		public PulsePlaylist()
 		{
-			Tracks = new List<PulseTrack>();
 			Kind = eDataType.Playlist;
+		}
+	}
+
+	public class PulsePlaylistDetail : PulseObject
+	{
+		public PulsePlaylist Playlist;
+		public List<PulseTrack> Tracks;
+
+		public PulsePlaylistDetail()
+		{
+			Tracks = new List<PulseTrack>();
+			Kind = eDataType.PlaylistTracks;
 		}
 	}
 
@@ -123,6 +149,28 @@ namespace PulseAPI
 		}
 	}
 
+	public class PulseArtistAlbums : PulseObject
+	{
+		public List<PulseAlbum> Albums;
+
+		public PulseArtistAlbums()
+		{
+			Albums = new List<PulseAlbum>();
+			Kind = eDataType.ArtistAlbums;
+		}
+	}
+
+	public class PulseArtistTracks : PulseObject
+	{
+		public List<PulseTrack> Tracks;
+
+		public PulseArtistTracks()
+		{
+			Tracks = new List<PulseTrack>();
+			Kind = eDataType.ArtistTracks;
+		}
+	}
+
 	public class PulseGenre : PulseObject
 	{
 		public string Name;
@@ -132,6 +180,17 @@ namespace PulseAPI
 		public PulseGenre()
 		{
 			Kind = eDataType.Genre;
+		}
+	}
+
+	public class PulseGenreTracks : PulseObject
+	{
+		public List<PulseTrack> Tracks;
+
+		public PulseGenreTracks()
+		{
+			Tracks = new List<PulseTrack>();
+			Kind = eDataType.GenreTracks;
 		}
 	}
 
@@ -158,12 +217,21 @@ namespace PulseAPI
 		public string CoverArt;
 		public string Url;
 		public string Status;
-		public List<PulsePodcastEpisode> Episodes;
 
 		public PulsePodcastChannel()
 		{
-			Episodes = new List<PulsePodcastEpisode>();
 			Kind = eDataType.Podcast;
+		}
+	}
+
+	public class PulsePodcastEpisodes : PulseObject
+	{
+		public List<PulsePodcastEpisode> Episodes;
+
+		public PulsePodcastEpisodes()
+		{
+			Episodes = new List<PulsePodcastEpisode>();
+			Kind = eDataType.PodcastEpisodes;
 		}
 	}
 }
