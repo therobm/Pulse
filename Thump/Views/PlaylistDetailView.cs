@@ -20,9 +20,12 @@ namespace Thump.Views
 
 		public PlaylistDetailView(MainView mainView, PulsePlaylist playlist) : base(mainView)
 		{
-			//todo this will need to fetch the detail object before it presents
-			m_playlistDetails = playlist;
-			
+			// The list endpoints hand back a summary PulsePlaylist; wrap it so the
+			// header can render immediately. Initialize() then fetches the full
+			// PulsePlaylistDetails (with tracks) via GetPlaylist.
+			m_playlistDetails = new PulsePlaylistDetails();
+			m_playlistDetails.Playlist = playlist;
+			m_playlistDetails.Id = playlist.Id;
 		}
 
 		protected override void BuildLayout()

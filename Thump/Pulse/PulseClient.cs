@@ -148,7 +148,7 @@ namespace Thump.Pulse
 					PulseTrack track;
 					if (TryGetObject(url, true, out track) && track != null)
 					{
-						result = MapTrack(track);
+						result = track;
 					}
 				}
 				catch (Exception ex)
@@ -195,7 +195,6 @@ namespace Thump.Pulse
 			}
 			Task.Run(() =>
 			{
-				PulseArtist result = new PulseArtist();
 				try
 				{
 					string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
@@ -234,7 +233,7 @@ namespace Thump.Pulse
 							}
 							for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
 							{
-								results.Add(MapTrack(album.Tracks[trackIndex]));
+								results.Add(album.Tracks[trackIndex]);
 							}
 						}
 					}
@@ -276,7 +275,7 @@ namespace Thump.Pulse
 					PulseSearchData data;
 					if (TryGetObject(url, true, out data) && data != null)
 					{
-						result = MapSearchData(data);
+						result = data;
 					}
 				}
 				catch (Exception ex)
@@ -306,7 +305,7 @@ namespace Thump.Pulse
 					{
 						for (int index = 0; index < details.Albums.Count; index++)
 						{
-							results.Add(MapAlbum(details.Albums[index]));
+							results.Add(details.Albums[index]);
 						}
 					}
 				}
@@ -319,30 +318,30 @@ namespace Thump.Pulse
 			});
 		}
 
-		public override void GetAlbum(string albumId, Action<PulseAlbum> onComplete)
+		public override void GetAlbum(string albumId, Action<PulseAlbumDetails> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new PulseAlbum());
+				CompleteOnMain(onComplete, new PulseAlbumDetails());
 				return;
 			}
 			Task.Run(() =>
 			{
-				PulseAlbum result = new PulseAlbum();
+				PulseAlbumDetails result = new PulseAlbumDetails();
 				try
 				{
 					string url = BuildPulseUrl("album", "id=" + Uri.EscapeDataString(albumId));
 					PulseAlbumDetails details;
 					if (TryGetObject(url, true, out details) && details != null && details.Album != null)
 					{
-						result = MapAlbumDetails(details);
+						result = details;
 					}
 				}
 				catch (Exception ex)
 				{
 					Log.Exception(ex);
 				}
-				PulseAlbum captured = result;
+				PulseAlbumDetails captured = result;
 				CompleteOnMain(onComplete, captured);
 			});
 		}
@@ -375,7 +374,7 @@ namespace Thump.Pulse
 						}
 						for (int index = 0; index < albums.Count; index++)
 						{
-							results.Add(MapAlbum(albums[index]));
+							results.Add(albums[index]);
 						}
 						offset = offset + albums.Count;
 					}
@@ -406,7 +405,7 @@ namespace Thump.Pulse
 					PulsePlaylistDetails details;
 					if (TryGetObject(url, false, out details) && details != null && details.Playlist != null)
 					{
-						created = MapPlaylistDetails(details);
+						created = details.Playlist;
 					}
 				}
 				catch (Exception ex)
@@ -633,7 +632,7 @@ namespace Thump.Pulse
 					{
 						for (int index = 0; index < playlists.Count; index++)
 						{
-							results.Add(MapPlaylist(playlists[index]));
+							results.Add(playlists[index]);
 						}
 					}
 				}
@@ -812,7 +811,7 @@ namespace Thump.Pulse
 					{
 						for (int index = 0; index < albums.Count; index++)
 						{
-							results.Add(MapAlbum(albums[index]));
+							results.Add(albums[index]);
 						}
 					}
 				}
@@ -843,7 +842,7 @@ namespace Thump.Pulse
 					{
 						for (int index = 0; index < genres.Count; index++)
 						{
-							results.Add(MapGenre(genres[index]));
+							results.Add(genres[index]);
 						}
 					}
 				}
@@ -882,7 +881,7 @@ namespace Thump.Pulse
 					{
 						for (int index = 0; index < details.Tracks.Count; index++)
 						{
-							results.Add(MapTrack(details.Tracks[index]));
+							results.Add(details.Tracks[index]);
 						}
 					}
 				}
@@ -914,7 +913,7 @@ namespace Thump.Pulse
 					{
 						for (int index = 0; index < data.Tracks.Count; index++)
 						{
-							results.Add(MapTrack(data.Tracks[index]));
+							results.Add(data.Tracks[index]);
 						}
 					}
 				}
@@ -949,6 +948,38 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 				}
 			});
+		}
+
+		// The recentlyPlayed feed is heterogeneous: each element carries its own
+		// Kind discriminator. Probe Kind off the raw element, then re-parse into
+		// the matching concrete PulseObject subtype.
+		private static PulseObject MapMixedObject(JsonElement element)
+		{
+			if (element.ValueKind != JsonValueKind.Object)
+			{
+				return null;
+			}
+			string raw = element.GetRawText();
+			PulseObject probe = PulseWire.Parse<PulseObject>(raw);
+			if (probe == null)
+			{
+				return null;
+			}
+			switch (probe.Kind)
+			{
+				case eDataType.Track:
+					return PulseWire.Parse<PulseTrack>(raw);
+				case eDataType.Album:
+					return PulseWire.Parse<PulseAlbum>(raw);
+				case eDataType.Playlist:
+					return PulseWire.Parse<PulsePlaylist>(raw);
+				case eDataType.Artist:
+					return PulseWire.Parse<PulseArtist>(raw);
+				case eDataType.Genre:
+					return PulseWire.Parse<PulseGenre>(raw);
+				default:
+					return probe;
+			}
 		}
 
 		private static void CompleteOnMain<T>(Action<T> onComplete, T value)

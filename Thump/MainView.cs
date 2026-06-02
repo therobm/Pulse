@@ -267,7 +267,7 @@ namespace Thump
 			}
 			else if (item.Kind == eDataType.Playlist)
 			{
-				PulsePlaylistDetails playlist = item as PulsePlaylistDetails;
+				PulsePlaylist playlist = item as PulsePlaylist;
 				if (playlist != null)
 				{
 					OnPlaylistSelected(playlist);
