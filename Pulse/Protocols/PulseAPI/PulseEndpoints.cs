@@ -58,7 +58,6 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("favorites", GetFavorites);
 			RegisterRoute("favorite", Favorite);
 			RegisterRoute("unfavorite", Unfavorite);
-			RegisterRoute("reportTrackAnalytics", ReportTrackAnalytics);
 			RegisterRoute("reportAnalytics", ReportAnalytics);
 
 			RegisterRoute("podcasts", GetPodcasts);
@@ -1093,19 +1092,6 @@ namespace Pulse.Protocols.PulseAPI
 			return Respond(context, new PulseResponse());
 		}
 
-		public IResult ReportTrackAnalytics(HttpContext context)
-		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
-
-			if (string.IsNullOrEmpty(id))
-			{
-				return RespondStatus(context, "missing_id");
-			}
-
-			m_musicManager.OnTrackStreamed(user, id);
-			return Respond(context, new PulseResponse());
-		}
 
 		// The pulse_v1 analytics feed: clients POST a serialized PulseAnalytics
 		// body describing one playback state change (track started/paused/
