@@ -159,7 +159,6 @@ namespace Thump.Pulse
 		public abstract void AddTrackToPlaylist(string playlistId, string songId, Action<bool> onComplete);
 		public abstract void RemoveTrackFromPlaylist(string playlistId, int songIndex, Action<bool> onComplete);
 		public abstract void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<PulseTrack> newOrder, Action<bool> onComplete);
-		public abstract void MarkPlaylistPlayed(string playlistId, Action<bool> onComplete);
 		public abstract void GetPlaylists(Action<List<PulsePlaylist>> onComplete);
 		public abstract void GetPlaylist(string playlistId, Action<PulsePlaylistDetails> onComplete);
 		public abstract void GetCoverArt(string coverArtId, Action<byte[]> onComplete);

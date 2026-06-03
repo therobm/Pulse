@@ -266,28 +266,32 @@ namespace Thump.Playback.AndroidOS
 			}
 
 			MediaItem currentItem = m_player.CurrentMediaItem;
-			string current = null;
+			string currentMediaId = null;
 			if (currentItem != null)
 			{
-				current = currentItem.MediaId;
+				currentMediaId = currentItem.MediaId;
 			}
 
 			bool isPlaying = m_player.IsPlaying;
 			long positionMs = m_player.CurrentPosition;
 			long durationMs = m_player.Duration;
 
-			if (current != m_lastReportedTrackId)
+			if (currentMediaId != m_lastReportedTrackId)
 			{
 				if (!string.IsNullOrEmpty(m_lastReportedTrackId))
 				{
-					PulseAnalytics.eAction outgoing = ClassifyOutgoingTrack(m_lastPositionMs, m_lastDurationMs);
-					s_mediaClient.ReportAnalytics(m_lastReportedTrackId, eDataType.Track, outgoing);
+					PulseAnalytics.eAction action = PulseAnalytics.eAction.Skipped;
+					if (m_lastDurationMs > 0 && m_lastPositionMs >= (long)(m_lastDurationMs * s_completedThreshold))
+					{
+						action = PulseAnalytics.eAction.Completed;
+					}
+					s_mediaClient.ReportAnalytics(m_lastReportedTrackId, eDataType.Track, action);
 				}
-				if (!string.IsNullOrEmpty(current))
+				if (!string.IsNullOrEmpty(currentMediaId))
 				{
-					s_mediaClient.ReportAnalytics(current, eDataType.Track, PulseAnalytics.eAction.Started);
+					s_mediaClient.ReportAnalytics(currentMediaId, eDataType.Track, PulseAnalytics.eAction.Started);
 				}
-				m_lastReportedTrackId = current;
+				m_lastReportedTrackId = currentMediaId;
 				m_wasPlaying = isPlaying;
 				m_lastPositionMs = positionMs;
 				m_lastDurationMs = durationMs;
@@ -316,20 +320,6 @@ namespace Thump.Playback.AndroidOS
 			m_wasPlaying = isPlaying;
 			m_lastPositionMs = positionMs;
 			m_lastDurationMs = durationMs;
-		}
-
-		// Decides whether an outgoing track was heard through (Completed) or
-		// abandoned (Skipped) from the last position we observed on it. Duration
-		// is unknown until ExoPlayer has prepared the item (reported as a
-		// negative TIME_UNSET sentinel); treat that as a Skip rather than
-		// guessing a completion we can't substantiate.
-		private PulseAnalytics.eAction ClassifyOutgoingTrack(long positionMs, long durationMs)
-		{
-			if (durationMs > 0 && positionMs >= (long)(durationMs * s_completedThreshold))
-			{
-				return PulseAnalytics.eAction.Completed;
-			}
-			return PulseAnalytics.eAction.Skipped;
 		}
 
 		// Two-step search per the Media3 contract: OnSearch kicks off the
@@ -373,14 +363,21 @@ namespace Thump.Playback.AndroidOS
 			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(result);
 		}
 
-		// AA's OnSetMediaItems hands us a mixed bag of input MediaItems: a
-		// single "track/<id>" (one song the user tapped), or a single
-		// "<type>play/<id>" / "<type>shuffle/<id>" placeholder (the user
-		// tapped "Play all" / "Shuffle" on a container), or in principle a
-		// list combining both. Container ids need a ThumpData fetch to expand
-		// into actual tracks before we can build the player queue; that fetch
-		// is done synchronously per item via GetTrackIds so this function
-		// stays linear except for the start-track CacheTrack hop at the end.
+
+		/// <summary>
+		/// AA's OnSetMediaItems hands us a mixed bag of input MediaItems: a
+		/// single "track/<id>" (one song the user tapped), or a single
+		/// "<type>play/<id>" / "<type>shuffle/<id>" placeholder (the user
+		/// tapped "Play all" / "Shuffle" on a container), or in principle a
+		/// list combining both. Container ids need a ThumpData fetch to expand
+		/// into actual tracks before we can build the player queue; that fetch
+		/// is done synchronously per item via GetTrackIds so this function
+		/// stays linear except for the start-track CacheTrack hop at the end.
+		/// </summary>
+		/// <param name="items"></param>
+		/// <param name="startIndex"></param>
+		/// <param name="startPositionMs"></param>
+		/// <param name="callback"></param>
 		public async void LoadMediaItems(IList<MediaItem> items, int startIndex, long startPositionMs, JObjectCallback callback)
 		{
 			try

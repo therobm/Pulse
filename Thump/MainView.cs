@@ -334,7 +334,6 @@ namespace Thump
 					break;
 				case eQueueSource.Playlist:
 					m_mediaClient.ReportAnalytics(sourceId, eDataType.Playlist, PulseAnalytics.eAction.Started);
-					m_mediaClient.MarkPlaylistPlayed(sourceId, null);
 					break;
 			}
 		}
