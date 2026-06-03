@@ -93,6 +93,15 @@ namespace Pulse.MusicLibrary
 			return m_database.GetAnalytics();
 		}
 
+		/// <summary>
+		/// Pass-through to the analytics-event rollup used by the topItems /
+		/// recentlyPlayed routes to rank one media type by play count or recency.
+		/// </summary>
+		public Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType)
+		{
+			return m_database.GetStartedAggregates(userName, mediaType);
+		}
+
 		public TrackInfo GetTrack(string id)
 		{
 			return m_database.GetTrack(id);
@@ -108,28 +117,6 @@ namespace Pulse.MusicLibrary
 			return m_database.GetArtist(id);
 		}
 
-		// Snapshot of the currently-playing track (Flatline #164). Single-slot
-		// today; multi-user concurrent play needs its own data structure first.
-		public string GetNowPlayingTrackId()
-		{
-			return m_nowPlayingTrackId;
-		}
-
-		public DateTime GetNowPlayingStartTime()
-		{
-			return m_nowPlayingStartTime;
-		}
-
-		// Pass-throughs for the persistent play queue + bookmarks (#168).
-		public PlayQueueInfo GetPlayQueue(string userName)
-		{
-			return m_database.GetPlayQueue(userName);
-		}
-
-		public void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy)
-		{
-			m_database.SavePlayQueue(userName, trackIds, currentTrackId, positionMs, changedBy);
-		}
 
 		public List<BookmarkInfo> GetBookmarks(string userName)
 		{
@@ -421,14 +408,19 @@ namespace Pulse.MusicLibrary
 			}
 		}
 
-		// Entry point for the client analytics feed (pulse_v1/reportAnalytics).
-		// Every observed playback state change is appended to the immutable
-		// event log -- the substrate the downstream routes (RecentlyPlayed,
-		// TopPlaylists, track scoring, smart playlists) aggregate over. A Track
-		// 'Started' also drives the existing now-playing state machine so the
-		// live scoring / RecentlyPlayed list keep working unchanged; the other
-		// states (Paused/Skipped/Completed) and the collection-level
-		// (Album/Artist/Playlist) Starts are log-only for now.
+		/// <summary>
+		/// Entry point for the client analytics feed (pulse_v1/reportAnalytics).
+		/// Every observed playback state change is appended to the immutable event
+		/// log -- the substrate the topItems / recentlyPlayed routes aggregate
+		/// over for play-count and recency ranking. A 'Started' event also bumps
+		/// the in-memory last-played for its subject so the non-aggregating
+		/// consumers (BuildPlaylist's LastPlayed field, the legacy recents routes,
+		/// track scoring) stay current: a Track Started drives the now-playing
+		/// state machine, while Album/Artist/Playlist Starts update last-played
+		/// directly (this replaces the retired markPlaylistPlayed call). Albums
+		/// carry no in-memory last-played field, so an album's recency is read
+		/// back from the event log by the routes that need it.
+		/// </summary>
 		public void OnAnalyticsEvent(string userName, PulseAnalytics analytics)
 		{
 			if (analytics == null || string.IsNullOrEmpty(analytics.MediaId))
@@ -438,10 +430,64 @@ namespace Pulse.MusicLibrary
 
 			m_database.RecordAnalyticsEvent(userName, analytics, DateTime.UtcNow);
 
-			if (analytics.MediaType == eDataType.Track && analytics.Action == PulseAnalytics.eAction.Started)
+			if (analytics.Action != PulseAnalytics.eAction.Started)
 			{
-				OnTrackStreamed(userName, analytics.MediaId);
+				return;
 			}
+
+			switch (analytics.MediaType)
+			{
+				case eDataType.Track:
+					OnTrackStreamed(userName, analytics.MediaId);
+					break;
+				case eDataType.Artist:
+					OnArtistStarted(userName, analytics.MediaId);
+					break;
+				case eDataType.Playlist:
+					OnPlaylistStarted(userName, analytics.MediaId);
+					break;
+			}
+		}
+
+		/// <summary>
+		/// Bumps an artist's aggregate last-played when a collection-level Artist
+		/// Started arrives (e.g. "play this artist" from a client). Track Starts
+		/// already bump the parent artist via OnTrackStreamed; this covers the
+		/// case where the artist itself is the played subject.
+		/// </summary>
+		private void OnArtistStarted(string userName, string artistId)
+		{
+			ArtistInfo artist = m_database.GetArtist(artistId);
+			if (artist == null)
+			{
+				return;
+			}
+			artist.LastPlayed = DateTime.UtcNow;
+			artist.m_bIsDirty = true;
+			SaveDB("artist-started");
+		}
+
+		/// <summary>
+		/// Advances a playlist's aggregate and per-user last-played when a
+		/// Playlist Started arrives. This is the pulse_v1 replacement for the
+		/// retired markPlaylistPlayed route -- without it, played playlists stop
+		/// advancing and silently drop out of the Recently Played feed.
+		/// </summary>
+		private void OnPlaylistStarted(string userName, string playlistId)
+		{
+			PlaylistInfo playlist = m_database.GetPlaylist(playlistId);
+			if (playlist == null)
+			{
+				return;
+			}
+			DateTime now = DateTime.UtcNow;
+			playlist.LastPlayed = now;
+			if (!string.IsNullOrEmpty(userName))
+			{
+				playlist.UserLastPlayed[userName] = now;
+			}
+			playlist.m_bIsDirty = true;
+			SaveDB("playlist-started");
 		}
 
 		public PlaylistInfo ImportPlaylist(string name, List<PlaylistImportEntry> entries)
