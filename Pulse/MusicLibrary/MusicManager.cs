@@ -911,7 +911,7 @@ namespace Pulse.MusicLibrary
 			if (!m_scanningAlbumCache.TryGetValue(artistId, out albumInfo))
 			{
 				albumInfo = m_database.GetOrCreateAlbum(albumId, album, artistId, artist, (int)tagFile.Tag.Year, tagFile.Tag.FirstGenre ?? "");
-				m_scanningAlbumCache[artistId] = albumInfo;
+				m_scanningAlbumCache[albumId] = albumInfo;
 			}
 			
 
