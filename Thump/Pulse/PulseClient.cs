@@ -250,9 +250,34 @@ namespace Thump.Pulse
 
 		public override void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete)
 		{
-			// The pulse_v1 server returns status "not_implemented" for podcasts.
-			// Complete with an empty list rather than calling the endpoint.
-			CompleteOnMain(onComplete, new List<PulsePodcastChannel>());
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, new List<PulsePodcastChannel>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				// Server-side podcasts are still on the roadmap: the route exists
+				// but returns status "not_implemented", so TryGetObject fails and
+				// we hand back an empty list. The call is made anyway so the client
+				// lights up automatically once the server starts serving them.
+				List<PulsePodcastChannel> results = new List<PulsePodcastChannel>();
+				try
+				{
+					string url = BuildPulseUrl("podcasts", null);
+					List<PulsePodcastChannel> channels;
+					if (TryGetObject(url, true, out channels) && channels != null)
+					{
+						results = channels;
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				List<PulsePodcastChannel> captured = results;
+				CompleteOnMain(onComplete, captured);
+			});
 		}
 
 		public override void Search(string query, Action<PulseSearchData> onComplete)
@@ -769,49 +794,42 @@ namespace Thump.Pulse
 
 		public override void GetPopularArtists(Action<List<PulseArtist>> onComplete)
 		{
-			// No pulse_v1 endpoint exposes popularity-ranked artists.
-			CompleteOnMain(onComplete, new List<PulseArtist>());
-		}
-
-		public override void GetTopPlaylists(Action<List<PulsePlaylist>> onComplete)
-		{
-			// No pulse_v1 endpoint exposes score-ranked playlists.
-			CompleteOnMain(onComplete, new List<PulsePlaylist>());
-		}
-
-		public override void GetRecentPlaylists(Action<List<PulsePlaylist>> onComplete)
-		{
-			// No pulse_v1 endpoint exposes recently-played playlists.
-			CompleteOnMain(onComplete, new List<PulsePlaylist>());
-		}
-
-		public override void GetRecentlyAdded(Action<List<PulseObject>> onComplete)
-		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<PulseObject>());
+				CompleteOnMain(onComplete, new List<PulseArtist>());
 				return;
 			}
 			Task.Run(() =>
 			{
-				List<PulseObject> results = new List<PulseObject>();
-				try
-				{
-					string url = BuildPulseUrl("albums", "type=newest&size=50&offset=0");
-					List<PulseAlbum> albums;
-					if (TryGetObject(url, true, out albums) && albums != null)
-					{
-						for (int index = 0; index < albums.Count; index++)
-						{
-							results.Add(albums[index]);
-						}
-					}
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
-				List<PulseObject> captured = results;
+				List<PulseArtist> captured = FetchTypedItems<PulseArtist>("topItems", "types=artist&count=20");
+				CompleteOnMain(onComplete, captured);
+			});
+		}
+
+		public override void GetTopPlaylists(Action<List<PulsePlaylist>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, new List<PulsePlaylist>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<PulsePlaylist> captured = FetchTypedItems<PulsePlaylist>("topItems", "types=playlist&count=20");
+				CompleteOnMain(onComplete, captured);
+			});
+		}
+
+		public override void GetRecentPlaylists(Action<List<PulsePlaylist>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, new List<PulsePlaylist>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<PulsePlaylist> captured = FetchTypedItems<PulsePlaylist>("recentlyPlayed", "types=playlist&count=20");
 				CompleteOnMain(onComplete, captured);
 			});
 		}
@@ -850,8 +868,16 @@ namespace Thump.Pulse
 
 		public override void GetTopItems(Action<List<PulseObject>> onComplete)
 		{
-			// No pulse_v1 endpoint exposes a ranked "top items" feed.
-			CompleteOnMain(onComplete, new List<PulseObject>());
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, new List<PulseObject>());
+				return;
+			}
+			Task.Run(() =>
+			{
+				List<PulseObject> captured = FetchTypedItems<PulseObject>("topItems", "count=50");
+				CompleteOnMain(onComplete, captured);
+			});
 		}
 
 		public override void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete)
@@ -978,6 +1004,36 @@ namespace Thump.Pulse
 				default:
 					return probe;
 			}
+		}
+
+		// Fetches a heterogeneous item feed (topItems / recentlyPlayed) and keeps
+		// only the elements whose Kind maps to the requested concrete type. Runs
+		// on the caller's thread, so callers wrap it in Task.Run.
+		private List<T> FetchTypedItems<T>(string route, string param) where T : PulseObject
+		{
+			List<T> results = new List<T>();
+			try
+			{
+				string url = BuildPulseUrl(route, param);
+				JsonElement contents;
+				if (TryGetContents(url, false, out contents) && contents.ValueKind == JsonValueKind.Array)
+				{
+					foreach (JsonElement element in contents.EnumerateArray())
+					{
+						PulseObject mapped = MapMixedObject(element);
+						T typed = mapped as T;
+						if (typed != null)
+						{
+							results.Add(typed);
+						}
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				Log.Exception(ex);
+			}
+			return results;
 		}
 
 		private static void CompleteOnMain<T>(Action<T> onComplete, T value)

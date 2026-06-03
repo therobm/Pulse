@@ -184,7 +184,6 @@ namespace Thump.Pulse
 		public abstract void GetPopularArtists(Action<List<PulseArtist>> onComplete);
 		public abstract void GetTopPlaylists(Action<List<PulsePlaylist>> onComplete);
 		public abstract void GetRecentPlaylists(Action<List<PulsePlaylist>> onComplete);
-		public abstract void GetRecentlyAdded(Action<List<PulseObject>> onComplete);
 		public abstract void GetGenres(Action<List<PulseGenre>> onComplete);
 		public abstract void GetTopItems(Action<List<PulseObject>> onComplete);
 		public abstract void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete);

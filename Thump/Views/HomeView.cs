@@ -16,7 +16,6 @@ namespace Thump.Views
 		private CollectionView m_recentlyPlayed;
 		private CollectionView m_yourPlaylists;
 		private CollectionView m_popularArtists;
-		private CollectionView m_recentlyAdded;
 		private CollectionView m_favorites;
 
 		public HomeView(MainView mainView) : base(mainView)
@@ -36,7 +35,6 @@ namespace Thump.Views
 			m_recentlyPlayed = BuildShelf(stack, "Recently Played");
 			m_yourPlaylists = BuildShelf(stack, "Your Playlists");
 			m_popularArtists = BuildShelf(stack, "Popular Artists");
-			m_recentlyAdded = BuildShelf(stack, "Recently Added");
 			m_favorites = BuildShelf(stack, "Favorites");
 
 			ScrollView scroll = new ScrollView();
@@ -117,7 +115,6 @@ namespace Thump.Views
 			MainView.MediaClient.GetRecentlyPlayed(OnRecentlyPlayedLoaded);
 			MainView.MediaClient.GetTopPlaylists(OnYourPlaylistsLoaded);
 			MainView.MediaClient.GetPopularArtists(OnPopularArtistsLoaded);
-			MainView.MediaClient.GetRecentlyAdded(OnRecentlyAddedLoaded);
 			MainView.MediaClient.GetFavorites(OnFavoritesLoaded);
 		}
 
@@ -156,11 +153,6 @@ namespace Thump.Views
 		private void OnPopularArtistsLoaded(List<PulseArtist> items)
 		{
 			m_popularArtists.ItemsSource = items;
-		}
-
-		private void OnRecentlyAddedLoaded(List<PulseObject> items)
-		{
-			m_recentlyAdded.ItemsSource = items;
 		}
 
 		private void OnFavoritesLoaded(List<PulseTrack> tracks)

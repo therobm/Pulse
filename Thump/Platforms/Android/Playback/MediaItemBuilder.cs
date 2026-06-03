@@ -18,7 +18,6 @@ namespace Thump.Playback.AndroidOS
 		Artists,
 		Genres,
 		RecentlyPlayed,
-		RecentlyAdded,
 		TopPlaylists,
 		PopularArtists,
 	}
@@ -44,7 +43,6 @@ namespace Thump.Playback.AndroidOS
 			{ eAADirectory.Artists, "artists" },
 			{ eAADirectory.Genres, "genres" },
 			{ eAADirectory.RecentlyPlayed, "home_recent" },
-			{ eAADirectory.RecentlyAdded, "home_added" },
 			{ eAADirectory.TopPlaylists, "home_top" },
 			{ eAADirectory.PopularArtists, "home_popular" },
 		};
