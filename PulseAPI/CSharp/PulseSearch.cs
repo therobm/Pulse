@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace PulseAPI.CSharp
 {
-	public class PulseSearchData
+	public class PulseSearchData : PulseObject
 	{
 		public List<PulseArtist> Artists;
 		public List<PulseAlbum> Albums;
