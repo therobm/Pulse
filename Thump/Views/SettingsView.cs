@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -50,6 +51,8 @@ namespace Thump.Views
 
 		protected override void BuildLayout()
 		{
+			Stopwatch stopwatch = Stopwatch.StartNew();
+
 			BackgroundColor = ThumpColors.Background;
 
 			ScrollView scroll = new ScrollView();
@@ -66,6 +69,8 @@ namespace Thump.Views
 
 			scroll.Content = stack;
 			Content = scroll;
+
+			Log.Perf("SettingsView.BuildLayout " + stopwatch.ElapsedMilliseconds + "ms");
 		}
 
 		private View BuildTitle()
@@ -290,6 +295,9 @@ namespace Thump.Views
 
 		public override void Initialize()
 		{
+			Stopwatch stopwatch = Stopwatch.StartNew();
+			Log.Perf("SettingsView.Initialize start");
+
 			base.Initialize();
 
 			SetNormalize(ThumpSettings.GetNormalizeVolume());
@@ -310,7 +318,11 @@ namespace Thump.Views
 			m_passwordEntry.Text = ThumpSettings.GetPassword();
 			SetUseHttps(ThumpSettings.GetUseHttps());
 
-			RefreshCacheStats();
+			Log.Perf("SettingsView.Initialize settings applied " + stopwatch.ElapsedMilliseconds + "ms");
+
+			//RefreshCacheStats();
+
+			Log.Perf("SettingsView.Initialize end " + stopwatch.ElapsedMilliseconds + "ms");
 		}
 
 		public void OnNavigatedTo()
@@ -401,11 +413,15 @@ namespace Thump.Views
 		private void OnClearCacheClicked(object sender, EventArgs e)
 		{
 			ThumpCache cache = MainView.Self.GetCache();
-			cache.ExecuteSync(() =>
+			cache.ExecuteAsync(() =>
 			{
 				cache.ClearCache();
+				ThumpCacheStats stats = cache.GetCacheStats();
+				MainThread.BeginInvokeOnMainThread(() =>
+				{
+					ApplyCacheStats(stats);
+				});
 			});
-			RefreshCacheStats();
 		}
 
 		private async void OnExportLogsClicked(object sender, EventArgs e)
@@ -503,15 +519,21 @@ namespace Thump.Views
 
 		private void RefreshCacheStats()
 		{
+			Stopwatch stopwatch = Stopwatch.StartNew();
+			Log.Perf("SettingsView.RefreshCacheStats dispatch (off UI thread via ExecuteAsync)");
 			ThumpCache cache = MainView.Self.GetCache();
-			cache.ExecuteSync(() =>
+			cache.ExecuteAsync(() =>
 			{
+				Log.Perf("SettingsView.RefreshCacheStats sql lock acquired after " + stopwatch.ElapsedMilliseconds + "ms");
+				Stopwatch queryStopwatch = Stopwatch.StartNew();
 				ThumpCacheStats stats = cache.GetCacheStats();
+				Log.Perf("SettingsView.RefreshCacheStats GetCacheStats query " + queryStopwatch.ElapsedMilliseconds + "ms (entries=" + stats.EntryCount + ", bytes=" + stats.BytesUsed + ")");
 				MainThread.BeginInvokeOnMainThread(() =>
 				{
 					ApplyCacheStats(stats);
 				});
 			});
+			Log.Perf("SettingsView.RefreshCacheStats returned to UI caller after " + stopwatch.ElapsedMilliseconds + "ms");
 		}
 
 		private void ApplyCacheStats(ThumpCacheStats stats)

@@ -4,6 +4,7 @@ using Microsoft.Maui.ApplicationModel;
 using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -17,6 +18,8 @@ namespace Thump.Pulse
 	// be swapped without touching them.
 	public abstract class MediaClient
 	{
+		private static int s_requestCounter = 0;
+
 		private static bool AcceptAnyServerCertificate(HttpRequestMessage request, System.Security.Cryptography.X509Certificates.X509Certificate2 certificate, System.Security.Cryptography.X509Certificates.X509Chain chain, System.Net.Security.SslPolicyErrors errors)
 		{
 			return true;
@@ -225,7 +228,7 @@ namespace Thump.Pulse
 			{
 				return retVal;
 			}
-			HttpResponseMessage response = HttpGet_Internal(url);
+			HttpResponseMessage response = HttpGet_Internal(url, true);
 			if (!response.IsSuccessStatusCode)
 			{
 				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
@@ -235,14 +238,14 @@ namespace Thump.Pulse
 			CacheQueryResults(url, retVal);
 			return retVal;
 		}
-		protected string HttpGet(string url, bool bCacheAllowed)
+		protected string HttpGet(string url, bool bCacheAllowed, bool logPerf)
 		{
 			string retVal = null;
 			if (bCacheAllowed && GetCachedResults(url, out retVal))
 			{
 				return retVal;
 			}
-			HttpResponseMessage response = HttpGet_Internal(url);
+			HttpResponseMessage response = HttpGet_Internal(url, logPerf);
 			if (!response.IsSuccessStatusCode)
 			{
 				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
@@ -253,7 +256,7 @@ namespace Thump.Pulse
 			return retVal;
 		}
 
-		private HttpResponseMessage HttpGet_Internal(string url)
+		private HttpResponseMessage HttpGet_Internal(string url, bool logPerf)
 		{
 			HttpClient client;
 			lock (m_httpClientLock)
@@ -265,9 +268,18 @@ namespace Thump.Pulse
 				return new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed);
 			}
 
+			int requestId = Interlocked.Increment(ref s_requestCounter);
+			Stopwatch stopwatch = Stopwatch.StartNew();
+			Log.Perf("#" + requestId + " start GET " + url);
 			try
 			{
-				return client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
+				HttpResponseMessage response = client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
+				stopwatch.Stop();
+				if (logPerf)
+				{ 
+					Log.Perf("#" + requestId + " done GET " + stopwatch.ElapsedMilliseconds + "ms status=" + (int)response.StatusCode + " " + url);
+				}
+				return response;
 			}
 			catch (Exception ex)
 			{
@@ -275,6 +287,11 @@ namespace Thump.Pulse
 				// AggregateException out of .Result. Left unhandled it unwinds
 				// to the thread root and crashes the app to desktop. Mark offline
 				// and return an error response so callers see a clean failure.
+				stopwatch.Stop();
+				if (logPerf)
+				{
+					Log.Perf("#" + requestId + " fail GET " + stopwatch.ElapsedMilliseconds + "ms " + url);
+				}
 				Log.Exception(ex);
 				m_bIsOnline = false;
 				return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
@@ -287,9 +304,9 @@ namespace Thump.Pulse
 		// HttpGet's offline handling: a dropped/refused connection marks the
 		// client offline and returns null rather than unwinding to the thread
 		// root. Returns the response body on success, null on failure.
-		protected string HttpPostJson(string url, string json)
+		protected string HttpPostJson(string url, string json, bool logPerf)
 		{
-			HttpResponseMessage response = HttpPostJson_Internal(url, json);
+			HttpResponseMessage response = HttpPostJson_Internal(url, json, logPerf);
 			if (!response.IsSuccessStatusCode)
 			{
 				Log.Error("HTTP POST failed: " + url + " status: " + response.StatusCode);
@@ -298,7 +315,7 @@ namespace Thump.Pulse
 			return response.Content.ReadAsStringAsync().Result;
 		}
 
-		private HttpResponseMessage HttpPostJson_Internal(string url, string json)
+		private HttpResponseMessage HttpPostJson_Internal(string url, string json, bool logPerf)
 		{
 			HttpClient client;
 			lock (m_httpClientLock)
@@ -310,14 +327,31 @@ namespace Thump.Pulse
 				return new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed);
 			}
 
+			int requestId = Interlocked.Increment(ref s_requestCounter);
+			Stopwatch stopwatch = Stopwatch.StartNew();
+			if (logPerf)
+			{
+				Log.Perf("#" + requestId + " start POST " + url);
+			}
 			try
 			{
 				HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url);
 				request.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-				return client.SendAsync(request).Result;
+				HttpResponseMessage response = client.SendAsync(request).Result;
+				stopwatch.Stop();
+				if (logPerf)
+				{
+					Log.Perf("#" + requestId + " done POST " + stopwatch.ElapsedMilliseconds + "ms status=" + (int)response.StatusCode + " " + url);
+				}
+				return response;
 			}
 			catch (Exception ex)
 			{
+				stopwatch.Stop();
+				if (logPerf)
+				{
+					Log.Perf("#" + requestId + " fail POST " + stopwatch.ElapsedMilliseconds + "ms " + url);
+				}
 				Log.Exception(ex);
 				m_bIsOnline = false;
 				return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);

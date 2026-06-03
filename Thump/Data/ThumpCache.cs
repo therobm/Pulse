@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.Maui.Storage;
 
@@ -53,9 +55,53 @@ namespace Thump.Data
 			}
 			using (SqliteCommand cmd = m_connection.CreateCommand())
 			{
-				cmd.CommandText = "CREATE TABLE IF NOT EXISTS http_cache (url TEXT PRIMARY KEY, data BLOB NOT NULL, fetched_at INTEGER NOT NULL);";
+				cmd.CommandText = "CREATE TABLE IF NOT EXISTS http_cache (url TEXT PRIMARY KEY, data BLOB NOT NULL, fetched_at INTEGER NOT NULL, is_binary INTEGER NOT NULL DEFAULT 0);";
 				cmd.ExecuteNonQuery();
 			}
+			EnsureBinaryColumn();
+		}
+
+		//Older caches predate the is_binary column. Add it in place so existing
+		//databases pick up binary-aware eviction without being wiped.
+		private void EnsureBinaryColumn()
+		{
+			bool hasColumn = false;
+			using (SqliteCommand cmd = m_connection.CreateCommand())
+			{
+				cmd.CommandText = "PRAGMA table_info(http_cache)";
+				using (SqliteDataReader reader = cmd.ExecuteReader())
+				{
+					while (reader.Read())
+					{
+						string columnName = reader.GetString(1);
+						if (columnName == "is_binary")
+						{
+							hasColumn = true;
+							break;
+						}
+					}
+				}
+			}
+			if (hasColumn)
+			{
+				return;
+			}
+			using (SqliteCommand cmd = m_connection.CreateCommand())
+			{
+				cmd.CommandText = "ALTER TABLE http_cache ADD COLUMN is_binary INTEGER NOT NULL DEFAULT 0;";
+				cmd.ExecuteNonQuery();
+			}
+		}
+		public void ExecuteAsync(Action work)
+		{
+			if (work == null)
+			{
+				return;
+			}
+			Task.Run(() =>
+			{
+				ExecuteSync(work);
+			});
 		}
 
 		public void ExecuteSync(Action work)
@@ -76,26 +122,6 @@ namespace Thump.Data
 			}
 		}
 
-		public void CacheQueryResults(string url, byte[] data)
-		{
-			if (string.IsNullOrEmpty(url) || data == null)
-			{
-				return;
-			}
-			long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-			lock (m_sqlLock)
-			{
-				using (SqliteCommand cmd = m_connection.CreateCommand())
-				{
-					cmd.CommandText = "INSERT OR REPLACE INTO http_cache (url, data, fetched_at) VALUES ($u, $d, $f)";
-					cmd.Parameters.AddWithValue("$u", url);
-					cmd.Parameters.AddWithValue("$d", data);
-					cmd.Parameters.AddWithValue("$f", now);
-					cmd.ExecuteNonQuery();
-				}
-			}
-			EnforceCachingLimits();
-		}
 
 		public void CacheQueryResults(string url, string data)
 		{
@@ -104,36 +130,45 @@ namespace Thump.Data
 				return;
 			}
 			byte[] bytes = System.Text.Encoding.UTF8.GetBytes(data);
-			CacheQueryResults(url, bytes);
+			CacheBytes(url, bytes, false);
 		}
 
-		public bool GetCachedResults(string url, out byte[] data)
+		public void CacheQueryResults(string url, byte[] data)
 		{
-			data = null;
-			if (string.IsNullOrEmpty(url))
+			if (string.IsNullOrEmpty(url) || data == null)
 			{
-				return false;
+				return;
 			}
-			lock (m_sqlLock)
+			CacheBytes(url, data, true);
+		}
+
+		//isBinary marks expensive-to-refetch payloads (audio, cover art) so the
+		//eviction pass can drop cheap JSON metadata first. The string overload
+		//passes false, the byte[] overload passes true.
+		private void CacheBytes(string url, byte[] data, bool isBinary)
+		{
+			long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+			long binaryFlag = 0;
+			if (isBinary)
+			{
+				binaryFlag = 1;
+			}
+
+			ExecuteAsync(()=>
 			{
 				using (SqliteCommand cmd = m_connection.CreateCommand())
 				{
-					cmd.CommandText = "SELECT data FROM http_cache WHERE url = $u";
+					cmd.CommandText = "INSERT OR REPLACE INTO http_cache (url, data, fetched_at, is_binary) VALUES ($u, $d, $f, $b)";
 					cmd.Parameters.AddWithValue("$u", url);
-					object result = cmd.ExecuteScalar();
-					if (result == null)
-					{
-						return false;
-					}
-					if (result == DBNull.Value)
-					{
-						return false;
-					}
-					data = (byte[])result;
-					return true;
+					cmd.Parameters.AddWithValue("$d", data);
+					cmd.Parameters.AddWithValue("$f", now);
+					cmd.Parameters.AddWithValue("$b", binaryFlag);
+					cmd.ExecuteNonQuery();
 				}
-			}
+			});
+			EnforceCachingLimits();
 		}
+
 
 		public bool GetCachedResults(string url, out string data)
 		{
@@ -146,6 +181,44 @@ namespace Thump.Data
 			data = System.Text.Encoding.UTF8.GetString(bytes);
 			return true;
 		}
+
+		public bool GetCachedResults(string url, out byte[] data)
+		{
+			bool retVal = false;
+			byte[] retData = null;
+			data = null;
+			if (string.IsNullOrEmpty(url))
+			{
+				return retVal;
+			}
+			
+			ExecuteSync(()=>
+			{
+				using (SqliteCommand cmd = m_connection.CreateCommand())
+				{
+					cmd.CommandText = "SELECT data FROM http_cache WHERE url = $u";
+					cmd.Parameters.AddWithValue("$u", url);
+					object result = cmd.ExecuteScalar();
+					if (result == null)
+					{
+						retVal = false;
+					}
+					else if (result == DBNull.Value)
+					{
+						retVal = false;
+					}
+					else 
+					{ 
+						retData = (byte[])result;
+						retVal = true;
+					}
+				}
+			});
+
+			data = retData;
+			return retVal;
+		}
+
 
 		public byte[] GetTrackAudioFromCache(string url)
 		{
@@ -196,17 +269,64 @@ namespace Thump.Data
 			m_sizeLimitBytes = limitBytes;
 		}
 
-		//Hook for the LRU/age-based eviction pass. Called on every write so
-		//that once a real policy lands here the cache self-trims. Intentionally
-		//empty for now — eviction policy lands in a follow-up.
+		//Age-based eviction with a binary bias. Called on every write so the
+		//cache self-trims. Cheap-to-refetch JSON metadata (is_binary = 0) is
+		//dropped before expensive audio/cover-art blobs, and within each tier
+		//the oldest entries go first.
 		private void EnforceCachingLimits()
 		{
 			if (m_sizeLimitBytes <= 0)
 			{
 				return;
 			}
-			//TODO eviction: walk http_cache ORDER BY fetched_at ASC, drop rows until
-			//SUM(LENGTH(data)) <= m_sizeLimitBytes.
+
+			lock (m_sqlLock)
+			{
+				long totalBytes = 0;
+				using (SqliteCommand cmd = m_connection.CreateCommand())
+				{
+					cmd.CommandText = "SELECT COALESCE(SUM(LENGTH(data)), 0) FROM http_cache";
+					totalBytes = Convert.ToInt64(cmd.ExecuteScalar());
+				}
+
+				if (totalBytes <= m_sizeLimitBytes)
+				{
+					return;
+				}
+
+				long bytesToFree = totalBytes - m_sizeLimitBytes;
+				long freedBytes = 0;
+				List<string> urlsToEvict = new List<string>();
+
+				using (SqliteCommand cmd = m_connection.CreateCommand())
+				{
+					cmd.CommandText = "SELECT url, LENGTH(data) FROM http_cache ORDER BY is_binary ASC, fetched_at ASC";
+					using (SqliteDataReader reader = cmd.ExecuteReader())
+					{
+						while (reader.Read())
+						{
+							string url = reader.GetString(0);
+							long entryBytes = reader.GetInt64(1);
+							urlsToEvict.Add(url);
+							freedBytes += entryBytes;
+							if (freedBytes >= bytesToFree)
+							{
+								break;
+							}
+						}
+					}
+				}
+
+				for (int evictionIndex = 0; evictionIndex < urlsToEvict.Count; evictionIndex++)
+				{
+					using (SqliteCommand cmd = m_connection.CreateCommand())
+					{
+						cmd.CommandText = "DELETE FROM http_cache WHERE url = $u";
+						cmd.Parameters.AddWithValue("$u", urlsToEvict[evictionIndex]);
+						cmd.ExecuteNonQuery();
+					}
+				}
+			}
 		}
 	}
 }

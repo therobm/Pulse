@@ -35,15 +35,27 @@ namespace Thump.Pulse
 			return url;
 		}
 
+		private bool FetchObject<T>(string url, bool bCacheAllowed, out T value)
+		{
+			value = default(T);
+			JsonElement contents;
+			if (!FetchObject(url, bCacheAllowed, out contents))
+			{
+				return false;
+			}
+			value = PulseWire.Parse<T>(contents.GetRawText());
+			return true;
+		}
+
 		// Pull the contents element out of a PulseResponse envelope. Returns
 		// false when the request failed, the envelope was unparseable, the
 		// status wasn't "ok", or there was no payload. On success the boxed
 		// contents (System.Text.Json hands back a JsonElement for an object
 		// field) is unwrapped so callers can re-parse it into a concrete type.
-		private bool TryGetContents(string url, bool bCacheAllowed, out JsonElement contents)
+		private bool FetchObject(string url, bool bCacheAllowed, out JsonElement contents)
 		{
 			contents = default(JsonElement);
-			string json = HttpGet(url, bCacheAllowed);
+			string json = HttpGet(url, bCacheAllowed, true);
 			if (string.IsNullOrEmpty(json))
 			{
 				return false;
@@ -71,24 +83,13 @@ namespace Thump.Pulse
 			return true;
 		}
 
-		private bool TryGetObject<T>(string url, bool bCacheAllowed, out T value)
-		{
-			value = default(T);
-			JsonElement contents;
-			if (!TryGetContents(url, bCacheAllowed, out contents))
-			{
-				return false;
-			}
-			value = PulseWire.Parse<T>(contents.GetRawText());
-			return true;
-		}
 
 		// Treat a request as a fire-and-forget command: success is simply a
 		// well-formed envelope with status "ok".
 		private bool RunCommand(string url)
 		{
 			JsonElement discard;
-			return TryGetContents(url, false, out discard);
+			return FetchObject(url, false, out discard);
 		}
 
 		protected override bool Ping(out JsonElement response)
@@ -97,7 +98,7 @@ namespace Thump.Pulse
 			try
 			{
 				string url = m_baseUrl + "/pulse_v1/ping?u=" + Uri.EscapeDataString(m_user);
-				string json = HttpGet(url, false);
+				string json = HttpGet(url, false, false);
 				if (string.IsNullOrEmpty(json))
 				{
 					m_bIsOnline = false;
@@ -146,7 +147,7 @@ namespace Thump.Pulse
 				{
 					string url = BuildPulseUrl("track", "id=" + Uri.EscapeDataString(trackId));
 					PulseTrack track;
-					if (TryGetObject(url, true, out track) && track != null)
+					if (FetchObject(url, true, out track) && track != null)
 					{
 						result = track;
 					}
@@ -173,7 +174,11 @@ namespace Thump.Pulse
 				try
 				{
 					string url = BuildPulseUrl("artists", null);
-					TryGetObject(url, true, out results);
+					if (FetchObject(url, true, out List<PulseArtist> data))
+					{
+						if (data != null)
+							results = data;
+					}
 				}
 				catch (Exception ex)
 				{
@@ -198,7 +203,7 @@ namespace Thump.Pulse
 				try
 				{
 					string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
-					TryGetObject(url, true, out artistDetails);
+					FetchObject(url, true, out artistDetails);
 				}
 				catch (Exception ex)
 				{
@@ -222,7 +227,7 @@ namespace Thump.Pulse
 				{
 					string url = BuildPulseUrl("artistTracks", "id=" + Uri.EscapeDataString(artistId));
 					PulseArtistFullDetails details;
-					if (TryGetObject(url, true, out details) && details != null && details.AlbumDetails != null)
+					if (FetchObject(url, true, out details) && details != null && details.AlbumDetails != null)
 					{
 						for (int albumIndex = 0; albumIndex < details.AlbumDetails.Count; albumIndex++)
 						{
@@ -266,7 +271,7 @@ namespace Thump.Pulse
 				{
 					string url = BuildPulseUrl("podcasts", null);
 					List<PulsePodcastChannel> channels;
-					if (TryGetObject(url, true, out channels) && channels != null)
+					if (FetchObject(url, true, out channels) && channels != null)
 					{
 						results = channels;
 					}
@@ -298,7 +303,7 @@ namespace Thump.Pulse
 						+ "&songCount=30";
 					string url = BuildPulseUrl("search", param);
 					PulseSearchData data;
-					if (TryGetObject(url, true, out data) && data != null)
+					if (FetchObject(url, true, out data) && data != null)
 					{
 						result = data;
 					}
@@ -326,7 +331,7 @@ namespace Thump.Pulse
 				{
 					string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
 					PulseArtistDetails details;
-					if (TryGetObject(url, true, out details) && details != null && details.Albums != null)
+					if (FetchObject(url, true, out details) && details != null && details.Albums != null)
 					{
 						for (int index = 0; index < details.Albums.Count; index++)
 						{
@@ -357,7 +362,7 @@ namespace Thump.Pulse
 				{
 					string url = BuildPulseUrl("album", "id=" + Uri.EscapeDataString(albumId));
 					PulseAlbumDetails details;
-					if (TryGetObject(url, true, out details) && details != null && details.Album != null)
+					if (FetchObject(url, true, out details) && details != null && details.Album != null)
 					{
 						result = details;
 					}
@@ -393,7 +398,7 @@ namespace Thump.Pulse
 						string param = "type=alphabeticalbyname&size=" + pageSize + "&offset=" + offset;
 						string url = BuildPulseUrl("albums", param);
 						List<PulseAlbum> albums;
-						if (!TryGetObject(url, true, out albums) || albums == null || albums.Count == 0)
+						if (!FetchObject(url, true, out albums) || albums == null || albums.Count == 0)
 						{
 							break;
 						}
@@ -428,7 +433,7 @@ namespace Thump.Pulse
 				{
 					string url = BuildPulseUrl("createPlaylist", "name=" + Uri.EscapeDataString(name));
 					PulsePlaylistDetails details;
-					if (TryGetObject(url, false, out details) && details != null && details.Playlist != null)
+					if (FetchObject(url, false, out details) && details != null && details.Playlist != null)
 					{
 						created = details.Playlist;
 					}
@@ -645,7 +650,7 @@ namespace Thump.Pulse
 				{
 					string url = BuildPulseUrl("playlists", null);
 					List<PulsePlaylist> playlists;
-					if (TryGetObject(url, true, out playlists) && playlists != null)
+					if (FetchObject(url, true, out playlists) && playlists != null)
 					{
 						for (int index = 0; index < playlists.Count; index++)
 						{
@@ -676,7 +681,7 @@ namespace Thump.Pulse
 				try
 				{
 					string url = BuildPulseUrl("playlist", "id=" + Uri.EscapeDataString(playlistId));
-					TryGetObject(url, true, out result);
+					FetchObject(url, true, out result);
 				}
 				catch (Exception ex)
 				{
@@ -771,7 +776,7 @@ namespace Thump.Pulse
 				{
 					string url = BuildPulseUrl("recentlyPlayed", "count=50");
 					JsonElement contents;
-					if (TryGetContents(url, false, out contents) && contents.ValueKind == JsonValueKind.Array)
+					if (FetchObject(url, false, out contents) && contents.ValueKind == JsonValueKind.Array)
 					{
 						foreach (JsonElement element in contents.EnumerateArray())
 						{
@@ -848,7 +853,7 @@ namespace Thump.Pulse
 				{
 					string url = BuildPulseUrl("genres", null);
 					List<PulseGenre> genres;
-					if (TryGetObject(url, true, out genres) && genres != null)
+					if (FetchObject(url, true, out genres) && genres != null)
 					{
 						for (int index = 0; index < genres.Count; index++)
 						{
@@ -895,7 +900,7 @@ namespace Thump.Pulse
 					string param = "genre=" + Uri.EscapeDataString(genre) + "&count=500&offset=0";
 					string url = BuildPulseUrl("genreTracks", param);
 					PulseGenreDetails details;
-					if (TryGetObject(url, true, out details) && details != null && details.Tracks != null)
+					if (FetchObject(url, true, out details) && details != null && details.Tracks != null)
 					{
 						for (int index = 0; index < details.Tracks.Count; index++)
 						{
@@ -927,7 +932,7 @@ namespace Thump.Pulse
 				{
 					string url = BuildPulseUrl("favorites", null);
 					PulseSearchData data;
-					if (TryGetObject(url, true, out data) && data != null && data.Tracks != null)
+					if (FetchObject(url, true, out data) && data != null && data.Tracks != null)
 					{
 						for (int index = 0; index < data.Tracks.Count; index++)
 						{
@@ -965,7 +970,7 @@ namespace Thump.Pulse
 
 					string url = BuildPulseUrl("reportAnalytics", null);
 					string json = PulseWire.Serialize(analytics);
-					HttpPostJson(url, json);
+					HttpPostJson(url, json, true);
 				}
 				catch (Exception ex)
 				{
@@ -1016,7 +1021,7 @@ namespace Thump.Pulse
 			{
 				string url = BuildPulseUrl(route, param);
 				JsonElement contents;
-				if (TryGetContents(url, false, out contents) && contents.ValueKind == JsonValueKind.Array)
+				if (FetchObject(url, false, out contents) && contents.ValueKind == JsonValueKind.Array)
 				{
 					foreach (JsonElement element in contents.EnumerateArray())
 					{
