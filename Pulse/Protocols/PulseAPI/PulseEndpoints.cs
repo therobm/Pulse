@@ -94,7 +94,20 @@ namespace Pulse.Protocols.PulseAPI
 		{
 			PulseResponse response = new PulseResponse();
 			response.contentType = PulseResponse.ContentType.PulseObjectList;
-			response.contents = contents;
+			// Box each element as object so System.Text.Json serializes it by its
+			// runtime type. The list's element type would otherwise drive the wire
+			// shape: a heterogeneous feed (topItems / recentlyPlayed) arrives as
+			// List<PulseObject>, and serializing PulseObject-typed elements emits
+			// only the base Id/Kind, silently dropping every derived field (Name,
+			// CoverArt, Artist, ...). object-typed elements force runtime-type
+			// serialization, so derived fields survive. Homogeneous lists are
+			// unaffected -- a PulseAlbum still serializes as a PulseAlbum.
+			List<object> boxed = new List<object>(contents.Count);
+			for (int index = 0; index < contents.Count; index++)
+			{
+				boxed.Add(contents[index]);
+			}
+			response.contents = boxed;
 			return Respond(context, response);
 		}
 
