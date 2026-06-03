@@ -59,12 +59,27 @@ namespace Thump.Playback.AndroidOS
 		// string it gave us.
 		private System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>> m_searchResults = new System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>>();
 
-		// Tracks the currently-playing trackId so we can fire ReportTrackAnalytics
-		// for the OUTGOING track when ExoPlayer transitions to a new item or
-		// hits STATE_ENDED. Cleared after we report so a steady STATE_ENDED
-		// (which sticks for as many ticks as the user leaves it sitting) can't
-		// re-fire the same trackId.
+		// Tracks the currently-playing trackId so we can fire analytics for the
+		// OUTGOING track when ExoPlayer transitions to a new item or hits
+		// STATE_ENDED, and a Started for the incoming one. Cleared after we
+		// report on STATE_ENDED (which sticks for as many ticks as the user
+		// leaves it sitting) so it can't re-fire the same trackId.
 		private string m_lastReportedTrackId;
+
+		// Prior-tick snapshot of the current track's playback state. When the
+		// track changes, this tick's position already belongs to the NEW track
+		// (~0), so the outgoing track is classified Completed-vs-Skipped from
+		// the position/duration we stored on the previous tick. m_wasPlaying
+		// drives pause detection (a playing->paused edge on the same track).
+		private long m_lastPositionMs;
+		private long m_lastDurationMs;
+		private bool m_wasPlaying;
+
+		// A track that advanced past this fraction of its duration counts as
+		// Completed; anything earlier was a Skip. Mirrors the server's existing
+		// <50%-is-a-skip heuristic but biased high so only deliberate skips of
+		// the tail get counted against a track.
+		private const double s_completedThreshold = 0.95;
 
 		// Polled at this interval against m_player to detect track transitions
 		// and queue-end. ExoPlayer's playback state is the source of truth.
@@ -105,7 +120,7 @@ namespace Thump.Playback.AndroidOS
 			//via the MediaController, or Android Auto via its own browser),
 			//so polling its state from a single timer here catches every
 			//transition exactly once. The in-app ThumpAndroidPlayer used to
-			//fire its own ReportTrackAnalytics from a ticker but that
+			//fire its own track analytics from a ticker but that
 			//double-counted with this one and missed the AA-only case where
 			//the MAUI app never opens - so it's gone, this is the single
 			//source of truth. Polling instead of a Player.Listener because
@@ -228,44 +243,83 @@ namespace Thump.Playback.AndroidOS
 			MainThread.BeginInvokeOnMainThread(AnalyticsTickMainThread);
 		}
 
-		// Compares ExoPlayer's current MediaItem to the last one we saw and
-		// fires ReportTrackAnalytics for the outgoing track on any change.
-		// Auto-advance, next/prev/seek, and queue replacement all show up as
-		// "current MediaItem changed." Queue end shows up as STATE_ENDED with
-		// the last item still sitting as current, so we handle that branch
-		// separately and clear m_lastReportedTrackId to keep subsequent ticks
-		// from re-firing. Pausing/resuming changes neither, so it doesn't
-		// trigger - which matches the directive that pausing isn't a play.
+		// Polls ExoPlayer once per tick and emits the full set of track-level
+		// analytics state changes:
+		//  - Started   on a new current MediaItem (auto-advance, next/prev/seek,
+		//              queue replacement, and the first track all surface here),
+		//              including the very first track played.
+		//  - Skipped /
+		//    Completed for the OUTGOING track on that same transition, decided
+		//              from the PREVIOUS tick's position/duration (this tick's
+		//              position already belongs to the new track).
+		//  - Completed on STATE_ENDED, the queue-end case where the last item
+		//              stays sitting as current; m_lastReportedTrackId is cleared
+		//              so steady ticks don't re-fire.
+		//  - Paused    on a playing->paused edge for the same track.
+		// Collection-level Started (album/artist/playlist) is reported from the
+		// UI side in MainView, the only place that knows the collection id.
 		private void AnalyticsTickMainThread()
 		{
 			if (m_player == null)
 			{
 				return;
 			}
+
 			MediaItem currentItem = m_player.CurrentMediaItem;
-			string current = null;
+			string currentMediaId = null;
 			if (currentItem != null)
 			{
-				current = currentItem.MediaId;
+				currentMediaId = currentItem.MediaId;
 			}
-			if (current != m_lastReportedTrackId)
+
+			bool isPlaying = m_player.IsPlaying;
+			long positionMs = m_player.CurrentPosition;
+			long durationMs = m_player.Duration;
+
+			if (currentMediaId != m_lastReportedTrackId)
 			{
 				if (!string.IsNullOrEmpty(m_lastReportedTrackId))
 				{
-					s_mediaClient.ReportTrackAnalytics(m_lastReportedTrackId);
+					PulseAnalytics.eAction action = PulseAnalytics.eAction.Skipped;
+					if (m_lastDurationMs > 0 && m_lastPositionMs >= (long)(m_lastDurationMs * s_completedThreshold))
+					{
+						action = PulseAnalytics.eAction.Completed;
+					}
+					s_mediaClient.ReportAnalytics(m_lastReportedTrackId, eDataType.Track, action);
 				}
-				m_lastReportedTrackId = current;
+				if (!string.IsNullOrEmpty(currentMediaId))
+				{
+					s_mediaClient.ReportAnalytics(currentMediaId, eDataType.Track, PulseAnalytics.eAction.Started);
+				}
+				m_lastReportedTrackId = currentMediaId;
+				m_wasPlaying = isPlaying;
+				m_lastPositionMs = positionMs;
+				m_lastDurationMs = durationMs;
 				return;
 			}
+
 			if (m_player.PlaybackState == s_playbackStateEnded)
 			{
 				if (!string.IsNullOrEmpty(m_lastReportedTrackId))
 				{
 					string previous = m_lastReportedTrackId;
 					m_lastReportedTrackId = null;
-					s_mediaClient.ReportTrackAnalytics(previous);
+					s_mediaClient.ReportAnalytics(previous, eDataType.Track, PulseAnalytics.eAction.Completed);
 				}
+				m_wasPlaying = false;
+				m_lastPositionMs = 0;
+				m_lastDurationMs = 0;
+				return;
 			}
+
+			if (m_wasPlaying && !isPlaying && !string.IsNullOrEmpty(m_lastReportedTrackId))
+			{
+				s_mediaClient.ReportAnalytics(m_lastReportedTrackId, eDataType.Track, PulseAnalytics.eAction.Paused);
+			}
+
+			m_wasPlaying = isPlaying;
+			m_lastPositionMs = positionMs;
+			m_lastDurationMs = durationMs;
 		}
 
 		// Two-step search per the Media3 contract: OnSearch kicks off the
@@ -309,14 +363,21 @@ namespace Thump.Playback.AndroidOS
 			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(result);
 		}
 
-		// AA's OnSetMediaItems hands us a mixed bag of input MediaItems: a
-		// single "track/<id>" (one song the user tapped), or a single
-		// "<type>play/<id>" / "<type>shuffle/<id>" placeholder (the user
-		// tapped "Play all" / "Shuffle" on a container), or in principle a
-		// list combining both. Container ids need a ThumpData fetch to expand
-		// into actual tracks before we can build the player queue; that fetch
-		// is done synchronously per item via GetTrackIds so this function
-		// stays linear except for the start-track CacheTrack hop at the end.
+
+		/// <summary>
+		/// AA's OnSetMediaItems hands us a mixed bag of input MediaItems: a
+		/// single "track/<id>" (one song the user tapped), or a single
+		/// "<type>play/<id>" / "<type>shuffle/<id>" placeholder (the user
+		/// tapped "Play all" / "Shuffle" on a container), or in principle a
+		/// list combining both. Container ids need a ThumpData fetch to expand
+		/// into actual tracks before we can build the player queue; that fetch
+		/// is done synchronously per item via GetTrackIds so this function
+		/// stays linear except for the start-track CacheTrack hop at the end.
+		/// </summary>
+		/// <param name="items"></param>
+		/// <param name="startIndex"></param>
+		/// <param name="startPositionMs"></param>
+		/// <param name="callback"></param>
 		public async void LoadMediaItems(IList<MediaItem> items, int startIndex, long startPositionMs, JObjectCallback callback)
 		{
 			try
