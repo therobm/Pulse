@@ -1,0 +1,229 @@
+using System;
+using System.Collections.Generic;
+using Microsoft.Maui;
+using Microsoft.Maui.Controls;
+using Microsoft.Maui.Graphics;
+using PulseAPI.CSharp;
+using Thump.Pulse;
+using Thump.Views.Tiles;
+
+namespace Thump.Views
+{
+	public class PlaylistDetailView : ThumpView
+	{
+		private ArtImage m_art;
+		private Label m_titleLabel;
+		private Label m_metaLabel;
+		private CollectionView m_trackList;
+		private PulsePlaylist m_playlist;
+		private List<PulseTrack> m_tracks;
+
+		public PlaylistDetailView(MainView mainView, PulsePlaylist playlist) : base(mainView)
+		{
+			// The list endpoints hand back a summary PulsePlaylist; wrap it so the
+			// header can render immediately. Initialize() then fetches the full
+			// PulsePlaylistDetails (with tracks) via GetPlaylist.
+			m_playlist = playlist;
+		}
+
+		protected override void BuildLayout()
+		{
+			BackgroundColor = ThumpColors.Background;
+
+			Grid grid = new Grid();
+
+			RowDefinition headerRow = new RowDefinition();
+			headerRow.Height = GridLength.Auto;
+			RowDefinition artRow = new RowDefinition();
+			artRow.Height = GridLength.Auto;
+			RowDefinition titleRow = new RowDefinition();
+			titleRow.Height = GridLength.Auto;
+			RowDefinition buttonRow = new RowDefinition();
+			buttonRow.Height = GridLength.Auto;
+			RowDefinition listRow = new RowDefinition();
+			listRow.Height = GridLength.Star;
+			grid.RowDefinitions.Add(headerRow);
+			grid.RowDefinitions.Add(artRow);
+			grid.RowDefinitions.Add(titleRow);
+			grid.RowDefinitions.Add(buttonRow);
+			grid.RowDefinitions.Add(listRow);
+
+			grid.Children.Add(BuildHeader());
+			grid.Children.Add(BuildArt());
+			grid.Children.Add(BuildTitle());
+			grid.Children.Add(BuildButtons());
+			grid.Children.Add(BuildTrackList());
+
+			Content = grid;
+		}
+
+		private View BuildHeader()
+		{
+			HorizontalStackLayout headerStack = new HorizontalStackLayout();
+			headerStack.Padding = new Thickness(8, 8, 8, 0);
+
+			Button backButton = new Button();
+			backButton.Text = "‹";
+			backButton.FontSize = 22;
+			backButton.TextColor = ThumpColors.OnBackground;
+			backButton.BackgroundColor = Colors.Transparent;
+			backButton.WidthRequest = 44;
+			backButton.HeightRequest = 44;
+			backButton.Clicked += OnBackClicked;
+			headerStack.Children.Add(backButton);
+
+			Grid.SetRow(headerStack, 0);
+			return headerStack;
+		}
+
+		private View BuildArt()
+		{
+			m_art = new ArtImage();
+			m_art.HeightRequest = 220;
+			m_art.WidthRequest = 220;
+			m_art.HorizontalOptions = LayoutOptions.Center;
+			m_art.Margin = new Thickness(0, 12, 0, 16);
+
+			Grid.SetRow(m_art, 1);
+			return m_art;
+		}
+
+		private View BuildTitle()
+		{
+			StackLayout titleStack = new StackLayout();
+			titleStack.Spacing = 4;
+			titleStack.Padding = new Thickness(16, 0, 16, 12);
+
+			m_titleLabel = new Label();
+			m_titleLabel.Text = "Playlist name";
+			m_titleLabel.FontSize = 22;
+			m_titleLabel.TextColor = ThumpColors.OnBackground;
+			m_titleLabel.HorizontalOptions = LayoutOptions.Center;
+			titleStack.Children.Add(m_titleLabel);
+
+			m_metaLabel = new Label();
+			m_metaLabel.Text = "";
+			m_metaLabel.FontSize = 12;
+			m_metaLabel.TextColor = ThumpColors.TextDim;
+			m_metaLabel.HorizontalOptions = LayoutOptions.Center;
+			titleStack.Children.Add(m_metaLabel);
+
+			Grid.SetRow(titleStack, 2);
+			return titleStack;
+		}
+
+		private View BuildButtons()
+		{
+			HorizontalStackLayout buttonStack = new HorizontalStackLayout();
+			buttonStack.Spacing = 12;
+			buttonStack.Padding = new Thickness(16, 0, 16, 12);
+
+			Button playButton = new Button();
+			playButton.Text = "▶  Play";
+			playButton.TextColor = ThumpColors.Background;
+			playButton.BackgroundColor = ThumpColors.Accent;
+			playButton.CornerRadius = 8;
+			playButton.FontSize = 14;
+			playButton.Padding = new Thickness(20, 8);
+			playButton.Clicked += OnPlayClicked;
+			buttonStack.Children.Add(playButton);
+
+			Button shuffleButton = new Button();
+			shuffleButton.Text = "⇋  Shuffle";
+			shuffleButton.TextColor = ThumpColors.OnBackground;
+			shuffleButton.BackgroundColor = ThumpColors.Surface;
+			shuffleButton.CornerRadius = 8;
+			shuffleButton.FontSize = 14;
+			shuffleButton.Padding = new Thickness(20, 8);
+			shuffleButton.Clicked += OnShuffleClicked;
+			buttonStack.Children.Add(shuffleButton);
+
+			Button queueButton = new Button();
+			queueButton.Text = "＋  Queue";
+			queueButton.TextColor = ThumpColors.OnBackground;
+			queueButton.BackgroundColor = ThumpColors.Surface;
+			queueButton.CornerRadius = 8;
+			queueButton.FontSize = 14;
+			queueButton.Padding = new Thickness(20, 8);
+			queueButton.Clicked += OnAddToQueueClicked;
+			buttonStack.Children.Add(queueButton);
+
+			Button nextButton = new Button();
+			nextButton.Text = "⤓  Play Next";
+			nextButton.TextColor = ThumpColors.OnBackground;
+			nextButton.BackgroundColor = ThumpColors.Surface;
+			nextButton.CornerRadius = 8;
+			nextButton.FontSize = 14;
+			nextButton.Padding = new Thickness(20, 8);
+			nextButton.Clicked += OnPlayNextClicked;
+			buttonStack.Children.Add(nextButton);
+
+			ScrollView scroller = new ScrollView();
+			scroller.Orientation = ScrollOrientation.Horizontal;
+			scroller.HorizontalScrollBarVisibility = ScrollBarVisibility.Never;
+			scroller.Content = buttonStack;
+
+			Grid.SetRow(scroller, 3);
+			return scroller;
+		}
+
+		private View BuildTrackList()
+		{
+			m_trackList = new CollectionView();
+			m_trackList.ItemTemplate = new DataTemplate(typeof(TrackRowTile));
+
+			Grid.SetRow(m_trackList, 4);
+			return m_trackList;
+		}
+
+		public override void Initialize()
+		{
+			base.Initialize();
+			m_titleLabel.Text = m_playlist.Name;
+			m_metaLabel.Text = m_playlist.TrackCount + " tracks";
+			m_art.SetCoverArt(m_playlist.CoverArt);
+
+			// The playlist from the list endpoint carries no tracks; fetch the full
+			// playlist (getPlaylist) which includes its songs.
+			MainView.MediaClient.GetPlaylist(m_playlist.Id, OnPlaylistLoaded);
+		}
+
+		private void OnPlaylistLoaded(PulsePlaylistDetails playlistDetails)
+		{
+			if (playlistDetails == null)
+			{
+				return;
+			}
+			m_playlist = playlistDetails.Playlist;
+			m_titleLabel.Text = m_playlist.Name;
+			m_metaLabel.Text = m_playlist.TrackCount + " tracks";
+			m_tracks = playlistDetails.Tracks;
+			m_trackList.ItemsSource = m_tracks;
+		}
+
+		private void OnBackClicked(object sender, EventArgs e)
+		{
+			m_mainView.OnBackPressed();
+		}
+
+		private void OnPlayClicked(object sender, EventArgs e)
+		{
+			m_mainView.OnPlayTracks(m_tracks, 0, eQueueSource.Playlist, m_playlist.Id);
+		}
+
+		private void OnShuffleClicked(object sender, EventArgs e)
+		{
+			m_mainView.OnPlayTracksShuffled(m_tracks, eQueueSource.Playlist, m_playlist.Id);
+		}
+
+		private void OnAddToQueueClicked(object sender, EventArgs e)
+		{
+			m_mainView.OnAddToQueue(m_tracks, eQueueSource.Playlist, m_playlist.Id);
+		}
+
+		private void OnPlayNextClicked(object sender, EventArgs e)
+		{
+			m_mainView.OnPlayNext(m_tracks, eQueueSource.Playlist, m_playlist.Id);
+		}
+	}
+}

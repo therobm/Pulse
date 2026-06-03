@@ -1,0 +1,127 @@
+name: Build and Release
+
+# Unified build strategy (shared with Pulse/Flatline), adapted for the MAUI
+# Android app: a merge to master builds a signed release APK versioned straight
+# from the VERSION file (full Major.Minor.Build), publishes a GitHub Release,
+# then increments the build component in VERSION and commits it back to master
+# ([skip ci], repo token, so it does not re-trigger). To bump the major or
+# minor version, edit VERSION by hand and reset the build (e.g. 0.1.12 ->
+# 0.2.0). The Android versionCode is the total commit count, a separate
+# always-increasing integer (the displayed Build resets on a Major/Minor bump,
+# so it can't drive versionCode). Signing comes from repo secrets; the keystore
+# never lives in the repo.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          # Full history so the Android versionCode can count total commits,
+          # and so the build-number bump can be committed back to master.
+          fetch-depth: 0
+          # PulseAPI is a submodule the app references; fetch it for the build.
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'microsoft'
+          java-version: '17'
+
+      - name: Install MAUI Android workload
+        run: dotnet workload install maui-android
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          version=$(tr -d ' \t\r\n' < VERSION)
+          if ! echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "VERSION must be MAJOR.MINOR.BUILD; got '$version'" >&2
+            exit 1
+          fi
+          code=$(git rev-list --count HEAD)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "code=${code}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${version} (versionCode ${code})"
+
+      - name: Decode keystore
+        shell: bash
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/thump-release.jks"
+
+      - name: Publish signed APK
+        shell: bash
+        run: |
+          dotnet publish Thump/Thump.csproj \
+            -f net10.0-android \
+            -c Release \
+            -p:ApplicationDisplayVersion="${{ steps.version.outputs.version }}" \
+            -p:ApplicationVersion="${{ steps.version.outputs.code }}" \
+            -p:AndroidPackageFormat=apk \
+            -p:AndroidKeyStore=true \
+            -p:AndroidSigningKeyStore="$RUNNER_TEMP/thump-release.jks" \
+            -p:AndroidSigningStorePass='${{ secrets.ANDROID_KEYSTORE_PASSWORD }}' \
+            -p:AndroidSigningKeyAlias='${{ secrets.ANDROID_KEY_ALIAS }}' \
+            -p:AndroidSigningKeyPass='${{ secrets.ANDROID_KEY_PASSWORD }}'
+
+      - name: Stage release artifact
+        id: stage
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          apk=$(find . -name '*-Signed.apk' -path '*Release*' | head -1)
+          if [ -z "$apk" ]; then
+            echo "No signed APK found under a Release path." >&2
+            find . -name '*.apk' >&2 || true
+            exit 1
+          fi
+          cp "$apk" "artifacts/Thump-${{ steps.version.outputs.version }}.apk"
+          echo "apk=artifacts/Thump-${{ steps.version.outputs.version }}.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          files: ${{ steps.stage.outputs.apk }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+      - name: Increment build number in VERSION
+        shell: bash
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          major=$(echo "$version" | cut -d. -f1)
+          minor=$(echo "$version" | cut -d. -f2)
+          build=$(echo "$version" | cut -d. -f3)
+          next="${major}.${minor}.$((build + 1))"
+          printf '%s\n' "$next" > VERSION
+          git config user.name "Vibratron"
+          git config user.email "vibratron@flatline.local"
+          git add VERSION
+          git commit -m "Bump build to ${next} [skip ci]"
+          git push origin HEAD:master
