@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Thump\Thump.csproj" />
+  <Project Path="PulseAPI\PulseAPI\PulseAPI.csproj" />
+</Solution>
