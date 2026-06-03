@@ -1,27 +1,32 @@
-name: Build and Release
+name: Thump Build and Release
 
-# Unified build strategy (shared with Pulse/Flatline), adapted for the MAUI
-# Android app: a merge to master builds a signed release APK versioned straight
-# from the VERSION file (full Major.Minor.Build), publishes a GitHub Release,
-# then increments the build component in VERSION and commits it back to master
-# ([skip ci], repo token, so it does not re-trigger). To bump the major or
-# minor version, edit VERSION by hand and reset the build (e.g. 0.1.12 ->
-# 0.2.0). The Android versionCode is the total commit count, a separate
-# always-increasing integer (the displayed Build resets on a Major/Minor bump,
-# so it can't drive versionCode). Signing comes from repo secrets; the keystore
-# never lives in the repo.
+# Android release pipeline for the Thump MAUI client in the monorepo. Triggers
+# only when the app or the shared contract changes (path filter below), so a
+# server-only commit never spins up the Android toolchain. Versioned straight
+# from Thump/VERSION (full Major.Minor.Build), publishes a GitHub Release tagged
+# thump-v<version>, then increments the build component in Thump/VERSION and
+# commits it back to master ([skip ci], repo token, so it does not re-trigger).
+# To bump the major or minor version, edit Thump/VERSION by hand and reset the
+# build (e.g. 0.3.28 -> 0.4.0). The Android versionCode is the total repo commit
+# count, a separate always-increasing integer (the displayed Build resets on a
+# Major/Minor bump, so it can't drive versionCode). Signing comes from repo
+# secrets (ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS
+# / ANDROID_KEY_PASSWORD); the keystore never lives in the repo.
 
 on:
   workflow_dispatch:
   push:
     branches:
       - master
+    paths:
+      - 'Thump/**'
+      - 'PulseAPI/**'
 
 permissions:
   contents: write
 
 concurrency:
-  group: build-release-${{ github.ref }}
+  group: thump-build-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -36,8 +41,6 @@ jobs:
           # Full history so the Android versionCode can count total commits,
           # and so the build-number bump can be committed back to master.
           fetch-depth: 0
-          # PulseAPI is a submodule the app references; fetch it for the build.
-          submodules: recursive
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -57,9 +60,9 @@ jobs:
         id: version
         shell: bash
         run: |
-          version=$(tr -d ' \t\r\n' < VERSION)
+          version=$(tr -d ' \t\r\n' < Thump/VERSION)
           if ! echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "VERSION must be MAJOR.MINOR.BUILD; got '$version'" >&2
+            echo "Thump/VERSION must be MAJOR.MINOR.BUILD; got '$version'" >&2
             exit 1
           fi
           code=$(git rev-list --count HEAD)
@@ -104,24 +107,37 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: v${{ steps.version.outputs.version }}
+          tag_name: thump-v${{ steps.version.outputs.version }}
+          name: Thump v${{ steps.version.outputs.version }}
           files: ${{ steps.stage.outputs.apk }}
           generate_release_notes: true
           draft: false
           prerelease: false
 
-      - name: Increment build number in VERSION
+      - name: Increment build number in Thump/VERSION
         shell: bash
         run: |
-          version="${{ steps.version.outputs.version }}"
-          major=$(echo "$version" | cut -d. -f1)
-          minor=$(echo "$version" | cut -d. -f2)
-          build=$(echo "$version" | cut -d. -f3)
-          next="${major}.${minor}.$((build + 1))"
-          printf '%s\n' "$next" > VERSION
           git config user.name "Vibratron"
           git config user.email "vibratron@flatline.local"
-          git add VERSION
-          git commit -m "Bump build to ${next} [skip ci]"
-          git push origin HEAD:master
+          # master may have moved (e.g. a PulseAPI/** commit also triggered the
+          # server build, which bumps root VERSION and pushes). Recompute from
+          # the freshest master and retry so the two bump-pushes don't collide.
+          for attempt in $(seq 1 5); do
+            git fetch origin master
+            git checkout -B thump-version-bump origin/master
+            cur=$(tr -d ' \t\r\n' < Thump/VERSION)
+            major=$(echo "$cur" | cut -d. -f1)
+            minor=$(echo "$cur" | cut -d. -f2)
+            build=$(echo "$cur" | cut -d. -f3)
+            next="${major}.${minor}.$((build + 1))"
+            printf '%s\n' "$next" > Thump/VERSION
+            git add Thump/VERSION
+            git commit -m "Bump Thump build to ${next} [skip ci]"
+            if git push origin HEAD:master; then
+              echo "Pushed Thump/VERSION bump -> ${next}"
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}); master moved, retrying." >&2
+          done
+          echo "Failed to push Thump/VERSION bump after 5 attempts." >&2
+          exit 1

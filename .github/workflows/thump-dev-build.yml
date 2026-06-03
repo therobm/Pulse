@@ -1,6 +1,6 @@
-name: Dev Build
+name: Thump Dev Build
 
-# Manual, on-demand signed APK off any branch. Same build as the release
+# Manual, on-demand signed APK off any branch. Same build as the Thump release
 # workflow but uploads the APK as a 14-day build artifact instead of cutting a
 # GitHub Release. The version carries a -dev suffix. Used to validate the
 # Android build/signing pipeline before relying on the release workflow.
@@ -20,8 +20,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # PulseAPI is a submodule the app references; fetch it for the build.
-          submodules: recursive
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -41,7 +39,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          version="$(tr -d ' \t\r\n' < VERSION)-dev"
+          version="$(tr -d ' \t\r\n' < Thump/VERSION)-dev"
           code=$(git rev-list --count HEAD)
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "code=${code}" >> "$GITHUB_OUTPUT"
