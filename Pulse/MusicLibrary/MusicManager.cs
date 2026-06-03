@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Pulse.MusicLibrary
 {
@@ -788,6 +789,7 @@ namespace Pulse.MusicLibrary
 
 			m_scanningAlbumCache.Clear();
 			m_scanningArtistCache.Clear();
+			
 			foreach (string filePath in Directory.EnumerateFiles(musicPath, "*.*", SearchOption.AllDirectories))
 			{
 				fileCount++;
@@ -875,7 +877,7 @@ namespace Pulse.MusicLibrary
 					artist = "Unknown Artist";
 				}
 			}
-
+		
 			string album = tagFile.Tag.Album;
 			if (string.IsNullOrEmpty(album))
 			{
@@ -908,7 +910,7 @@ namespace Pulse.MusicLibrary
 
 			string albumId = MusicManager.GenerateID(artist + "/" + album);
 			AlbumInfo albumInfo = null;
-			if (!m_scanningAlbumCache.TryGetValue(artistId, out albumInfo))
+			if (!m_scanningAlbumCache.TryGetValue(albumId, out albumInfo))
 			{
 				albumInfo = m_database.GetOrCreateAlbum(albumId, album, artistId, artist, (int)tagFile.Tag.Year, tagFile.Tag.FirstGenre ?? "");
 				m_scanningAlbumCache[albumId] = albumInfo;
