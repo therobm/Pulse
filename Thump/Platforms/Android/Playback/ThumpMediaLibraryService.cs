@@ -643,37 +643,29 @@ namespace Thump.Playback.AndroidOS
 								recentlyPlayed.Add(A[i]);
 							}
 
-							s_mediaClient.GetRecentlyAdded((B)=>
+							s_mediaClient.GetTopPlaylists((C)=>
 							{
-								List<PulseObject> added = new List<PulseObject>();
-								for (int i = 0; i < B.Count && i < tileLimit; i++)
+								List<PulseObject> topPlaylists = new List<PulseObject>();
+								for (int i = 0; i < C.Count && i < tileLimit; i++)
 								{
-									added.Add(B[i]);
+									topPlaylists.Add(C[i]);
 								}
-								s_mediaClient.GetTopPlaylists((C)=>
+								s_mediaClient.GetPopularArtists((D)=>
 								{
-									List<PulseObject> topPlaylists = new List<PulseObject>();
-									for (int i = 0; i < C.Count && i < tileLimit; i++)
+									List<PulseObject> artists = new List<PulseObject>();
+									for (int i = 0; i < D.Count && i < tileLimit; i++)
 									{
-										topPlaylists.Add(C[i]);
+										artists.Add(D[i]);
 									}
-									s_mediaClient.GetPopularArtists((D)=>
-									{
-										List<PulseObject> artists = new List<PulseObject>();
-										for (int i = 0; i < D.Count && i < tileLimit; i++)
-										{
-											artists.Add(D[i]);
-										}
 
-										combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played"));
-										combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(added, "Recently Added"));
-										combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(topPlaylists, "Top Playlists"));
-										combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(artists, "Popular Artists"));
+									combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played"));
+									combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(topPlaylists, "Top Playlists"));
+									combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(artists, "Popular Artists"));
 
-										request.OnComplete(combined);
-									});
+									request.OnComplete(combined);
 								});
 							});
+							
 						});
 						break;
 					}
@@ -703,15 +695,6 @@ namespace Thump.Playback.AndroidOS
 						s_mediaClient.GetRecentlyPlayed((recentlyPlayed) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(recentlyPlayed);
-							request.OnComplete(items);
-						});
-						break;
-					}
-				case eAADirectory.RecentlyAdded:
-					{
-						s_mediaClient.GetRecentlyAdded((recentlyAdded) =>
-						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(recentlyAdded);
 							request.OnComplete(items);
 						});
 						break;
