@@ -926,7 +926,7 @@ namespace Pulse.MusicLibrary
 					artist = "Unknown Artist";
 				}
 			}
-
+		
 			string album = tagFile.Tag.Album;
 			if (string.IsNullOrEmpty(album))
 			{
