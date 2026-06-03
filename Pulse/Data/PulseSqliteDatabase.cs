@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Pulse.Database;
 using Pulse.MusicLibrary;
+using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -1018,6 +1019,37 @@ namespace Pulse.Data
 			}
 		}
 
+		// Append-only INSERT into the v6 analytics_events log. Write-through,
+		// one row per event, never updated or deleted (except on user wipe).
+		// action and media_type are stored as the enum *names* to match how
+		// PulseWire serializes them on the wire. A null/empty media id is
+		// dropped -- an event with no subject is not useful to aggregate.
+		public override void RecordAnalyticsEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
+		{
+			if (analytics == null || string.IsNullOrEmpty(analytics.MediaId))
+			{
+				return;
+			}
+
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = @"INSERT INTO analytics_events (occurred_at, user_name, action, media_type, media_id)
+					VALUES ($occurred, $u, $action, $type, $id);";
+				command.Parameters.AddWithValue("$occurred", occurredAt.ToString("o"));
+				command.Parameters.AddWithValue("$u", userName ?? "");
+				command.Parameters.AddWithValue("$action", analytics.Action.ToString());
+				command.Parameters.AddWithValue("$type", analytics.MediaType.ToString());
+				command.Parameters.AddWithValue("$id", analytics.MediaId);
+				command.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
 		// SELECT from the users table, then layer the in-memory per-user counts
 		// on top. Names that have per-user rows but no users-table entry (e.g.
 		// scrobbled after the user was deleted) are surfaced as orphan records
@@ -1171,7 +1203,8 @@ namespace Pulse.Data
 							"playlist_user_last_played",
 							"playqueue_state",
 							"playqueue_entries",
-							"bookmarks"
+							"bookmarks",
+							"analytics_events"
 						};
 						for (int index = 0; index < tables.Length; index++)
 						{
@@ -1243,6 +1276,12 @@ namespace Pulse.Data
 					delBookmarks.CommandText = "DELETE FROM bookmarks WHERE user_name = $u;";
 					delBookmarks.Parameters.AddWithValue("$u", userName);
 					delBookmarks.ExecuteNonQuery();
+
+					SqliteCommand delAnalytics = connection.CreateCommand();
+					delAnalytics.Transaction = transaction;
+					delAnalytics.CommandText = "DELETE FROM analytics_events WHERE user_name = $u;";
+					delAnalytics.Parameters.AddWithValue("$u", userName);
+					delAnalytics.ExecuteNonQuery();
 
 					SqliteCommand delUsersRow = connection.CreateCommand();
 					delUsersRow.Transaction = transaction;

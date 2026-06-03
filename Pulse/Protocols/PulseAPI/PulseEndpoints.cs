@@ -58,7 +58,7 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("favorites", GetFavorites);
 			RegisterRoute("favorite", Favorite);
 			RegisterRoute("unfavorite", Unfavorite);
-			RegisterRoute("reportTrackAnalytics", ReportTrackAnalytics);
+			RegisterRoute("reportAnalytics", ReportAnalytics);
 
 			RegisterRoute("podcasts", GetPodcasts);
 		}
@@ -1092,17 +1092,36 @@ namespace Pulse.Protocols.PulseAPI
 			return Respond(context, new PulseResponse());
 		}
 
-		public IResult ReportTrackAnalytics(HttpContext context)
+
+		// The pulse_v1 analytics feed: clients POST a serialized PulseAnalytics
+		// body describing one playback state change (track started/paused/
+		// skipped/completed, or a collection-level started for an album/artist/
+		// playlist). Supersedes the query-string reportTrackAnalytics, which is
+		// kept only so older clients keep limping along. The body is JSON, so it
+		// arrives in the request stream rather than the query string;
+		// HttpServer sets AllowSynchronousIO so the synchronous read is legal.
+		public IResult ReportAnalytics(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
 			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
 
-			if (string.IsNullOrEmpty(id))
+			string body;
+			using (StreamReader reader = new StreamReader(context.Request.Body))
+			{
+				body = reader.ReadToEnd();
+			}
+
+			if (string.IsNullOrEmpty(body))
+			{
+				return RespondStatus(context, "missing_body");
+			}
+
+			PulseAnalytics analytics = PulseWire.Parse<PulseAnalytics>(body);
+			if (analytics == null || string.IsNullOrEmpty(analytics.MediaId))
 			{
 				return RespondStatus(context, "missing_id");
 			}
 
-			m_musicManager.OnTrackStreamed(user, id);
+			m_musicManager.OnAnalyticsEvent(user, analytics);
 			return Respond(context, new PulseResponse());
 		}
 
