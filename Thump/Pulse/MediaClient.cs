@@ -1,5 +1,4 @@
-using Microsoft.Maui;
-using Microsoft.Maui.Animations;
+
 using Microsoft.Maui.ApplicationModel;
 using PulseAPI.CSharp;
 using System;
@@ -9,9 +8,36 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using Thump.Data;
+using Thump.Views.Tiles;
 
 namespace Thump.Pulse
 {
+	public class HttpReq
+	{
+		public Action<byte[]> m_onBinaryComplete;
+		public Action<string> m_onStringComplete;
+		public string m_url;
+		public bool m_bCacheAllowed;
+		public bool m_bIsBinary;
+		public bool m_bLogPerf;
+		public HttpReq(string url, Action<byte[]> onComplete, bool cacheAllowed, bool logPerf)
+		{
+			m_url = url;
+			m_onBinaryComplete = onComplete;
+			m_bIsBinary = true;
+			m_bCacheAllowed = cacheAllowed;
+			m_bLogPerf = logPerf;
+		}
+		public HttpReq(string url, Action<string> onComplete, bool cacheAllowed, bool logPerf)
+		{
+			m_url = url;
+			m_onStringComplete = onComplete;
+			m_bIsBinary = false;
+			m_bCacheAllowed = cacheAllowed;
+			m_bLogPerf = logPerf;
+		}
+	}
+
 	// The single API surface every media-server client (Subsonic today, Pulse-native
 	// in the future) must implement. Consumers (ThumpData, MainView, the playback
 	// service, settings) hold an MediaClient, so the concrete implementation can
@@ -38,7 +64,7 @@ namespace Thump.Pulse
 
 		private bool m_bInitialized = false;
 		protected bool m_bIsOnline = true;
-
+		private long m_fTimeSincePingMS = 0;
 		public MediaClient(ThumpCache cache)
 		{
 			m_cache = cache;
@@ -54,9 +80,19 @@ namespace Thump.Pulse
 			{
 				if (m_bInitialized)
 				{
-					Ping(out JsonElement response);
+					m_fTimeSincePingMS += 1;
+					if (m_fTimeSincePingMS > 5000)
+					{
+						m_fTimeSincePingMS = 0;
+						Ping(out JsonElement response);
+					}
+					//pump our http queue
+					ProcessHTTPQueue();
+					
+
 				}
-				Thread.Sleep(5000);
+				//sleep 1ms
+				Thread.Sleep(1);
 			}
 		}
 
@@ -156,8 +192,8 @@ namespace Thump.Pulse
 		public abstract void GetAlbums(Action<List<PulseAlbum>> onComplete);
 		public abstract void CreatePlaylist(string name, Action<PulsePlaylist> onComplete);
 		public abstract void RenamePlaylist(string playlistId, string newName, Action<bool> onComplete);
-		public abstract void Star(string trackId, Action<bool> onComplete);
-		public abstract void Unstar(string trackId, Action<bool> onComplete);
+		public abstract void Favorite(string trackId, Action<bool> onComplete);
+		public abstract void Unfavorite(string trackId, Action<bool> onComplete);
 		public abstract void DeletePlaylist(string playlistId, Action<bool> onComplete);
 		public abstract void AddTrackToPlaylist(string playlistId, string songId, Action<bool> onComplete);
 		public abstract void RemoveTrackFromPlaylist(string playlistId, int songIndex, Action<bool> onComplete);
@@ -221,7 +257,57 @@ namespace Thump.Pulse
 			byte[] trackData = m_cache.GetTrackAudioFromCache(url);
 			return trackData;
 		}
-		protected byte[] HttpGetBinary(string url, bool bCacheAllowed)
+
+		object m_requestLock = new object();
+		Queue<HttpReq> m_httpRequests = new Queue<HttpReq>();
+
+		public void GetHTTPBinary(string url, Action<byte[]> onComplete, bool bCacheAllowed)
+		{
+			QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, true));
+		}
+		public void GetHTTP(string url, Action<string> onComplete, bool bCacheAllowed, bool logPerf)
+		{
+			QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, logPerf));
+		}
+		private void QueueRequest(HttpReq req)
+		{
+			lock (m_requestLock)
+			{
+				m_httpRequests.Enqueue(req);
+			}
+		}
+		private void ProcessHTTPQueue()
+		{
+			int maxRequests = 10;
+			for (int i = 0; i < maxRequests; i++)
+			{
+				HttpReq next = null;
+				lock (m_requestLock)
+				{
+					if (m_httpRequests.Count == 0)
+						return;
+					next = m_httpRequests.Dequeue();
+				}
+
+			
+
+			
+				if (next.m_bIsBinary)
+				{
+					byte[] data = HttpGetBinary(next.m_url, next.m_bCacheAllowed);
+					if (next.m_onBinaryComplete != null)
+						next.m_onBinaryComplete(data);
+
+				}
+				else
+				{
+					string data = HttpGet(next.m_url, next.m_bCacheAllowed, next.m_bLogPerf);
+					if (next.m_onStringComplete != null)
+						next.m_onStringComplete(data);
+				}
+			}
+		}
+		private byte[] HttpGetBinary(string url, bool bCacheAllowed)
 		{
 			byte[] retVal = null;
 			if (bCacheAllowed && GetCachedResults(url, out retVal))

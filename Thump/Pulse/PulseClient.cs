@@ -35,16 +35,23 @@ namespace Thump.Pulse
 			return url;
 		}
 
-		private bool FetchObject<T>(string url, bool bCacheAllowed, out T value)
+		private void FetchObject<T>(string url, bool bCacheAllowed, Action<T> onComplete)
 		{
-			value = default(T);
-			JsonElement contents;
-			if (!FetchObject(url, bCacheAllowed, out contents))
+			FetchObject(url, bCacheAllowed, (contents)=>
 			{
-				return false;
-			}
-			value = PulseWire.Parse<T>(contents.GetRawText());
-			return true;
+				T value = default(T);
+				if(contents != null)
+				{
+					JsonElement jsonElement = (JsonElement)contents;
+					string json = jsonElement.GetRawText();
+					if (!string.IsNullOrEmpty(json))
+					{
+						value = PulseWire.Parse<T>(json);
+					}
+				}
+			
+				onComplete(value);
+			});
 		}
 
 		// Pull the contents element out of a PulseResponse envelope. Returns
@@ -52,9 +59,54 @@ namespace Thump.Pulse
 		// status wasn't "ok", or there was no payload. On success the boxed
 		// contents (System.Text.Json hands back a JsonElement for an object
 		// field) is unwrapped so callers can re-parse it into a concrete type.
-		private bool FetchObject(string url, bool bCacheAllowed, out JsonElement contents)
+		private void FetchObject(string url, bool bCacheAllowed, Action<object> onComplete)
 		{
-			contents = default(JsonElement);
+			if (onComplete == null)
+			{
+				return;
+			}
+
+			GetHTTP(url, (json)=>
+			{
+				object contents = null;
+				if (string.IsNullOrEmpty(json))
+				{
+					onComplete(contents);
+					return;
+				}
+				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+				
+				if (response == null || response.contents == null)
+				{
+					Log.Error("Unparseable pulse response: " + url);
+				}
+				else if (response.status != "ok")
+				{
+					Log.Error("Pulse endpoint returned status '" + response.status + "': " + url);
+				}
+				else 
+				{ 
+					contents = response.contents;
+				}
+				CompleteOnMain(onComplete, contents);
+			}, bCacheAllowed, true);
+		
+		}
+
+
+		// Treat a request as a fire-and-forget command: dispatch it and don't
+		// wait on the result. FetchObject logs a non-ok envelope on its own.
+		private void RunCommand(string url)
+		{
+			FetchObject(url, false, (contents) => { });
+		}
+
+		// Synchronous fetch+parse for the few callers that page in a loop and so
+		// can't drive the callback FetchObject. Blocks on the calling thread, so
+		// callers must run it inside their own Task.Run.
+		private bool FetchObjectSync<T>(string url, bool bCacheAllowed, out T value)
+		{
+			value = default(T);
 			string json = HttpGet(url, bCacheAllowed, true);
 			if (string.IsNullOrEmpty(json))
 			{
@@ -71,25 +123,13 @@ namespace Thump.Pulse
 				Log.Error("Pulse endpoint returned status '" + response.status + "': " + url);
 				return false;
 			}
-			if (response.contents == null)
+			JsonElement contents = (JsonElement)response.contents;
+			if (contents.ValueKind == JsonValueKind.Undefined || contents.ValueKind == JsonValueKind.Null)
 			{
 				return false;
 			}
-			if (!(response.contents is JsonElement))
-			{
-				return false;
-			}
-			contents = (JsonElement)response.contents;
+			value = PulseWire.Parse<T>(contents.GetRawText());
 			return true;
-		}
-
-
-		// Treat a request as a fire-and-forget command: success is simply a
-		// well-formed envelope with status "ok".
-		private bool RunCommand(string url)
-		{
-			JsonElement discard;
-			return FetchObject(url, false, out discard);
 		}
 
 		protected override bool Ping(out JsonElement response)
@@ -140,24 +180,18 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new PulseTrack());
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("track", "id=" + Uri.EscapeDataString(trackId));
+			FetchObject<PulseTrack>(url, true, (track) =>
 			{
 				PulseTrack result = new PulseTrack();
-				try
+				if (track != null)
 				{
-					string url = BuildPulseUrl("track", "id=" + Uri.EscapeDataString(trackId));
-					PulseTrack track;
-					if (FetchObject(url, true, out track) && track != null)
-					{
-						result = track;
-					}
+					result = track;
 				}
-				catch (Exception ex)
+				if (onComplete != null)
 				{
-					Log.Exception(ex);
+					onComplete(result);
 				}
-				PulseTrack captured = result;
-				CompleteOnMain(onComplete, captured);
 			});
 		}
 
@@ -168,48 +202,36 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulseArtist>());
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("artists", null);
+			FetchObject<List<PulseArtist>>(url, true, (data) =>
 			{
 				List<PulseArtist> results = new List<PulseArtist>();
-				try
+				if (data != null)
 				{
-					string url = BuildPulseUrl("artists", null);
-					if (FetchObject(url, true, out List<PulseArtist> data))
-					{
-						if (data != null)
-							results = data;
-					}
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
+					results = data;
 				}
 				results.Sort(CompareArtistByName);
-				List<PulseArtist> captured = results;
-				CompleteOnMain(onComplete, captured);
+				if (onComplete != null)
+				{
+					onComplete(results);
+				}
 			});
 		}
 
 		public override void GetArtist(string artistId, Action<PulseArtistDetails> onComplete)
 		{
-			PulseArtistDetails artistDetails = null;
 			if (!IsOnline())
 			{
 				CompleteOnMain(onComplete, new PulseArtistDetails());
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
+			FetchObject<PulseArtistDetails>(url, true, (artistDetails) =>
 			{
-				try
+				if (onComplete != null)
 				{
-					string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
-					FetchObject(url, true, out artistDetails);
+					onComplete(artistDetails);
 				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
-				CompleteOnMain(onComplete, artistDetails);
 			});
 		}
 
@@ -220,36 +242,30 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulseTrack>());
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("artistTracks", "id=" + Uri.EscapeDataString(artistId));
+			FetchObject<PulseArtistFullDetails>(url, true, (details) =>
 			{
 				List<PulseTrack> results = new List<PulseTrack>();
-				try
+				if (details != null && details.AlbumDetails != null)
 				{
-					string url = BuildPulseUrl("artistTracks", "id=" + Uri.EscapeDataString(artistId));
-					PulseArtistFullDetails details;
-					if (FetchObject(url, true, out details) && details != null && details.AlbumDetails != null)
+					for (int albumIndex = 0; albumIndex < details.AlbumDetails.Count; albumIndex++)
 					{
-						for (int albumIndex = 0; albumIndex < details.AlbumDetails.Count; albumIndex++)
+						PulseAlbumDetails album = details.AlbumDetails[albumIndex];
+						if (album == null || album.Tracks == null)
 						{
-							PulseAlbumDetails album = details.AlbumDetails[albumIndex];
-							if (album == null || album.Tracks == null)
-							{
-								continue;
-							}
-							for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
-							{
-								results.Add(album.Tracks[trackIndex]);
-							}
+							continue;
+						}
+						for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+						{
+							results.Add(album.Tracks[trackIndex]);
 						}
 					}
 				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
 				results.Sort(CompareTrackByTitle);
-				List<PulseTrack> captured = results;
-				CompleteOnMain(onComplete, captured);
+				if (onComplete != null)
+				{
+					onComplete(results);
+				}
 			});
 		}
 
@@ -260,28 +276,22 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulsePodcastChannel>());
 				return;
 			}
-			Task.Run(() =>
+			// Server-side podcasts are still on the roadmap: the route exists
+			// but returns status "not_implemented", so the fetch fails and we
+			// hand back an empty list. The call is made anyway so the client
+			// lights up automatically once the server starts serving them.
+			string url = BuildPulseUrl("podcasts", null);
+			FetchObject<List<PulsePodcastChannel>>(url, true, (channels) =>
 			{
-				// Server-side podcasts are still on the roadmap: the route exists
-				// but returns status "not_implemented", so TryGetObject fails and
-				// we hand back an empty list. The call is made anyway so the client
-				// lights up automatically once the server starts serving them.
 				List<PulsePodcastChannel> results = new List<PulsePodcastChannel>();
-				try
+				if (channels != null)
 				{
-					string url = BuildPulseUrl("podcasts", null);
-					List<PulsePodcastChannel> channels;
-					if (FetchObject(url, true, out channels) && channels != null)
-					{
-						results = channels;
-					}
+					results = channels;
 				}
-				catch (Exception ex)
+				if (onComplete != null)
 				{
-					Log.Exception(ex);
+					onComplete(results);
 				}
-				List<PulsePodcastChannel> captured = results;
-				CompleteOnMain(onComplete, captured);
 			});
 		}
 
@@ -292,28 +302,22 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new PulseSearchData());
 				return;
 			}
-			Task.Run(() =>
+			string param = "query=" + Uri.EscapeDataString(query)
+				+ "&artistCount=10"
+				+ "&albumCount=20"
+				+ "&songCount=30";
+			string url = BuildPulseUrl("search", param);
+			FetchObject<PulseSearchData>(url, true, (data) =>
 			{
 				PulseSearchData result = new PulseSearchData();
-				try
+				if (data != null)
 				{
-					string param = "query=" + Uri.EscapeDataString(query)
-						+ "&artistCount=10"
-						+ "&albumCount=20"
-						+ "&songCount=30";
-					string url = BuildPulseUrl("search", param);
-					PulseSearchData data;
-					if (FetchObject(url, true, out data) && data != null)
-					{
-						result = data;
-					}
+					result = data;
 				}
-				catch (Exception ex)
+				if (onComplete != null)
 				{
-					Log.Exception(ex);
+					onComplete(result);
 				}
-				PulseSearchData captured = result;
-				CompleteOnMain(onComplete, captured);
 			});
 		}
 
@@ -324,27 +328,21 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulseAlbum>());
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
+			FetchObject<PulseArtistDetails>(url, true, (details) =>
 			{
 				List<PulseAlbum> results = new List<PulseAlbum>();
-				try
+				if (details != null && details.Albums != null)
 				{
-					string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
-					PulseArtistDetails details;
-					if (FetchObject(url, true, out details) && details != null && details.Albums != null)
+					for (int index = 0; index < details.Albums.Count; index++)
 					{
-						for (int index = 0; index < details.Albums.Count; index++)
-						{
-							results.Add(details.Albums[index]);
-						}
+						results.Add(details.Albums[index]);
 					}
 				}
-				catch (Exception ex)
+				if (onComplete != null)
 				{
-					Log.Exception(ex);
+					onComplete(results);
 				}
-				List<PulseAlbum> captured = results;
-				CompleteOnMain(onComplete, captured);
 			});
 		}
 
@@ -355,24 +353,18 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new PulseAlbumDetails());
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("album", "id=" + Uri.EscapeDataString(albumId));
+			FetchObject<PulseAlbumDetails>(url, true, (details) =>
 			{
 				PulseAlbumDetails result = new PulseAlbumDetails();
-				try
+				if (details != null && details.Album != null)
 				{
-					string url = BuildPulseUrl("album", "id=" + Uri.EscapeDataString(albumId));
-					PulseAlbumDetails details;
-					if (FetchObject(url, true, out details) && details != null && details.Album != null)
-					{
-						result = details;
-					}
+					result = details;
 				}
-				catch (Exception ex)
+				if (onComplete != null)
 				{
-					Log.Exception(ex);
+					onComplete(result);
 				}
-				PulseAlbumDetails captured = result;
-				CompleteOnMain(onComplete, captured);
 			});
 		}
 
@@ -398,7 +390,7 @@ namespace Thump.Pulse
 						string param = "type=alphabeticalbyname&size=" + pageSize + "&offset=" + offset;
 						string url = BuildPulseUrl("albums", param);
 						List<PulseAlbum> albums;
-						if (!FetchObject(url, true, out albums) || albums == null || albums.Count == 0)
+						if (!FetchObjectSync(url, true, out albums) || albums == null || albums.Count == 0)
 						{
 							break;
 						}
@@ -426,24 +418,18 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, null);
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("createPlaylist", "name=" + Uri.EscapeDataString(name));
+			FetchObject<PulsePlaylistDetails>(url, false, (details) =>
 			{
 				PulsePlaylist created = null;
-				try
+				if (details != null && details.Playlist != null)
 				{
-					string url = BuildPulseUrl("createPlaylist", "name=" + Uri.EscapeDataString(name));
-					PulsePlaylistDetails details;
-					if (FetchObject(url, false, out details) && details != null && details.Playlist != null)
-					{
-						created = details.Playlist;
-					}
+					created = details.Playlist;
 				}
-				catch (Exception ex)
+				if (onComplete != null)
 				{
-					Log.Exception(ex);
+					onComplete(created);
 				}
-				PulsePlaylist captured = created;
-				CompleteOnMain(onComplete, captured);
 			});
 		}
 
@@ -454,70 +440,34 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, false);
 				return;
 			}
-			Task.Run(() =>
-			{
-				bool ok = false;
-				try
-				{
-					string param = "playlistId=" + Uri.EscapeDataString(playlistId)
-						+ "&name=" + Uri.EscapeDataString(newName);
-					ok = RunCommand(BuildPulseUrl("updatePlaylist", param));
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
-				bool captured = ok;
-				CompleteOnMain(onComplete, captured);
-			});
+			string param = "playlistId=" + Uri.EscapeDataString(playlistId)
+				+ "&name=" + Uri.EscapeDataString(newName);
+			RunCommand(BuildPulseUrl("updatePlaylist", param));
+			CompleteOnMain(onComplete, true);
 		}
 
-		public override void Star(string trackId, Action<bool> onComplete)
+		public override void Favorite(string trackId, Action<bool> onComplete)
 		{
 			if (!IsOnline())
 			{
 				CompleteOnMain(onComplete, false);
 				return;
 			}
-			Task.Run(() =>
-			{
-				bool ok = false;
-				try
-				{
-					string param = "id=" + Uri.EscapeDataString(trackId) + "&type=track";
-					ok = RunCommand(BuildPulseUrl("favorite", param));
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
-				bool captured = ok;
-				CompleteOnMain(onComplete, captured);
-			});
+			string param = "id=" + Uri.EscapeDataString(trackId) + "&type=track";
+			RunCommand(BuildPulseUrl("favorite", param));
+			CompleteOnMain(onComplete, true);
 		}
 
-		public override void Unstar(string trackId, Action<bool> onComplete)
+		public override void Unfavorite(string trackId, Action<bool> onComplete)
 		{
 			if (!IsOnline())
 			{
 				CompleteOnMain(onComplete, false);
 				return;
 			}
-			Task.Run(() =>
-			{
-				bool ok = false;
-				try
-				{
-					string param = "id=" + Uri.EscapeDataString(trackId) + "&type=track";
-					ok = RunCommand(BuildPulseUrl("unfavorite", param));
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
-				bool captured = ok;
-				CompleteOnMain(onComplete, captured);
-			});
+			string param = "id=" + Uri.EscapeDataString(trackId) + "&type=track";
+			RunCommand(BuildPulseUrl("unfavorite", param));
+			CompleteOnMain(onComplete, true);
 		}
 
 		public override void DeletePlaylist(string playlistId, Action<bool> onComplete)
@@ -527,21 +477,9 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, false);
 				return;
 			}
-			Task.Run(() =>
-			{
-				bool ok = false;
-				try
-				{
-					string param = "id=" + Uri.EscapeDataString(playlistId);
-					ok = RunCommand(BuildPulseUrl("deletePlaylist", param));
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
-				bool captured = ok;
-				CompleteOnMain(onComplete, captured);
-			});
+			string param = "id=" + Uri.EscapeDataString(playlistId);
+			RunCommand(BuildPulseUrl("deletePlaylist", param));
+			CompleteOnMain(onComplete, true);
 		}
 
 		public override void AddTrackToPlaylist(string playlistId, string songId, Action<bool> onComplete)
@@ -551,22 +489,10 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, false);
 				return;
 			}
-			Task.Run(() =>
-			{
-				bool ok = false;
-				try
-				{
-					string param = "playlistId=" + Uri.EscapeDataString(playlistId)
-						+ "&songIdToAdd=" + Uri.EscapeDataString(songId);
-					ok = RunCommand(BuildPulseUrl("updatePlaylist", param));
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
-				bool captured = ok;
-				CompleteOnMain(onComplete, captured);
-			});
+			string param = "playlistId=" + Uri.EscapeDataString(playlistId)
+				+ "&songIdToAdd=" + Uri.EscapeDataString(songId);
+			RunCommand(BuildPulseUrl("updatePlaylist", param));
+			CompleteOnMain(onComplete, true);
 		}
 
 		public override void RemoveTrackFromPlaylist(string playlistId, int songIndex, Action<bool> onComplete)
@@ -576,22 +502,10 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, false);
 				return;
 			}
-			Task.Run(() =>
-			{
-				bool ok = false;
-				try
-				{
-					string param = "playlistId=" + Uri.EscapeDataString(playlistId)
-						+ "&songIndexToRemove=" + songIndex;
-					ok = RunCommand(BuildPulseUrl("updatePlaylist", param));
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
-				bool captured = ok;
-				CompleteOnMain(onComplete, captured);
-			});
+			string param = "playlistId=" + Uri.EscapeDataString(playlistId)
+				+ "&songIndexToRemove=" + songIndex;
+			RunCommand(BuildPulseUrl("updatePlaylist", param));
+			CompleteOnMain(onComplete, true);
 		}
 
 		public override void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<PulseTrack> newOrder, Action<bool> onComplete)
@@ -601,39 +515,27 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, false);
 				return;
 			}
-			Task.Run(() =>
+			// Same strategy as the Subsonic client: remove every entry from the
+			// first changed index to the end (high index first), then re-add the
+			// new tail in order. updatePlaylist accepts repeated
+			// songIndexToRemove and songIdToAdd parameters.
+			int divergence = fromIndex;
+			if (toIndex < divergence)
 			{
-				bool ok = false;
-				try
-				{
-					// Same strategy as the Subsonic client: remove every entry
-					// from the first changed index to the end (high index first),
-					// then re-add the new tail in order. updatePlaylist accepts
-					// repeated songIndexToRemove and songIdToAdd parameters.
-					int divergence = fromIndex;
-					if (toIndex < divergence)
-					{
-						divergence = toIndex;
-					}
-					StringBuilder param = new StringBuilder();
-					param.Append("playlistId=").Append(Uri.EscapeDataString(playlistId));
-					for (int index = newOrder.Count - 1; index >= divergence; index--)
-					{
-						param.Append("&songIndexToRemove=").Append(index);
-					}
-					for (int index = divergence; index < newOrder.Count; index++)
-					{
-						param.Append("&songIdToAdd=").Append(Uri.EscapeDataString(newOrder[index].Id));
-					}
-					ok = RunCommand(BuildPulseUrl("updatePlaylist", param.ToString()));
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
-				bool captured = ok;
-				CompleteOnMain(onComplete, captured);
-			});
+				divergence = toIndex;
+			}
+			StringBuilder param = new StringBuilder();
+			param.Append("playlistId=").Append(Uri.EscapeDataString(playlistId));
+			for (int index = newOrder.Count - 1; index >= divergence; index--)
+			{
+				param.Append("&songIndexToRemove=").Append(index);
+			}
+			for (int index = divergence; index < newOrder.Count; index++)
+			{
+				param.Append("&songIdToAdd=").Append(Uri.EscapeDataString(newOrder[index].Id));
+			}
+			RunCommand(BuildPulseUrl("updatePlaylist", param.ToString()));
+			CompleteOnMain(onComplete, true);
 		}
 
 		public override void GetPlaylists(Action<List<PulsePlaylist>> onComplete)
@@ -643,28 +545,22 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulsePlaylist>());
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("playlists", null);
+			FetchObject<List<PulsePlaylist>>(url, true, (playlists) =>
 			{
 				List<PulsePlaylist> results = new List<PulsePlaylist>();
-				try
+				if (playlists != null)
 				{
-					string url = BuildPulseUrl("playlists", null);
-					List<PulsePlaylist> playlists;
-					if (FetchObject(url, true, out playlists) && playlists != null)
+					for (int index = 0; index < playlists.Count; index++)
 					{
-						for (int index = 0; index < playlists.Count; index++)
-						{
-							results.Add(playlists[index]);
-						}
+						results.Add(playlists[index]);
 					}
 				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
 				results.Sort(ComparePlaylistByName);
-				List<PulsePlaylist> captured = results;
-				CompleteOnMain(onComplete, captured);
+				if (onComplete != null)
+				{
+					onComplete(results);
+				}
 			});
 		}
 
@@ -675,19 +571,18 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new PulsePlaylistDetails());
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("playlist", "id=" + Uri.EscapeDataString(playlistId));
+			FetchObject<PulsePlaylistDetails>(url, true, (details) =>
 			{
 				PulsePlaylistDetails result = new PulsePlaylistDetails();
-				try
+				if (details != null)
 				{
-					string url = BuildPulseUrl("playlist", "id=" + Uri.EscapeDataString(playlistId));
-					FetchObject(url, true, out result);
+					result = details;
 				}
-				catch (Exception ex)
+				if (onComplete != null)
 				{
-					Log.Exception(ex);
+					onComplete(result);
 				}
-				CompleteOnMain(onComplete, result);
 			});
 		}
 
@@ -710,11 +605,11 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, null);
 				return;
 			}
-			Task.Run(() =>
+
+			GetHTTPBinary(url, (data)=>
 			{
 				try
 				{
-					byte[] data = HttpGetBinary(url, true);
 					if (data == null || data.Length <= 0)
 					{
 						Log.Error("Cover art fetch failed: " + url);
@@ -729,7 +624,7 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 					CompleteOnMain(onComplete, null);
 				}
-			});
+			}, true);
 		}
 
 		public override void GetTrackAudio(string trackId, Action<byte[]> onComplete)
@@ -740,11 +635,10 @@ namespace Thump.Pulse
 				return;
 			}
 			string url = GetTrackAudioURL(trackId);
-			Task.Run(() =>
+			GetHTTPBinary(url, (data)=>
 			{
 				try
 				{
-					byte[] data = HttpGetBinary(url, true);
 					if (data == null || data.Length <= 0)
 					{
 						Log.Error("Audio fetch failed: " + url);
@@ -759,7 +653,7 @@ namespace Thump.Pulse
 					Log.Exception(ex);
 					CompleteOnMain(onComplete, null);
 				}
-			});
+			}, true);
 		}
 
 		public override void GetRecentlyPlayed(Action<List<PulseObject>> onComplete)
@@ -769,16 +663,16 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulseObject>());
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("recentlyPlayed", "count=50");
+			FetchObject(url, false, (contents) =>
 			{
 				List<PulseObject> results = new List<PulseObject>();
-				try
-				{
-					string url = BuildPulseUrl("recentlyPlayed", "count=50");
-					JsonElement contents;
-					if (FetchObject(url, false, out contents) && contents.ValueKind == JsonValueKind.Array)
+				if (contents != null) 
+				{ 
+					JsonElement jsonElement = (JsonElement)contents;
+					if (jsonElement.ValueKind == JsonValueKind.Array)
 					{
-						foreach (JsonElement element in contents.EnumerateArray())
+						foreach (JsonElement element in jsonElement.EnumerateArray())
 						{
 							PulseObject mapped = MapMixedObject(element);
 							if (mapped != null)
@@ -788,12 +682,10 @@ namespace Thump.Pulse
 						}
 					}
 				}
-				catch (Exception ex)
+				if (onComplete != null)
 				{
-					Log.Exception(ex);
+					onComplete(results);
 				}
-				List<PulseObject> captured = results;
-				CompleteOnMain(onComplete, captured);
 			});
 		}
 
@@ -804,10 +696,12 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulseArtist>());
 				return;
 			}
-			Task.Run(() =>
+			FetchTypedItems<PulseArtist>("topItems", "types=artist&count=20", (items) =>
 			{
-				List<PulseArtist> captured = FetchTypedItems<PulseArtist>("topItems", "types=artist&count=20");
-				CompleteOnMain(onComplete, captured);
+				if (onComplete != null)
+				{
+					onComplete(items);
+				}
 			});
 		}
 
@@ -818,10 +712,12 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulsePlaylist>());
 				return;
 			}
-			Task.Run(() =>
+			FetchTypedItems<PulsePlaylist>("topItems", "types=playlist&count=20", (items) =>
 			{
-				List<PulsePlaylist> captured = FetchTypedItems<PulsePlaylist>("topItems", "types=playlist&count=20");
-				CompleteOnMain(onComplete, captured);
+				if (onComplete != null)
+				{
+					onComplete(items);
+				}
 			});
 		}
 
@@ -832,10 +728,12 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulsePlaylist>());
 				return;
 			}
-			Task.Run(() =>
+			FetchTypedItems<PulsePlaylist>("recentlyPlayed", "types=playlist&count=20", (items) =>
 			{
-				List<PulsePlaylist> captured = FetchTypedItems<PulsePlaylist>("recentlyPlayed", "types=playlist&count=20");
-				CompleteOnMain(onComplete, captured);
+				if (onComplete != null)
+				{
+					onComplete(items);
+				}
 			});
 		}
 
@@ -846,28 +744,22 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulseGenre>());
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("genres", null);
+			FetchObject<List<PulseGenre>>(url, true, (genres) =>
 			{
 				List<PulseGenre> results = new List<PulseGenre>();
-				try
+				if (genres != null)
 				{
-					string url = BuildPulseUrl("genres", null);
-					List<PulseGenre> genres;
-					if (FetchObject(url, true, out genres) && genres != null)
+					for (int index = 0; index < genres.Count; index++)
 					{
-						for (int index = 0; index < genres.Count; index++)
-						{
-							results.Add(genres[index]);
-						}
+						results.Add(genres[index]);
 					}
 				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
 				results.Sort(CompareGenreByName);
-				List<PulseGenre> captured = results;
-				CompleteOnMain(onComplete, captured);
+				if (onComplete != null)
+				{
+					onComplete(results);
+				}
 			});
 		}
 
@@ -878,10 +770,12 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulseObject>());
 				return;
 			}
-			Task.Run(() =>
+			FetchTypedItems<PulseObject>("topItems", "count=50", (items) =>
 			{
-				List<PulseObject> captured = FetchTypedItems<PulseObject>("topItems", "count=50");
-				CompleteOnMain(onComplete, captured);
+				if (onComplete != null)
+				{
+					onComplete(items);
+				}
 			});
 		}
 
@@ -892,29 +786,23 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulseTrack>());
 				return;
 			}
-			Task.Run(() =>
+			string param = "genre=" + Uri.EscapeDataString(genre) + "&count=500&offset=0";
+			string url = BuildPulseUrl("genreTracks", param);
+			FetchObject<PulseGenreDetails>(url, true, (details) =>
 			{
 				List<PulseTrack> results = new List<PulseTrack>();
-				try
+				if (details != null && details.Tracks != null)
 				{
-					string param = "genre=" + Uri.EscapeDataString(genre) + "&count=500&offset=0";
-					string url = BuildPulseUrl("genreTracks", param);
-					PulseGenreDetails details;
-					if (FetchObject(url, true, out details) && details != null && details.Tracks != null)
+					for (int index = 0; index < details.Tracks.Count; index++)
 					{
-						for (int index = 0; index < details.Tracks.Count; index++)
-						{
-							results.Add(details.Tracks[index]);
-						}
+						results.Add(details.Tracks[index]);
 					}
 				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
 				results.Sort(CompareTrackByTitle);
-				List<PulseTrack> captured = results;
-				CompleteOnMain(onComplete, captured);
+				if (onComplete != null)
+				{
+					onComplete(results);
+				}
 			});
 		}
 
@@ -925,27 +813,21 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulseTrack>());
 				return;
 			}
-			Task.Run(() =>
+			string url = BuildPulseUrl("favorites", null);
+			FetchObject<PulseSearchData>(url, true, (data) =>
 			{
 				List<PulseTrack> results = new List<PulseTrack>();
-				try
+				if (data != null && data.Tracks != null)
 				{
-					string url = BuildPulseUrl("favorites", null);
-					PulseSearchData data;
-					if (FetchObject(url, true, out data) && data != null && data.Tracks != null)
+					for (int index = 0; index < data.Tracks.Count; index++)
 					{
-						for (int index = 0; index < data.Tracks.Count; index++)
-						{
-							results.Add(data.Tracks[index]);
-						}
+						results.Add(data.Tracks[index]);
 					}
 				}
-				catch (Exception ex)
+				if (onComplete != null)
 				{
-					Log.Exception(ex);
+					onComplete(results);
 				}
-				List<PulseTrack> captured = results;
-				CompleteOnMain(onComplete, captured);
 			});
 		}
 
@@ -1012,33 +894,36 @@ namespace Thump.Pulse
 		}
 
 		// Fetches a heterogeneous item feed (topItems / recentlyPlayed) and keeps
-		// only the elements whose Kind maps to the requested concrete type. Runs
-		// on the caller's thread, so callers wrap it in Task.Run.
-		private List<T> FetchTypedItems<T>(string route, string param) where T : PulseObject
+		// only the elements whose Kind maps to the requested concrete type.
+		// Delivers the filtered list through the callback FetchObject.
+		private void FetchTypedItems<T>(string route, string param, Action<List<T>> onComplete) where T : PulseObject
 		{
-			List<T> results = new List<T>();
-			try
+			string url = BuildPulseUrl(route, param);
+			FetchObject(url, false, (contents) =>
 			{
-				string url = BuildPulseUrl(route, param);
-				JsonElement contents;
-				if (FetchObject(url, false, out contents) && contents.ValueKind == JsonValueKind.Array)
-				{
-					foreach (JsonElement element in contents.EnumerateArray())
+
+				List<T> results = new List<T>();
+				if (contents != null) 
+				{ 
+					JsonElement jsonElement = (JsonElement)contents;
+					if (jsonElement.ValueKind == JsonValueKind.Array)
 					{
-						PulseObject mapped = MapMixedObject(element);
-						T typed = mapped as T;
-						if (typed != null)
+						foreach (JsonElement element in jsonElement.EnumerateArray())
 						{
-							results.Add(typed);
+							PulseObject mapped = MapMixedObject(element);
+							T typed = mapped as T;
+							if (typed != null)
+							{
+								results.Add(typed);
+							}
 						}
 					}
 				}
-			}
-			catch (Exception ex)
-			{
-				Log.Exception(ex);
-			}
-			return results;
+				if (onComplete != null)
+				{
+					onComplete(results);
+				}
+			});
 		}
 
 		private static void CompleteOnMain<T>(Action<T> onComplete, T value)
