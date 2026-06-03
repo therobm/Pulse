@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Pulse.MusicLibrary
 {
@@ -774,6 +775,8 @@ namespace Pulse.MusicLibrary
 
 		private void RunScan(string musicPath)
 		{
+			RepairLibrary();
+
 			int fileCount = 0;
 			int processedCount = 0;
 			int skippedCount = 0;
@@ -788,10 +791,19 @@ namespace Pulse.MusicLibrary
 
 			m_scanningAlbumCache.Clear();
 			m_scanningArtistCache.Clear();
-			foreach (string filePath in Directory.EnumerateFiles(musicPath, "*.*", SearchOption.AllDirectories))
+			m_processedSinceLastSave = 0;
+
+			// Tag parsing (TagLib.File.Create) is the slow, disk-bound part of a scan
+			// and touches no shared state, so it runs in parallel. The cheap part --
+			// seeding the scan caches, GetOrCreate and AddTrack -- mutates shared model
+			// state (and the plain-Dictionary caches), so it is funneled through a
+			// single commit lock. The critical section is microseconds, so the parse
+			// parallelism is preserved while the commit stays single-threaded and safe.
+			object commitLock = new object();
+
+			Parallel.ForEach(Directory.EnumerateFiles(musicPath, "*.*", SearchOption.AllDirectories), filePath =>
 			{
-				fileCount++;
-				string libraryID = MusicManager.GenerateID(filePath);
+				Interlocked.Increment(ref fileCount);
 
 			
 
@@ -808,25 +820,42 @@ namespace Pulse.MusicLibrary
 
 				if (!supported)
 				{
-					continue;
+					return;
 				}
 
+				string libraryID = MusicManager.GenerateID(filePath);
 				if (existingIds.Contains(libraryID))
 				{
-					skippedCount++;
-					continue;
+					Interlocked.Increment(ref skippedCount);
+					return;
 				}
 
 				try
 				{
-					processedCount++;
-					ProcessFile(filePath, musicPath);
+					ScannedTrack scanned = ParseFile(filePath, musicPath);
+					if (scanned == null)
+					{
+						return;
+					}
+
+					lock (commitLock)
+					{
+						CommitScannedTrack(scanned);
+						processedCount++;
+
+						m_processedSinceLastSave++;
+						if (m_processedSinceLastSave >= 500)
+						{
+							m_processedSinceLastSave = 0;
+							SaveDB("scan-batch");
+						}
+					}
 				}
 				catch (Exception exception)
 				{
 					Log.Error(-1, "Scan failed: " + filePath + " - " + exception.Message);
 				}
-			}
+			});
 
 
 			//remove missing files
@@ -853,7 +882,29 @@ namespace Pulse.MusicLibrary
 			SaveDB("scan-complete");
 		}
 
-		private void ProcessFile(string filePath, string musicRoot)
+		/// <summary>
+		/// A single file's tags parsed into the fields the library needs. Produced by
+		/// <see cref="ParseFile"/> (parallel) and consumed by <see cref="CommitScannedTrack"/>
+		/// (serial), so it deliberately holds no references to shared model state.
+		/// </summary>
+		private sealed class ScannedTrack
+		{
+			public string ArtistId;
+			public string ArtistName;
+			public string AlbumId;
+			public string AlbumName;
+			public int Year;
+			public string Genre;
+			public TrackInfo Track;
+		}
+
+		/// <summary>
+		/// Reads and parses one file's tags into a <see cref="ScannedTrack"/>. This is the
+		/// slow, disk-bound work and touches no shared state, so it is safe to run on many
+		/// threads concurrently. The result is committed serially by
+		/// <see cref="CommitScannedTrack"/>.
+		/// </summary>
+		private ScannedTrack ParseFile(string filePath, string musicRoot)
 		{
 			TagLib.File tagFile = TagLib.File.Create(filePath);
 
@@ -898,22 +949,7 @@ namespace Pulse.MusicLibrary
 			}
 
 			string artistId = MusicManager.GenerateID(artist);
-			ArtistInfo artistInfo = null;
-			if (!m_scanningArtistCache.TryGetValue(artistId, out artistInfo))
-			{
-				artistInfo = m_database.GetOrCreateArtist(artistId, artist);
-				m_scanningArtistCache[artistId] = artistInfo;
-			}
-			
-
 			string albumId = MusicManager.GenerateID(artist + "/" + album);
-			AlbumInfo albumInfo = null;
-			if (!m_scanningAlbumCache.TryGetValue(artistId, out albumInfo))
-			{
-				albumInfo = m_database.GetOrCreateAlbum(albumId, album, artistId, artist, (int)tagFile.Tag.Year, tagFile.Tag.FirstGenre ?? "");
-				m_scanningAlbumCache[albumId] = albumInfo;
-			}
-			
 
 			string extension = Path.GetExtension(filePath).ToLowerInvariant();
 			FileInfo fileInfo = new FileInfo(filePath);
@@ -936,13 +972,88 @@ namespace Pulse.MusicLibrary
 			track.Suffix = extension.TrimStart('.');
 			track.ContentType = GetContentType(extension);
 
-			m_database.AddTrack(track, albumId);
 			tagFile.Dispose();
 
-			int count = Interlocked.Increment(ref m_processedSinceLastSave);
-			if (count % 500 == 0)
+			ScannedTrack scanned = new ScannedTrack();
+			scanned.ArtistId = artistId;
+			scanned.ArtistName = artist;
+			scanned.AlbumId = albumId;
+			scanned.AlbumName = album;
+			scanned.Year = track.Year;
+			scanned.Genre = track.Genre;
+			scanned.Track = track;
+			return scanned;
+		}
+
+		/// <summary>
+		/// Commits a parsed track into the library: seeds the per-scan artist/album caches,
+		/// creates the artist/album rows when first seen, and links the track. MUST be called
+		/// under the scan commit lock -- it mutates shared model state and the non-thread-safe
+		/// scanning caches.
+		/// </summary>
+		private void CommitScannedTrack(ScannedTrack scanned)
+		{
+			ArtistInfo artistInfo;
+			if (!m_scanningArtistCache.TryGetValue(scanned.ArtistId, out artistInfo))
 			{
-				SaveDB("scan-batch");
+				artistInfo = m_database.GetOrCreateArtist(scanned.ArtistId, scanned.ArtistName);
+				m_scanningArtistCache[scanned.ArtistId] = artistInfo;
+			}
+
+			AlbumInfo albumInfo;
+			if (!m_scanningAlbumCache.TryGetValue(scanned.AlbumId, out albumInfo))
+			{
+				albumInfo = m_database.GetOrCreateAlbum(scanned.AlbumId, scanned.AlbumName, scanned.ArtistId, scanned.ArtistName, scanned.Year, scanned.Genre);
+				m_scanningAlbumCache[scanned.AlbumId] = albumInfo;
+			}
+
+			m_database.AddTrack(scanned.Track, scanned.AlbumId);
+		}
+
+		/// <summary>
+		/// Rebuilds album/artist rows and their track links from the tracks already in the
+		/// database, working purely from existing track data -- no tag re-read. The album
+		/// scan-cache regression (and interrupted imports) could leave tracks whose album or
+		/// artist row was never created, or never linked into <see cref="AlbumInfo.Tracks"/>;
+		/// a normal rescan can't fix that because it skips already-imported files. This heals
+		/// the structure without touching per-track scores/ratings/stars (it never replaces a
+		/// <see cref="TrackInfo"/>). It is idempotent: on a healthy library every track is
+		/// already linked, so it changes nothing and writes nothing.
+		/// </summary>
+		private void RepairLibrary()
+		{
+			List<TrackInfo> tracks = m_database.GetAllTracks();
+			int relinked = 0;
+
+			for (int index = 0; index < tracks.Count; index++)
+			{
+				TrackInfo track = tracks[index];
+
+				m_database.GetOrCreateArtist(track.ArtistId, track.Artist);
+				AlbumInfo album = m_database.GetOrCreateAlbum(track.AlbumId, track.Album, track.ArtistId, track.Artist, track.Year, track.Genre);
+
+				bool linked = false;
+				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+				{
+					if (album.Tracks[trackIndex].Id == track.Id)
+					{
+						linked = true;
+						break;
+					}
+				}
+
+				if (!linked)
+				{
+					album.Tracks.Add(track);
+					album.m_bIsDirty = true;
+					relinked++;
+				}
+			}
+
+			if (relinked > 0)
+			{
+				Log.Info(-1, "Pulse: Library repair re-linked " + relinked + " track(s) to rebuilt albums.");
+				SaveDB("library-repair");
 			}
 		}
 
