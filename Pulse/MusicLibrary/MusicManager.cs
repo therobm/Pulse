@@ -775,6 +775,8 @@ namespace Pulse.MusicLibrary
 
 		private void RunScan(string musicPath)
 		{
+			RepairLibrary();
+
 			int fileCount = 0;
 			int processedCount = 0;
 			int skippedCount = 0;
@@ -1006,6 +1008,53 @@ namespace Pulse.MusicLibrary
 			}
 
 			m_database.AddTrack(scanned.Track, scanned.AlbumId);
+		}
+
+		/// <summary>
+		/// Rebuilds album/artist rows and their track links from the tracks already in the
+		/// database, working purely from existing track data -- no tag re-read. The album
+		/// scan-cache regression (and interrupted imports) could leave tracks whose album or
+		/// artist row was never created, or never linked into <see cref="AlbumInfo.Tracks"/>;
+		/// a normal rescan can't fix that because it skips already-imported files. This heals
+		/// the structure without touching per-track scores/ratings/stars (it never replaces a
+		/// <see cref="TrackInfo"/>). It is idempotent: on a healthy library every track is
+		/// already linked, so it changes nothing and writes nothing.
+		/// </summary>
+		private void RepairLibrary()
+		{
+			List<TrackInfo> tracks = m_database.GetAllTracks();
+			int relinked = 0;
+
+			for (int index = 0; index < tracks.Count; index++)
+			{
+				TrackInfo track = tracks[index];
+
+				m_database.GetOrCreateArtist(track.ArtistId, track.Artist);
+				AlbumInfo album = m_database.GetOrCreateAlbum(track.AlbumId, track.Album, track.ArtistId, track.Artist, track.Year, track.Genre);
+
+				bool linked = false;
+				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+				{
+					if (album.Tracks[trackIndex].Id == track.Id)
+					{
+						linked = true;
+						break;
+					}
+				}
+
+				if (!linked)
+				{
+					album.Tracks.Add(track);
+					album.m_bIsDirty = true;
+					relinked++;
+				}
+			}
+
+			if (relinked > 0)
+			{
+				Log.Info(-1, "Pulse: Library repair re-linked " + relinked + " track(s) to rebuilt albums.");
+				SaveDB("library-repair");
+			}
 		}
 
 		private void DebugDuplicates()
