@@ -1,4 +1,4 @@
-name: Build and Release
+name: Pulse Build and Release
 
 # Unified build strategy (shared with Flatline). A merge to master publishes a
 # self-contained win-x64 single-file exe versioned straight from the VERSION
