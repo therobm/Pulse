@@ -7,7 +7,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pulse", "Pulse\Pulse.csproj
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PulseAPI", "PulseAPI", "{5C7F4A92-2A2C-7528-2CAA-CE74D1649DB3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PulseAPI", "PulseAPI\PulseAPI\PulseAPI.csproj", "{28DB0677-8297-471F-8607-C4DAD731755F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PulseAPI", "PulseAPI\PulseAPI.csproj", "{28DB0677-8297-471F-8607-C4DAD731755F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

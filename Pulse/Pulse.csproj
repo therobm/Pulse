@@ -36,7 +36,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\PulseAPI\PulseAPI\PulseAPI.csproj" />
+		<ProjectReference Include="..\PulseAPI\PulseAPI.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -44,9 +44,9 @@
 			<Link>Content\%(RecursiveDir)%(Filename)%(Extension)</Link>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
-		<!-- Canonical pulse_v1 JS client lives in the PulseAPI submodule; serve it
+		<!-- Canonical pulse_v1 JS client lives in the PulseAPI project; serve it
 		     from Content/Web next to pulse.html without duplicating the file. -->
-		<None Include="..\PulseAPI\PulseAPI\JS\pulse-api.js">
+		<None Include="..\PulseAPI\JS\pulse-api.js">
 			<Link>Content\Web\pulse-api.js</Link>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
