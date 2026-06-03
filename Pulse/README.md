@@ -12,7 +12,7 @@ Pulse scans a local music library, serves it over the OpenSubsonic API, and laye
 
 - Kestrel HTTP server, standalone single-executable deployment
 - OpenSubsonic API (~25 endpoints) — browse, search, stream, playlists, cover art, ratings, scrobble
-- Per-artist bundled JSON database with atomic writes — no SQLite, no ORM, no external database
+- SQLite database via Microsoft.Data.Sqlite — hand-written parameterized SQL, no ORM, no external database server
 - TagLib# for audio metadata extraction
 - Spotify OAuth sync — imports playlists with fuzzy artist/title matching (Levenshtein distance)
 - Lidarr integration — automatically requests missing artists found during playlist sync
