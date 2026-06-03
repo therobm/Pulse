@@ -796,7 +796,6 @@ namespace Pulse.MusicLibrary
 			
 
 				string extension = Path.GetExtension(filePath).ToLowerInvariant();
-
 				bool supported = false;
 				for (int extIndex = 0; extIndex < extensions.Length; extIndex++)
 				{
@@ -909,7 +908,7 @@ namespace Pulse.MusicLibrary
 
 			string albumId = MusicManager.GenerateID(artist + "/" + album);
 			AlbumInfo albumInfo = null;
-			if (!m_scanningArtistCache.TryGetValue(artistId, out artistInfo))
+			if (!m_scanningAlbumCache.TryGetValue(artistId, out albumInfo))
 			{
 				albumInfo = m_database.GetOrCreateAlbum(albumId, album, artistId, artist, (int)tagFile.Tag.Year, tagFile.Tag.FirstGenre ?? "");
 				m_scanningAlbumCache[artistId] = albumInfo;
