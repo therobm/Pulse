@@ -809,11 +809,9 @@ namespace Pulse.Data
 			}
 		}
 
-		// ---------- Play queue + bookmarks (Flatline #168) ----------
 		// Read-through / write-through: no in-memory cache, no dirty bit. The
 		// access pattern is one row per user max for play queue and small
 		// per-user lists for bookmarks, so the indirection isn't worth it.
-
 		public override PlayQueueInfo GetPlayQueue(string userName)
 		{
 			PlayQueueInfo result = new PlayQueueInfo();
@@ -1048,6 +1046,63 @@ namespace Pulse.Data
 			{
 				connection.Close();
 			}
+		}
+
+		/// <summary>
+		/// Rolls up the v6 analytics_events log for one media type. Counts only
+		/// 'Started' events (a collection/track being started is the unit of a
+		/// "play"); media_type and action are matched against the stored enum
+		/// names. When userName is non-empty the rollup is scoped to that user,
+		/// otherwise it spans every user. occurred_at is stored round-trip ("o"),
+		/// so MAX() yields a sortable timestamp the caller parses back.
+		/// </summary>
+		public override Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType)
+		{
+			Dictionary<string, AnalyticsAggregate> aggregates = new Dictionary<string, AnalyticsAggregate>();
+			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				bool scopedToUser = !string.IsNullOrEmpty(userName);
+				string userClause = scopedToUser ? " AND user_name = $u" : "";
+				command.CommandText = "SELECT media_id, COUNT(*) AS plays, MAX(occurred_at) AS last"
+					+ " FROM analytics_events"
+					+ " WHERE action = $action AND media_type = $type" + userClause
+					+ " GROUP BY media_id;";
+				command.Parameters.AddWithValue("$action", PulseAnalytics.eAction.Started.ToString());
+				command.Parameters.AddWithValue("$type", mediaType.ToString());
+				if (scopedToUser)
+				{
+					command.Parameters.AddWithValue("$u", userName);
+				}
+
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
+				{
+					string mediaId = reader.GetString(0);
+					if (string.IsNullOrEmpty(mediaId))
+					{
+						continue;
+					}
+					AnalyticsAggregate aggregate = new AnalyticsAggregate();
+					aggregate.PlayCount = reader.GetInt32(1);
+					if (!reader.IsDBNull(2))
+					{
+						DateTime parsed;
+						if (DateTime.TryParse(reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind, out parsed))
+						{
+							aggregate.LastPlayed = parsed;
+						}
+					}
+					aggregates[mediaId] = aggregate;
+				}
+				reader.Close();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return aggregates;
 		}
 
 		// SELECT from the users table, then layer the in-memory per-user counts

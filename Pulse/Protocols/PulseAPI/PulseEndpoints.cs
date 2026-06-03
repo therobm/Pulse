@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Pulse.Data;
 using Pulse.MusicLibrary;
 using PulseAPI.CSharp;
 using System;
@@ -11,6 +12,11 @@ namespace Pulse.Protocols.PulseAPI
 {
 	public class PulseEndpoints
 	{
+		public enum eSortMethod
+		{
+			MostRecent,
+			MostPlays,
+		}
 		/// <summary>
 		/// Intentionally changed from /pulse to add versioning support
 		/// </summary>
@@ -34,7 +40,6 @@ namespace Pulse.Protocols.PulseAPI
 
 			RegisterRoute("ping", Ping);
 			RegisterRoute("stream", GetStream);
-			RegisterRoute("download", GetDownload);
 			RegisterRoute("coverArt", GetCoverArt);
 
 			RegisterRoute("artists", GetArtists);
@@ -60,6 +65,10 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("unfavorite", Unfavorite);
 			RegisterRoute("reportAnalytics", ReportAnalytics);
 
+
+			RegisterRoute("topItems", GetTop);
+
+
 			RegisterRoute("podcasts", GetPodcasts);
 		}
 
@@ -73,7 +82,7 @@ namespace Pulse.Protocols.PulseAPI
 			return Results.Text(PulseWire.Serialize(body), "application/json");
 		}
 
-		private IResult RespondObject(HttpContext context, object contents)
+		private IResult RespondObject<T>(HttpContext context, T contents) where T : PulseObject
 		{
 			PulseResponse response = new PulseResponse();
 			response.contentType = PulseResponse.ContentType.PulseObject;
@@ -81,7 +90,7 @@ namespace Pulse.Protocols.PulseAPI
 			return Respond(context, response);
 		}
 
-		private IResult RespondList(HttpContext context, object contents)
+		private IResult RespondList<T>(HttpContext context, List<T> contents) where T : PulseObject
 		{
 			PulseResponse response = new PulseResponse();
 			response.contentType = PulseResponse.ContentType.PulseObjectList;
@@ -97,8 +106,6 @@ namespace Pulse.Protocols.PulseAPI
 			response.status = status;
 			return Respond(context, response);
 		}
-
-		// -- builders: runtime *Info -> wire Pulse* ----------------------------
 
 		private PulseArtist BuildArtist(ArtistInfo artist, string user)
 		{
@@ -186,8 +193,6 @@ namespace Pulse.Protocols.PulseAPI
 			return left.TrackNumber.CompareTo(right.TrackNumber);
 		}
 
-		// -- service / binary endpoints ----------------------------------------
-
 		public IResult Ping(HttpContext context)
 		{
 			PulseResponse response = new PulseResponse();
@@ -196,19 +201,6 @@ namespace Pulse.Protocols.PulseAPI
 		}
 
 		public IResult GetStream(HttpContext context)
-		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			TrackInfo track = m_musicManager.GetTrack(id);
-			if (track == null)
-			{
-				return RespondStatus(context, "not_found");
-			}
-
-			FileStream fileStream = new FileStream(track.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-			return Results.File(fileStream, track.ContentType, enableRangeProcessing: true);
-		}
-
-		public IResult GetDownload(HttpContext context)
 		{
 			string id = context.Request.Query["id"].FirstOrDefault();
 			TrackInfo track = m_musicManager.GetTrack(id);
@@ -252,9 +244,9 @@ namespace Pulse.Protocols.PulseAPI
 					// Collect up to 4 distinct album covers, in playlist order.
 					List<byte[]> tileBytes = new List<byte[]>();
 					HashSet<string> seenAlbumIds = new HashSet<string>();
-					for (int idx = 0; idx < playlist.TrackIds.Count && tileBytes.Count < 4; idx++)
+					for (int i = 0; i < playlist.TrackIds.Count && tileBytes.Count < 4; i++)
 					{
-						TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[idx]);
+						TrackInfo track = m_musicManager.GetTrack(playlist.TrackIds[i]);
 						if (track == null || string.IsNullOrEmpty(track.AlbumId))
 						{
 							continue;
@@ -317,8 +309,6 @@ namespace Pulse.Protocols.PulseAPI
 			m_coverArtCache[id] = m_defaultCoverArt;
 			return Results.Bytes(m_defaultCoverArt, "image/png");
 		}
-
-		// -- artists -----------------------------------------------------------
 
 		public IResult GetArtists(HttpContext context)
 		{
@@ -386,7 +376,6 @@ namespace Pulse.Protocols.PulseAPI
 			return RespondObject(context, details);
 		}
 
-		// -- albums ------------------------------------------------------------
 
 		// type controls ordering (random / newest / alphabeticalbyname /
 		// alphabeticalbyartist / frequent / recent / byyear / bygenre / starred /
@@ -625,7 +614,6 @@ namespace Pulse.Protocols.PulseAPI
 			return RespondObject(context, BuildTrack(track, user));
 		}
 
-		// -- genres ------------------------------------------------------------
 
 		public IResult GetGenres(HttpContext context)
 		{
@@ -716,7 +704,6 @@ namespace Pulse.Protocols.PulseAPI
 			return RespondObject(context, details);
 		}
 
-		// -- playlists ---------------------------------------------------------
 
 		public IResult GetPlaylists(HttpContext context)
 		{
@@ -935,8 +922,6 @@ namespace Pulse.Protocols.PulseAPI
 			return Respond(context, new PulseResponse());
 		}
 
-		// -- search / favorites ------------------------------------------------
-
 		public IResult Search(HttpContext context)
 		{
 			string query = context.Request.Query["query"].FirstOrDefault() ?? "";
@@ -1092,14 +1077,16 @@ namespace Pulse.Protocols.PulseAPI
 			return Respond(context, new PulseResponse());
 		}
 
+		
 
-		// The pulse_v1 analytics feed: clients POST a serialized PulseAnalytics
-		// body describing one playback state change (track started/paused/
-		// skipped/completed, or a collection-level started for an album/artist/
-		// playlist). Supersedes the query-string reportTrackAnalytics, which is
-		// kept only so older clients keep limping along. The body is JSON, so it
-		// arrives in the request stream rather than the query string;
-		// HttpServer sets AllowSynchronousIO so the synchronous read is legal.
+		/// <summary>
+		/// The pulse_v1 analytics feed: clients POST a serialized PulseAnalytics
+		/// body describing one playback state change (track started/paused/
+		/// skipped/completed, or a collection-level started for an album/artist/
+		/// playlist). The body is JSON, so it arrives in the request stream rather
+		/// than the query string; HttpServer sets AllowSynchronousIO so the
+		/// synchronous read is legal.
+		/// </summary>
 		public IResult ReportAnalytics(HttpContext context)
 		{
 			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
@@ -1125,6 +1112,16 @@ namespace Pulse.Protocols.PulseAPI
 			return Respond(context, new PulseResponse());
 		}
 
+		public IResult GetTop(HttpContext context)
+		{
+			int count = QueryParameters.GetInt(context, "count", 10);
+			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
+			string typesParam = context.Request.Query["types"].FirstOrDefault();
+
+			List<PulseObject> items = GetItems(count, user, typesParam, eSortMethod.MostPlays);
+			return RespondList(context, items);
+		}
+
 		// Mixed-kind recents shelf: tracks, artists, albums, and playlists ranked
 		// together by recency, newest first. The `types` query param is a CSV of
 		// any combination of "track", "artist", "album", "playlist"; when omitted
@@ -1136,37 +1133,143 @@ namespace Pulse.Protocols.PulseAPI
 			int count = QueryParameters.GetInt(context, "count", 10);
 			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
 			string typesParam = context.Request.Query["types"].FirstOrDefault();
+			List<PulseObject> items = GetItems(count, user, typesParam, eSortMethod.MostRecent);
+			return RespondList(context, items);
+		}
 
+		private List<PulseObject> GetItems(int count, string user, string typesParam, eSortMethod sortMethod)
+		{
 			bool includeTracks;
 			bool includeArtists;
 			bool includeAlbums;
 			bool includePlaylists;
 			ParseRecentTypes(typesParam, out includeTracks, out includeArtists, out includeAlbums, out includePlaylists);
 
+			List<RecentCandidate> candidates;
+			if (sortMethod == eSortMethod.MostPlays)
+			{
+				candidates = GatherMostPlayed(user, includeTracks, includeArtists, includeAlbums, includePlaylists);
+				candidates.Sort(CompareCandidateByPlaysDescending);
+			}
+			else
+			{
+				candidates = GatherMostRecent(user, includeTracks, includeArtists, includeAlbums, includePlaylists);
+				candidates.Sort(CompareRecentCandidateDescending);
+			}
+
+			List<PulseObject> items = new List<PulseObject>();
+			int emit = Math.Min(count, candidates.Count);
+			for (int i = 0; i < emit; i++)
+			{
+				items.Add(candidates[i].Item);
+			}
+			return items;
+		}
+
+		/// <summary>
+		/// Builds the candidate set for the MostPlays (topItems) ranking. The
+		/// candidate set is driven by the analytics event log, scoped to the
+		/// requesting user (global when user is empty): only items that have
+		/// actually been started appear, each carrying its lifetime play count
+		/// and most-recent start time for tie-breaking.
+		/// </summary>
+		private List<RecentCandidate> GatherMostPlayed(string user, bool includeTracks, bool includeArtists, bool includeAlbums, bool includePlaylists)
+		{
+			List<RecentCandidate> candidates = new List<RecentCandidate>();
+
+			if (includeTracks)
+			{
+				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Track);
+				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				{
+					TrackInfo track = m_musicManager.GetTrack(entry.Key);
+					if (track == null)
+					{
+						continue;
+					}
+					candidates.Add(MakeCandidate(BuildTrack(track, user), entry.Value));
+				}
+			}
+
+			if (includeArtists)
+			{
+				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Artist);
+				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				{
+					ArtistInfo artist = m_musicManager.GetArtist(entry.Key);
+					if (artist == null)
+					{
+						continue;
+					}
+					candidates.Add(MakeCandidate(BuildArtist(artist, user), entry.Value));
+				}
+			}
+
+			if (includeAlbums)
+			{
+				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Album);
+				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				{
+					AlbumInfo album = m_musicManager.GetAlbum(entry.Key);
+					if (album == null)
+					{
+						continue;
+					}
+					candidates.Add(MakeCandidate(BuildAlbum(album), entry.Value));
+				}
+			}
+
+			if (includePlaylists)
+			{
+				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Playlist);
+				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				{
+					PlaylistInfo playlist = m_musicManager.GetPlaylist(entry.Key);
+					if (playlist == null)
+					{
+						continue;
+					}
+					candidates.Add(MakeCandidate(BuildPlaylist(playlist, user), entry.Value));
+				}
+			}
+
+			return candidates;
+		}
+
+		/// <summary>
+		/// Builds the candidate set for the MostRecent (recentlyPlayed) ranking.
+		/// Tracks come from the in-memory FIFO recents list; artists and playlists
+		/// from their in-memory last-played (skipping never-played items); albums,
+		/// which hold no in-memory last-played, have their recency read back from
+		/// the analytics event log.
+		/// </summary>
+		private List<RecentCandidate> GatherMostRecent(string user, bool includeTracks, bool includeArtists, bool includeAlbums, bool includePlaylists)
+		{
 			List<RecentCandidate> candidates = new List<RecentCandidate>();
 
 			if (includeTracks)
 			{
 				PulseAnalyticsInfo analytics = m_musicManager.GetAnalytics();
 				List<string> recentIds = new List<string>(analytics.RecentlyPlayed);
-				for (int idx = 0; idx < recentIds.Count; idx++)
+				for (int i = 0; i < recentIds.Count; i++)
 				{
-					TrackInfo track = m_musicManager.GetTrack(recentIds[idx]);
+					TrackInfo track = m_musicManager.GetTrack(recentIds[i]);
 					if (track == null)
 					{
 						continue;
 					}
 					RecentCandidate candidate = new RecentCandidate();
 					candidate.Item = BuildTrack(track, user);
+
 					// RecentlyPlayed is FIFO-ordered; if a track has no LastPlayed,
 					// fall back to its position so it still slots in roughly right.
 					if (track.LastPlayed != default(DateTime))
 					{
-						candidate.RankTime = track.LastPlayed;
+						candidate.LastPlayed = track.LastPlayed;
 					}
 					else
 					{
-						candidate.RankTime = DateTime.UtcNow.AddSeconds(-idx);
+						candidate.LastPlayed = DateTime.UtcNow.AddSeconds(-i);
 					}
 					candidates.Add(candidate);
 				}
@@ -1175,42 +1278,33 @@ namespace Pulse.Protocols.PulseAPI
 			if (includeArtists)
 			{
 				List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
-				for (int idx = 0; idx < allArtists.Count; idx++)
+				for (int i = 0; i < allArtists.Count; i++)
 				{
-					ArtistInfo artist = allArtists[idx];
+					ArtistInfo artist = allArtists[i];
 					if (artist.LastPlayed == default(DateTime))
 					{
 						continue;
 					}
 					RecentCandidate candidate = new RecentCandidate();
 					candidate.Item = BuildArtist(artist, user);
-					candidate.RankTime = artist.LastPlayed;
+					candidate.LastPlayed = artist.LastPlayed;
 					candidates.Add(candidate);
 				}
 			}
 
 			if (includeAlbums)
 			{
-				List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
-				for (int idx = 0; idx < allAlbums.Count; idx++)
+				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Album);
+				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
 				{
-					AlbumInfo album = allAlbums[idx];
-					DateTime albumLastPlayed = default(DateTime);
-					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
-					{
-						DateTime trackLastPlayed = album.Tracks[trackIndex].LastPlayed;
-						if (trackLastPlayed > albumLastPlayed)
-						{
-							albumLastPlayed = trackLastPlayed;
-						}
-					}
-					if (albumLastPlayed == default(DateTime))
+					AlbumInfo album = m_musicManager.GetAlbum(entry.Key);
+					if (album == null)
 					{
 						continue;
 					}
 					RecentCandidate candidate = new RecentCandidate();
 					candidate.Item = BuildAlbum(album);
-					candidate.RankTime = albumLastPlayed;
+					candidate.LastPlayed = entry.Value.LastPlayed;
 					candidates.Add(candidate);
 				}
 			}
@@ -1218,9 +1312,9 @@ namespace Pulse.Protocols.PulseAPI
 			if (includePlaylists)
 			{
 				List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(user);
-				for (int idx = 0; idx < allPlaylists.Count; idx++)
+				for (int i = 0; i < allPlaylists.Count; i++)
 				{
-					PlaylistInfo playlist = allPlaylists[idx];
+					PlaylistInfo playlist = allPlaylists[i];
 					DateTime playlistLastPlayed = playlist.GetLastPlayed(user);
 					if (playlistLastPlayed == default(DateTime))
 					{
@@ -1228,20 +1322,21 @@ namespace Pulse.Protocols.PulseAPI
 					}
 					RecentCandidate candidate = new RecentCandidate();
 					candidate.Item = BuildPlaylist(playlist, user);
-					candidate.RankTime = playlistLastPlayed;
+					candidate.LastPlayed = playlistLastPlayed;
 					candidates.Add(candidate);
 				}
 			}
 
-			candidates.Sort(CompareRecentCandidateDescending);
+			return candidates;
+		}
 
-			List<object> items = new List<object>();
-			int emit = Math.Min(count, candidates.Count);
-			for (int idx = 0; idx < emit; idx++)
-			{
-				items.Add(candidates[idx].Item);
-			}
-			return RespondList(context, items);
+		private static RecentCandidate MakeCandidate(PulseObject item, AnalyticsAggregate aggregate)
+		{
+			RecentCandidate candidate = new RecentCandidate();
+			candidate.Item = item;
+			candidate.PlayCount = aggregate.PlayCount;
+			candidate.LastPlayed = aggregate.LastPlayed;
+			return candidate;
 		}
 
 		private static void ParseRecentTypes(string raw, out bool track, out bool artist, out bool album, out bool playlist)
@@ -1253,9 +1348,9 @@ namespace Pulse.Protocols.PulseAPI
 			}
 			track = false; artist = false; album = false; playlist = false;
 			string[] parts = raw.Split(',');
-			for (int idx = 0; idx < parts.Length; idx++)
+			for (int i = 0; i < parts.Length; i++)
 			{
-				string part = parts[idx].Trim();
+				string part = parts[i].Trim();
 				if (string.Equals(part, "track", StringComparison.OrdinalIgnoreCase)) { track = true; }
 				else if (string.Equals(part, "artist", StringComparison.OrdinalIgnoreCase)) { artist = true; }
 				else if (string.Equals(part, "album", StringComparison.OrdinalIgnoreCase)) { album = true; }
@@ -1265,13 +1360,26 @@ namespace Pulse.Protocols.PulseAPI
 
 		private static int CompareRecentCandidateDescending(RecentCandidate left, RecentCandidate right)
 		{
-			return right.RankTime.CompareTo(left.RankTime);
+			return right.LastPlayed.CompareTo(left.LastPlayed);
+		}
+
+		// Most-played first; ties broken by most-recently-started so equal-play
+		// items still land in a stable, sensible order.
+		private static int CompareCandidateByPlaysDescending(RecentCandidate left, RecentCandidate right)
+		{
+			int byPlays = right.PlayCount.CompareTo(left.PlayCount);
+			if (byPlays != 0)
+			{
+				return byPlays;
+			}
+			return right.LastPlayed.CompareTo(left.LastPlayed);
 		}
 
 		private class RecentCandidate
 		{
-			public DateTime RankTime;
-			public object Item;
+			public int PlayCount;
+			public DateTime LastPlayed;
+			public PulseObject Item;
 		}
 
 		public IResult GetPodcasts(HttpContext context)

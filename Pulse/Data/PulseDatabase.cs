@@ -8,6 +8,17 @@ using System.Text.Json;
 
 namespace Pulse.Data
 {
+	/// <summary>
+	/// Per-id rollup of the analytics event log for one media type: how many
+	/// 'Started' events the item has accrued and when it was most recently
+	/// started. Produced by <see cref="IPulseDatabase.GetStartedAggregates"/>.
+	/// </summary>
+	public class AnalyticsAggregate
+	{
+		public int PlayCount { get; set; }
+		public DateTime LastPlayed { get; set; }
+	}
+
 	public interface IPulseDatabase
 	{
 		int GetTrackCount();
@@ -57,6 +68,15 @@ namespace Pulse.Data
 		// globally and per-user. Write-through, not cached. PulseSqliteDatabase
 		// implements it; PulseDatabaseBase keeps a no-op default.
 		void RecordAnalyticsEvent(string userName, PulseAnalytics analytics, DateTime occurredAt);
+
+		/// <summary>
+		/// Aggregates the analytics event log for one media type, returning a
+		/// per-id count of 'Started' events and the most recent occurrence.
+		/// Scoped to a single user when <paramref name="userName"/> is non-empty,
+		/// otherwise rolled up across every user. PulseSqliteDatabase queries the
+		/// v6 table; PulseDatabaseBase returns an empty map.
+		/// </summary>
+		Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType);
 
 		// Settings-page CRUD over the v5 `users` table plus the per-user rows in
 		// every other table (Flatline #201). PulseSqliteDatabase is the real
@@ -382,6 +402,11 @@ namespace Pulse.Data
 
 		public virtual void RecordAnalyticsEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
 		{
+		}
+
+		public virtual Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType)
+		{
+			return new Dictionary<string, AnalyticsAggregate>();
 		}
 
 		// Base implementation walks the in-memory stores to synthesize a record
