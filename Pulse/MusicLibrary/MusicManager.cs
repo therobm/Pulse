@@ -1,6 +1,7 @@
 ﻿using Pulse;
 using Pulse.Data;
 using Pulse.Lidarr;
+using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
@@ -417,6 +418,29 @@ namespace Pulse.MusicLibrary
 					user = userName;
 				}
 				Log.Info(-1, "[" + user + "] Streaming: " + newTrack.Artist + ":" + newTrack.Title);
+			}
+		}
+
+		// Entry point for the client analytics feed (pulse_v1/reportAnalytics).
+		// Every observed playback state change is appended to the immutable
+		// event log -- the substrate the downstream routes (RecentlyPlayed,
+		// TopPlaylists, track scoring, smart playlists) aggregate over. A Track
+		// 'Started' also drives the existing now-playing state machine so the
+		// live scoring / RecentlyPlayed list keep working unchanged; the other
+		// states (Paused/Skipped/Completed) and the collection-level
+		// (Album/Artist/Playlist) Starts are log-only for now.
+		public void OnAnalyticsEvent(string userName, PulseAnalytics analytics)
+		{
+			if (analytics == null || string.IsNullOrEmpty(analytics.MediaId))
+			{
+				return;
+			}
+
+			m_database.RecordAnalyticsEvent(userName, analytics, DateTime.UtcNow);
+
+			if (analytics.MediaType == eDataType.Track && analytics.Action == PulseAnalytics.eAction.Started)
+			{
+				OnTrackStreamed(userName, analytics.MediaId);
 			}
 		}
 

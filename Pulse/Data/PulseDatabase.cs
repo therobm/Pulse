@@ -1,4 +1,5 @@
 ﻿using Pulse.MusicLibrary;
+using PulseAPI.CSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -50,6 +51,12 @@ namespace Pulse.Data
 		List<BookmarkInfo> GetBookmarks(string userName);
 		void SaveBookmark(string userName, string trackId, long positionMs, string comment);
 		void DeleteBookmark(string userName, string trackId);
+
+		// Append-only analytics event log (v6 schema). Each client-observed
+		// playback state change lands as one immutable row, stored both
+		// globally and per-user. Write-through, not cached. PulseSqliteDatabase
+		// implements it; PulseDatabaseBase keeps a no-op default.
+		void RecordAnalyticsEvent(string userName, PulseAnalytics analytics, DateTime occurredAt);
 
 		// Settings-page CRUD over the v5 `users` table plus the per-user rows in
 		// every other table (Flatline #201). PulseSqliteDatabase is the real
@@ -370,6 +377,10 @@ namespace Pulse.Data
 		}
 
 		public virtual void DeleteBookmark(string userName, string trackId)
+		{
+		}
+
+		public virtual void RecordAnalyticsEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
 		{
 		}
 

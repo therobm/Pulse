@@ -273,6 +273,32 @@ namespace Pulse.Database
 			";
 			steps.Add(v5);
 
+			// v6: append-only analytics event log. Every playback state change
+			// the clients observe (track started / paused / skipped / completed,
+			// plus collection-level started for albums / artists / playlists)
+			// lands here as one immutable row. Stored both globally (all rows)
+			// and per-user (filter user_name). action and media_type are the
+			// enum *names* (PulseWire serializes enums as strings), so the log
+			// reads cleanly and survives enum value renumbering. Downstream
+			// routes -- RecentlyPlayed, TopPlaylists, track scoring, smart
+			// playlists -- aggregate over this table.
+			MigrationStep v6 = new MigrationStep();
+			v6.Version = 6;
+			v6.Sql = @"
+				CREATE TABLE analytics_events (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					occurred_at TEXT NOT NULL,
+					user_name TEXT NOT NULL DEFAULT '',
+					action TEXT NOT NULL,
+					media_type TEXT NOT NULL,
+					media_id TEXT NOT NULL
+				);
+				CREATE INDEX idx_analytics_media ON analytics_events(media_id);
+				CREATE INDEX idx_analytics_user_time ON analytics_events(user_name, occurred_at);
+				CREATE INDEX idx_analytics_action_type ON analytics_events(action, media_type);
+			";
+			steps.Add(v6);
+
 			return steps;
 		}
 	}
