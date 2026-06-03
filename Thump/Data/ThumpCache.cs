@@ -210,13 +210,22 @@ namespace Thump.Data
 					else 
 					{ 
 						retData = (byte[])result;
-						retVal = true;
+						if (retData == null)
+						{
+							Log.Error("Invalid data cached for " + url);
+							using (SqliteCommand deleteCmd = m_connection.CreateCommand())
+							{
+								deleteCmd.CommandText = "DELETE FROM http_cache WHERE url = $u";
+								deleteCmd.Parameters.AddWithValue("$u", url);
+								deleteCmd.ExecuteNonQuery();
+							}
+						}
 					}
 				}
 			});
 
 			data = retData;
-			return retVal;
+			return data != null;
 		}
 
 

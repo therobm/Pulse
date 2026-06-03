@@ -56,6 +56,9 @@ namespace Thump.Pulse
 		ThumpCache m_cache;
 
 		private Thread m_thread;
+		private Thread m_metaThread;
+		private Thread m_binaryThread;
+
 		protected string m_baseUrl;
 		protected string m_user;
 		private string m_apiParams;
@@ -64,7 +67,14 @@ namespace Thump.Pulse
 
 		private bool m_bInitialized = false;
 		protected bool m_bIsOnline = true;
-		private long m_fTimeSincePingMS = 0;
+
+
+		object m_metaRequestLock = new object();
+		object m_binaryRequestLock = new object();
+		Queue<HttpReq> m_metaRequests = new Queue<HttpReq>();
+		Queue<HttpReq> m_binaryRequests = new Queue<HttpReq>();
+
+
 		public MediaClient(ThumpCache cache)
 		{
 			m_cache = cache;
@@ -72,6 +82,15 @@ namespace Thump.Pulse
 			m_thread = new Thread(ConnectionLoop);
 			m_thread.IsBackground = true;
 			m_thread.Start();
+
+			m_metaThread = new Thread(MetaLoop);
+			m_metaThread.IsBackground = true;
+			m_metaThread.Start();
+
+			m_binaryThread = new Thread(BinaryLoop);
+			m_binaryThread.IsBackground = true;
+			m_binaryThread.Start();
+
 		}
 
 		private void ConnectionLoop()
@@ -80,22 +99,31 @@ namespace Thump.Pulse
 			{
 				if (m_bInitialized)
 				{
-					m_fTimeSincePingMS += 1;
-					if (m_fTimeSincePingMS > 5000)
-					{
-						m_fTimeSincePingMS = 0;
-						Ping(out JsonElement response);
-					}
-					//pump our http queue
-					ProcessHTTPQueue();
 					
-
+					Ping(out JsonElement response);
+					
+					//pump our http queue
 				}
 				//sleep 1ms
+				Thread.Sleep(5000);
+			}
+		}
+		private void MetaLoop()
+		{
+			while (true)
+			{
+				ProcessMetaQueue();
 				Thread.Sleep(1);
 			}
 		}
-
+		private void BinaryLoop()
+		{
+			while (true)
+			{
+				ProcessBinaryQueue();
+				Thread.Sleep(1);
+			}
+		}
 
 		public virtual void SetServerParams(string ip, string port, string username, string password,  bool enableSSL)
 		{
@@ -258,8 +286,6 @@ namespace Thump.Pulse
 			return trackData;
 		}
 
-		object m_requestLock = new object();
-		Queue<HttpReq> m_httpRequests = new Queue<HttpReq>();
 
 		public void GetHTTPBinary(string url, Action<byte[]> onComplete, bool bCacheAllowed)
 		{
@@ -271,40 +297,53 @@ namespace Thump.Pulse
 		}
 		private void QueueRequest(HttpReq req)
 		{
-			lock (m_requestLock)
+			if (req.m_bIsBinary)
 			{
-				m_httpRequests.Enqueue(req);
+				lock (m_binaryRequestLock)
+				{
+					m_binaryRequests.Enqueue(req);
+				}
+			}
+			else 
+			{ 
+				lock (m_metaRequestLock)
+				{
+					m_metaRequests.Enqueue(req);
+				}
 			}
 		}
-		private void ProcessHTTPQueue()
+		private void ProcessMetaQueue()
 		{
 			int maxRequests = 10;
 			for (int i = 0; i < maxRequests; i++)
 			{
 				HttpReq next = null;
-				lock (m_requestLock)
+				lock (m_metaRequestLock)
 				{
-					if (m_httpRequests.Count == 0)
+					if (m_metaRequests.Count == 0)
 						return;
-					next = m_httpRequests.Dequeue();
+					next = m_metaRequests.Dequeue();
 				}
-
-			
-
-			
-				if (next.m_bIsBinary)
+				string data = HttpGet(next.m_url, next.m_bCacheAllowed, next.m_bLogPerf);
+				if (next.m_onStringComplete != null)
+					next.m_onStringComplete(data);
+			}
+		}
+		private void ProcessBinaryQueue()
+		{
+			int maxRequests = 1;
+			for (int i = 0; i < maxRequests; i++)
+			{
+				HttpReq next = null;
+				lock (m_binaryRequestLock)
 				{
-					byte[] data = HttpGetBinary(next.m_url, next.m_bCacheAllowed);
-					if (next.m_onBinaryComplete != null)
-						next.m_onBinaryComplete(data);
-
+					if (m_binaryRequests.Count == 0)
+						return;
+					next = m_binaryRequests.Dequeue();
 				}
-				else
-				{
-					string data = HttpGet(next.m_url, next.m_bCacheAllowed, next.m_bLogPerf);
-					if (next.m_onStringComplete != null)
-						next.m_onStringComplete(data);
-				}
+				byte[] data = HttpGetBinary(next.m_url, next.m_bCacheAllowed);
+				if (next.m_onBinaryComplete != null)
+					next.m_onBinaryComplete(data);
 			}
 		}
 		private byte[] HttpGetBinary(string url, bool bCacheAllowed)

@@ -162,7 +162,25 @@ namespace Thump.Playback.AndroidOS
 			}
 		}
 
+		// Media3 1.10 exposes both the legacy two-arg onPlaybackResumption and the
+		// newer three-arg (isForPlayback) overload, and the framework dispatches to
+		// the two-arg one. Implementing only the three-arg left the two-arg bound to
+		// Media3's default, which throws UnsupportedOperationException. Both overloads
+		// route through ResolvePlaybackResumption so whichever one fires is handled.
+		public IListenableFuture OnPlaybackResumption(MediaSession session, MediaSession.ControllerInfo controller)
+		{
+			return ResolvePlaybackResumption(session, controller, true);
+		}
+
 		public IListenableFuture OnPlaybackResumption(MediaSession session, MediaSession.ControllerInfo controller, bool isForPlayback)
+		{
+			return ResolvePlaybackResumption(session, controller, isForPlayback);
+		}
+
+		// When no host handler is wired (or it declines), hand back an empty queue
+		// rather than a failed future so the system simply finds nothing to resume
+		// instead of surfacing the exception.
+		private IListenableFuture ResolvePlaybackResumption(MediaSession session, MediaSession.ControllerInfo controller, bool isForPlayback)
 		{
 			if (m_onPlaybackResumption != null)
 			{
@@ -172,7 +190,7 @@ namespace Thump.Playback.AndroidOS
 					return ImmediateFuture(resumption);
 				}
 			}
-			return FailedFuture("Playback resumption not supported.");
+			return ImmediateFuture(new MediaSession.MediaItemsWithStartPosition(new List<MediaItem>(), 0, 0));
 		}
 
 		public IListenableFuture OnGetLibraryRoot(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, MediaLibraryService.LibraryParams libraryParams)
