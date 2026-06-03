@@ -606,14 +606,6 @@ namespace Thump.Pulse
 			});
 		}
 
-		public override void MarkPlaylistPlayed(string playlistId, Action<bool> onComplete)
-		{
-			// No pulse_v1 endpoint records a playlist play. This is a best-effort
-			// analytics signal, so treat the absence as a benign no-op rather than
-			// surfacing a failure.
-			CompleteOnMain(onComplete, true);
-		}
-
 		public override void GetPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
 			if (!IsOnline())
@@ -926,9 +918,9 @@ namespace Thump.Pulse
 			});
 		}
 
-		public override void ReportTrackAnalytics(string trackId)
+		public override void ReportAnalytics(string mediaId, PulseAPI.CSharp.eDataType mediaType, PulseAnalytics.eAction action)
 		{
-			if (string.IsNullOrEmpty(trackId))
+			if (string.IsNullOrEmpty(mediaId))
 			{
 				return;
 			}
@@ -940,8 +932,14 @@ namespace Thump.Pulse
 			{
 				try
 				{
-					string url = BuildPulseUrl("reportTrackAnalytics", "id=" + Uri.EscapeDataString(trackId));
-					HttpGet(url, false);
+					PulseAnalytics analytics = new PulseAnalytics();
+					analytics.MediaId = mediaId;
+					analytics.MediaType = mediaType;
+					analytics.Action = action;
+
+					string url = BuildPulseUrl("reportAnalytics", null);
+					string json = PulseWire.Serialize(analytics);
+					HttpPostJson(url, json);
 				}
 				catch (Exception ex)
 				{
