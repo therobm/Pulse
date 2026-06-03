@@ -1,0 +1,13 @@
+# Build output
+bin/
+obj/
+
+# IDE / editor state
+.vs/
+.idea/
+*.user
+*.suo
+
+# Local credentials / overrides
+*.local.md
+*.local.json
