@@ -64,6 +64,10 @@ namespace Thump.Playback.AndroidOS
 		{
 			base.OnCreate();
 
+			// Trust-all TLS for the native HTTP stack so Media3's DefaultHttpDataSource
+			// streams from the Pulse server without depending on a valid certificate.
+			InsecureTls.Install();
+
 			if (s_mediaClient == null)
 			{
 				s_mediaClient = BuildMediaClient(this);
