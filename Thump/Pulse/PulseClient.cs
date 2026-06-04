@@ -71,7 +71,7 @@ namespace Thump.Pulse
 				object contents = null;
 				if (string.IsNullOrEmpty(json))
 				{
-					onComplete(contents);
+					CompleteOnMain(onComplete, contents);
 					return;
 				}
 				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
@@ -606,7 +606,7 @@ namespace Thump.Pulse
 				return;
 			}
 
-			GetHTTPBinary(url, (data)=>
+			GetHTTPImage(url, (data)=>
 			{
 				try
 				{
@@ -635,7 +635,7 @@ namespace Thump.Pulse
 				return;
 			}
 			string url = GetTrackAudioURL(trackId);
-			GetHTTPBinary(url, (data)=>
+			GetHTTPAudio(url, (data)=>
 			{
 				try
 				{

@@ -1,8 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Microsoft.Maui;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
+using Microsoft.Maui.Dispatching;
 using Microsoft.Maui.Storage;
 using PulseAPI.CSharp;
 using Thump.Data;
@@ -64,6 +66,13 @@ namespace Thump
 		private bool m_shuffleEnabled;
 		private eRepeatMode m_repeatMode = eRepeatMode.Off;
 
+		/// <summary>True while a sleep timer is counting down. Ephemeral, lives only for the app session.</summary>
+		private bool m_sleepTimerActive;
+		/// <summary>Seconds left before the sleep timer pauses playback. Zero when no timer is active.</summary>
+		private int m_sleepTimerRemainingSeconds;
+		/// <summary>Once-per-second tick that decrements the sleep timer and pauses playback when it elapses.</summary>
+		private IDispatcherTimer m_sleepTimerTick;
+
 		public MainView()
 		{
 			s_self = this;
@@ -111,6 +120,10 @@ namespace Thump
 			m_repeatMode = ThumpSettings.GetRepeatMode();
 			m_player.SetShuffleEnabled(m_shuffleEnabled);
 			m_player.SetRepeatMode(m_repeatMode);
+
+			m_sleepTimerTick = this.Dispatcher.CreateTimer();
+			m_sleepTimerTick.Interval = TimeSpan.FromSeconds(1);
+			m_sleepTimerTick.Tick += OnSleepTimerTick;
 
 			m_homeView = new HomeView(this);
 			m_libraryView = new LibraryView(this);
@@ -369,6 +382,28 @@ namespace Thump
 			}
 		}
 
+		/// <summary>One-second tick handler that decrements the remaining seconds and pauses playback when the timer elapses.</summary>
+		private void OnSleepTimerTick(object sender, EventArgs e)
+		{
+			m_sleepTimerRemainingSeconds = m_sleepTimerRemainingSeconds - 1;
+			if (m_sleepTimerRemainingSeconds <= 0)
+			{
+				m_player.Pause();
+				m_sleepTimerTick.Stop();
+				m_sleepTimerActive = false;
+				m_sleepTimerRemainingSeconds = 0;
+				if (m_nowPlayingView != null)
+				{
+					m_nowPlayingView.SetSleepTimerDisplay(false, 0);
+				}
+				return;
+			}
+			if (m_nowPlayingView != null)
+			{
+				m_nowPlayingView.SetSleepTimerDisplay(true, m_sleepTimerRemainingSeconds);
+			}
+		}
+
 		public void OnPlayTracksShuffled(List<PulseTrack> tracks, eQueueSource source, string sourceId = "")
 		{
 			if (tracks == null || tracks.Count == 0)
@@ -472,6 +507,48 @@ namespace Thump
 		public eRepeatMode GetRepeatMode()
 		{
 			return m_repeatMode;
+		}
+
+		/// <summary>Start a sleep timer that will pause playback after the given number of minutes. Re-selecting a preset resets the countdown. minutes &lt;= 0 cancels.</summary>
+		public void OnSetSleepTimer(int minutes)
+		{
+			if (minutes <= 0)
+			{
+				OnCancelSleepTimer();
+				return;
+			}
+			m_sleepTimerRemainingSeconds = minutes * 60;
+			m_sleepTimerActive = true;
+			m_sleepTimerTick.Stop();
+			m_sleepTimerTick.Start();
+			if (m_nowPlayingView != null)
+			{
+				m_nowPlayingView.SetSleepTimerDisplay(true, m_sleepTimerRemainingSeconds);
+			}
+		}
+
+		/// <summary>Cancel any active sleep timer. Safe to call when no timer is running.</summary>
+		public void OnCancelSleepTimer()
+		{
+			m_sleepTimerTick.Stop();
+			m_sleepTimerActive = false;
+			m_sleepTimerRemainingSeconds = 0;
+			if (m_nowPlayingView != null)
+			{
+				m_nowPlayingView.SetSleepTimerDisplay(false, 0);
+			}
+		}
+
+		/// <summary>True while a sleep timer is counting down. Read by NowPlayingView.Initialize() to restore display state.</summary>
+		public bool GetSleepTimerActive()
+		{
+			return m_sleepTimerActive;
+		}
+
+		/// <summary>Seconds remaining on the active sleep timer; zero when no timer is active.</summary>
+		public int GetSleepTimerRemainingSeconds()
+		{
+			return m_sleepTimerRemainingSeconds;
 		}
 
 		public void OnAddToQueue(List<PulseTrack> tracks, eQueueSource source, string sourceId = "")

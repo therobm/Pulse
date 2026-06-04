@@ -41,6 +41,67 @@ namespace Thump.Pulse
 		}
 	}
 
+	public class HttpQueue
+	{
+		private Thread m_thread;
+		public int m_maxRequests = 1;
+		public object m_queueLock = new object();
+		Queue<HttpReq> m_requests = new Queue<HttpReq>();
+		MediaClient m_mediaClient;
+
+		public HttpQueue(MediaClient mediaClient, int maxRequests) 
+		{
+			m_maxRequests = maxRequests;
+			m_mediaClient = mediaClient;
+			m_thread = new Thread(Process);
+			m_thread.IsBackground = true;
+			m_thread.Start();
+		}
+
+		public void Process()
+		{
+			while (true)
+			{
+				Thread.Sleep(1);
+				lock (m_queueLock)
+				{
+					if (m_requests.Count == 0)
+						continue;
+				}
+
+				for (int i = 0; i < m_maxRequests; i++)
+				{
+					HttpReq next = null;
+					lock (m_queueLock)
+					{
+						if (m_requests.Count == 0)
+							continue;
+						next = m_requests.Dequeue();
+					}
+					if (next.m_bIsBinary) 
+					{ 
+					byte[] data = m_mediaClient.HttpGetBinary(next.m_url, next.m_bCacheAllowed);
+					if (next.m_onBinaryComplete != null)
+						next.m_onBinaryComplete(data);
+					}
+					else
+					{
+						string data = m_mediaClient.HttpGet(next.m_url, next.m_bCacheAllowed, next.m_bLogPerf);
+						if (next.m_onStringComplete != null)
+							next.m_onStringComplete(data);
+					}
+				}
+			}
+		}
+		public void QueueRequest(HttpReq req)
+		{			
+			lock (m_queueLock)
+			{
+				m_requests.Enqueue(req);
+			}
+		}
+	}
+
 	public interface IMediaClientHost
 	{
 		void OnOnlineStateChanged(bool online);
@@ -63,8 +124,6 @@ namespace Thump.Pulse
 		ThumpCache m_cache;
 
 		private Thread m_thread;
-		private Thread m_metaThread;
-		private Thread m_binaryThread;
 
 		protected string m_baseUrl;
 		protected string m_user;
@@ -81,11 +140,9 @@ namespace Thump.Pulse
 		// that touch UI must marshal to the main thread themselves.
 		IMediaClientHost m_host;
 
-		object m_metaRequestLock = new object();
-		object m_binaryRequestLock = new object();
-		Queue<HttpReq> m_metaRequests = new Queue<HttpReq>();
-		Queue<HttpReq> m_binaryRequests = new Queue<HttpReq>();
-
+		HttpQueue m_metaData;
+		HttpQueue m_imageData;
+		HttpQueue m_audioData;
 
 		public MediaClient(ThumpCache cache, IMediaClientHost host)
 		{
@@ -95,14 +152,9 @@ namespace Thump.Pulse
 			m_thread.IsBackground = true;
 			m_thread.Start();
 
-			m_metaThread = new Thread(MetaLoop);
-			m_metaThread.IsBackground = true;
-			m_metaThread.Start();
-
-			m_binaryThread = new Thread(BinaryLoop);
-			m_binaryThread.IsBackground = true;
-			m_binaryThread.Start();
-
+			m_metaData = new HttpQueue(this, 10);
+			m_imageData = new HttpQueue(this, 5);
+			m_audioData = new HttpQueue(this, 2);
 		}
 
 		private void ConnectionLoop()
@@ -129,23 +181,6 @@ namespace Thump.Pulse
 				m_pingFailureCount++;
 				if (m_pingFailureCount > 3)
 					SetOnline(false);
-			}
-		}
-
-		private void MetaLoop()
-		{
-			while (true)
-			{
-				ProcessMetaQueue();
-				Thread.Sleep(1);
-			}
-		}
-		private void BinaryLoop()
-		{
-			while (true)
-			{
-				ProcessBinaryQueue();
-				Thread.Sleep(1);
 			}
 		}
 
@@ -326,67 +361,20 @@ namespace Thump.Pulse
 			return trackData;
 		}
 
-
-		public void GetHTTPBinary(string url, Action<byte[]> onComplete, bool bCacheAllowed)
+		public void GetHTTPAudio(string url, Action<byte[]> onComplete, bool bCacheAllowed)
 		{
-			QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, true));
+			m_audioData.QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, true));
+		}
+		public void GetHTTPImage(string url, Action<byte[]> onComplete, bool bCacheAllowed)
+		{
+			m_imageData.QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, true));
 		}
 		public void GetHTTP(string url, Action<string> onComplete, bool bCacheAllowed, bool logPerf)
 		{
-			QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, logPerf));
+			m_metaData.QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, logPerf));
 		}
-		private void QueueRequest(HttpReq req)
-		{
-			if (req.m_bIsBinary)
-			{
-				lock (m_binaryRequestLock)
-				{
-					m_binaryRequests.Enqueue(req);
-				}
-			}
-			else 
-			{ 
-				lock (m_metaRequestLock)
-				{
-					m_metaRequests.Enqueue(req);
-				}
-			}
-		}
-		private void ProcessMetaQueue()
-		{
-			int maxRequests = 10;
-			for (int i = 0; i < maxRequests; i++)
-			{
-				HttpReq next = null;
-				lock (m_metaRequestLock)
-				{
-					if (m_metaRequests.Count == 0)
-						return;
-					next = m_metaRequests.Dequeue();
-				}
-				string data = HttpGet(next.m_url, next.m_bCacheAllowed, next.m_bLogPerf);
-				if (next.m_onStringComplete != null)
-					next.m_onStringComplete(data);
-			}
-		}
-		private void ProcessBinaryQueue()
-		{
-			int maxRequests = 1;
-			for (int i = 0; i < maxRequests; i++)
-			{
-				HttpReq next = null;
-				lock (m_binaryRequestLock)
-				{
-					if (m_binaryRequests.Count == 0)
-						return;
-					next = m_binaryRequests.Dequeue();
-				}
-				byte[] data = HttpGetBinary(next.m_url, next.m_bCacheAllowed);
-				if (next.m_onBinaryComplete != null)
-					next.m_onBinaryComplete(data);
-			}
-		}
-		private byte[] HttpGetBinary(string url, bool bCacheAllowed)
+		
+		public byte[] HttpGetBinary(string url, bool bCacheAllowed)
 		{
 			byte[] retVal = null;
 			if (bCacheAllowed && GetCachedResults(url, out retVal))
@@ -412,7 +400,7 @@ namespace Thump.Pulse
 			CacheQueryResults(url, retVal);
 			return retVal;
 		}
-		protected string HttpGet(string url, bool bCacheAllowed, bool logPerf)
+		public string HttpGet(string url, bool bCacheAllowed, bool logPerf)
 		{
 			string retVal = null;
 			if (bCacheAllowed && GetCachedResults(url, out retVal))
@@ -550,6 +538,34 @@ namespace Thump.Pulse
 			catch (ArgumentException)
 			{
 				return Encoding.UTF8;
+			}
+		}
+
+		/// <summary>
+		/// used for direct streaming audio
+		/// </summary>
+		/// <param name="url"></param>
+		/// <param name="position"></param>
+		/// <returns></returns>
+		public HttpResponseMessage HttpGetStream(string url, long position)
+		{
+			HttpClient client;
+			lock (m_httpClientLock) { client = m_httpClient; }
+			if (client == null) { return null; }
+
+			HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url);
+			if (position > 0)
+			{
+				request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(position, null);
+			}
+			try
+			{
+				return client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).Result;
+			}
+			catch (Exception ex)
+			{
+				Log.Exception(ex);
+				return null;
 			}
 		}
 

@@ -422,6 +422,8 @@ namespace Thump.Playback.AndroidOS
 			{
 				m_currentQueueID = m_currentQueueID + 1;
 
+				int cacheQueueID = m_currentQueueID;
+
 				//silence the outgoing queue while we resolve and cache the new one,
 				//Media3 will resume playback when the new queue lands
 				if (m_player != null && m_player.IsPlaying)
@@ -485,6 +487,7 @@ namespace Thump.Playback.AndroidOS
 					return;
 				}
 
+				//Tracks beyond our first one that we want to precache ahead
 				Queue<PulseTrack> cacheQueue = new Queue<PulseTrack>();
 				for (int i = 0; i < requestedTracks.Count; i++)
 				{
@@ -499,21 +502,21 @@ namespace Thump.Playback.AndroidOS
 				int finalStartIndex = startItemIndex;
 				long finalStartPosition = startPositionMs;
 
-
-				int cacheQueueID = m_currentQueueID;
-				s_mediaClient.CacheTrackAudio(startTrack.Id, (success) =>
+				//someone started another play request before we reached here, bail
+				if (cacheQueueID != m_currentQueueID)
 				{
-					if (cacheQueueID != m_currentQueueID)
-						return;
+					MediaSession.MediaItemsWithStartPosition empty = new MediaSession.MediaItemsWithStartPosition(outputTracks, 0, startPositionMs);
+					callback.OnComplete(empty);
+					return;
+				}
 
-					MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputTracks, finalStartIndex, finalStartPosition);
-					callback.OnComplete(result);
+				//start our track right away, we'll stream it live
+				MediaSession.MediaItemsWithStartPosition result = new MediaSession.MediaItemsWithStartPosition(outputTracks, finalStartIndex, finalStartPosition);
+				callback.OnComplete(result);
 
-					// Wait for the initial spinup then start caching the rest
-					// kicking this off immidiately was stealing cycles from the codec bootup causing delays
-					Task.Delay(1000).ContinueWith((_) => CacheQueued(cacheQueue, cacheQueueID));
-					//CacheQueued(cacheQueue, cacheQueueID);
-				});
+				// Wait for the initial spinup then start caching the rest
+				// kicking this off immidiately was stealing cycles from the codec bootup causing delays
+				Task.Delay(5000).ContinueWith((_) => CacheQueued(cacheQueue, cacheQueueID));
 			}
 			catch(Exception ex)
 			{
@@ -526,6 +529,7 @@ namespace Thump.Playback.AndroidOS
 		{
 			if (queue == null || queue.Count == 0 || queueId != m_currentQueueID)
 			{
+				Log.Info("MediaService: Cancelled existing download queue for replacement");
 				return;
 			}
 			PulseTrack next = queue.Dequeue();
