@@ -382,6 +382,28 @@ namespace Thump
 			}
 		}
 
+		/// <summary>One-second tick handler that decrements the remaining seconds and pauses playback when the timer elapses.</summary>
+		private void OnSleepTimerTick(object sender, EventArgs e)
+		{
+			m_sleepTimerRemainingSeconds = m_sleepTimerRemainingSeconds - 1;
+			if (m_sleepTimerRemainingSeconds <= 0)
+			{
+				m_player.Pause();
+				m_sleepTimerTick.Stop();
+				m_sleepTimerActive = false;
+				m_sleepTimerRemainingSeconds = 0;
+				if (m_nowPlayingView != null)
+				{
+					m_nowPlayingView.SetSleepTimerDisplay(false, 0);
+				}
+				return;
+			}
+			if (m_nowPlayingView != null)
+			{
+				m_nowPlayingView.SetSleepTimerDisplay(true, m_sleepTimerRemainingSeconds);
+			}
+		}
+
 		public void OnPlayTracksShuffled(List<PulseTrack> tracks, eQueueSource source, string sourceId = "")
 		{
 			if (tracks == null || tracks.Count == 0)
@@ -527,28 +549,6 @@ namespace Thump
 		public int GetSleepTimerRemainingSeconds()
 		{
 			return m_sleepTimerRemainingSeconds;
-		}
-
-		/// <summary>One-second tick handler that decrements the remaining seconds and pauses playback when the timer elapses.</summary>
-		private void OnSleepTimerTick(object sender, EventArgs e)
-		{
-			m_sleepTimerRemainingSeconds = m_sleepTimerRemainingSeconds - 1;
-			if (m_sleepTimerRemainingSeconds <= 0)
-			{
-				m_player.Pause();
-				m_sleepTimerTick.Stop();
-				m_sleepTimerActive = false;
-				m_sleepTimerRemainingSeconds = 0;
-				if (m_nowPlayingView != null)
-				{
-					m_nowPlayingView.SetSleepTimerDisplay(false, 0);
-				}
-				return;
-			}
-			if (m_nowPlayingView != null)
-			{
-				m_nowPlayingView.SetSleepTimerDisplay(true, m_sleepTimerRemainingSeconds);
-			}
 		}
 
 		public void OnAddToQueue(List<PulseTrack> tracks, eQueueSource source, string sourceId = "")
