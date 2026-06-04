@@ -29,6 +29,18 @@ namespace Thump.Pulse
 	{
 		private static int s_requestCounter = 0;
 
+		/// <summary>
+		/// Total number of attempts (initial + retries) the HTTP GET path will make
+		/// before giving up. A single hiccup must not surface as a hard failure.
+		/// </summary>
+		private const int s_maxHttpAttempts = 3;
+
+		/// <summary>
+		/// Base backoff between HTTP attempts, multiplied by the attempt number
+		/// (i.e. 250ms after attempt 1, then 500ms after attempt 2).
+		/// </summary>
+		private const int s_httpRetryBaseMs = 250;
+
 		private static bool AcceptAnyServerCertificate(HttpRequestMessage request, System.Security.Cryptography.X509Certificates.X509Certificate2 certificate, System.Security.Cryptography.X509Certificates.X509Chain chain, System.Net.Security.SslPolicyErrors errors)
 		{
 			return true;
@@ -379,31 +391,95 @@ namespace Thump.Pulse
 			int requestId = Interlocked.Increment(ref s_requestCounter);
 			Stopwatch stopwatch = Stopwatch.StartNew();
 			Log.Perf("#" + requestId + " start GET " + url);
-			
+
 			//apply timeout to the header read only
 			HttpResponseMessage response = null;
-			try
+			bool transportFailure = false;
+			for (int attempt = 1; attempt <= s_maxHttpAttempts; attempt++)
 			{
-				Task<HttpResponseMessage> fetch = client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url), HttpCompletionOption.ResponseHeadersRead, token);
-				response = fetch.Result;
-			}
-			catch(Exception ex)
-			{
-				stopwatch.Stop();
-				// a deliberate prefetch suspend cancels the token; don't log it as a fault
+				response = null;
+				transportFailure = false;
+				try
+				{
+					Task<HttpResponseMessage> fetch = client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url), HttpCompletionOption.ResponseHeadersRead, token);
+					response = fetch.Result;
+				}
+				catch (Exception ex)
+				{
+					// a deliberate prefetch suspend cancels the token; don't log it as a fault
+					if (token.IsCancellationRequested)
+					{
+						stopwatch.Stop();
+						return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
+					}
+					Log.Exception(ex);
+					transportFailure = true;
+					response = null;
+				}
+
+				// non-retryable: 2xx success or a normal HTTP error like 404/401 — return immediately.
+				if (response != null)
+				{
+					int statusCode = (int)response.StatusCode;
+					bool retryableStatus = false;
+					if (statusCode == 408 || statusCode == 504)
+					{
+						retryableStatus = true;
+						transportFailure = true;
+					}
+					else if (statusCode >= 500 && statusCode <= 599)
+					{
+						retryableStatus = true;
+					}
+					if (!retryableStatus)
+					{
+						stopwatch.Stop();
+						if (logPerf)
+						{
+							Log.Perf("#" + requestId + " done GET " + stopwatch.ElapsedMilliseconds + "ms status=" + (int)response.StatusCode + " " + url);
+						}
+						return response;
+					}
+				}
+
+				if (attempt >= s_maxHttpAttempts)
+				{
+					break;
+				}
 				if (token.IsCancellationRequested)
 				{
-					return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
+					break;
 				}
-				Log.Exception(ex);
+				if (!IsOnline())
+				{
+					break;
+				}
+				Thread.Sleep(s_httpRetryBaseMs * attempt);
+			}
+
+			stopwatch.Stop();
+
+			// All attempts exhausted: surface the same RequestTimeout that the
+			// pre-retry code returned when SendAsync threw.
+			if (response == null)
+			{
 				response = new HttpResponseMessage(System.Net.HttpStatusCode.RequestTimeout);
 			}
-				
-			stopwatch.Stop();
+
 			if (logPerf)
-			{ 
+			{
 				Log.Perf("#" + requestId + " done GET " + stopwatch.ElapsedMilliseconds + "ms status=" + (int)response.StatusCode + " " + url);
 			}
+
+			// Transport-level failure with the connection still believed-online:
+			// feed the existing ping counter so a couple of dead requests can flip
+			// us offline without waiting on the 5-second ping cycle. One vote per
+			// exhausted request, not per attempt.
+			if (transportFailure && IsOnline())
+			{
+				OnPingResult(false);
+			}
+
 			return response;
 		}
 
