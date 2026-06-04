@@ -32,7 +32,7 @@ namespace Thump.Playback.AndroidOS
 	/// </summary>
 	[Service(Exported = true, Enabled = true, Name = "com.therobm.thump.ThumpPlaybackService", ForegroundServiceType = ForegroundService.TypeMediaPlayback)]
 	[IntentFilter(new string[] { "androidx.media3.session.MediaLibraryService", "android.media.browse.MediaBrowserService" })]
-	public class ThumpMediaLibraryService : MediaLibraryService
+	public class ThumpMediaLibraryService : MediaLibraryService, IMediaClientHost
 	{
 		/// <summary>
 		/// A special sneaky global so the media service can access our data
@@ -93,7 +93,7 @@ namespace Thump.Playback.AndroidOS
 
 			if (s_mediaClient == null)
 			{
-				s_mediaClient = BuildMediaClient();
+				s_mediaClient = BuildMediaClient(this);
 			}
 
 			ExoPlayerBuilder builder = new ExoPlayerBuilder(this);
@@ -169,6 +169,44 @@ namespace Thump.Playback.AndroidOS
 			{
 				RegisterReceiver(m_carReceiver, carFilter);
 			}
+		}
+
+		//Custom call for online management
+		public void OnOnlineStateChanged(bool online)
+		{
+			if (!online)
+			{
+				return;
+			}
+			MainThread.BeginInvokeOnMainThread(() =>
+			{
+				if (m_player == null)
+				{
+					return;
+				}
+				if (m_player.PlayerError == null)
+				{
+					return;
+				}
+				// re-cache the stalled current item, then re-prepare from where it died
+				MediaItem current = m_player.CurrentMediaItem;
+				if (current == null || string.IsNullOrEmpty(current.MediaId))
+				{
+					return;
+				}
+				string trackId = AAutoHelper.StripTrackPrefix(current.MediaId);
+				s_mediaClient.CacheTrackAudio(trackId, (success) =>
+				{
+					if (!success)
+					{
+						return;
+					}
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						m_player.Prepare();  // clears the error, retries Open on current item
+					});
+				});
+			});
 		}
 
 		public void OnPhoneDisconnected(MediaSession session, MediaSession.ControllerInfo controller)
@@ -801,10 +839,10 @@ namespace Thump.Playback.AndroidOS
 			m_player.Pause();
 		}
 
-		private static MediaClient BuildMediaClient()
+		private static MediaClient BuildMediaClient(IMediaClientHost host)
 		{
 			ThumpCache cache = new ThumpCache();
-			MediaClient pulseClient = new PulseClient(cache);
+			MediaClient pulseClient = new PulseClient(cache, host);
 			pulseClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetUseHttps());
 
 			return pulseClient;

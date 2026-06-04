@@ -4,9 +4,12 @@ using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Thump.Data;
 using Thump.Views.Tiles;
 
@@ -38,6 +41,10 @@ namespace Thump.Pulse
 		}
 	}
 
+	public interface IMediaClientHost
+	{
+		void OnOnlineStateChanged(bool online);
+	}
 	// The single API surface every media-server client (Subsonic today, Pulse-native
 	// in the future) must implement. Consumers (ThumpData, MainView, the playback
 	// service, settings) hold an MediaClient, so the concrete implementation can
@@ -66,8 +73,13 @@ namespace Thump.Pulse
 		private object m_httpClientLock = new object();
 
 		private bool m_bInitialized = false;
-		protected bool m_bIsOnline = true;
+		private bool m_bIsOnline = true;
+		private int m_pingFailureCount = 0;
 
+		// Fires when the online/offline state actually flips (not on every poll).
+		// Raised from the background connection/request threads, so subscribers
+		// that touch UI must marshal to the main thread themselves.
+		IMediaClientHost m_host;
 
 		object m_metaRequestLock = new object();
 		object m_binaryRequestLock = new object();
@@ -75,10 +87,10 @@ namespace Thump.Pulse
 		Queue<HttpReq> m_binaryRequests = new Queue<HttpReq>();
 
 
-		public MediaClient(ThumpCache cache)
+		public MediaClient(ThumpCache cache, IMediaClientHost host)
 		{
 			m_cache = cache;
-
+			m_host = host;
 			m_thread = new Thread(ConnectionLoop);
 			m_thread.IsBackground = true;
 			m_thread.Start();
@@ -99,15 +111,27 @@ namespace Thump.Pulse
 			{
 				if (m_bInitialized)
 				{
-					
 					Ping(out JsonElement response);
-					
-					//pump our http queue
 				}
 				//sleep 1ms
 				Thread.Sleep(5000);
 			}
 		}
+		public void OnPingResult(bool success)
+		{
+			if (success)
+			{
+				m_pingFailureCount = 0;
+				SetOnline(true);
+			}
+			else
+			{
+				m_pingFailureCount++;
+				if (m_pingFailureCount > 3)
+					SetOnline(false);
+			}
+		}
+
 		private void MetaLoop()
 		{
 			while (true)
@@ -163,7 +187,9 @@ namespace Thump.Pulse
 			m_bInitialized = true;
 			Ping(out JsonElement discard);
 		}
-	
+
+		
+
 		protected virtual bool Ping(out JsonElement response)
 		{
 			response = default;
@@ -178,6 +204,20 @@ namespace Thump.Pulse
 		public bool IsOnline()
 		{
 			return m_bIsOnline;
+		}
+
+		// Single choke point for online-state changes. Subclasses (Ping) and the
+		// HTTP failure paths route through here so the OnlineStateChanged event
+		// fires once per transition rather than on every poll.
+		protected void SetOnline(bool online)
+		{
+			if (m_bIsOnline == online)
+			{
+				return;
+			}
+			m_bIsOnline = online;
+			if (m_host != null)
+				m_host.OnOnlineStateChanged(m_bIsOnline);
 		}
 
 		public string BuildStreamUrl(string trackId)
@@ -359,7 +399,16 @@ namespace Thump.Pulse
 				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
 				return null;
 			}
-			retVal = response.Content.ReadAsByteArrayAsync().Result;
+
+			try
+			{
+				retVal = ReadBinaryBodyWithStallTimeout(response, 30);
+			}
+			catch (Exception ex)
+			{
+				Log.Exception(ex);
+				return null;
+			}
 			CacheQueryResults(url, retVal);
 			return retVal;
 		}
@@ -376,7 +425,16 @@ namespace Thump.Pulse
 				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
 				return null;
 			}
-			retVal = response.Content.ReadAsStringAsync().Result;
+
+			try
+			{
+				retVal = ReadStringBodyWithStallTimeout(response, 30);
+			}
+			catch (Exception ex)
+			{
+				Log.Exception(ex);
+				return null;
+			}
 			CacheQueryResults(url, retVal);
 			return retVal;
 		}
@@ -398,7 +456,9 @@ namespace Thump.Pulse
 			Log.Perf("#" + requestId + " start GET " + url);
 			try
 			{
-				HttpResponseMessage response = client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
+				//apply timeout to the header read only
+				Task<HttpResponseMessage> fetch = client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url), HttpCompletionOption.ResponseHeadersRead);
+				HttpResponseMessage response = fetch.Result;
 				stopwatch.Stop();
 				if (logPerf)
 				{ 
@@ -418,8 +478,78 @@ namespace Thump.Pulse
 					Log.Perf("#" + requestId + " fail GET " + stopwatch.ElapsedMilliseconds + "ms " + url);
 				}
 				Log.Exception(ex);
-				m_bIsOnline = false;
 				return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
+			}
+		}
+
+		private byte[] ReadBinaryBodyWithStallTimeout(HttpResponseMessage response, int stallSeconds)
+		{
+			TimeSpan stallWindow = TimeSpan.FromSeconds(stallSeconds);
+			using CancellationTokenSource cts = new CancellationTokenSource(stallWindow);
+			using Stream stream = response.Content.ReadAsStreamAsync().Result;
+			using MemoryStream buffer = new MemoryStream();
+
+			byte[] chunk = new byte[64 * 1024];
+			while (true)
+			{
+				int read = stream.ReadAsync(chunk, 0, chunk.Length, cts.Token).Result;
+				if (read <= 0)
+				{
+					break;
+				}
+				buffer.Write(chunk, 0, read);
+
+				// re-arm: the token now only trips if the NEXT read makes
+				// zero progress within stallWindow. Any byte received resets it.
+				cts.CancelAfter(stallWindow);
+			}
+			return buffer.ToArray();
+		}
+
+		private string ReadStringBodyWithStallTimeout(HttpResponseMessage response, int stallSeconds)
+		{
+			TimeSpan stallWindow = TimeSpan.FromSeconds(stallSeconds);
+			using CancellationTokenSource cts = new CancellationTokenSource(stallWindow);
+			using Stream stream = response.Content.ReadAsStreamAsync().Result;
+			using MemoryStream buffer = new MemoryStream();
+
+			byte[] chunk = new byte[64 * 1024];
+			while (true)
+			{
+				int read = stream.ReadAsync(chunk, 0, chunk.Length, cts.Token).Result;
+				if (read <= 0)
+				{
+					break;
+				}
+				buffer.Write(chunk, 0, read);
+				cts.CancelAfter(stallWindow);
+			}
+
+			Encoding encoding = ResolveEncoding(response);
+			return encoding.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+		}
+
+		private Encoding ResolveEncoding(HttpResponseMessage response)
+		{
+			string charset = null;
+			if (response.Content != null && response.Content.Headers.ContentType != null)
+			{
+				charset = response.Content.Headers.ContentType.CharSet;
+			}
+			if (string.IsNullOrEmpty(charset))
+			{
+				return Encoding.UTF8;
+			}
+
+			// Some servers quote the charset value: charset="utf-8"
+			charset = charset.Trim('"', '\'', ' ');
+			try
+			{
+				return Encoding.GetEncoding(charset);
+			}
+			catch (ArgumentException)
+			{
+				return Encoding.UTF8;
 			}
 		}
 
@@ -478,7 +608,6 @@ namespace Thump.Pulse
 					Log.Perf("#" + requestId + " fail POST " + stopwatch.ElapsedMilliseconds + "ms " + url);
 				}
 				Log.Exception(ex);
-				m_bIsOnline = false;
 				return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
 			}
 		}

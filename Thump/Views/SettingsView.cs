@@ -325,9 +325,10 @@ namespace Thump.Views
 			Log.Perf("SettingsView.Initialize end " + stopwatch.ElapsedMilliseconds + "ms");
 		}
 
-		public void OnNavigatedTo()
+		public override void OnNavigatedTo()
 		{
 			RefreshCacheStats();
+			base.OnNavigatedTo();
 		}
 
 		private void OnNormalizeOffClicked(object sender, EventArgs e)

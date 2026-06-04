@@ -122,6 +122,8 @@ namespace Thump.Playback.AndroidOS
 			//build playlist
 			int startItemIndex = 0;
 			int builtCount = 0;
+
+			
 			for (int i = 0; i < m_queue.Count; i++)
 			{
 				//If we're not online and we don't have this track locally cached skip it
@@ -129,7 +131,10 @@ namespace Thump.Playback.AndroidOS
 					continue;
 
 				if (i == startIndex)
+				{
 					startItemIndex = builtCount;
+					startTrack = m_queue[i];
+				}
 				else
 					m_cacheQueue.Enqueue(m_queue[i]);
 
@@ -142,7 +147,7 @@ namespace Thump.Playback.AndroidOS
 
 			//kick off caching and start when startIndex is ready
 			
-			m_data.CacheTrackAudio(m_queue[startItemIndex].Id, (firstCached)=>
+			m_data.CacheTrackAudio(startTrack.Id, (firstCached)=>
 			{
 				//some other queue has been started, we'll just bail on this
 				if (m_currentQueueID != taskQueueID)

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using Microsoft.Maui;
+using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Storage;
 using PulseAPI.CSharp;
@@ -30,7 +31,7 @@ namespace Thump
 		Settings,
 	}
 
-	public class MainView : ContentPage
+	public class MainView : ContentPage, IMediaClientHost
 	{
 		public const string ServerUrl = "https://192.168.5.5:32458";
 		public const string ServerUser = "Rob";
@@ -41,6 +42,7 @@ namespace Thump
 		private MediaClient m_mediaClient;
 		private ThumpCache m_cache;
 		private Grid m_rootGrid;
+		private OfflineBanner m_offlineBanner;
 		private ContentView m_contentHost;
 		private HomeView m_homeView;
 		private LibraryView m_libraryView;
@@ -71,6 +73,9 @@ namespace Thump
 			BackgroundColor = ThumpColors.Background;
 
 			m_rootGrid = new Grid();
+			RowDefinition bannerRow = new RowDefinition();
+			bannerRow.Height = GridLength.Auto;
+			m_rootGrid.RowDefinitions.Add(bannerRow);
 			RowDefinition contentRow = new RowDefinition();
 			contentRow.Height = GridLength.Star;
 			m_rootGrid.RowDefinitions.Add(contentRow);
@@ -81,15 +86,19 @@ namespace Thump
 			navFooterRow.Height = GridLength.Auto;
 			m_rootGrid.RowDefinitions.Add(navFooterRow);
 
+			m_offlineBanner = new OfflineBanner(this);
+			Grid.SetRow(m_offlineBanner, 0);
+			m_rootGrid.Children.Add(m_offlineBanner);
+
 			m_contentHost = new ContentView();
-			Grid.SetRow(m_contentHost, 0);
+			Grid.SetRow(m_contentHost, 1);
 			m_rootGrid.Children.Add(m_contentHost);
 
 			Content = m_rootGrid;
 
 
 			m_cache = new ThumpCache();
-			m_mediaClient = new PulseClient(m_cache);
+			m_mediaClient = new PulseClient(m_cache, this);
 			m_mediaClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetUseHttps());
 
 #if ANDROID
@@ -109,12 +118,12 @@ namespace Thump
 			m_settingsView = new SettingsView(this);
 
 			m_miniPlayer = new MiniPlayer(this);
-			Grid.SetRow(m_miniPlayer, 1);
+			Grid.SetRow(m_miniPlayer, 2);
 			m_miniPlayer.IsVisible = false;
 			m_rootGrid.Children.Add(m_miniPlayer);
 
 			m_navFooter = new NavFooter(this);
-			Grid.SetRow(m_navFooter, 2);
+			Grid.SetRow(m_navFooter, 3);
 			m_rootGrid.Children.Add(m_navFooter);
 
 			m_homeView.Initialize();
@@ -131,11 +140,34 @@ namespace Thump
 		{
 			return m_cache;
 		}
+
+		// OnlineStateChanged fires from the client's background threads, so hop to
+		// the main thread before touching the banner's visibility.
+		public void OnOnlineStateChanged(bool online)
+		{
+			MainThread.BeginInvokeOnMainThread(() =>
+			{
+				m_offlineBanner.SetIsOnline(online);
+			});
+		}
+		// Single choke point for swapping the active content so OnNavigatedTo
+		// fires every time, no matter which navigation path got us here. The view
+		// forwards the signal down to its children (see ThumpView).
+		private void SetActiveContent(View view)
+		{
+			m_contentHost.Content = view;
+			ThumpView thumpView = view as ThumpView;
+			if (thumpView != null)
+			{
+				thumpView.OnNavigatedTo();
+			}
+		}
+
 		public void NavigateToHome()
 		{
 			m_activeTab = eTab.Home;
 			m_detailStack.Clear();
-			m_contentHost.Content = m_homeView;
+			SetActiveContent(m_homeView);
 			m_navFooter.SetActiveTab(eTab.Home);
 			RestoreMiniPlayerIfActive();
 		}
@@ -144,7 +176,7 @@ namespace Thump
 		{
 			m_activeTab = eTab.Library;
 			m_detailStack.Clear();
-			m_contentHost.Content = m_libraryView;
+			SetActiveContent(m_libraryView);
 			m_navFooter.SetActiveTab(eTab.Library);
 			RestoreMiniPlayerIfActive();
 		}
@@ -153,7 +185,7 @@ namespace Thump
 		{
 			m_activeTab = eTab.Search;
 			m_detailStack.Clear();
-			m_contentHost.Content = m_searchView;
+			SetActiveContent(m_searchView);
 			m_navFooter.SetActiveTab(eTab.Search);
 			RestoreMiniPlayerIfActive();
 		}
@@ -162,8 +194,7 @@ namespace Thump
 		{
 			m_activeTab = eTab.Settings;
 			m_detailStack.Clear();
-			m_contentHost.Content = m_settingsView;
-			m_settingsView.OnNavigatedTo();
+			SetActiveContent(m_settingsView);
 			m_navFooter.SetActiveTab(eTab.Settings);
 			RestoreMiniPlayerIfActive();
 		}
@@ -171,7 +202,7 @@ namespace Thump
 		private void PushDetail(View detail)
 		{
 			m_detailStack.Add(detail);
-			m_contentHost.Content = detail;
+			SetActiveContent(detail);
 		}
 
 		public void OnBackPressed()
@@ -183,7 +214,7 @@ namespace Thump
 			m_detailStack.RemoveAt(m_detailStack.Count - 1);
 			if (m_detailStack.Count > 0)
 			{
-				m_contentHost.Content = m_detailStack[m_detailStack.Count - 1];
+				SetActiveContent(m_detailStack[m_detailStack.Count - 1]);
 				if (m_contentHost.Content != m_nowPlayingView)
 				{
 					RestoreMiniPlayerIfActive();
@@ -192,19 +223,19 @@ namespace Thump
 			}
 			if (m_activeTab == eTab.Home)
 			{
-				m_contentHost.Content = m_homeView;
+				SetActiveContent(m_homeView);
 			}
 			else if (m_activeTab == eTab.Library)
 			{
-				m_contentHost.Content = m_libraryView;
+				SetActiveContent(m_libraryView);
 			}
 			else if (m_activeTab == eTab.Search)
 			{
-				m_contentHost.Content = m_searchView;
+				SetActiveContent(m_searchView);
 			}
 			else if (m_activeTab == eTab.Settings)
 			{
-				m_contentHost.Content = m_settingsView;
+				SetActiveContent(m_settingsView);
 			}
 			if (m_contentHost.Content != m_nowPlayingView)
 			{

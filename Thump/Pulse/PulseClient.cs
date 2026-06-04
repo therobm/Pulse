@@ -21,7 +21,7 @@ namespace Thump.Pulse
 	{
 		private ConcurrentDictionary<string, byte[]> m_imageCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseClient(ThumpCache cache) : base(cache)
+		public PulseClient(ThumpCache cache, IMediaClientHost host) : base(cache, host)
 		{
 		}
 
@@ -141,12 +141,12 @@ namespace Thump.Pulse
 				string json = HttpGet(url, false, false);
 				if (string.IsNullOrEmpty(json))
 				{
-					m_bIsOnline = false;
+					OnPingResult(false);
 					return false;
 				}
 				JsonDocument doc = JsonDocument.Parse(json);
 				response = doc.RootElement;
-				m_bIsOnline = true;
+				OnPingResult(true);
 				return true;
 			}
 			catch (Exception ex)
@@ -155,7 +155,7 @@ namespace Thump.Pulse
 				// isn't reachable right now, so don't make noise in the log.
 				Log.Exception(ex);
 			}
-			m_bIsOnline = false;
+			OnPingResult(false);
 			return false;
 		}
 

@@ -17,6 +17,8 @@ namespace Thump.Views
 		private Border m_border;
 		private Image m_image;
 		private eArtShape m_shape = eArtShape.RoundedRect;
+		private string m_coverArtId;
+		private bool m_bLoadFailed;
 
 		public ArtImage() : base(MainView.Self)
 		{
@@ -76,6 +78,8 @@ namespace Thump.Views
 
 		public void SetCoverArt(string coverArtId)
 		{
+			m_coverArtId = coverArtId;
+			m_bLoadFailed = false;
 			if (string.IsNullOrEmpty(coverArtId))
 			{
 				m_image.IsVisible = false;
@@ -84,17 +88,32 @@ namespace Thump.Views
 			if (MainView.MediaClient == null)
 			{
 				m_image.IsVisible = false;
+				m_bLoadFailed = true;
 				return;
 			}
 			MainView.MediaClient.GetCoverArt(coverArtId, OnArtLoaded);
+		}
+
+		// Retry a cover-art fetch that came up empty last time (offline, server
+		// hiccup). A successful load left m_bLoadFailed false, so this no-ops once
+		// the image is in place.
+		public override void OnNavigatedTo()
+		{
+			if (m_bLoadFailed && !string.IsNullOrEmpty(m_coverArtId))
+			{
+				SetCoverArt(m_coverArtId);
+			}
+			base.OnNavigatedTo();
 		}
 
 		private void OnArtLoaded(byte[] data)
 		{
 			if (data == null || data.Length == 0)
 			{
+				m_bLoadFailed = true;
 				return;
 			}
+			m_bLoadFailed = false;
 			m_image.Source = ImageSource.FromStream(() => new System.IO.MemoryStream(data));
 			m_image.IsVisible = true;
 		}
