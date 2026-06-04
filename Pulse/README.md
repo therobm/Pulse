@@ -1,17 +1,17 @@
 # Pulse
 
-A self-hosted music server built in C#. Implements the OpenSubsonic API so any compatible client can connect to it. Runs as a single executable with no external service dependencies.
+A self-hosted music server built in C#. Serves your library to its own clients — the Thump app and a built-in tablet web client. Runs as a single executable with no external service dependencies.
 
 I built this because Spotify kept changing how playlists worked without asking, and I wanted a music server I actually controlled.
 
 ## What It Does
 
-Pulse scans a local music library, serves it over the OpenSubsonic API, and layers on features the protocol doesn't natively support.
+Pulse scans a local music library, serves it over an HTTP API, and layers on features most music servers don't natively support.
 
 **Server**
 
 - Kestrel HTTP server, standalone single-executable deployment
-- OpenSubsonic API (~25 endpoints) — browse, search, stream, playlists, cover art, ratings, scrobble
+- JSON HTTP API (~25 endpoints) — browse, search, stream, playlists, cover art, ratings, play reporting
 - SQLite database via Microsoft.Data.Sqlite — hand-written parameterized SQL, no ORM, no external database server
 - TagLib# for audio metadata extraction
 - Spotify OAuth sync — imports playlists with fuzzy artist/title matching (Levenshtein distance)
