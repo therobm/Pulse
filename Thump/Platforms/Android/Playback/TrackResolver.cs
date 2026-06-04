@@ -2,7 +2,6 @@
 using System;
 using System.IO;
 using System.Net.Http;
-using System.Text;
 using Thump.Pulse;
 
 namespace Thump.Playback.AndroidOS
@@ -27,7 +26,7 @@ namespace Thump.Playback.AndroidOS
 			byte[] raw;
 			if (m_data.GetCachedResults(url, out raw) && raw != null)
 			{
-				string tempPath = Path.Combine(m_cacheDir, SanitizeFileName(trackId) + ".tmp");
+				string tempPath = Path.Combine(m_cacheDir, "playing.tmp");
 				using (FileStream fs = new FileStream(tempPath, FileMode.Create))
 				{
 					fs.Write(raw, 0, raw.Length);
@@ -52,49 +51,6 @@ namespace Thump.Playback.AndroidOS
 		{
 			return uri;
 		}
-		/// <summary>
-		/// Returns a filesystem-safe form of the supplied track id by replacing any
-		/// character outside [A-Za-z0-9._-] with '_'. Null or empty input returns "track".
-		/// </summary>
-		private static string SanitizeFileName(string id)
-		{
-			if (string.IsNullOrEmpty(id))
-			{
-				return "track";
-			}
-			StringBuilder builder = new StringBuilder(id.Length);
-			for (int i = 0; i < id.Length; i++)
-			{
-				char c = id[i];
-				bool safe = false;
-				if (c >= 'A' && c <= 'Z')
-				{
-					safe = true;
-				}
-				if (c >= 'a' && c <= 'z')
-				{
-					safe = true;
-				}
-				if (c >= '0' && c <= '9')
-				{
-					safe = true;
-				}
-				if (c == '.' || c == '_' || c == '-')
-				{
-					safe = true;
-				}
-				if (safe)
-				{
-					builder.Append(c);
-				}
-				else
-				{
-					builder.Append('_');
-				}
-			}
-			return builder.ToString();
-		}
-
 		private string ExtractTrackId(global::Android.Net.Uri uri)
 		{
 			if (uri == null)
