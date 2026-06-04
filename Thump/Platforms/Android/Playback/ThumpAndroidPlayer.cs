@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Timers;
 using Android.Content;
 using Android.Runtime;
@@ -122,6 +123,8 @@ namespace Thump.Playback.AndroidOS
 			//build playlist
 			int startItemIndex = 0;
 			int builtCount = 0;
+
+			
 			for (int i = 0; i < m_queue.Count; i++)
 			{
 				//If we're not online and we don't have this track locally cached skip it
@@ -129,7 +132,10 @@ namespace Thump.Playback.AndroidOS
 					continue;
 
 				if (i == startIndex)
+				{
 					startItemIndex = builtCount;
+					startTrack = m_queue[i];
+				}
 				else
 					m_cacheQueue.Enqueue(m_queue[i]);
 
@@ -139,33 +145,33 @@ namespace Thump.Playback.AndroidOS
 				builtCount++;
 			}
 
+			//some other queue has been started, we'll just bail on this
+			if (m_currentQueueID != taskQueueID)
+				return;
 
 			//kick off caching and start when startIndex is ready
+
+			//player can start playing
+			m_controller.Prepare();
+			m_controller.Play();
+			m_ticker.Start();
+
+			m_lastMediaId = startTrack.Id;
+			m_mainView.OnCurrentTrackChanged(startTrack);
+			m_controller.SeekTo(startIndex, 0);
+
+			//kick of cache requests for the rest
+			Task.Delay(5000).ContinueWith((_) => CacheQueued(taskQueueID));
 			
-			m_data.CacheTrackAudio(m_queue[startItemIndex].Id, (firstCached)=>
-			{
-				//some other queue has been started, we'll just bail on this
-				if (m_currentQueueID != taskQueueID)
-					return;
-
-				//player can start playing
-				m_controller.Prepare();
-				m_controller.Play();
-				m_ticker.Start();
-
-				m_lastMediaId = startTrack.Id;
-				m_mainView.OnCurrentTrackChanged(startTrack);
-				m_controller.SeekTo(startIndex, 0);
-
-				//kick of cache requests for the rest
-				CacheQueued(taskQueueID);
-			});
 		}
 
 		private void CacheQueued(int queueID)
 		{
 			if (m_cacheQueue == null || m_cacheQueue.Count <= 0 || m_currentQueueID != queueID)
+			{
+				Log.Info("ThumpPlayer: Cancelled existing download queue for replacement");
 				return;
+			}
 
 			PulseTrack nextTrack = m_cacheQueue.Dequeue();
 

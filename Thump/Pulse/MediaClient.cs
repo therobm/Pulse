@@ -1,22 +1,119 @@
-using Microsoft.Maui;
-using Microsoft.Maui.Animations;
+
 using Microsoft.Maui.ApplicationModel;
 using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Thump.Data;
+using Thump.Views.Tiles;
 
 namespace Thump.Pulse
 {
+	public class HttpReq
+	{
+		public Action<byte[]> m_onBinaryComplete;
+		public Action<string> m_onStringComplete;
+		public string m_url;
+		public bool m_bCacheAllowed;
+		public bool m_bIsBinary;
+		public bool m_bLogPerf;
+		public HttpReq(string url, Action<byte[]> onComplete, bool cacheAllowed, bool logPerf)
+		{
+			m_url = url;
+			m_onBinaryComplete = onComplete;
+			m_bIsBinary = true;
+			m_bCacheAllowed = cacheAllowed;
+			m_bLogPerf = logPerf;
+		}
+		public HttpReq(string url, Action<string> onComplete, bool cacheAllowed, bool logPerf)
+		{
+			m_url = url;
+			m_onStringComplete = onComplete;
+			m_bIsBinary = false;
+			m_bCacheAllowed = cacheAllowed;
+			m_bLogPerf = logPerf;
+		}
+	}
+
+	public class HttpQueue
+	{
+		private Thread m_thread;
+		public int m_maxRequests = 1;
+		public object m_queueLock = new object();
+		Queue<HttpReq> m_requests = new Queue<HttpReq>();
+		MediaClient m_mediaClient;
+
+		public HttpQueue(MediaClient mediaClient, int maxRequests) 
+		{
+			m_maxRequests = maxRequests;
+			m_mediaClient = mediaClient;
+			m_thread = new Thread(Process);
+			m_thread.IsBackground = true;
+			m_thread.Start();
+		}
+
+		public void Process()
+		{
+			while (true)
+			{
+				Thread.Sleep(1);
+				lock (m_queueLock)
+				{
+					if (m_requests.Count == 0)
+						continue;
+				}
+
+				for (int i = 0; i < m_maxRequests; i++)
+				{
+					HttpReq next = null;
+					lock (m_queueLock)
+					{
+						if (m_requests.Count == 0)
+							continue;
+						next = m_requests.Dequeue();
+					}
+					if (next.m_bIsBinary) 
+					{ 
+					byte[] data = m_mediaClient.HttpGetBinary(next.m_url, next.m_bCacheAllowed);
+					if (next.m_onBinaryComplete != null)
+						next.m_onBinaryComplete(data);
+					}
+					else
+					{
+						string data = m_mediaClient.HttpGet(next.m_url, next.m_bCacheAllowed, next.m_bLogPerf);
+						if (next.m_onStringComplete != null)
+							next.m_onStringComplete(data);
+					}
+				}
+			}
+		}
+		public void QueueRequest(HttpReq req)
+		{			
+			lock (m_queueLock)
+			{
+				m_requests.Enqueue(req);
+			}
+		}
+	}
+
+	public interface IMediaClientHost
+	{
+		void OnOnlineStateChanged(bool online);
+	}
 	// The single API surface every media-server client (Subsonic today, Pulse-native
 	// in the future) must implement. Consumers (ThumpData, MainView, the playback
 	// service, settings) hold an MediaClient, so the concrete implementation can
 	// be swapped without touching them.
 	public abstract class MediaClient
 	{
+		private static int s_requestCounter = 0;
+
 		private static bool AcceptAnyServerCertificate(HttpRequestMessage request, System.Security.Cryptography.X509Certificates.X509Certificate2 certificate, System.Security.Cryptography.X509Certificates.X509Chain chain, System.Net.Security.SslPolicyErrors errors)
 		{
 			return true;
@@ -27,6 +124,7 @@ namespace Thump.Pulse
 		ThumpCache m_cache;
 
 		private Thread m_thread;
+
 		protected string m_baseUrl;
 		protected string m_user;
 		private string m_apiParams;
@@ -34,15 +132,29 @@ namespace Thump.Pulse
 		private object m_httpClientLock = new object();
 
 		private bool m_bInitialized = false;
-		protected bool m_bIsOnline = true;
+		private bool m_bIsOnline = true;
+		private int m_pingFailureCount = 0;
 
-		public MediaClient(ThumpCache cache)
+		// Fires when the online/offline state actually flips (not on every poll).
+		// Raised from the background connection/request threads, so subscribers
+		// that touch UI must marshal to the main thread themselves.
+		IMediaClientHost m_host;
+
+		HttpQueue m_metaData;
+		HttpQueue m_imageData;
+		HttpQueue m_audioData;
+
+		public MediaClient(ThumpCache cache, IMediaClientHost host)
 		{
 			m_cache = cache;
-
+			m_host = host;
 			m_thread = new Thread(ConnectionLoop);
 			m_thread.IsBackground = true;
 			m_thread.Start();
+
+			m_metaData = new HttpQueue(this, 10);
+			m_imageData = new HttpQueue(this, 5);
+			m_audioData = new HttpQueue(this, 2);
 		}
 
 		private void ConnectionLoop()
@@ -53,10 +165,24 @@ namespace Thump.Pulse
 				{
 					Ping(out JsonElement response);
 				}
+				//sleep 1ms
 				Thread.Sleep(5000);
 			}
 		}
-
+		public void OnPingResult(bool success)
+		{
+			if (success)
+			{
+				m_pingFailureCount = 0;
+				SetOnline(true);
+			}
+			else
+			{
+				m_pingFailureCount++;
+				if (m_pingFailureCount > 3)
+					SetOnline(false);
+			}
+		}
 
 		public virtual void SetServerParams(string ip, string port, string username, string password,  bool enableSSL)
 		{
@@ -96,7 +222,9 @@ namespace Thump.Pulse
 			m_bInitialized = true;
 			Ping(out JsonElement discard);
 		}
-	
+
+		
+
 		protected virtual bool Ping(out JsonElement response)
 		{
 			response = default;
@@ -111,6 +239,20 @@ namespace Thump.Pulse
 		public bool IsOnline()
 		{
 			return m_bIsOnline;
+		}
+
+		// Single choke point for online-state changes. Subclasses (Ping) and the
+		// HTTP failure paths route through here so the OnlineStateChanged event
+		// fires once per transition rather than on every poll.
+		protected void SetOnline(bool online)
+		{
+			if (m_bIsOnline == online)
+			{
+				return;
+			}
+			m_bIsOnline = online;
+			if (m_host != null)
+				m_host.OnOnlineStateChanged(m_bIsOnline);
 		}
 
 		public string BuildStreamUrl(string trackId)
@@ -153,8 +295,8 @@ namespace Thump.Pulse
 		public abstract void GetAlbums(Action<List<PulseAlbum>> onComplete);
 		public abstract void CreatePlaylist(string name, Action<PulsePlaylist> onComplete);
 		public abstract void RenamePlaylist(string playlistId, string newName, Action<bool> onComplete);
-		public abstract void Star(string trackId, Action<bool> onComplete);
-		public abstract void Unstar(string trackId, Action<bool> onComplete);
+		public abstract void Favorite(string trackId, Action<bool> onComplete);
+		public abstract void Unfavorite(string trackId, Action<bool> onComplete);
 		public abstract void DeletePlaylist(string playlistId, Action<bool> onComplete);
 		public abstract void AddTrackToPlaylist(string playlistId, string songId, Action<bool> onComplete);
 		public abstract void RemoveTrackFromPlaylist(string playlistId, int songIndex, Action<bool> onComplete);
@@ -218,42 +360,74 @@ namespace Thump.Pulse
 			byte[] trackData = m_cache.GetTrackAudioFromCache(url);
 			return trackData;
 		}
-		protected byte[] HttpGetBinary(string url, bool bCacheAllowed)
+
+		public void GetHTTPAudio(string url, Action<byte[]> onComplete, bool bCacheAllowed)
+		{
+			m_audioData.QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, true));
+		}
+		public void GetHTTPImage(string url, Action<byte[]> onComplete, bool bCacheAllowed)
+		{
+			m_imageData.QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, true));
+		}
+		public void GetHTTP(string url, Action<string> onComplete, bool bCacheAllowed, bool logPerf)
+		{
+			m_metaData.QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, logPerf));
+		}
+		
+		public byte[] HttpGetBinary(string url, bool bCacheAllowed)
 		{
 			byte[] retVal = null;
 			if (bCacheAllowed && GetCachedResults(url, out retVal))
 			{
 				return retVal;
 			}
-			HttpResponseMessage response = HttpGet_Internal(url);
+			HttpResponseMessage response = HttpGet_Internal(url, true);
 			if (!response.IsSuccessStatusCode)
 			{
 				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
 				return null;
 			}
-			retVal = response.Content.ReadAsByteArrayAsync().Result;
+
+			try
+			{
+				retVal = ReadBinaryBodyWithStallTimeout(response, 30);
+			}
+			catch (Exception ex)
+			{
+				Log.Exception(ex);
+				return null;
+			}
 			CacheQueryResults(url, retVal);
 			return retVal;
 		}
-		protected string HttpGet(string url, bool bCacheAllowed)
+		public string HttpGet(string url, bool bCacheAllowed, bool logPerf)
 		{
 			string retVal = null;
 			if (bCacheAllowed && GetCachedResults(url, out retVal))
 			{
 				return retVal;
 			}
-			HttpResponseMessage response = HttpGet_Internal(url);
+			HttpResponseMessage response = HttpGet_Internal(url, logPerf);
 			if (!response.IsSuccessStatusCode)
 			{
 				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
 				return null;
 			}
-			retVal = response.Content.ReadAsStringAsync().Result;
+
+			try
+			{
+				retVal = ReadStringBodyWithStallTimeout(response, 30);
+			}
+			catch (Exception ex)
+			{
+				Log.Exception(ex);
+				return null;
+			}
 			CacheQueryResults(url, retVal);
 			return retVal;
 		}
 
-		private HttpResponseMessage HttpGet_Internal(string url)
+		private HttpResponseMessage HttpGet_Internal(string url, bool logPerf)
 		{
 			HttpClient client;
 			lock (m_httpClientLock)
@@ -265,9 +439,20 @@ namespace Thump.Pulse
 				return new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed);
 			}
 
+			int requestId = Interlocked.Increment(ref s_requestCounter);
+			Stopwatch stopwatch = Stopwatch.StartNew();
+			Log.Perf("#" + requestId + " start GET " + url);
 			try
 			{
-				return client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)).Result;
+				//apply timeout to the header read only
+				Task<HttpResponseMessage> fetch = client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url), HttpCompletionOption.ResponseHeadersRead);
+				HttpResponseMessage response = fetch.Result;
+				stopwatch.Stop();
+				if (logPerf)
+				{ 
+					Log.Perf("#" + requestId + " done GET " + stopwatch.ElapsedMilliseconds + "ms status=" + (int)response.StatusCode + " " + url);
+				}
+				return response;
 			}
 			catch (Exception ex)
 			{
@@ -275,9 +460,112 @@ namespace Thump.Pulse
 				// AggregateException out of .Result. Left unhandled it unwinds
 				// to the thread root and crashes the app to desktop. Mark offline
 				// and return an error response so callers see a clean failure.
+				stopwatch.Stop();
+				if (logPerf)
+				{
+					Log.Perf("#" + requestId + " fail GET " + stopwatch.ElapsedMilliseconds + "ms " + url);
+				}
 				Log.Exception(ex);
-				m_bIsOnline = false;
 				return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
+			}
+		}
+
+		private byte[] ReadBinaryBodyWithStallTimeout(HttpResponseMessage response, int stallSeconds)
+		{
+			TimeSpan stallWindow = TimeSpan.FromSeconds(stallSeconds);
+			using CancellationTokenSource cts = new CancellationTokenSource(stallWindow);
+			using Stream stream = response.Content.ReadAsStreamAsync().Result;
+			using MemoryStream buffer = new MemoryStream();
+
+			byte[] chunk = new byte[64 * 1024];
+			while (true)
+			{
+				int read = stream.ReadAsync(chunk, 0, chunk.Length, cts.Token).Result;
+				if (read <= 0)
+				{
+					break;
+				}
+				buffer.Write(chunk, 0, read);
+
+				// re-arm: the token now only trips if the NEXT read makes
+				// zero progress within stallWindow. Any byte received resets it.
+				cts.CancelAfter(stallWindow);
+			}
+			return buffer.ToArray();
+		}
+
+		private string ReadStringBodyWithStallTimeout(HttpResponseMessage response, int stallSeconds)
+		{
+			TimeSpan stallWindow = TimeSpan.FromSeconds(stallSeconds);
+			using CancellationTokenSource cts = new CancellationTokenSource(stallWindow);
+			using Stream stream = response.Content.ReadAsStreamAsync().Result;
+			using MemoryStream buffer = new MemoryStream();
+
+			byte[] chunk = new byte[64 * 1024];
+			while (true)
+			{
+				int read = stream.ReadAsync(chunk, 0, chunk.Length, cts.Token).Result;
+				if (read <= 0)
+				{
+					break;
+				}
+				buffer.Write(chunk, 0, read);
+				cts.CancelAfter(stallWindow);
+			}
+
+			Encoding encoding = ResolveEncoding(response);
+			return encoding.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+		}
+
+		private Encoding ResolveEncoding(HttpResponseMessage response)
+		{
+			string charset = null;
+			if (response.Content != null && response.Content.Headers.ContentType != null)
+			{
+				charset = response.Content.Headers.ContentType.CharSet;
+			}
+			if (string.IsNullOrEmpty(charset))
+			{
+				return Encoding.UTF8;
+			}
+
+			// Some servers quote the charset value: charset="utf-8"
+			charset = charset.Trim('"', '\'', ' ');
+			try
+			{
+				return Encoding.GetEncoding(charset);
+			}
+			catch (ArgumentException)
+			{
+				return Encoding.UTF8;
+			}
+		}
+
+		/// <summary>
+		/// used for direct streaming audio
+		/// </summary>
+		/// <param name="url"></param>
+		/// <param name="position"></param>
+		/// <returns></returns>
+		public HttpResponseMessage HttpGetStream(string url, long position)
+		{
+			HttpClient client;
+			lock (m_httpClientLock) { client = m_httpClient; }
+			if (client == null) { return null; }
+
+			HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url);
+			if (position > 0)
+			{
+				request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(position, null);
+			}
+			try
+			{
+				return client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).Result;
+			}
+			catch (Exception ex)
+			{
+				Log.Exception(ex);
+				return null;
 			}
 		}
 
@@ -287,9 +575,9 @@ namespace Thump.Pulse
 		// HttpGet's offline handling: a dropped/refused connection marks the
 		// client offline and returns null rather than unwinding to the thread
 		// root. Returns the response body on success, null on failure.
-		protected string HttpPostJson(string url, string json)
+		protected string HttpPostJson(string url, string json, bool logPerf)
 		{
-			HttpResponseMessage response = HttpPostJson_Internal(url, json);
+			HttpResponseMessage response = HttpPostJson_Internal(url, json, logPerf);
 			if (!response.IsSuccessStatusCode)
 			{
 				Log.Error("HTTP POST failed: " + url + " status: " + response.StatusCode);
@@ -298,7 +586,7 @@ namespace Thump.Pulse
 			return response.Content.ReadAsStringAsync().Result;
 		}
 
-		private HttpResponseMessage HttpPostJson_Internal(string url, string json)
+		private HttpResponseMessage HttpPostJson_Internal(string url, string json, bool logPerf)
 		{
 			HttpClient client;
 			lock (m_httpClientLock)
@@ -310,16 +598,32 @@ namespace Thump.Pulse
 				return new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed);
 			}
 
+			int requestId = Interlocked.Increment(ref s_requestCounter);
+			Stopwatch stopwatch = Stopwatch.StartNew();
+			if (logPerf)
+			{
+				Log.Perf("#" + requestId + " start POST " + url);
+			}
 			try
 			{
 				HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url);
 				request.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-				return client.SendAsync(request).Result;
+				HttpResponseMessage response = client.SendAsync(request).Result;
+				stopwatch.Stop();
+				if (logPerf)
+				{
+					Log.Perf("#" + requestId + " done POST " + stopwatch.ElapsedMilliseconds + "ms status=" + (int)response.StatusCode + " " + url);
+				}
+				return response;
 			}
 			catch (Exception ex)
 			{
+				stopwatch.Stop();
+				if (logPerf)
+				{
+					Log.Perf("#" + requestId + " fail POST " + stopwatch.ElapsedMilliseconds + "ms " + url);
+				}
 				Log.Exception(ex);
-				m_bIsOnline = false;
 				return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
 			}
 		}

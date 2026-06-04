@@ -1,7 +1,9 @@
-using System;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.DataSource;
-using Thump.Data;
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Threading;
 using Thump.Pulse;
 
 
@@ -100,6 +102,18 @@ namespace Thump.Playback.AndroidOS
 		private Android.Net.Uri m_uri;
 		private int m_readPosition;
 		private int m_bytesRemaining;
+		private string m_trackId;
+		private string m_url;
+		private Stream m_readStream;
+		private HttpResponseMessage m_response;
+		/// <summary>
+		/// um.. starting queue?
+		/// </summary>
+		private bool m_teeing = false;
+		private MemoryStream m_memorySource;
+		private MemoryStream m_teeBuffer;
+		private int m_teeExpectedLength;
+		private TimeSpan m_stallWindow;
 
 		public AndroidMediaDataSource(MediaClient data) : base(false)
 		{
@@ -109,61 +123,133 @@ namespace Thump.Playback.AndroidOS
 		/// <inheritdoc/>
 		public override long Open(DataSpec dataSpec)
 		{
-			TransferInitializing(dataSpec);
+			m_trackId = ExtractTrackId(dataSpec.Uri);
 			m_uri = dataSpec.Uri;
-			string trackId = m_uri.Host;
-			if (string.IsNullOrEmpty(trackId))
+			m_url = m_data.GetTrackAudioURL(m_trackId);
+			int position = (int)dataSpec.Position;
+			TransferInitializing(dataSpec);
+
+			// 1. full blob already cached -> serve from memory, no network
+			byte[] cached;
+			if (m_data.GetCachedResults(m_url, out cached) && cached != null)
 			{
-				trackId = m_uri.LastPathSegment;
+				m_memorySource = new MemoryStream(cached, false);
+				if (position > 0)
+				{
+					m_memorySource.Seek(position, SeekOrigin.Begin);
+				}
+				m_readStream = m_memorySource;
+				m_bytesRemaining = cached.Length - position;
+				m_teeing = false;
+				TransferStarted(dataSpec);
+				return m_bytesRemaining;
 			}
 
-			//Grab the bytes for the requested track
-			m_bytes = m_data.GetTrackAudioFromCache(trackId);
-
-			if (m_bytes == null)
+			// 2. network stream
+			m_response = m_data.HttpGetStream(m_url, position);
+			if (m_response == null || !m_response.IsSuccessStatusCode)
 			{
-				m_bytes = m_data.ForceFetchTrackAudio(trackId);
+				throw new IOException("stream open failed: " + m_trackId);
+			}
+			if (position > 0 && m_response.StatusCode != System.Net.HttpStatusCode.PartialContent)
+			{
+				// server ignored Range -> bytes start at 0, seeking would corrupt
+				throw new IOException("server lacks range support: " + m_trackId);
+			}
+			m_readStream = m_response.Content.ReadAsStreamAsync().Result;
+
+			long contentLength = -1;
+			if (m_response.Content.Headers.ContentLength.HasValue)
+			{
+				contentLength = m_response.Content.Headers.ContentLength.Value;
+			}
+			m_bytesRemaining = (int)contentLength;
+
+			// tee only on a clean sequential start with known length
+			if (position == 0 && contentLength > 0)
+			{
+				m_teeBuffer = new MemoryStream((int)contentLength);
+				m_teeExpectedLength = (int)contentLength;
+				m_teeing = true;
+			}
+			else
+			{
+				m_teeing = false;
 			}
 
-			if (m_bytes == null)
-			{
-				throw new Java.IO.IOException("No audio data for " + m_uri);
-			}
-
-			int audioStart = GetAudioStartOffset(m_bytes);
-
-			m_readPosition = audioStart + (int)dataSpec.Position;
-			m_bytesRemaining = m_bytes.Length - m_readPosition;
-			if (dataSpec.Length != C.LengthUnset)
-			{
-				m_bytesRemaining = (int)System.Math.Min(m_bytesRemaining, dataSpec.Length);
-			}
-			if (m_bytesRemaining < 0)
-			{
-				m_bytesRemaining = 0;
-			}
-
+			m_stallWindow = TimeSpan.FromSeconds(30);
 			TransferStarted(dataSpec);
 			return m_bytesRemaining;
 		}
 
-		/// <inheritdoc/>
-		public override int Read(byte[] buffer, int offset, int length)
+		private string ExtractTrackId(Android.Net.Uri uri)
 		{
-			if (length == 0)
+			if (uri == null)
+			{
+				return null;
+			}
+			// MediaItemBuilder.GetURI builds "thump://<trackId>", so the id is the authority.
+			string id = uri.Authority;
+			if (string.IsNullOrEmpty(id))
+			{
+				// fallback: strip the scheme prefix directly in case the id contained
+				// characters Uri parsed into path/query rather than authority
+				string full = uri.ToString();
+				const string scheme = "thump://";
+				if (full.StartsWith(scheme))
+				{
+					id = full.Substring(scheme.Length);
+				}
+			}
+			return id;
+		}
+
+		/// <inheritdoc/>
+		public override int Read(byte[] buffer, int offset, int readLength)
+		{
+			if (readLength == 0)
 			{
 				return 0;
 			}
-			if (m_bytesRemaining <= 0)
+			if (m_bytesRemaining == 0)
 			{
 				return C.ResultEndOfInput;
 			}
-			int toRead = System.Math.Min(length, m_bytesRemaining);
-			System.Array.Copy(m_bytes, m_readPosition, buffer, offset, toRead);
-			m_readPosition = m_readPosition + toRead;
-			m_bytesRemaining = m_bytesRemaining - toRead;
-			BytesTransferred(toRead);
-			return toRead;
+
+			int toRead = readLength;
+			if (m_bytesRemaining > 0 && toRead > m_bytesRemaining)
+			{
+				toRead = (int)m_bytesRemaining;
+			}
+
+			int read;
+			if (m_memorySource != null)
+			{
+				read = m_memorySource.Read(buffer, offset, toRead);
+			}
+			else
+			{
+				// network read needs its own stall guard; HttpClient.Timeout no
+				// longer applies once we're past headers, and Exo's loader thread
+				// blocks here indefinitely on a dead tunnel otherwise.
+				using CancellationTokenSource cts = new CancellationTokenSource(m_stallWindow);
+				read = m_readStream.ReadAsync(buffer, offset, toRead, cts.Token).Result;
+			}
+
+			if (read <= 0)
+			{
+				return C.ResultEndOfInput;
+			}
+			if (m_teeing)
+			{
+				m_teeBuffer.Write(buffer, offset, read);
+			}
+			if (m_bytesRemaining > 0)
+			{
+				m_bytesRemaining -= read;
+			}
+			BytesTransferred(read);
+			return read;
 		}
 
 		/// <inheritdoc/>
@@ -175,14 +261,43 @@ namespace Thump.Playback.AndroidOS
 		/// <inheritdoc/>
 		public override void Close()
 		{
-			if (m_uri != null)
+			bool commit = m_teeing && m_teeBuffer != null && m_teeBuffer.Length == m_teeExpectedLength;
+			if (commit)
 			{
-				TransferEnded();
+				m_data.CacheQueryResults(m_url, m_teeBuffer.ToArray());
 			}
-			m_uri = null;
-			m_bytes = null;
+			else if (m_memorySource != null) //null when we're streaming live
+			{
+				//fire off a cache request for this track and just let it run on it's own
+				m_data.CacheTrackAudio(m_trackId, null);
+			}
+			m_teeing = false;
+			if (m_teeBuffer != null)
+			{
+				m_teeBuffer.Dispose();
+				m_teeBuffer = null;
+			}
+			if (m_readStream != null)
+			{
+				try
+				{
+					m_readStream.Dispose();
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+				}
+				m_readStream = null;
+			}
+			m_memorySource = null;
+			if (m_response != null)
+			{
+				m_response.Dispose();
+				m_response = null;
+			}
+			TransferEnded();
 		}
 	}
 
-	
+
 }

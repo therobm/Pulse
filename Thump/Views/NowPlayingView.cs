@@ -26,6 +26,8 @@ namespace Thump.Views
 		private Button m_repeatButton;
 		private CollectionView m_queueList;
 		private Button m_favoriteButton;
+		/// <summary>Action-row button that opens the sleep timer action sheet and shows the live countdown when a timer is active.</summary>
+		private Button m_sleepTimerButton;
 		private PulseTrack m_currentSong;
 		private bool m_showingQueue;
 		private bool m_userSeeking;
@@ -291,6 +293,16 @@ namespace Thump.Views
 			queueButton.Clicked += OnQueueClicked;
 			actionsStack.Children.Add(queueButton);
 
+			m_sleepTimerButton = new Button();
+			m_sleepTimerButton.Text = "⏲  Sleep";
+			m_sleepTimerButton.TextColor = ThumpColors.TextSecondary;
+			m_sleepTimerButton.BackgroundColor = Colors.Transparent;
+			m_sleepTimerButton.FontSize = 16;
+			m_sleepTimerButton.HeightRequest = 48;
+			m_sleepTimerButton.Padding = new Thickness(16, 8);
+			m_sleepTimerButton.Clicked += OnSleepTimerClicked;
+			actionsStack.Children.Add(m_sleepTimerButton);
+
 			return actionsStack;
 		}
 
@@ -301,6 +313,7 @@ namespace Thump.Views
 			SetTrack(song);
 			SetShuffleState(m_mainView.GetShuffleEnabled());
 			SetRepeatState(m_mainView.GetRepeatMode());
+			SetSleepTimerDisplay(m_mainView.GetSleepTimerActive(), m_mainView.GetSleepTimerRemainingSeconds());
 		}
 
 		public void SetTrack(PulseTrack song)
@@ -464,7 +477,7 @@ namespace Thump.Views
 			PulseTrack song = m_currentSong;
 			if (song.Starred)
 			{
-				MainView.MediaClient.Star(song.Id, (success) =>
+				MainView.MediaClient.Favorite(song.Id, (success) =>
 				{
 					if (success)
 					{
@@ -475,7 +488,7 @@ namespace Thump.Views
 			}
 			else
 			{
-				MainView.MediaClient.Unstar(song.Id, (success) =>
+				MainView.MediaClient.Unfavorite(song.Id, (success) =>
 				{
 					if (success)
 					{
@@ -551,6 +564,90 @@ namespace Thump.Views
 			{
 				m_repeatButton.Text = "↻";
 				m_repeatButton.TextColor = ThumpColors.TextSecondary;
+			}
+		}
+
+		/// <summary>Prompt the user with the sleep-timer presets and route the selection to MainView. Adds an "Off" destructive option only when a timer is currently active.</summary>
+		private async void OnSleepTimerClicked(object sender, EventArgs e)
+		{
+			string presetTenMinutes = "10 minutes";
+			string presetFifteenMinutes = "15 minutes";
+			string presetThirtyMinutes = "30 minutes";
+			string presetFortyFiveMinutes = "45 minutes";
+			string presetOneHour = "1 hour";
+			string presetTwoHours = "2 hours";
+			string off = "Off";
+			string choice;
+			bool active = m_mainView.GetSleepTimerActive();
+			if (active)
+			{
+				choice = await m_mainView.DisplayActionSheet("Sleep timer", "Cancel", off, presetTenMinutes, presetFifteenMinutes, presetThirtyMinutes, presetFortyFiveMinutes, presetOneHour, presetTwoHours);
+			}
+			else
+			{
+				choice = await m_mainView.DisplayActionSheet("Sleep timer", "Cancel", null, presetTenMinutes, presetFifteenMinutes, presetThirtyMinutes, presetFortyFiveMinutes, presetOneHour, presetTwoHours);
+			}
+			if (choice == null)
+			{
+				return;
+			}
+			if (choice == "Cancel")
+			{
+				return;
+			}
+			if (choice == off)
+			{
+				m_mainView.OnCancelSleepTimer();
+				return;
+			}
+			int minutes;
+			if (choice == presetTenMinutes)
+			{
+				minutes = 10;
+			}
+			else if (choice == presetFifteenMinutes)
+			{
+				minutes = 15;
+			}
+			else if (choice == presetThirtyMinutes)
+			{
+				minutes = 30;
+			}
+			else if (choice == presetFortyFiveMinutes)
+			{
+				minutes = 45;
+			}
+			else if (choice == presetOneHour)
+			{
+				minutes = 60;
+			}
+			else if (choice == presetTwoHours)
+			{
+				minutes = 120;
+			}
+			else
+			{
+				return;
+			}
+			m_mainView.OnSetSleepTimer(minutes);
+		}
+
+		/// <summary>Update the sleep-timer action button. When active, shows a clock glyph plus remaining time in accent color; when inactive, shows the default "Sleep" label in the secondary color.</summary>
+		public void SetSleepTimerDisplay(bool active, int remainingSeconds)
+		{
+			if (m_sleepTimerButton == null)
+			{
+				return;
+			}
+			if (active)
+			{
+				m_sleepTimerButton.Text = "⏲  " + FormatDuration(remainingSeconds);
+				m_sleepTimerButton.TextColor = ThumpColors.Accent;
+			}
+			else
+			{
+				m_sleepTimerButton.Text = "⏲  Sleep";
+				m_sleepTimerButton.TextColor = ThumpColors.TextSecondary;
 			}
 		}
 

@@ -25,6 +25,11 @@ namespace Thump
 			Write("ERROR", message);
 		}
 
+		public static void Perf(string message)
+		{
+			Write("PERF", message, false);
+		}
+
 		public static void Exception(Exception ex)
 		{
 			Write("EXCEPTION", ex.ToString());
@@ -38,26 +43,30 @@ namespace Thump
 			}
 		}
 
-		private static void Write(string level, string message)
+
+		private static void Write(string level, string message, bool saveToDisk = true)
 		{
-			string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " [" + level + "] " + message;
+			string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " [" + level + "] " + message;
 			Debug.WriteLine(line);
 
-			lock (s_fileLock)
+			if (saveToDisk) 
 			{
-				try
+				lock (s_fileLock)
 				{
-					string path = ResolveLogFilePath();
-					bool oversized = File.Exists(path) && new FileInfo(path).Length > 2_000_000;
-					if (oversized)
+					try
 					{
-						File.WriteAllText(path, "");
+						string path = ResolveLogFilePath();
+						bool oversized = File.Exists(path) && new FileInfo(path).Length > 2_000_000;
+						if (oversized)
+						{
+							File.WriteAllText(path, "");
+						}
+						File.AppendAllText(path, line + Environment.NewLine);
 					}
-					File.AppendAllText(path, line + Environment.NewLine);
-				}
-				catch (Exception ex)
-				{
-					Debug.WriteLine("[EXCEPTION] Log file write failed: " + ex);
+					catch (Exception ex)
+					{
+						Debug.WriteLine("[EXCEPTION] Log file write failed: " + ex);
+					}
 				}
 			}
 		}
