@@ -109,11 +109,12 @@ namespace Thump.Playback.AndroidOS
 		/// <summary>
 		/// um.. starting queue?
 		/// </summary>
-		private bool m_teeing = false;
+		private bool m_pendingCache = false;
 		private MemoryStream m_memorySource;
-		private MemoryStream m_teeBuffer;
-		private int m_teeExpectedLength;
+		private MemoryStream m_cacheBuffer;
+		private int m_expectedCacheLength;
 		private TimeSpan m_stallWindow;
+		private bool m_streamFinalized;
 
 		public AndroidMediaDataSource(MediaClient data) : base(false)
 		{
@@ -140,10 +141,13 @@ namespace Thump.Playback.AndroidOS
 				}
 				m_readStream = m_memorySource;
 				m_bytesRemaining = cached.Length - position;
-				m_teeing = false;
+				m_pendingCache = false;
 				TransferStarted(dataSpec);
 				return m_bytesRemaining;
 			}
+
+			m_data.SetStreamingStatus(true);
+			m_streamFinalized = false;
 
 			// 2. network stream
 			m_response = m_data.HttpGetStream(m_url, position);
@@ -168,13 +172,13 @@ namespace Thump.Playback.AndroidOS
 			// tee only on a clean sequential start with known length
 			if (position == 0 && contentLength > 0)
 			{
-				m_teeBuffer = new MemoryStream((int)contentLength);
-				m_teeExpectedLength = (int)contentLength;
-				m_teeing = true;
+				m_cacheBuffer = new MemoryStream((int)contentLength);
+				m_expectedCacheLength = (int)contentLength;
+				m_pendingCache = true;
 			}
 			else
 			{
-				m_teeing = false;
+				m_pendingCache = false;
 			}
 
 			m_stallWindow = TimeSpan.FromSeconds(30);
@@ -238,11 +242,16 @@ namespace Thump.Playback.AndroidOS
 
 			if (read <= 0)
 			{
+				bool wasStreaming = (m_memorySource == null);
+				if (wasStreaming)
+				{
+					FinalizeStream();
+				}
 				return C.ResultEndOfInput;
 			}
-			if (m_teeing)
+			if (m_pendingCache)
 			{
-				m_teeBuffer.Write(buffer, offset, read);
+				m_cacheBuffer.Write(buffer, offset, read);
 			}
 			if (m_bytesRemaining > 0)
 			{
@@ -250,6 +259,25 @@ namespace Thump.Playback.AndroidOS
 			}
 			BytesTransferred(read);
 			return read;
+		}
+
+		private void FinalizeStream()
+		{
+			if (m_streamFinalized)
+			{
+				return;
+			}
+			m_streamFinalized = true;
+
+			bool commit = m_pendingCache && m_cacheBuffer != null && m_cacheBuffer.Length == m_expectedCacheLength;
+			if (commit)
+			{
+				m_data.CacheQueryResults(m_url, m_cacheBuffer.ToArray());
+			}
+
+			// release the pipe so prefetch can resume. always fires for a live stream,
+			// whether it finished cleanly, stalled out, or got closed early.
+			m_data.SetStreamingStatus(false);
 		}
 
 		/// <inheritdoc/>
@@ -261,21 +289,18 @@ namespace Thump.Playback.AndroidOS
 		/// <inheritdoc/>
 		public override void Close()
 		{
-			bool commit = m_teeing && m_teeBuffer != null && m_teeBuffer.Length == m_teeExpectedLength;
-			if (commit)
+			bool wasStreaming = (m_memorySource == null);
+
+			if (wasStreaming)
 			{
-				m_data.CacheQueryResults(m_url, m_teeBuffer.ToArray());
+				FinalizeStream();   // commits if complete, releases pipe; no-op if EOF already did
 			}
-			else if (m_memorySource != null) //null when we're streaming live
+
+			m_pendingCache = false;
+			if (m_cacheBuffer != null)
 			{
-				//fire off a cache request for this track and just let it run on it's own
-				m_data.CacheTrackAudio(m_trackId, null);
-			}
-			m_teeing = false;
-			if (m_teeBuffer != null)
-			{
-				m_teeBuffer.Dispose();
-				m_teeBuffer = null;
+				m_cacheBuffer.Dispose();
+				m_cacheBuffer = null;
 			}
 			if (m_readStream != null)
 			{
@@ -295,6 +320,8 @@ namespace Thump.Playback.AndroidOS
 				m_response.Dispose();
 				m_response = null;
 			}
+
+
 			TransferEnded();
 		}
 	}

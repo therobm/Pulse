@@ -239,6 +239,30 @@ namespace Thump.Data
 			return data;
 		}
 
+		/// <summary>True when an entry for the given URL exists in the cache. Existence-only — does not read the blob back, so it is safe to call on large audio entries.</summary>
+		public bool HasCachedResults(string url)
+		{
+			if (string.IsNullOrEmpty(url))
+			{
+				return false;
+			}
+			bool exists = false;
+			ExecuteSync(() =>
+			{
+				using (SqliteCommand cmd = m_connection.CreateCommand())
+				{
+					cmd.CommandText = "SELECT 1 FROM http_cache WHERE url = $u LIMIT 1";
+					cmd.Parameters.AddWithValue("$u", url);
+					object result = cmd.ExecuteScalar();
+					if (result != null && result != DBNull.Value)
+					{
+						exists = true;
+					}
+				}
+			});
+			return exists;
+		}
+
 		public ThumpCacheStats GetCacheStats()
 		{
 			ThumpCacheStats stats = new ThumpCacheStats();
