@@ -134,7 +134,16 @@ namespace Pulse.Data
 				stats.TotalFileSizeBytes += track.FileSizeBytes;
 				stats.TotalDurationSeconds += track.DurationSeconds;
 
-				if (track.Starred.Count > 0)
+				bool anyStarred = false;
+				foreach (bool isStarred in track.Starred.Values)
+				{
+					if (isStarred)
+					{
+						anyStarred = true;
+						break;
+					}
+				}
+				if (anyStarred)
 				{
 					stats.StarredTracks++;
 				}

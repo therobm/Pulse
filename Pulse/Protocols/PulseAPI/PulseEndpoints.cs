@@ -398,6 +398,10 @@ namespace Pulse.Protocols.PulseAPI
 			string typeRaw = context.Request.Query["type"].FirstOrDefault();
 			int size = QueryParameters.GetInt(context, "size", 20);
 			int offset = QueryParameters.GetInt(context, "offset", 0);
+			if (offset < 0)
+			{
+				offset = 0;
+			}
 			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
 
 			string type = "random";
@@ -669,6 +673,10 @@ namespace Pulse.Protocols.PulseAPI
 			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
 			int count = QueryParameters.GetInt(context, "count", 10);
 			int offset = QueryParameters.GetInt(context, "offset", 0);
+			if (offset < 0)
+			{
+				offset = 0;
+			}
 
 			if (string.IsNullOrEmpty(genre))
 			{
