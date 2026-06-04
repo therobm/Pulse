@@ -59,14 +59,7 @@ namespace Thump.Playback.AndroidOS
 					return null;
 				}
 
-				byte[] result = null;
-				ManualResetEventSlim done = new ManualResetEventSlim(false);
-				data.GetCoverArt(artId, (bytes) =>
-				{
-					result = bytes;
-					done.Set();
-				});
-				done.Wait(8000);
+				byte[] result = data.GetCachedCoverArt(artId);
 
 				if (result == null || result.Length == 0)
 				{

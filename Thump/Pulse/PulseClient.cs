@@ -586,6 +586,7 @@ namespace Thump.Pulse
 			});
 		}
 
+
 		public override void GetCoverArt(string coverArtId, Action<byte[]> onComplete)
 		{
 			if (string.IsNullOrEmpty(coverArtId))
@@ -626,7 +627,20 @@ namespace Thump.Pulse
 				}
 			}, true);
 		}
-
+		public override byte[] GetCachedCoverArt(string coverArtId)
+		{
+			if (string.IsNullOrEmpty(coverArtId))
+			{
+				return null;
+			}
+			string url = BuildCoverArtUrl(coverArtId);
+			byte[] cached;
+			if (m_imageCache.TryGetValue(url, out cached))
+			{
+				return cached;
+			}
+			return null;
+		}
 		public override void GetTrackAudio(string trackId, Action<byte[]> onComplete)
 		{
 			if (!IsOnline() || string.IsNullOrEmpty(trackId))

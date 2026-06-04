@@ -89,7 +89,7 @@ namespace Thump.Pulse
 				if (isStreaming)
 				{ 
 					m_audioData.Suspend();
-					m_imageData.Resume();
+					m_imageData.Suspend();
 				}
 				else
 				{
@@ -246,6 +246,7 @@ namespace Thump.Pulse
 		public abstract void GetPlaylists(Action<List<PulsePlaylist>> onComplete);
 		public abstract void GetPlaylist(string playlistId, Action<PulsePlaylistDetails> onComplete);
 		public abstract void GetCoverArt(string coverArtId, Action<byte[]> onComplete);
+		public abstract byte[] GetCachedCoverArt(string coverArtId);
 		public abstract void GetTrackAudio(string trackId, Action<byte[]> onComplete);
 		public void CacheTrackAudio(string trackId, Action<bool> onComplete)
 		{

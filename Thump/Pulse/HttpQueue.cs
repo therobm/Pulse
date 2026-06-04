@@ -42,7 +42,7 @@ namespace Thump.Pulse
 		private volatile bool m_suspended;
 		private CancellationTokenSource m_cancellationToken = new CancellationTokenSource();
 		private object m_cancellationLock = new object();
-
+		private SemaphoreSlim m_signal = new SemaphoreSlim(0);
 		private HttpReq m_inFlight;
 
 		public HttpQueue(MediaClient mediaClient, int maxRequests)
@@ -85,11 +85,16 @@ namespace Thump.Pulse
 		{
 			while (true)
 			{
-				Thread.Sleep(1);
+				m_signal.Wait();
 				if (m_suspended)
 				{
+					m_signal.Release();
+					Thread.Sleep(50);
 					continue;
 				}
+
+				if (!m_mediaClient.IsOnline())
+					continue;
 
 				for (int i = 0; i < m_maxRequests; i++)
 				{
@@ -152,6 +157,7 @@ namespace Thump.Pulse
 			{
 				m_requests.Enqueue(req);
 			}
+			m_signal.Release();
 		}
 	}
 }

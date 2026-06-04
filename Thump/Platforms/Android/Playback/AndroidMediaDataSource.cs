@@ -18,25 +18,20 @@ namespace Thump.Playback.AndroidOS
 	/// </summary>
 	public class AndroidMediaDataSourceFactory : Java.Lang.Object, IDataSourceFactory
 	{
-		/// <summary>The byte resolver every created data source receives. Set this once before handing the factory to Media3.</summary>
-		public Func<Android.Net.Uri, byte[]> m_onResolveBytes;
-
-		/// <summary>
-		/// The android process needs access to our data pipeline to fetch
-		/// info and track data
-		/// </summary>
 		private MediaClient m_data;
+		private string m_cacheDir;
 
-		public AndroidMediaDataSourceFactory(MediaClient data)
+		public AndroidMediaDataSourceFactory(MediaClient data, string cacheDir)
 		{
 			m_data = data;
+			m_cacheDir = cacheDir;
 		}
 
 		public IDataSource CreateDataSource()
 		{
-			AndroidMediaDataSource source = new AndroidMediaDataSource(m_data);
-			source.m_onResolveBytes = m_onResolveBytes;
-			return source;
+			var inner = new DefaultDataSource.Factory(Android.App.Application.Context);// new FileDataSource.Factory();
+			var resolver = new TrackResolver(m_data, m_cacheDir);
+			return new ResolvingDataSource(inner.CreateDataSource(), resolver);
 		}
 	}
 
@@ -63,30 +58,21 @@ namespace Thump.Playback.AndroidOS
 		/// <returns></returns>
 		private static int GetAudioStartOffset(byte[] bytes)
 		{
-			// Skip a leading ID3v2 tag so the stream starts at the first audio frame.
-			if (bytes.Length < 10)
+			int offset = 0;
+
+			// ID3v2 tag: skip it (synchsafe size covers APIC art + everything)
+			if (bytes.Length >= 10 && bytes[0] == 0x49 && bytes[1] == 0x44 && bytes[2] == 0x33)
 			{
-				return 0;
+				int flags = bytes[5];
+				int size = ((bytes[6] & 0x7F) << 21)
+						 | ((bytes[7] & 0x7F) << 14)
+						 | ((bytes[8] & 0x7F) << 7)
+						 | (bytes[9] & 0x7F);
+				offset = 10 + size;
+				if ((flags & 0x10) != 0) { offset += 10; }   // footer
 			}
-			if (bytes[0] != 0x49 || bytes[1] != 0x44 || bytes[2] != 0x33)   // "ID3"
-			{
-				return 0;
-			}
-			int flags = bytes[5];
-			int size = ((bytes[6] & 0x7F) << 21)
-					 | ((bytes[7] & 0x7F) << 14)
-					 | ((bytes[8] & 0x7F) << 7)
-					 | (bytes[9] & 0x7F);          // synchsafe int
-			int offset = 10 + size;
-			if ((flags & 0x10) != 0)                 // footer present
-			{
-				offset = offset + 10;
-			}
-			if (offset < 10 || offset > bytes.Length)
-			{
-				return 0;
-			}
-			return offset;
+
+			return offset;   // tag-end
 		}
 
 		/// <summary>
@@ -124,6 +110,7 @@ namespace Thump.Playback.AndroidOS
 		/// <inheritdoc/>
 		public override long Open(DataSpec dataSpec)
 		{
+			Log.Perf("AndroidMediaDataSource::Open-Start");
 			m_trackId = ExtractTrackId(dataSpec.Uri);
 			m_uri = dataSpec.Uri;
 			m_url = m_data.GetTrackAudioURL(m_trackId);
@@ -135,12 +122,14 @@ namespace Thump.Playback.AndroidOS
 			if (m_data.GetCachedResults(m_url, out cached) && cached != null)
 			{
 				m_memorySource = new MemoryStream(cached, false);
-				if (position > 0)
-				{
-					m_memorySource.Seek(position, SeekOrigin.Begin);
-				}
 				m_readStream = m_memorySource;
 				m_bytesRemaining = cached.Length - position;
+				
+				int audioStart = GetAudioStartOffset(cached);
+				int skipTo = audioStart + position;
+				FastForwardStream(skipTo);
+				m_bytesRemaining -= skipTo;
+
 				m_pendingCache = false;
 				TransferStarted(dataSpec);
 				return m_bytesRemaining;
@@ -169,7 +158,7 @@ namespace Thump.Playback.AndroidOS
 			}
 			m_bytesRemaining = (int)contentLength;
 
-			// tee only on a clean sequential start with known length
+			// cache only on a clean sequential start with known length
 			if (position == 0 && contentLength > 0)
 			{
 				m_cacheBuffer = new MemoryStream((int)contentLength);
@@ -181,9 +170,67 @@ namespace Thump.Playback.AndroidOS
 				m_pendingCache = false;
 			}
 
+			if (position == 0)
+			{
+				byte[] header = new byte[10];
+				ReadFull(m_readStream, header, 0, 10);
+				if (m_pendingCache) 
+				{ 
+					m_cacheBuffer.Write(header, 0, 10); 
+				}
+
+				int audioStart = GetAudioStartOffset(header);   // header-only, drop the length guard
+				{
+					FastForwardStream(audioStart - 10);
+					m_bytesRemaining -= audioStart;
+				}
+			}
+
 			m_stallWindow = TimeSpan.FromSeconds(30);
 			TransferStarted(dataSpec);
+
+			Log.Perf("AndroidMediaDataSource::Open-Complete");
 			return m_bytesRemaining;
+		}
+
+
+		private static int ReadFull(Stream stream, byte[] buf, int off, int count)
+		{
+			int total = 0;
+			while (total < count)
+			{
+				int n = stream.Read(buf, off + total, count - total);
+				if (n <= 0) { break; }
+				total += n;
+			}
+			return total;
+		}
+
+		private void FastForwardStream(int count)
+		{
+			if (count <= 0)
+			{
+				return;
+			}
+			byte[] tmp = new byte[Math.Min(count, 8192)];
+			int remaining = count;
+			while (remaining > 0)
+			{
+				int n;
+				try
+				{
+					n = m_readStream.Read(tmp, 0, Math.Min(remaining, tmp.Length));
+				}
+				catch (IOException)
+				{
+					// loader thread interrupted (load cancelled mid-open) — surface as
+					// an IOException from Open so ExoPlayer treats it as a cancelled load
+					throw;
+				}
+				if (n <= 0) { break; }
+				if (m_pendingCache) { m_cacheBuffer.Write(tmp, 0, n); }
+				remaining -= n;
+			}
 		}
 
 		private string ExtractTrackId(Android.Net.Uri uri)
@@ -211,6 +258,7 @@ namespace Thump.Playback.AndroidOS
 		/// <inheritdoc/>
 		public override int Read(byte[] buffer, int offset, int readLength)
 		{
+			Log.Perf("AndroidMediaDataSource::Read-Start offset = " + offset + " readLength=" + readLength);
 			if (readLength == 0)
 			{
 				return 0;
