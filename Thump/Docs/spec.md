@@ -1,6 +1,6 @@
 # Thump
 
-OpenSubsonic music player for Android. Works with any OpenSubsonic server. Optional support for Pulse-specific endpoints when connected to a Pulse server.
+Music player for Android, built to pair with a Pulse server.
 
 ## Server first via passthrough cache
 
@@ -20,11 +20,11 @@ No pin/download feature — the cache fills from normal playback and lookahead.
 
 ## API
 
-### OpenSubsonic (required)
+### Core API (required)
 
-Standard auth and standard endpoint behavior. The full list of endpoints used:
+The full list of endpoints the client calls against the server:
 
-**System:** ping, getLicense, getUser, getOpenSubsonicExtensions, getMusicFolders
+**System:** ping, getLicense, getUser, getMusicFolders
 
 **Browsing:** getArtists, getArtist, getAlbum, getAlbumList2, getGenres, getIndexes, getMusicDirectory, getSong, search3
 
@@ -34,9 +34,9 @@ Standard auth and standard endpoint behavior. The full list of endpoints used:
 
 **Playback:** stream, getCoverArt
 
-### Pulse extensions (optional)
+### Pulse endpoints
 
-Detected automatically on first connect. If the server supports them, the home screen uses them. If not, it falls back to standard OpenSubsonic calls.
+Ranked content used by the home screen carousels.
 
 - `pulse/recentlyPlayed` — recent tracks, newest first
 - `pulse/popularArtists` — artists ranked by listening score
@@ -50,19 +50,11 @@ Bottom bar: Home, Library, Search, Settings.
 
 ### Home screen
 
-Scrollable list of horizontal carousels.
+Scrollable list of horizontal carousels:
 
-**With Pulse:**
 1. Recently Played — `pulse/recentlyPlayed`
 2. Your Playlists — `pulse/topPlaylists`
 3. Popular Artists — `pulse/popularArtists`
-4. Recently Added — `getAlbumList2?type=newest`
-5. Favorites — `getStarred2`
-
-**Without Pulse:**
-1. Recently Played — `getAlbumList2?type=recent`
-2. Playlists — `getPlaylists`
-3. Most Played — `getAlbumList2?type=frequent`
 4. Recently Added — `getAlbumList2?type=newest`
 5. Favorites — `getStarred2`
 
@@ -115,8 +107,8 @@ Browse tree: Home, Playlists, Artists, Albums, Recently Played. Android Auto ren
 
 ## Tech stack
 
-- Kotlin, Jetpack Compose
-- Media3 (ExoPlayer)
+- C# / .NET MAUI (`net10.0-android`), UI built in C# (no XAML)
+- Media3 (ExoPlayer + MediaLibrarySession) for playback
 - Android Auto via MediaLibraryService
-- Min SDK 26 (Android 8.0), target latest stable
+- Min SDK 23 (Android 6.0), target latest stable
 - MIT license, public repo
