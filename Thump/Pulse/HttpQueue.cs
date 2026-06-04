@@ -143,7 +143,7 @@ namespace Thump.Pulse
 			}
 			else
 			{
-				string data = m_mediaClient.HttpGet(req.m_url, req.m_bCacheAllowed, req.m_bLogPerf);
+				string data = m_mediaClient.HttpGet(req.m_url, req.m_bCacheAllowed, req.m_bLogPerf, false);
 				if (req.m_onStringComplete != null)
 				{
 					req.m_onStringComplete(data);

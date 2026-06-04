@@ -107,7 +107,7 @@ namespace Thump.Pulse
 		private bool FetchObjectSync<T>(string url, bool bCacheAllowed, out T value)
 		{
 			value = default(T);
-			string json = HttpGet(url, bCacheAllowed, true);
+			string json = HttpGet(url, bCacheAllowed, true, false);
 			if (string.IsNullOrEmpty(json))
 			{
 				return false;
@@ -138,7 +138,7 @@ namespace Thump.Pulse
 			try
 			{
 				string url = m_baseUrl + "/pulse_v1/ping?u=" + Uri.EscapeDataString(m_user);
-				string json = HttpGet(url, false, false);
+				string json = HttpGet(url, false, false, true);
 				if (string.IsNullOrEmpty(json))
 				{
 					OnPingResult(false);

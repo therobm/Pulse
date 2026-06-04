@@ -26,7 +26,7 @@ namespace Thump.Playback.AndroidOS
 			byte[] raw;
 			if (m_data.GetCachedResults(url, out raw) && raw != null)
 			{
-				string tempPath = Path.Combine(m_cacheDir, trackId + ".tmp");
+				string tempPath = Path.Combine(m_cacheDir, "playing.tmp");
 				using (FileStream fs = new FileStream(tempPath, FileMode.Create))
 				{
 					fs.Write(raw, 0, raw.Length);

@@ -314,7 +314,7 @@ namespace Thump.Pulse
 			{
 				return retVal;
 			}
-			HttpResponseMessage response = HttpGet_Internal(url, true, token);
+			HttpResponseMessage response = HttpGet_Internal(url, true, token, false);
 			if (!response.IsSuccessStatusCode)
 			{
 				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
@@ -333,14 +333,14 @@ namespace Thump.Pulse
 			return retVal;
 		}
 
-		public string HttpGet(string url, bool bCacheAllowed, bool logPerf)
+		public string HttpGet(string url, bool bCacheAllowed, bool logPerf, bool ignoreOnline)
 		{
 			string retVal = null;
 			if (bCacheAllowed && GetCachedResults(url, out retVal))
 			{
 				return retVal;
 			}
-			HttpResponseMessage response = HttpGet_Internal(url, logPerf, CancellationToken.None);
+			HttpResponseMessage response = HttpGet_Internal(url, logPerf, CancellationToken.None, ignoreOnline);
 			if (!response.IsSuccessStatusCode)
 			{
 				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
@@ -361,8 +361,11 @@ namespace Thump.Pulse
 			return retVal;
 		}
 
-		private HttpResponseMessage HttpGet_Internal(string url, bool logPerf, CancellationToken token)
+		private HttpResponseMessage HttpGet_Internal(string url, bool logPerf, CancellationToken token, bool ignoreOnline)
 		{
+			if (!ignoreOnline && !IsOnline())
+				return new HttpResponseMessage(System.Net.HttpStatusCode.GatewayTimeout);
+
 			HttpClient client;
 			lock (m_httpClientLock)
 			{
@@ -485,6 +488,9 @@ namespace Thump.Pulse
 		/// <returns></returns>
 		public HttpResponseMessage HttpGetStream(string url, long position)
 		{
+			if (!IsOnline())
+				return null;
+
 			HttpClient client;
 			lock (m_httpClientLock) { client = m_httpClient; }
 			if (client == null) { return null; }
@@ -524,6 +530,9 @@ namespace Thump.Pulse
 
 		private HttpResponseMessage HttpPostJson_Internal(string url, string json, bool logPerf)
 		{
+
+			if (!IsOnline())
+				return new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway);
 			HttpClient client;
 			lock (m_httpClientLock)
 			{

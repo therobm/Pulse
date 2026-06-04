@@ -455,13 +455,13 @@ namespace Thump.Views
 			{
 				return "Server port must be a number between 1 and 65535.";
 			}
-
+			/*
 			Match match = Regex.Match(ip, @"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}");
 			if (!match.Success)
 			{
 				return "Server IP is not a valid address.";
 			}
-			ip = match.Value;
+			ip = match.Value;*/
 			return "";
 		}
 
