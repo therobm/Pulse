@@ -158,7 +158,7 @@ namespace Thump.Playback.AndroidOS
 
 			m_lastMediaId = startTrack.Id;
 			m_mainView.OnCurrentTrackChanged(startTrack);
-			m_controller.SeekTo(startIndex, 0);
+			m_controller.SeekTo(startItemIndex, 0);
 
 			//kick of cache requests for the rest
 			Task.Delay(5000).ContinueWith((_) => CacheQueued(taskQueueID));
