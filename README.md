@@ -6,7 +6,7 @@ A self-hosted music ecosystem: a server that owns your library, and a client tha
 
 ### Pulse — server
 
-A self-hosted music server built in C#. Scans a local library, serves it over HTTP to its own clients, and layers on playlist sync, scoring, smart playlists, and a tablet web client. Runs as a single executable with no external service dependencies.
+A self-hosted music server built in C#. Scans a local library, serves it over the Pulse API, and layers on playlist sync, scoring, smart playlists, and a tablet web client. Runs as a single executable with no external service dependencies.
 
 See [Pulse/README.md](Pulse/README.md) for features, configuration, and build instructions.
 
