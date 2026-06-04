@@ -94,7 +94,11 @@ namespace Thump.Pulse
 				}
 
 				if (!m_mediaClient.IsOnline())
+				{
+					m_signal.Release();
+					Thread.Sleep(50);
 					continue;
+				}
 
 				for (int i = 0; i < m_maxRequests; i++)
 				{
