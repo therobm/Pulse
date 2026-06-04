@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
@@ -81,7 +82,12 @@ namespace Thump.Playback.AndroidOS
 			DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
 			extractorsFactory.SetMp3ExtractorFlags( Mp3Extractor.FlagEnableConstantBitrateSeeking | Mp3Extractor.FlagDisableId3Metadata);
 
-			AndroidMediaDataSourceFactory dataSourceFactory = new AndroidMediaDataSourceFactory(s_mediaClient);
+			string cacheBaseDir = Android.App.Application.Context.CacheDir.AbsolutePath;
+			string cacheDir = Path.Combine(cacheBaseDir, "tracks");
+			if (!Directory.Exists(cacheDir))	
+				Directory.CreateDirectory(cacheDir);
+
+			AndroidMediaDataSourceFactory dataSourceFactory = new AndroidMediaDataSourceFactory(s_mediaClient, cacheDir);
 			DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory);
 			builder.SetMediaSourceFactory(mediaSourceFactory);
 

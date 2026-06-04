@@ -19,15 +19,19 @@ namespace Thump.Playback.AndroidOS
 	public class AndroidMediaDataSourceFactory : Java.Lang.Object, IDataSourceFactory
 	{
 		private MediaClient m_data;
+		private string m_cacheDir;
 
-		public AndroidMediaDataSourceFactory(MediaClient data)
+		public AndroidMediaDataSourceFactory(MediaClient data, string cacheDir)
 		{
 			m_data = data;
+			m_cacheDir = cacheDir;
 		}
 
 		public IDataSource CreateDataSource()
 		{
-			return new AndroidMediaDataSource(m_data);
+			var inner = new DefaultDataSource.Factory(Android.App.Application.Context);// new FileDataSource.Factory();
+			var resolver = new TrackResolver(m_data, m_cacheDir);
+			return new ResolvingDataSource(inner.CreateDataSource(), resolver);
 		}
 	}
 
@@ -47,6 +51,30 @@ namespace Thump.Playback.AndroidOS
 	/// </summary>
 	public class AndroidMediaDataSource : BaseDataSource
 	{
+		/// <summary>
+		/// A skipahead function to find where audio data actually starts
+		/// </summary>
+		/// <param name="bytes"></param>
+		/// <returns></returns>
+		private static int GetAudioStartOffset(byte[] bytes)
+		{
+			int offset = 0;
+
+			// ID3v2 tag: skip it (synchsafe size covers APIC art + everything)
+			if (bytes.Length >= 10 && bytes[0] == 0x49 && bytes[1] == 0x44 && bytes[2] == 0x33)
+			{
+				int flags = bytes[5];
+				int size = ((bytes[6] & 0x7F) << 21)
+						 | ((bytes[7] & 0x7F) << 14)
+						 | ((bytes[8] & 0x7F) << 7)
+						 | (bytes[9] & 0x7F);
+				offset = 10 + size;
+				if ((flags & 0x10) != 0) { offset += 10; }   // footer
+			}
+
+			return offset;   // tag-end
+		}
+
 		/// <summary>
 		/// Host-supplied resolver. Given the URI Media3 is asking for, the
 		/// host returns the full bytes of the asset, or null if the asset
@@ -89,17 +117,19 @@ namespace Thump.Playback.AndroidOS
 			int position = (int)dataSpec.Position;
 			TransferInitializing(dataSpec);
 
-			// 1. full blob already cached -> serve from memory, no network, no tag skip
+			// 1. full blob already cached -> serve from memory, no network
 			byte[] cached;
 			if (m_data.GetCachedResults(m_url, out cached) && cached != null)
 			{
 				m_memorySource = new MemoryStream(cached, false);
 				m_readStream = m_memorySource;
-				if (position > 0)
-				{
-					m_memorySource.Seek(position, SeekOrigin.Begin);
-				}
 				m_bytesRemaining = cached.Length - position;
+				
+				int audioStart = GetAudioStartOffset(cached);
+				int skipTo = audioStart + position;
+				FastForwardStream(skipTo);
+				m_bytesRemaining -= skipTo;
+
 				m_pendingCache = false;
 				TransferStarted(dataSpec);
 				return m_bytesRemaining;
@@ -108,8 +138,7 @@ namespace Thump.Playback.AndroidOS
 			m_data.SetStreamingStatus(true);
 			m_streamFinalized = false;
 
-			// 2. network stream through our own HttpClient (accepts the server cert).
-			//    Bytes are teed in Read() and committed to cache only on a complete download.
+			// 2. network stream
 			m_response = m_data.HttpGetStream(m_url, position);
 			if (m_response == null || !m_response.IsSuccessStatusCode)
 			{
@@ -117,6 +146,7 @@ namespace Thump.Playback.AndroidOS
 			}
 			if (position > 0 && m_response.StatusCode != System.Net.HttpStatusCode.PartialContent)
 			{
+				// server ignored Range -> bytes start at 0, seeking would corrupt
 				throw new IOException("server lacks range support: " + m_trackId);
 			}
 			m_readStream = m_response.Content.ReadAsStreamAsync().Result;
@@ -140,10 +170,67 @@ namespace Thump.Playback.AndroidOS
 				m_pendingCache = false;
 			}
 
+			if (position == 0)
+			{
+				byte[] header = new byte[10];
+				ReadFull(m_readStream, header, 0, 10);
+				if (m_pendingCache) 
+				{ 
+					m_cacheBuffer.Write(header, 0, 10); 
+				}
+
+				int audioStart = GetAudioStartOffset(header);   // header-only, drop the length guard
+				{
+					FastForwardStream(audioStart - 10);
+					m_bytesRemaining -= audioStart;
+				}
+			}
+
 			m_stallWindow = TimeSpan.FromSeconds(30);
 			TransferStarted(dataSpec);
+
 			Log.Perf("AndroidMediaDataSource::Open-Complete");
 			return m_bytesRemaining;
+		}
+
+
+		private static int ReadFull(Stream stream, byte[] buf, int off, int count)
+		{
+			int total = 0;
+			while (total < count)
+			{
+				int n = stream.Read(buf, off + total, count - total);
+				if (n <= 0) { break; }
+				total += n;
+			}
+			return total;
+		}
+
+		private void FastForwardStream(int count)
+		{
+			if (count <= 0)
+			{
+				return;
+			}
+			byte[] tmp = new byte[Math.Min(count, 8192)];
+			int remaining = count;
+			while (remaining > 0)
+			{
+				int n;
+				try
+				{
+					n = m_readStream.Read(tmp, 0, Math.Min(remaining, tmp.Length));
+				}
+				catch (IOException)
+				{
+					// loader thread interrupted (load cancelled mid-open) — surface as
+					// an IOException from Open so ExoPlayer treats it as a cancelled load
+					throw;
+				}
+				if (n <= 0) { break; }
+				if (m_pendingCache) { m_cacheBuffer.Write(tmp, 0, n); }
+				remaining -= n;
+			}
 		}
 
 		private string ExtractTrackId(Android.Net.Uri uri)
