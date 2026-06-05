@@ -118,7 +118,10 @@ namespace Pulse.Database
 					author TEXT,
 					description TEXT,
 					artwork_path TEXT,
-					date_added TEXT NOT NULL
+					date_added TEXT NOT NULL,
+					narrator TEXT,
+					collection TEXT,
+					collection_index INTEGER NOT NULL DEFAULT 0
 				);
 
 				CREATE TABLE podcast_feeds (
@@ -157,6 +160,18 @@ namespace Pulse.Database
 					last_played TEXT,
 					PRIMARY KEY (item_id, user_name)
 				);
+
+				CREATE TABLE user_series (
+					series_id TEXT NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+					user_name TEXT NOT NULL,
+					subscribed INTEGER NOT NULL DEFAULT 0,
+					last_item_id TEXT,
+					last_played TEXT,
+					date_added TEXT NOT NULL,
+					PRIMARY KEY (series_id, user_name)
+				);
+
+				CREATE INDEX idx_user_series_user ON user_series(user_name);
 			";
 			steps.Add(v1);
 

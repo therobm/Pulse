@@ -27,5 +27,8 @@ namespace Pulse.Series
 		public string Description = "";
 		public string ArtworkPath = "";
 		public string DateAdded = "";
+		public string Narrator = "";
+		public string Collection = "";
+		public int CollectionIndex = 0;
 	}
 }

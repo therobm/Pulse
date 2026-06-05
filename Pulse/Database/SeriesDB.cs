@@ -29,7 +29,38 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT id, series_type, title, author, description, artwork_path, date_added FROM series;";
+				command.CommandText = "SELECT id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index FROM series;";
+				SqliteDataReader reader = command.ExecuteReader();
+				try
+				{
+					while (reader.Read())
+					{
+						SeriesInfo series = ReadSeriesRow(reader);
+						result.Add(series);
+					}
+				}
+				finally
+				{
+					reader.Close();
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
+
+		public List<SeriesInfo> LoadAllSeriesByType(eSeriesType type)
+		{
+			List<SeriesInfo> result = new List<SeriesInfo>();
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index FROM series WHERE series_type = $series_type;";
+				command.Parameters.AddWithValue("$series_type", type.ToString());
+
 				SqliteDataReader reader = command.ExecuteReader();
 				try
 				{
@@ -63,7 +94,7 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT id, series_type, title, author, description, artwork_path, date_added FROM series WHERE id = $id;";
+				command.CommandText = "SELECT id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index FROM series WHERE id = $id;";
 				command.Parameters.AddWithValue("$id", id);
 
 				SqliteDataReader reader = command.ExecuteReader();
@@ -97,15 +128,18 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = @"INSERT INTO series (id, series_type, title, author, description, artwork_path, date_added)
-					VALUES ($id, $series_type, $title, $author, $description, $artwork_path, $date_added)
+				command.CommandText = @"INSERT INTO series (id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index)
+					VALUES ($id, $series_type, $title, $author, $description, $artwork_path, $date_added, $narrator, $collection, $collection_index)
 					ON CONFLICT(id) DO UPDATE SET
 						series_type = excluded.series_type,
 						title = excluded.title,
 						author = excluded.author,
 						description = excluded.description,
 						artwork_path = excluded.artwork_path,
-						date_added = excluded.date_added;";
+						date_added = excluded.date_added,
+						narrator = excluded.narrator,
+						collection = excluded.collection,
+						collection_index = excluded.collection_index;";
 				command.Parameters.AddWithValue("$id", series.Id);
 				command.Parameters.AddWithValue("$series_type", series.Type.ToString());
 				command.Parameters.AddWithValue("$title", series.Title);
@@ -113,6 +147,9 @@ namespace Pulse.Database
 				command.Parameters.AddWithValue("$description", series.Description);
 				command.Parameters.AddWithValue("$artwork_path", series.ArtworkPath);
 				command.Parameters.AddWithValue("$date_added", series.DateAdded);
+				command.Parameters.AddWithValue("$narrator", series.Narrator);
+				command.Parameters.AddWithValue("$collection", series.Collection);
+				command.Parameters.AddWithValue("$collection_index", series.CollectionIndex);
 				command.ExecuteNonQuery();
 			}
 			finally
@@ -496,6 +533,366 @@ namespace Pulse.Database
 			}
 		}
 
+		public UserSeriesInfo LoadUserSeries(string seriesId, string userName)
+		{
+			if (string.IsNullOrEmpty(seriesId))
+			{
+				return null;
+			}
+			if (string.IsNullOrEmpty(userName))
+			{
+				return null;
+			}
+
+			UserSeriesInfo found = null;
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT series_id, user_name, subscribed, last_item_id, last_played, date_added FROM user_series WHERE series_id = $series_id AND user_name = $user_name;";
+				command.Parameters.AddWithValue("$series_id", seriesId);
+				command.Parameters.AddWithValue("$user_name", userName);
+
+				SqliteDataReader reader = command.ExecuteReader();
+				try
+				{
+					if (reader.Read())
+					{
+						found = ReadUserSeriesRow(reader);
+					}
+				}
+				finally
+				{
+					reader.Close();
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return found;
+		}
+
+		public List<UserSeriesInfo> LoadUserSeriesForUser(string userName)
+		{
+			List<UserSeriesInfo> result = new List<UserSeriesInfo>();
+			if (string.IsNullOrEmpty(userName))
+			{
+				return result;
+			}
+
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT series_id, user_name, subscribed, last_item_id, last_played, date_added FROM user_series WHERE user_name = $user_name;";
+				command.Parameters.AddWithValue("$user_name", userName);
+
+				SqliteDataReader reader = command.ExecuteReader();
+				try
+				{
+					while (reader.Read())
+					{
+						UserSeriesInfo row = ReadUserSeriesRow(reader);
+						result.Add(row);
+					}
+				}
+				finally
+				{
+					reader.Close();
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
+
+		public List<UserSeriesInfo> LoadSubscribersForSeries(string seriesId)
+		{
+			List<UserSeriesInfo> result = new List<UserSeriesInfo>();
+			if (string.IsNullOrEmpty(seriesId))
+			{
+				return result;
+			}
+
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT series_id, user_name, subscribed, last_item_id, last_played, date_added FROM user_series WHERE series_id = $series_id AND subscribed = 1;";
+				command.Parameters.AddWithValue("$series_id", seriesId);
+
+				SqliteDataReader reader = command.ExecuteReader();
+				try
+				{
+					while (reader.Read())
+					{
+						UserSeriesInfo row = ReadUserSeriesRow(reader);
+						result.Add(row);
+					}
+				}
+				finally
+				{
+					reader.Close();
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
+
+		public int CountSubscribers(string seriesId)
+		{
+			if (string.IsNullOrEmpty(seriesId))
+			{
+				return 0;
+			}
+
+			int count = 0;
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT COUNT(*) FROM user_series WHERE series_id = $series_id AND subscribed = 1;";
+				command.Parameters.AddWithValue("$series_id", seriesId);
+				object result = command.ExecuteScalar();
+				if (result != null)
+				{
+					count = Convert.ToInt32(result);
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return count;
+		}
+
+		public List<SeriesInfo> LoadSubscribedSeries(string userName, eSeriesType type)
+		{
+			List<SeriesInfo> result = new List<SeriesInfo>();
+			if (string.IsNullOrEmpty(userName))
+			{
+				return result;
+			}
+
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = @"SELECT s.id, s.series_type, s.title, s.author, s.description, s.artwork_path, s.date_added, s.narrator, s.collection, s.collection_index
+					FROM series s
+					INNER JOIN user_series us ON us.series_id = s.id
+					WHERE us.user_name = $user_name
+						AND us.subscribed = 1
+						AND s.series_type = $series_type;";
+				command.Parameters.AddWithValue("$user_name", userName);
+				command.Parameters.AddWithValue("$series_type", type.ToString());
+
+				SqliteDataReader reader = command.ExecuteReader();
+				try
+				{
+					while (reader.Read())
+					{
+						SeriesInfo series = ReadSeriesRow(reader);
+						result.Add(series);
+					}
+				}
+				finally
+				{
+					reader.Close();
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
+
+		public void SetSubscribed(string seriesId, string userName, bool subscribed, string dateAddedIfNew)
+		{
+			if (string.IsNullOrEmpty(seriesId))
+			{
+				return;
+			}
+			if (string.IsNullOrEmpty(userName))
+			{
+				return;
+			}
+
+			int subscribedInt = 0;
+			if (subscribed)
+			{
+				subscribedInt = 1;
+			}
+
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = @"INSERT INTO user_series (series_id, user_name, subscribed, date_added)
+					VALUES ($series_id, $user_name, $subscribed, $date_added)
+					ON CONFLICT(series_id, user_name) DO UPDATE SET
+						subscribed = excluded.subscribed;";
+				command.Parameters.AddWithValue("$series_id", seriesId);
+				command.Parameters.AddWithValue("$user_name", userName);
+				command.Parameters.AddWithValue("$subscribed", subscribedInt);
+				command.Parameters.AddWithValue("$date_added", dateAddedIfNew);
+				command.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		public void SetSeriesLastItem(string seriesId, string userName, string itemId, string lastPlayed, string dateAddedIfNew)
+		{
+			if (string.IsNullOrEmpty(seriesId))
+			{
+				return;
+			}
+			if (string.IsNullOrEmpty(userName))
+			{
+				return;
+			}
+
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = @"INSERT INTO user_series (series_id, user_name, last_item_id, last_played, date_added)
+					VALUES ($series_id, $user_name, $last_item_id, $last_played, $date_added)
+					ON CONFLICT(series_id, user_name) DO UPDATE SET
+						last_item_id = excluded.last_item_id,
+						last_played = excluded.last_played;";
+				command.Parameters.AddWithValue("$series_id", seriesId);
+				command.Parameters.AddWithValue("$user_name", userName);
+				command.Parameters.AddWithValue("$last_item_id", itemId);
+				command.Parameters.AddWithValue("$last_played", lastPlayed);
+				command.Parameters.AddWithValue("$date_added", dateAddedIfNew);
+				command.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		public void MarkSeriesRead(string seriesId, string userName)
+		{
+			if (string.IsNullOrEmpty(seriesId))
+			{
+				return;
+			}
+			if (string.IsNullOrEmpty(userName))
+			{
+				return;
+			}
+
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				List<string> itemIds = new List<string>();
+				SqliteCommand selectCommand = connection.CreateCommand();
+				selectCommand.CommandText = "SELECT id FROM series_items WHERE series_id = $series_id;";
+				selectCommand.Parameters.AddWithValue("$series_id", seriesId);
+
+				SqliteDataReader reader = selectCommand.ExecuteReader();
+				try
+				{
+					while (reader.Read())
+					{
+						string itemId = ReadString(reader, 0);
+						itemIds.Add(itemId);
+					}
+				}
+				finally
+				{
+					reader.Close();
+				}
+
+				SqliteTransaction transaction = connection.BeginTransaction();
+				try
+				{
+					int itemCount = itemIds.Count;
+					for (int itemIndex = 0; itemIndex < itemCount; itemIndex++)
+					{
+						string itemId = itemIds[itemIndex];
+						SqliteCommand upsertCommand = connection.CreateCommand();
+						upsertCommand.Transaction = transaction;
+						upsertCommand.CommandText = @"INSERT INTO item_progress (item_id, user_name, position_seconds, completed, last_played)
+							VALUES ($item_id, $user_name, 0, 1, '')
+							ON CONFLICT(item_id, user_name) DO UPDATE SET
+								completed = 1;";
+						upsertCommand.Parameters.AddWithValue("$item_id", itemId);
+						upsertCommand.Parameters.AddWithValue("$user_name", userName);
+						upsertCommand.ExecuteNonQuery();
+					}
+					transaction.Commit();
+				}
+				catch
+				{
+					transaction.Rollback();
+					throw;
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		public void MarkSeriesUnread(string seriesId, string userName)
+		{
+			if (string.IsNullOrEmpty(seriesId))
+			{
+				return;
+			}
+			if (string.IsNullOrEmpty(userName))
+			{
+				return;
+			}
+
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteTransaction transaction = connection.BeginTransaction();
+				try
+				{
+					SqliteCommand deleteCommand = connection.CreateCommand();
+					deleteCommand.Transaction = transaction;
+					deleteCommand.CommandText = "DELETE FROM item_progress WHERE user_name = $user_name AND item_id IN (SELECT id FROM series_items WHERE series_id = $series_id);";
+					deleteCommand.Parameters.AddWithValue("$user_name", userName);
+					deleteCommand.Parameters.AddWithValue("$series_id", seriesId);
+					deleteCommand.ExecuteNonQuery();
+
+					SqliteCommand clearAnchorCommand = connection.CreateCommand();
+					clearAnchorCommand.Transaction = transaction;
+					clearAnchorCommand.CommandText = "UPDATE user_series SET last_item_id = '', last_played = '' WHERE series_id = $series_id AND user_name = $user_name;";
+					clearAnchorCommand.Parameters.AddWithValue("$series_id", seriesId);
+					clearAnchorCommand.Parameters.AddWithValue("$user_name", userName);
+					clearAnchorCommand.ExecuteNonQuery();
+
+					transaction.Commit();
+				}
+				catch
+				{
+					transaction.Rollback();
+					throw;
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
 		private SeriesInfo ReadSeriesRow(SqliteDataReader reader)
 		{
 			SeriesInfo series = new SeriesInfo();
@@ -514,6 +911,9 @@ namespace Pulse.Database
 			series.Description = ReadString(reader, 4);
 			series.ArtworkPath = ReadString(reader, 5);
 			series.DateAdded = ReadString(reader, 6);
+			series.Narrator = ReadString(reader, 7);
+			series.Collection = ReadString(reader, 8);
+			series.CollectionIndex = ReadInt(reader, 9, 0);
 			return series;
 		}
 
@@ -591,6 +991,28 @@ namespace Pulse.Database
 
 			progress.LastPlayed = ReadString(reader, 4);
 			return progress;
+		}
+
+		private UserSeriesInfo ReadUserSeriesRow(SqliteDataReader reader)
+		{
+			UserSeriesInfo row = new UserSeriesInfo();
+			row.SeriesId = ReadString(reader, 0);
+			row.UserName = ReadString(reader, 1);
+
+			int subscribedInt = ReadInt(reader, 2, 0);
+			if (subscribedInt != 0)
+			{
+				row.Subscribed = true;
+			}
+			else
+			{
+				row.Subscribed = false;
+			}
+
+			row.LastItemId = ReadString(reader, 3);
+			row.LastPlayed = ReadString(reader, 4);
+			row.DateAdded = ReadString(reader, 5);
+			return row;
 		}
 
 		private string ReadString(SqliteDataReader reader, int columnIndex)
