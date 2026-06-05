@@ -3,16 +3,17 @@ using PulseAPI.CSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Pulse.Data
 {
 	/// <summary>
-	/// Domain / business layer: owns the in-memory dictionaries (tracks,
-	/// albums, artists, playlists, smart-playlists) and the runtime-derived
-	/// state. Persistence is delegated to <see cref="PulseDatabase"/>, which
-	/// holds references to the same dictionaries and translates them to/from
-	/// SQLite. Callers (MusicManager and the routes layered above it) talk to
-	/// PulseData -- never to PulseDatabase directly.
+	/// Domain / business layer: sole owner of the in-memory dictionaries
+	/// (tracks, albums, artists, playlists, smart-playlists) and the
+	/// runtime-derived state. Persistence is delegated to the stateless
+	/// <see cref="PulseDatabase"/>, which translates load/save calls to and
+	/// from SQLite. Callers (MusicManager and the routes layered above it)
+	/// talk to PulseData -- never to PulseDatabase directly.
 	/// </summary>
 	public class PulseData
 	{
@@ -23,23 +24,131 @@ namespace Pulse.Data
 		private ConcurrentDictionary<string, PlaylistInfo> m_autoPlaylists = new ConcurrentDictionary<string, PlaylistInfo>();
 		private PulseAnalyticsInfo m_analytics = new PulseAnalyticsInfo();
 
-		private PulseDatabase m_db;
-
-		public PulseData()
-		{
-			m_db = new PulseDatabase(m_tracks, m_albums, m_artists, m_playlists, m_analytics);
-		}
+		private PulseDatabase m_db = new PulseDatabase();
 
 		public void Load()
 		{
-			m_db.Load();
+			Stopwatch sw = Stopwatch.StartNew();
+
+			List<ArtistInfo> loadedArtists = m_db.LoadArtists();
+			for (int index = 0; index < loadedArtists.Count; index++)
+			{
+				ArtistInfo artist = loadedArtists[index];
+				m_artists[artist.Id] = artist;
+			}
+
+			List<AlbumInfo> loadedAlbums = m_db.LoadAlbums();
+			for (int index = 0; index < loadedAlbums.Count; index++)
+			{
+				AlbumInfo album = loadedAlbums[index];
+				m_albums[album.Id] = album;
+			}
+
+			List<TrackInfo> loadedTracks = m_db.LoadTracks();
+			for (int index = 0; index < loadedTracks.Count; index++)
+			{
+				TrackInfo track = loadedTracks[index];
+				m_tracks[track.Id] = track;
+			}
+
+			List<TrackUserScoreRow> loadedScores = m_db.LoadTrackUserScores();
+			for (int index = 0; index < loadedScores.Count; index++)
+			{
+				TrackUserScoreRow row = loadedScores[index];
+				TrackInfo track;
+				if (m_tracks.TryGetValue(row.TrackId, out track))
+				{
+					track.UserScore[row.UserName] = row.Score;
+				}
+			}
+
+			List<StarredRow> loadedStarred = m_db.LoadStarred();
+			for (int index = 0; index < loadedStarred.Count; index++)
+			{
+				StarredRow row = loadedStarred[index];
+				if (row.Kind == "track")
+				{
+					TrackInfo track;
+					if (m_tracks.TryGetValue(row.EntityId, out track))
+					{
+						track.Starred[row.UserName] = row.Starred;
+					}
+				}
+				else if (row.Kind == "album")
+				{
+					AlbumInfo album;
+					if (m_albums.TryGetValue(row.EntityId, out album))
+					{
+						album.Starred[row.UserName] = row.Starred;
+					}
+				}
+				else if (row.Kind == "artist")
+				{
+					ArtistInfo artist;
+					if (m_artists.TryGetValue(row.EntityId, out artist))
+					{
+						artist.Starred[row.UserName] = row.Starred;
+					}
+				}
+			}
+
+			List<PlaylistInfo> loadedPlaylists = m_db.LoadPlaylists();
+			for (int index = 0; index < loadedPlaylists.Count; index++)
+			{
+				PlaylistInfo playlist = loadedPlaylists[index];
+				m_playlists[playlist.Id] = playlist;
+			}
+
+			m_analytics.RecentlyPlayed = m_db.LoadRecentlyPlayed();
+
 			WireUpReferences();
 			CalculateArtistScores();
+
+			sw.Stop();
+			Log.Info(-1, "PulseDatabase loaded in " + sw.ElapsedMilliseconds + "ms: "
+				+ m_tracks.Count + " tracks, " + m_albums.Count + " albums, "
+				+ m_artists.Count + " artists, " + m_playlists.Count + " playlists");
 		}
 
 		public void Save(string reason)
 		{
-			m_db.Save(reason);
+			List<ArtistInfo> dirtyArtists = new List<ArtistInfo>();
+			foreach (ArtistInfo artist in m_artists.Values)
+			{
+				if (artist.m_bIsDirty)
+				{
+					dirtyArtists.Add(artist);
+				}
+			}
+
+			List<AlbumInfo> dirtyAlbums = new List<AlbumInfo>();
+			foreach (AlbumInfo album in m_albums.Values)
+			{
+				if (album.m_bIsDirty)
+				{
+					dirtyAlbums.Add(album);
+				}
+			}
+
+			List<TrackInfo> dirtyTracks = new List<TrackInfo>();
+			foreach (TrackInfo track in m_tracks.Values)
+			{
+				if (track.m_bIsDirty)
+				{
+					dirtyTracks.Add(track);
+				}
+			}
+
+			List<PlaylistInfo> dirtyPlaylists = new List<PlaylistInfo>();
+			foreach (PlaylistInfo playlist in m_playlists.Values)
+			{
+				if (playlist.m_bIsDirty)
+				{
+					dirtyPlaylists.Add(playlist);
+				}
+			}
+
+			m_db.Save(reason, dirtyArtists, dirtyAlbums, dirtyTracks, dirtyPlaylists, m_analytics);
 		}
 
 		public int GetTrackCount()
