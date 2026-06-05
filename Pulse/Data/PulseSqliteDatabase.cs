@@ -1019,7 +1019,7 @@ namespace Pulse.Data
 
 		// Append-only INSERT into the playback_events log -- the raw immutable
 		// event stream (one row per Started/Paused/Skipped/Completed). On a
-		// Started event we additionally upsert the play_stats counter so the
+		// Started event we additionally upsert the item_stats counter so the
 		// most-played shelves read a single row per (user, item) rather than
 		// re-aggregating the log on every request. Same connection for both
 		// statements; log insert first so the counter never gets ahead of the
@@ -1053,7 +1053,7 @@ namespace Pulse.Data
 				if (analytics.Action == PulseAnalytics.eAction.Started)
 				{
 					SqliteCommand upsertCommand = connection.CreateCommand();
-					upsertCommand.CommandText = @"INSERT INTO play_stats (user_name, media_type, media_id, play_count, last_played)
+					upsertCommand.CommandText = @"INSERT INTO item_stats (user_name, media_type, media_id, play_count, last_played)
 						VALUES ($u, $type, $id, 1, $occurred)
 						ON CONFLICT(user_name, media_type, media_id) DO UPDATE SET
 							play_count = play_count + 1,
@@ -1072,16 +1072,16 @@ namespace Pulse.Data
 		}
 
 		/// <summary>
-		/// Reads the play_stats counter for one media type. Each row already holds
+		/// Reads the item_stats counter for one media type. Each row already holds
 		/// a Started count and the most-recent occurred_at -- no log aggregation
 		/// at query time. When userName is non-empty the read is scoped to that
 		/// user's counters; otherwise the per-user counters are summed across
 		/// every user (and last_played taken as MAX). last_played is round-trip
 		/// "o" so the caller parses it back. Empty media_id rows are skipped.
 		/// </summary>
-		public override Dictionary<string, ItemPlayStats> GetItemPlayStats(string userName, eDataType mediaType)
+		public override Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType)
 		{
-			Dictionary<string, ItemPlayStats> stats = new Dictionary<string, ItemPlayStats>();
+			Dictionary<string, ItemStats> stats = new Dictionary<string, ItemStats>();
 			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
 			try
 			{
@@ -1089,13 +1089,13 @@ namespace Pulse.Data
 				bool scopedToUser = !string.IsNullOrEmpty(userName);
 				if (scopedToUser)
 				{
-					command.CommandText = "SELECT media_id, play_count, last_played FROM play_stats"
+					command.CommandText = "SELECT media_id, play_count, last_played FROM item_stats"
 						+ " WHERE media_type = $type AND user_name = $u;";
 					command.Parameters.AddWithValue("$u", userName);
 				}
 				else
 				{
-					command.CommandText = "SELECT media_id, SUM(play_count), MAX(last_played) FROM play_stats"
+					command.CommandText = "SELECT media_id, SUM(play_count), MAX(last_played) FROM item_stats"
 						+ " WHERE media_type = $type GROUP BY media_id;";
 				}
 				command.Parameters.AddWithValue("$type", mediaType.ToString());
@@ -1108,7 +1108,7 @@ namespace Pulse.Data
 					{
 						continue;
 					}
-					ItemPlayStats entry = new ItemPlayStats();
+					ItemStats entry = new ItemStats();
 					if (!reader.IsDBNull(1))
 					{
 						entry.PlayCount = reader.GetInt32(1);
@@ -1291,7 +1291,7 @@ namespace Pulse.Data
 							"playqueue_entries",
 							"bookmarks",
 							"playback_events",
-							"play_stats"
+							"item_stats"
 						};
 						for (int index = 0; index < tables.Length; index++)
 						{
@@ -1370,11 +1370,11 @@ namespace Pulse.Data
 					delPlaybackEvents.Parameters.AddWithValue("$u", userName);
 					delPlaybackEvents.ExecuteNonQuery();
 
-					SqliteCommand delPlayStats = connection.CreateCommand();
-					delPlayStats.Transaction = transaction;
-					delPlayStats.CommandText = "DELETE FROM play_stats WHERE user_name = $u;";
-					delPlayStats.Parameters.AddWithValue("$u", userName);
-					delPlayStats.ExecuteNonQuery();
+					SqliteCommand delItemStats = connection.CreateCommand();
+					delItemStats.Transaction = transaction;
+					delItemStats.CommandText = "DELETE FROM item_stats WHERE user_name = $u;";
+					delItemStats.Parameters.AddWithValue("$u", userName);
+					delItemStats.ExecuteNonQuery();
 
 					SqliteCommand delUsersRow = connection.CreateCommand();
 					delUsersRow.Transaction = transaction;

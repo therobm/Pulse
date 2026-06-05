@@ -1193,7 +1193,7 @@ namespace Pulse.Protocols.PulseAPI
 
 		/// <summary>
 		/// Builds the candidate set for the MostPlays (topItems) ranking. The
-		/// candidate set is driven by the play_stats counter, scoped to the
+		/// candidate set is driven by the item_stats counter, scoped to the
 		/// requesting user (global when user is empty): only items that have
 		/// actually been started appear, each carrying its lifetime play count
 		/// and most-recent start time for tie-breaking.
@@ -1204,8 +1204,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeTracks)
 			{
-				Dictionary<string, ItemPlayStats> stats = m_musicManager.GetItemPlayStats(user, eDataType.Track);
-				foreach (KeyValuePair<string, ItemPlayStats> entry in stats)
+				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, eDataType.Track);
+				foreach (KeyValuePair<string, ItemStats> entry in stats)
 				{
 					TrackInfo track = m_musicManager.GetTrack(entry.Key);
 					if (track == null)
@@ -1218,8 +1218,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeArtists)
 			{
-				Dictionary<string, ItemPlayStats> stats = m_musicManager.GetItemPlayStats(user, eDataType.Artist);
-				foreach (KeyValuePair<string, ItemPlayStats> entry in stats)
+				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, eDataType.Artist);
+				foreach (KeyValuePair<string, ItemStats> entry in stats)
 				{
 					ArtistInfo artist = m_musicManager.GetArtist(entry.Key);
 					if (artist == null)
@@ -1232,8 +1232,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeAlbums)
 			{
-				Dictionary<string, ItemPlayStats> stats = m_musicManager.GetItemPlayStats(user, eDataType.Album);
-				foreach (KeyValuePair<string, ItemPlayStats> entry in stats)
+				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, eDataType.Album);
+				foreach (KeyValuePair<string, ItemStats> entry in stats)
 				{
 					AlbumInfo album = m_musicManager.GetAlbum(entry.Key);
 					if (album == null)
@@ -1246,8 +1246,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includePlaylists)
 			{
-				Dictionary<string, ItemPlayStats> stats = m_musicManager.GetItemPlayStats(user, eDataType.Playlist);
-				foreach (KeyValuePair<string, ItemPlayStats> entry in stats)
+				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, eDataType.Playlist);
+				foreach (KeyValuePair<string, ItemStats> entry in stats)
 				{
 					PlaylistInfo playlist = m_musicManager.GetPlaylist(entry.Key);
 					if (playlist == null)
@@ -1266,7 +1266,7 @@ namespace Pulse.Protocols.PulseAPI
 		/// Tracks come from the in-memory FIFO recents list; artists and playlists
 		/// from their in-memory last-played (skipping never-played items); albums,
 		/// which hold no in-memory last-played, have their recency read back from
-		/// the play_stats counter.
+		/// the item_stats counter.
 		/// </summary>
 		private List<RecentCandidate> GatherMostRecent(string user, bool includeTracks, bool includeArtists, bool includeAlbums, bool includePlaylists)
 		{
@@ -1319,8 +1319,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeAlbums)
 			{
-				Dictionary<string, ItemPlayStats> stats = m_musicManager.GetItemPlayStats(user, eDataType.Album);
-				foreach (KeyValuePair<string, ItemPlayStats> entry in stats)
+				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, eDataType.Album);
+				foreach (KeyValuePair<string, ItemStats> entry in stats)
 				{
 					AlbumInfo album = m_musicManager.GetAlbum(entry.Key);
 					if (album == null)
@@ -1355,7 +1355,7 @@ namespace Pulse.Protocols.PulseAPI
 			return candidates;
 		}
 
-		private static RecentCandidate MakeCandidate(PulseObject item, ItemPlayStats stats)
+		private static RecentCandidate MakeCandidate(PulseObject item, ItemStats stats)
 		{
 			RecentCandidate candidate = new RecentCandidate();
 			candidate.Item = item;

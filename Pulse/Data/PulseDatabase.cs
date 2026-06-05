@@ -11,10 +11,10 @@ namespace Pulse.Data
 	/// <summary>
 	/// Per-(user,item) play counter for one media type: how many 'Started' events
 	/// the item has accrued and when it was most recently started. Produced by
-	/// <see cref="IPulseDatabase.GetItemPlayStats"/>, backed by the play_stats
+	/// <see cref="IPulseDatabase.GetItemStats"/>, backed by the item_stats
 	/// table (v7).
 	/// </summary>
-	public class ItemPlayStats
+	public class ItemStats
 	{
 		public int PlayCount { get; set; }
 		public DateTime LastPlayed { get; set; }
@@ -67,18 +67,18 @@ namespace Pulse.Data
 		// Append-only playback event log (v6 schema, renamed in v7 to
 		// playback_events). Each client-observed playback state change lands as
 		// one immutable row, stored both globally and per-user. Write-through,
-		// not cached. PulseSqliteDatabase also upserts the play_stats counter
+		// not cached. PulseSqliteDatabase also upserts the item_stats counter
 		// on 'Started' events; PulseDatabaseBase keeps a no-op default.
 		void RecordPlaybackEvent(string userName, PulseAnalytics analytics, DateTime occurredAt);
 
 		/// <summary>
-		/// Returns per-id play stats for one media type: 'Started' count and the
-		/// most recent occurrence, read from the play_stats counter (v7). Scoped
+		/// Returns per-id item stats for one media type: 'Started' count and the
+		/// most recent occurrence, read from the item_stats counter (v7). Scoped
 		/// to a single user when <paramref name="userName"/> is non-empty,
 		/// otherwise rolled up across every user. PulseSqliteDatabase queries the
 		/// table; PulseDatabaseBase returns an empty map.
 		/// </summary>
-		Dictionary<string, ItemPlayStats> GetItemPlayStats(string userName, eDataType mediaType);
+		Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType);
 
 		// Settings-page CRUD over the v5 `users` table plus the per-user rows in
 		// every other table (Flatline #201). PulseSqliteDatabase is the real
@@ -406,9 +406,9 @@ namespace Pulse.Data
 		{
 		}
 
-		public virtual Dictionary<string, ItemPlayStats> GetItemPlayStats(string userName, eDataType mediaType)
+		public virtual Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType)
 		{
-			return new Dictionary<string, ItemPlayStats>();
+			return new Dictionary<string, ItemStats>();
 		}
 
 		// Base implementation walks the in-memory stores to synthesize a record

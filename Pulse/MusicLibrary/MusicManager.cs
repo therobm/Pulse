@@ -95,12 +95,12 @@ namespace Pulse.MusicLibrary
 		}
 
 		/// <summary>
-		/// Pass-through to the play_stats counter used by the topItems /
+		/// Pass-through to the item_stats counter used by the topItems /
 		/// recentlyPlayed routes to rank one media type by play count or recency.
 		/// </summary>
-		public Dictionary<string, ItemPlayStats> GetItemPlayStats(string userName, eDataType mediaType)
+		public Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType)
 		{
-			return m_database.GetItemPlayStats(userName, mediaType);
+			return m_database.GetItemStats(userName, mediaType);
 		}
 
 		public TrackInfo GetTrack(string id)
@@ -412,7 +412,7 @@ namespace Pulse.MusicLibrary
 		/// <summary>
 		/// Entry point for the client playback-event feed (pulse_v1/reportAnalytics).
 		/// Every observed playback state change is appended to the immutable event
-		/// log and (for Started events) also bumps the play_stats counter -- the
+		/// log and (for Started events) also bumps the item_stats counter -- the
 		/// substrate the topItems / recentlyPlayed routes consume for play-count
 		/// and recency ranking. A 'Started' event also bumps the in-memory
 		/// last-played for its subject so the non-aggregating consumers
