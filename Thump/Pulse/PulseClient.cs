@@ -1026,6 +1026,8 @@ namespace Thump.Pulse
 					return PulseWire.Parse<PulseArtist>(raw);
 				case eDataType.Genre:
 					return PulseWire.Parse<PulseGenre>(raw);
+				case eDataType.Podcast:
+					return PulseWire.Parse<PulsePodcast>(raw);
 				default:
 					return probe;
 			}
