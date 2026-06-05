@@ -197,20 +197,6 @@ namespace Pulse.Series
 		{
 			string seriesId = MusicManager.GenerateID(feedUrl);
 
-			PodcastFeedInfo existingFeed = m_db.LoadPodcastFeed(seriesId);
-			if (existingFeed == null)
-			{
-				PodcastFeedInfo feed = new PodcastFeedInfo();
-				feed.SeriesId = seriesId;
-				feed.FeedUrl = feedUrl;
-				feed.PollIntervalMinutes = 60;
-				feed.Retention = eRetentionPolicy.KeepN;
-				feed.RetentionValue = 10;
-				feed.AutoDownload = true;
-				feed.LastPolled = "";
-				m_db.UpsertPodcastFeed(feed);
-			}
-
 			HttpResponseMessage response = s_httpClient.GetAsync(feedUrl).GetAwaiter().GetResult();
 			try
 			{
@@ -228,6 +214,21 @@ namespace Pulse.Series
 			finally
 			{
 				response.Dispose();
+			}
+
+			PodcastFeedInfo existingFeed = m_db.LoadPodcastFeed(seriesId);
+			if (existingFeed == null)
+			{
+				string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+				PodcastFeedInfo feed = new PodcastFeedInfo();
+				feed.SeriesId = seriesId;
+				feed.FeedUrl = feedUrl;
+				feed.PollIntervalMinutes = 60;
+				feed.Retention = eRetentionPolicy.KeepN;
+				feed.RetentionValue = 10;
+				feed.AutoDownload = true;
+				feed.LastPolled = nowIso;
+				m_db.UpsertPodcastFeed(feed);
 			}
 
 			bool shouldSubscribe = subscribe && !string.IsNullOrEmpty(userName);
