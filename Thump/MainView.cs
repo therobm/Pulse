@@ -108,6 +108,7 @@ namespace Thump
 
 			m_cache = new ThumpCache();
 			m_mediaClient = new PulseClient(m_cache, this);
+			Log.SetRemoteClient(m_mediaClient);
 			m_mediaClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetUseHttps());
 
 #if ANDROID

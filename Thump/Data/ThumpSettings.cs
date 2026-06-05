@@ -23,6 +23,8 @@ namespace Thump.Data
 		private const string s_keyUsername = "thump.login.username";
 		private const string s_keyPassword = "thump.login.password";
 		private const string s_keyUseHttps = "thump.login.useHttps";
+		private const string s_keyRemoteLogging = "thump.diagnostics.remoteLoggingEnabled";
+		private const string s_keyDeviceId = "thump.diagnostics.deviceId";
 
 		public static eNormalizeVolume GetNormalizeVolume()
 		{
@@ -126,6 +128,38 @@ namespace Thump.Data
 		public static void SetUseHttps(bool value)
 		{
 			Preferences.Set(s_keyUseHttps, value);
+		}
+
+		/// <summary>
+		/// Whether the structured diagnostic log pipeline ships events to the
+		/// server. Opt-in: defaults to false so a fresh install does not POST
+		/// diagnostics until the user enables it.
+		/// </summary>
+		public static bool GetRemoteLoggingEnabled()
+		{
+			return Preferences.Get(s_keyRemoteLogging, false);
+		}
+		/// <summary>Persist the remote-logging toggle.</summary>
+		public static void SetRemoteLoggingEnabled(bool value)
+		{
+			Preferences.Set(s_keyRemoteLogging, value);
+		}
+
+		/// <summary>
+		/// Returns a stable per-install identifier for diagnostic batches.
+		/// Generates a new Guid on first call and persists it so subsequent
+		/// launches reuse the same value.
+		/// </summary>
+		public static string GetOrCreateDeviceId()
+		{
+			string stored = Preferences.Get(s_keyDeviceId, "");
+			if (!string.IsNullOrEmpty(stored))
+			{
+				return stored;
+			}
+			string created = System.Guid.NewGuid().ToString();
+			Preferences.Set(s_keyDeviceId, created);
+			return created;
 		}
 	}
 }
