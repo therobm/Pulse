@@ -19,6 +19,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using Pulse.Protocols.LegacyPulse;
 using Pulse.Protocols.PulseAPI;
+using Pulse.Database;
 
 namespace Pulse
 {

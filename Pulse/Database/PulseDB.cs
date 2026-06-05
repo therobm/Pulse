@@ -1,17 +1,16 @@
 using Microsoft.Data.Sqlite;
-using Pulse.Database;
 using Pulse.MusicLibrary;
 using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace Pulse.Data
+namespace Pulse.Database
 {
 	/// <summary>
 	/// Per-(user,item) play counter for one media type: how many 'Started' events
 	/// the item has accrued and when it was most recently started. Produced by
-	/// <see cref="PulseDatabase.GetItemStats"/>, backed by the item_stats
+	/// <see cref="PulseDB.GetItemStats"/>, backed by the item_stats
 	/// table (v7).
 	/// </summary>
 	public class ItemStats
@@ -50,14 +49,14 @@ namespace Pulse.Data
 	/// Migration path: see Database/Migrations.cs. Add a new MigrationStep to
 	/// evolve the schema; never edit a shipped one.
 	/// </summary>
-	public class PulseDatabase
+	public class PulseDB
 	{
 		private object m_saveLock = new object();
 
 		public List<ArtistInfo> LoadArtists()
 		{
 			List<ArtistInfo> result = new List<ArtistInfo>();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -88,7 +87,7 @@ namespace Pulse.Data
 		public List<AlbumInfo> LoadAlbums()
 		{
 			List<AlbumInfo> result = new List<AlbumInfo>();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -118,7 +117,7 @@ namespace Pulse.Data
 		public List<TrackInfo> LoadTracks()
 		{
 			List<TrackInfo> result = new List<TrackInfo>();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -171,7 +170,7 @@ namespace Pulse.Data
 		public List<TrackUserScoreRow> LoadTrackUserScores()
 		{
 			List<TrackUserScoreRow> result = new List<TrackUserScoreRow>();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -200,7 +199,7 @@ namespace Pulse.Data
 		public List<StarredRow> LoadStarred()
 		{
 			List<StarredRow> result = new List<StarredRow>();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -228,7 +227,7 @@ namespace Pulse.Data
 		{
 			List<PlaylistInfo> result = new List<PlaylistInfo>();
 			Dictionary<string, PlaylistInfo> byId = new Dictionary<string, PlaylistInfo>();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -299,7 +298,7 @@ namespace Pulse.Data
 		public List<string> LoadRecentlyPlayed()
 		{
 			List<string> result = new List<string>();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -323,7 +322,7 @@ namespace Pulse.Data
 			lock (m_saveLock)
 			{
 				Stopwatch sw = Stopwatch.StartNew();
-				SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+				SqliteConnection connection = PulseDBConnector.OpenConnection();
 				try
 				{
 					SqliteTransaction transaction = connection.BeginTransaction();
@@ -456,7 +455,7 @@ namespace Pulse.Data
 
 		private static string FormatLastPlayed(DateTime value)
 		{
-			if (value == default(DateTime))
+			if (value == default)
 			{
 				return "";
 			}
@@ -621,7 +620,7 @@ namespace Pulse.Data
 
 			foreach (KeyValuePair<string, DateTime> entry in playlist.UserLastPlayed)
 			{
-				if (entry.Value == default(DateTime))
+				if (entry.Value == default)
 				{
 					continue;
 				}
@@ -663,7 +662,7 @@ namespace Pulse.Data
 		// in-memory cascade.
 		public void DeleteTrackRows(string trackId, string albumId, string artistId, bool deleteAlbum, bool deleteArtist)
 		{
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteTransaction transaction = connection.BeginTransaction();
@@ -733,7 +732,7 @@ namespace Pulse.Data
 
 		public void DeletePlaylistRows(string playlistId)
 		{
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				// playlist_tracks has FK with ON DELETE CASCADE, so deleting the
@@ -767,7 +766,7 @@ namespace Pulse.Data
 				return result;
 			}
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand state = connection.CreateCommand();
@@ -812,7 +811,7 @@ namespace Pulse.Data
 				return;
 			}
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteTransaction transaction = connection.BeginTransaction();
@@ -876,7 +875,7 @@ namespace Pulse.Data
 				return result;
 			}
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -917,7 +916,7 @@ namespace Pulse.Data
 				return;
 			}
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				string nowIso = DateTime.UtcNow.ToString("o");
@@ -949,7 +948,7 @@ namespace Pulse.Data
 				return;
 			}
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -984,7 +983,7 @@ namespace Pulse.Data
 			string actionName = analytics.Action.ToString();
 			string typeName = analytics.MediaType.ToString();
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand logCommand = connection.CreateCommand();
@@ -1029,7 +1028,7 @@ namespace Pulse.Data
 		public Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType)
 		{
 			Dictionary<string, ItemStats> stats = new Dictionary<string, ItemStats>();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -1090,7 +1089,7 @@ namespace Pulse.Data
 		public List<UserRecord> ReadAllUsers()
 		{
 			List<UserRecord> result = new List<UserRecord>();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -1113,7 +1112,7 @@ namespace Pulse.Data
 		{
 			if (string.IsNullOrEmpty(name)) { return null; }
 			UserRecord record = null;
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -1152,7 +1151,7 @@ namespace Pulse.Data
 		{
 			if (string.IsNullOrWhiteSpace(name)) { return "Name is required."; }
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand exists = connection.CreateCommand();
@@ -1190,7 +1189,7 @@ namespace Pulse.Data
 
 			bool renaming = !string.Equals(oldName, newName, StringComparison.Ordinal);
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand oldExists = connection.CreateCommand();
@@ -1278,7 +1277,7 @@ namespace Pulse.Data
 		{
 			if (string.IsNullOrEmpty(userName)) { return; }
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteTransaction transaction = connection.BeginTransaction();

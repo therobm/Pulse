@@ -6,7 +6,7 @@ using System.Threading;
 using Microsoft.Data.Sqlite;
 using PulseAPI.CSharp;
 
-namespace Pulse.Data
+namespace Pulse.Database
 {
 	/// <summary>
 	/// High-level grouping an action rolls up to. Derived from the action on

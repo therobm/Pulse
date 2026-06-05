@@ -1,5 +1,6 @@
 ﻿using Pulse;
 using Pulse.Data;
+using Pulse.Database;
 using Pulse.Lidarr;
 using PulseAPI.CSharp;
 using System;
@@ -748,8 +749,8 @@ namespace Pulse.MusicLibrary
 			// the two run side-by-side without cross-contamination.
 			string sqliteFileName = "pulse_" + environmentName.ToLowerInvariant() + ".db";
 			string sqlitePath = Path.Combine(pulseDataRoot, sqliteFileName);
-			Pulse.Database.SqliteConnectionFactory.SetDatabaseFilePath(sqlitePath);
-			Pulse.Database.Migrations.RunMigrations();
+			Pulse.Database.PulseDBConnector.SetDatabaseFilePath(sqlitePath);
+			Pulse.Database.PulseDBMigrations.RunMigrations();
 			Log.Info(-1, "Pulse DB: env=" + environmentName + " path=" + sqlitePath);
 
 			PulseData data = new PulseData();

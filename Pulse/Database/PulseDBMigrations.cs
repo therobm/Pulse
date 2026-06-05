@@ -17,11 +17,11 @@ namespace Pulse.Database
 		public string Sql = "";
 	}
 
-	public static class Migrations
+	public static class PulseDBMigrations
 	{
 		public static void RunMigrations()
 		{
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				EnsureSchemaVersionsTable(connection);

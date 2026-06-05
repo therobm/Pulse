@@ -1,3 +1,4 @@
+using Pulse.Database;
 using Pulse.MusicLibrary;
 using PulseAPI.CSharp;
 using System;
@@ -24,7 +25,7 @@ namespace Pulse.Data
 		private ConcurrentDictionary<string, PlaylistInfo> m_autoPlaylists = new ConcurrentDictionary<string, PlaylistInfo>();
 		private PulseAnalyticsInfo m_analytics = new PulseAnalyticsInfo();
 
-		private PulseDatabase m_db = new PulseDatabase();
+		private PulseDB m_db = new PulseDB();
 
 		public int GetTrackCount()
 		{

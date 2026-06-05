@@ -1,6 +1,6 @@
 using Microsoft.Data.Sqlite;
 
-namespace Pulse.Data
+namespace Pulse.Database
 {
 	/// <summary>
 	/// Instance-based SQLite connection factory for the analytics / telemetry

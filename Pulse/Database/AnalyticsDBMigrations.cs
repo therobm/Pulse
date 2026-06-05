@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Data.Sqlite;
 
-namespace Pulse.Data
+namespace Pulse.Database
 {
 	/// <summary>
 	/// One step in the analytics-database schema history. The analyticss db
