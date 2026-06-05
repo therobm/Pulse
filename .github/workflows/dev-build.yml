@@ -2,7 +2,7 @@ name: Dev Build
 
 # Manual, on-demand build of a test exe off any branch. Produces the same
 # self-contained win-x64 single-file exe as the release workflow, versioned
-# from the VERSION file with a -dev suffix, and uploaded as a build artifact.
+# from the VERSION_PULSE file with a -dev suffix, and uploaded as a build artifact.
 # It never cuts a release and never bumps the build number.
 
 on:
@@ -28,7 +28,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          version="$(tr -d ' \t\r\n' < VERSION)-dev"
+          version="$(tr -d ' \t\r\n' < VERSION_PULSE)-dev"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "Version: ${version}"
 

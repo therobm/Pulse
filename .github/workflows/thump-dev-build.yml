@@ -39,7 +39,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          version="$(tr -d ' \t\r\n' < Thump/VERSION)-dev"
+          version="$(tr -d ' \t\r\n' < VERSION_THUMP)-dev"
           code=$(git rev-list --count HEAD)
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "code=${code}" >> "$GITHUB_OUTPUT"
