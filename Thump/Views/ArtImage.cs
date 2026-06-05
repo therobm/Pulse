@@ -78,6 +78,10 @@ namespace Thump.Views
 
 		public void SetCoverArt(string coverArtId)
 		{
+			if (coverArtId == m_coverArtId)
+				return;
+
+			m_image.Source = null;
 			m_coverArtId = coverArtId;
 			m_bLoadFailed = false;
 			if (string.IsNullOrEmpty(coverArtId))
@@ -91,13 +95,16 @@ namespace Thump.Views
 				m_bLoadFailed = true;
 				return;
 			}
-			MainView.MediaClient.GetCoverArt(coverArtId, OnArtLoaded);
+			MainView.MediaClient.GetCoverArt(coverArtId, (data)=>
+			{
+				OnArtLoaded(coverArtId, data);
+			});
 		}
 
 		// Retry a cover-art fetch that came up empty last time (offline, server
 		// hiccup). A successful load left m_bLoadFailed false, so this no-ops once
 		// the image is in place.
-		/*
+		
 		public override void OnNavigatedTo()
 		{
 			if (m_bLoadFailed && !string.IsNullOrEmpty(m_coverArtId))
@@ -105,10 +112,13 @@ namespace Thump.Views
 				SetCoverArt(m_coverArtId);
 			}
 			base.OnNavigatedTo();
-		}*/
+		}
 
-		private void OnArtLoaded(byte[] data)
+		private void OnArtLoaded(string artID, byte[] data)
 		{
+			if (artID != m_coverArtId)
+				return;
+
 			if (data == null || data.Length == 0)
 			{
 				m_bLoadFailed = true;
