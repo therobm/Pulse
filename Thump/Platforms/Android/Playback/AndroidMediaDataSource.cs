@@ -243,12 +243,17 @@ namespace Thump.Playback.AndroidOS
 			if (read <= 0)
 			{
 				bool wasStreaming = (m_memorySource == null);
+				if (wasStreaming && m_bytesRemaining > 0)
+				{
+					throw new IOException("stream closed with " + m_bytesRemaining + " bytes remaining");
+				}
 				if (wasStreaming)
 				{
 					FinalizeStream();
 				}
 				return C.ResultEndOfInput;
 			}
+
 			if (m_pendingCache)
 			{
 				m_cacheBuffer.Write(buffer, offset, read);
