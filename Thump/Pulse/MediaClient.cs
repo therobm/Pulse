@@ -241,7 +241,7 @@ namespace Thump.Pulse
 		public abstract void GetTrack(string trackId, Action<PulseTrack> onComplete);
 		public abstract void GetArtists(Action<List<PulseArtist>> onComplete);
 		public abstract void GetArtist(string artistId, Action<PulseArtistDetails> onComplete);
-		public abstract void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete);
+		public abstract void GetPodcasts(Action<List<PulsePodcast>> onComplete);
 		public abstract void Search(string query, Action<PulseSearchData> onComplete);
 		public abstract void GetArtistAlbums(string artistId, Action<List<PulseAlbum>> onComplete);
 		public abstract void GetArtistTracks(string artistId, Action<List<PulseTrack>> onComplete);

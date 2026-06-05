@@ -18,10 +18,13 @@ namespace PulseAPI.CSharp
 		Genre,
 		GenreDetails,
 		Podcast,
-		PodcastEpisodes,
+		PodcastDetails,
 		PodcastEpisode,
 		CoverArt,
-		SongData
+		SongData,
+		Audiobook,
+		Chapter,
+		AudiobookDetails
 	}
 
 	public class PulseObject

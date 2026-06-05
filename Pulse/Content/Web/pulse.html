@@ -1161,8 +1161,8 @@
 					color: var(--text-dim);
 				}
 
-		/* Left-rail new-playlist control */
-		#left-new-playlist-bar {
+		/* Left-rail new-playlist / add-podcast control */
+		#left-new-playlist-bar, #left-new-podcast-bar {
 			display: none;
 			justify-content: flex-end;
 			padding: 0 12px 4px 12px;
@@ -1193,12 +1193,12 @@
 				flex-shrink: 0;
 			}
 
-		#left-new-playlist-form {
+		#left-new-playlist-form, #left-new-podcast-form {
 			display: none;
 			padding: 6px 12px 10px 12px;
 		}
 
-			#left-new-playlist-form input {
+			#left-new-playlist-form input, #left-new-podcast-form input {
 				width: 100%;
 				background: var(--bg);
 				border: 1px solid var(--border);
@@ -1210,17 +1210,17 @@
 				box-sizing: border-box;
 			}
 
-				#left-new-playlist-form input:focus {
+				#left-new-playlist-form input:focus, #left-new-podcast-form input:focus {
 					outline: none;
 					border-color: var(--accent);
 				}
 
-			#left-new-playlist-form .row {
+			#left-new-playlist-form .row, #left-new-podcast-form .row {
 				display: flex;
 				gap: 6px;
 			}
 
-			#left-new-playlist-form button {
+			#left-new-playlist-form button, #left-new-podcast-form button {
 				flex: 1;
 				padding: 6px 8px;
 				font-size: 12px;
@@ -1230,12 +1230,12 @@
 				min-height: 32px;
 			}
 
-			#left-new-playlist-form .btn-ok {
+			#left-new-playlist-form .btn-ok, #left-new-podcast-form .btn-ok {
 				background: var(--accent);
 				color: white;
 			}
 
-			#left-new-playlist-form .btn-cancel {
+			#left-new-playlist-form .btn-cancel, #left-new-podcast-form .btn-cancel {
 				background: transparent;
 				color: var(--text-dim);
 			}
@@ -1543,6 +1543,7 @@
 			<div id="left-tabs">
 				<button class="left-tab active" data-left-tab="playlists">Playlists</button>
 				<button class="left-tab" data-left-tab="artists">Artists</button>
+				<button class="left-tab" data-left-tab="podcasts">Podcasts</button>
 			</div>
 			<div id="left-sort">
 				<button class="sort-btn active" data-sort="alpha">A-Z</button>
@@ -1558,6 +1559,17 @@
 				<div class="row">
 					<button class="btn-ok" data-action="create-new-playlist">Create</button>
 					<button class="btn-cancel" data-action="hide-new-playlist-form">Cancel</button>
+				</div>
+			</div>
+			<div id="left-new-podcast-bar">
+				<button class="left-icon-btn" data-action="show-new-podcast-form" title="Add podcast"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Add podcast</span></button>
+			</div>
+			<div id="left-new-podcast-form">
+				<input type="text" id="new-podcast-url" placeholder="RSS feed URL" maxlength="500" />
+				<div class="form-error" id="new-podcast-error"></div>
+				<div class="row">
+					<button class="btn-ok" data-action="create-new-podcast">Add</button>
+					<button class="btn-cancel" data-action="hide-new-podcast-form">Cancel</button>
 				</div>
 			</div>
 			<div id="left-list"></div>
@@ -1624,6 +1636,23 @@
 				</div>
 				<div class="track-list-header"><span>#</span><span>Title</span><span>Album</span><span style="text-align:right">Time</span><span></span></div>
 				<div id="playlist-tracks"></div>
+			</div>
+			<div id="view-podcast-detail" class="center-view">
+				<div class="detail-header">
+					<div class="detail-art" id="podcast-detail-art">&#127911;</div>
+					<div class="detail-info">
+						<div class="detail-label">Podcast</div>
+						<div class="detail-name" id="podcast-detail-name"></div>
+						<div class="detail-meta" id="podcast-detail-meta"></div>
+						<div class="detail-sub" id="podcast-detail-desc" style="color:var(--text-dim);font-size:12px;margin-top:4px;max-width:640px;"></div>
+						<div class="detail-actions">
+							<button class="btn btn-primary" id="podcast-play-btn">Play latest</button>
+							<button class="btn btn-ghost" id="podcast-subscribe-btn"></button>
+						</div>
+					</div>
+				</div>
+				<div class="track-list-header"><span>#</span><span>Episode</span><span>Published</span><span style="text-align:right">Time</span><span></span></div>
+				<div id="podcast-episodes"></div>
 			</div>
 			<div id="view-search" class="center-view">
 				<div class="view-heading">Search Results</div>
@@ -1731,6 +1760,17 @@
 			return { id: playlist.Id, name: playlist.Name, coverArt: playlist.CoverArt || null, songCount: playlist.TrackCount, duration: playlist.Duration, comment: playlist.Comment || '', score: playlist.Score, lastPlayed: normalizeLastPlayed(playlist.LastPlayed) };
 		}
 		function adaptPlaylists(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptPlaylist(list[idx])); } } return out; }
+		function adaptPodcast(podcast) {
+			if (!podcast) { return null; }
+			let count = podcast.EpisodeCount; if (count === undefined || count === null) { count = podcast.ItemCount || 0; }
+			return { id: podcast.Id, title: podcast.Title, author: podcast.Author || '', coverArt: podcast.CoverArt || null, description: podcast.Description || '', episodeCount: count, unplayedCount: podcast.UnplayedCount || 0, subscribed: !!podcast.Subscribed, feedUrl: podcast.FeedUrl || '', lastPlayed: normalizeLastPlayed(podcast.LastPlayed) };
+		}
+		function adaptPodcasts(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptPodcast(list[idx])); } } return out; }
+		function adaptEpisode(episode) {
+			if (!episode) { return null; }
+			return { id: episode.Id, seriesId: episode.SeriesId, title: episode.Title, description: episode.Description || '', coverArt: episode.CoverArt || null, duration: episode.Duration || 0, publishedDate: episode.PublishedDate || '', position: episode.PositionSeconds || 0, completed: !!episode.Completed };
+		}
+		function adaptEpisodes(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptEpisode(list[idx])); } } return out; }
 		/* Map an envelope status code onto a user-facing message. */
 		function apiErrorMessage(err) { let status = (err && err.status) || ''; if (status === 'name_taken') { return 'A playlist with that name already exists.'; } if (status === 'missing_name') { return 'Please enter a name.'; } return 'Request failed'; }
 		function logApiError(label, err) { console.error(label, (err && err.status) || err); }
@@ -1739,7 +1779,7 @@
 		function streamUrl(trackId) { return pulse.streamUrl(trackId); }
 
 		let currentView = 'home'; let navStack = []; let searchTimeout = null;
-		let cachedArtists = null; let cachedPlaylists = null;
+		let cachedArtists = null; let cachedPlaylists = null; let cachedPodcasts = null; let currentPodcastDetail = null;
 		let currentAlbumDetail = null; let currentPlaylistDetail = null; let currentArtistId = null;
 		let leftTab = 'playlists'; let leftSort = 'alpha';
 		let audioElement = new Audio(); let playQueue = []; let playQueueIndex = -1;
@@ -1772,13 +1812,13 @@
 			if (target) { target.classList.add('active'); }
 			currentView = viewName;
 			let backDisplay;
-			if (navStack.length > 0) { backDisplay = 'flex'; } else { backDisplay = 'none'; }
+			if (viewName !== 'home') { backDisplay = 'flex'; } else { backDisplay = 'none'; }
 			document.getElementById('back-btn').style.display = backDisplay;
 			if (viewName !== 'search') { document.getElementById('search-input').value = ''; }
 			if (viewName === 'home') { loadHomeScreen(); }
 			document.getElementById('center-panel').scrollTop = 0;
 		}
-		function navigateWithHistory(viewName) { navStack.push(currentView); showView(viewName); }
+		function navigateWithHistory(viewName) { if (viewName !== currentView) { navStack.push(currentView); } showView(viewName); }
 		function goBack()
 		{
 			if (navStack.length === 0) {
@@ -1826,9 +1866,30 @@
 			return card;
 		}
 		/* Left Panel */
-		function switchLeftTab(tab) { leftTab = tab; let tabs = document.querySelectorAll('.left-tab'); for (let idx = 0; idx < tabs.length; idx++) { tabs[idx].classList.remove('active'); if ((tab === 'playlists' && idx === 0) || (tab === 'artists' && idx === 1)) { tabs[idx].classList.add('active'); } } document.getElementById('left-new-playlist-bar').style.display = (tab === 'playlists') ? 'flex' : 'none'; if (tab !== 'playlists') { hideNewPlaylistForm(); } renderLeftList(); }
+		function switchLeftTab(tab) { leftTab = tab; let tabs = document.querySelectorAll('.left-tab'); for (let idx = 0; idx < tabs.length; idx++) { if (tabs[idx].getAttribute('data-left-tab') === tab) { tabs[idx].classList.add('active'); } else { tabs[idx].classList.remove('active'); } } document.getElementById('left-new-playlist-bar').style.display = (tab === 'playlists') ? 'flex' : 'none'; document.getElementById('left-new-podcast-bar').style.display = (tab === 'podcasts') ? 'flex' : 'none'; if (tab !== 'playlists') { hideNewPlaylistForm(); } if (tab !== 'podcasts') { hideNewPodcastForm(); } renderLeftList(); }
 		function setLeftSort(sort) { leftSort = sort; let btns = document.querySelectorAll('.sort-btn'); for (let idx = 0; idx < btns.length; idx++) { btns[idx].classList.remove('active'); if (btns[idx].getAttribute('data-sort') === sort) { btns[idx].classList.add('active'); } } renderLeftList(); }
-		function renderLeftList() { let container = document.getElementById('left-list'); container.innerHTML = ''; if (leftTab === 'playlists') { renderLeftPlaylists(container); } else { renderLeftArtists(container); } }
+		function renderLeftList() { let container = document.getElementById('left-list'); container.innerHTML = ''; if (leftTab === 'playlists') { renderLeftPlaylists(container); } else if (leftTab === 'podcasts') { renderLeftPodcasts(container); } else { renderLeftArtists(container); } }
+		function renderLeftPodcasts(container) {
+			if (!cachedPodcasts) {
+				container.innerHTML = '<div class="loading-text">Loading...</div>';
+				pulse.podcasts().then(function (list) { cachedPodcasts = adaptPodcasts(list); renderLeftPodcasts(container); }).catch(function (err) { logApiError('podcasts', err); container.innerHTML = '<div class="loading-text">Failed to load</div>'; });
+				return;
+			}
+			let sorted = cachedPodcasts.slice();
+			if (leftSort === 'recent') { sorted.sort(function (left, right) { return (right.lastPlayed || '').localeCompare(left.lastPlayed || ''); }); } else { sorted.sort(function (left, right) { return left.title.localeCompare(right.title); }); }
+			container.innerHTML = '';
+			if (sorted.length === 0) { container.innerHTML = '<div class="loading-text">No podcasts yet. Add one with an RSS URL.</div>'; return; }
+			for (let idx = 0; idx < sorted.length; idx++) {
+				let podcast = sorted[idx];
+				let item = document.createElement('div');
+				item.className = 'left-item';
+				item.onclick = (function (pid) { return function () { navStack = []; openPodcast(pid); }; })(podcast.id);
+				let sub = podcast.episodeCount + ' episodes';
+				if (podcast.unplayedCount > 0) { sub = podcast.unplayedCount + ' new · ' + sub; }
+				item.innerHTML = '<div class="left-item-art">' + artHtml(podcast.coverArt, 80) + '</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(podcast.title) + '</div><div class="left-item-sub">' + escapeHtml(sub) + '</div></div>';
+				container.appendChild(item);
+			}
+		}
 		function renderLeftPlaylists(container) { if (!cachedPlaylists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; pulse.playlists().then(function (list) { cachedPlaylists = adaptPlaylists(list); renderLeftPlaylists(container); }).catch(function (err) { logApiError('playlists', err); container.innerHTML = '<div class="loading-text">Failed to load</div>'; }); return; } let sorted = cachedPlaylists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); } else if (leftSort === 'recent') { sorted.sort(function (left, right) { return (right.lastPlayed || '').localeCompare(left.lastPlayed || ''); }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let playlist = sorted[idx]; let item = document.createElement('div'); item.className = 'left-item'; item.onclick = (function (pid) { return function () { navStack = []; openPlaylist(pid); }; })(playlist.id); item.innerHTML = '<div class="left-item-art">' + artHtml(playlist.coverArt, 80) + '</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(playlist.name) + '</div><div class="left-item-sub">' + playlist.songCount + ' tracks</div></div>'; container.appendChild(item); } }
 		function renderLeftArtists(container) { if (!cachedArtists) { container.innerHTML = '<div class="loading-text">Loading...</div>'; pulse.artists().then(function (list) { cachedArtists = adaptArtists(list); renderLeftArtists(container); }).catch(function (err) { logApiError('artists', err); container.innerHTML = '<div class="loading-text">Failed to load</div>'; }); return; } let sorted = cachedArtists.slice(); if (leftSort === 'alpha') { sorted.sort(function (left, right) { return left.name.localeCompare(right.name); }); } else if (leftSort === 'popular') { sorted.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); } else if (leftSort === 'recent') { sorted.sort(function (left, right) { return (right.lastPlayed || '').localeCompare(left.lastPlayed || ''); }); } container.innerHTML = ''; for (let idx = 0; idx < sorted.length; idx++) { let artist = sorted[idx]; let avatarHtml;
 				if (artist.coverArt) { avatarHtml = '<img src="' + coverArtUrl(artist.coverArt, 80) + '" style="border-radius:50%;" />'; }
@@ -2081,6 +2142,70 @@
 		}
 		function playPlaylist() { if (currentPlaylistDetail && currentPlaylistDetail.entry) { markPlaylistPlayed(currentPlaylistDetail.id); playTrackList(currentPlaylistDetail.entry, 0); } }
 		function shufflePlaylist() { if (currentPlaylistDetail && currentPlaylistDetail.entry) { markPlaylistPlayed(currentPlaylistDetail.id); let shuffled = currentPlaylistDetail.entry.slice(); shuffleArray(shuffled); playTrackList(shuffled, 0); } }
+		function formatPodcastDate(iso) { if (!iso) { return ''; } let parsed = new Date(iso); if (isNaN(parsed.getTime())) { return iso; } let months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; return months[parsed.getMonth()] + ' ' + parsed.getDate() + ', ' + parsed.getFullYear(); }
+		function openPodcast(podcastId) {
+			pulse.podcast(podcastId).then(function (details) {
+				let podcast = adaptPodcast(details.Series);
+				currentPodcastDetail = { podcast: podcast, episodes: adaptEpisodes(details.Episodes) };
+				document.getElementById('podcast-detail-name').textContent = podcast.title;
+				let meta = podcast.episodeCount + ' episodes';
+				if (podcast.author) { meta = podcast.author + ' · ' + meta; }
+				document.getElementById('podcast-detail-meta').textContent = meta;
+				document.getElementById('podcast-detail-desc').textContent = podcast.description || '';
+				document.getElementById('podcast-detail-art').innerHTML = artHtml(podcast.coverArt, 400);
+				document.getElementById('podcast-subscribe-btn').textContent = podcast.subscribed ? 'Unsubscribe' : 'Subscribe';
+				renderPodcastEpisodes();
+				navigateWithHistory('podcast-detail');
+			}).catch(function (err) { logApiError('podcast', err); });
+		}
+		function renderPodcastEpisodes() {
+			let episodesEl = document.getElementById('podcast-episodes');
+			episodesEl.innerHTML = '';
+			if (!currentPodcastDetail) { return; }
+			let episodes = currentPodcastDetail.episodes || [];
+			if (episodes.length === 0) { episodesEl.innerHTML = '<div class="loading-text">No downloaded episodes yet.</div>'; return; }
+			for (let idx = 0; idx < episodes.length; idx++) {
+				let row = buildEpisodeRow(episodes[idx], idx + 1, (function (startIndex) { return function () { playPodcastFrom(startIndex); }; })(idx));
+				episodesEl.appendChild(row);
+			}
+		}
+		function buildEpisodeRow(episode, rowNumber, onClickFn) {
+			let row = document.createElement('div');
+			row.className = 'track-row';
+			row.setAttribute('data-track-id', episode.id);
+			row.onclick = onClickFn;
+			let statusSub = '';
+			if (episode.completed) { statusSub = 'Played'; }
+			row.innerHTML = '<span class="track-num">' + rowNumber + '</span><div class="track-title-col"><span class="track-title">' + escapeHtml(episode.title) + '</span><span class="track-artist-sub">' + escapeHtml(statusSub) + '</span></div><span class="track-album">' + escapeHtml(formatPodcastDate(episode.publishedDate)) + '</span><span class="track-duration">' + formatDuration(episode.duration) + '</span><span></span>';
+			return row;
+		}
+		function episodeToSong(episode) {
+			let podcast = currentPodcastDetail ? currentPodcastDetail.podcast : null;
+			let podcastTitle = podcast ? podcast.title : '';
+			let art = episode.coverArt;
+			if (!art && podcast) { art = podcast.coverArt; }
+			return { id: episode.id, title: episode.title, artist: podcastTitle, album: podcastTitle, coverArt: art, duration: episode.duration };
+		}
+		function playPodcastFrom(startIndex) {
+			if (!currentPodcastDetail) { return; }
+			let episodes = currentPodcastDetail.episodes || [];
+			let songs = [];
+			for (let idx = 0; idx < episodes.length; idx++) { songs.push(episodeToSong(episodes[idx])); }
+			playTrackList(songs, startIndex);
+		}
+		function playPodcastLatest() { playPodcastFrom(0); }
+		function togglePodcastSubscription() {
+			if (!currentPodcastDetail) { return; }
+			let podcast = currentPodcastDetail.podcast;
+			let request;
+			if (podcast.subscribed) { request = pulse.unsubscribePodcast(podcast.id); } else { request = pulse.subscribePodcast(podcast.id); }
+			request.then(function () {
+				podcast.subscribed = !podcast.subscribed;
+				document.getElementById('podcast-subscribe-btn').textContent = podcast.subscribed ? 'Unsubscribe' : 'Subscribe';
+				cachedPodcasts = null;
+				if (leftTab === 'podcasts') { renderLeftList(); }
+			}).catch(function (err) { logApiError('subscribePodcast', err); });
+		}
 		/* No pulse_v1 equivalent yet — stays on the legacy /pulse/ surface until the
 		   planned reportAnalytics(objectType, payload) generalization lands. */
 		function markPlaylistPlayed(playlistId) { fetch('/pulse/markPlaylistPlayed?id=' + encodeURIComponent(playlistId) + '&u=' + encodeURIComponent(API_USER)).then(function () { cachedPlaylists = null; }).catch(function (err) { logApiError('markPlaylistPlayed', err); }); }
@@ -2197,6 +2322,28 @@
 				cachedPlaylists = null;
 				if (leftTab !== 'playlists') { switchLeftTab('playlists'); } else { renderLeftList(); }
 			}).catch(function (err) { errEl.textContent = apiErrorMessage(err); });
+		}
+		function showNewPodcastForm() {
+			document.getElementById('left-new-podcast-form').style.display = 'block';
+			document.getElementById('new-podcast-error').textContent = '';
+			let input = document.getElementById('new-podcast-url');
+			input.value = '';
+			input.focus();
+		}
+		function hideNewPodcastForm() {
+			document.getElementById('left-new-podcast-form').style.display = 'none';
+		}
+		function createNewPodcast() {
+			let url = document.getElementById('new-podcast-url').value.trim();
+			let errEl = document.getElementById('new-podcast-error');
+			errEl.textContent = '';
+			if (!url) { errEl.textContent = 'Please enter an RSS feed URL.'; return; }
+			errEl.textContent = 'Adding…';
+			pulse.addPodcast(url, true).then(function () {
+				hideNewPodcastForm();
+				cachedPodcasts = null;
+				if (leftTab !== 'podcasts') { switchLeftTab('podcasts'); } else { renderLeftList(); }
+			}).catch(function (err) { logApiError('addPodcast', err); errEl.textContent = 'Could not add that feed.'; });
 		}
 
 		/* Playlist detail menu (rename / edit description / delete) */
@@ -2346,6 +2493,8 @@
 			document.getElementById('artist-shuffle-btn').addEventListener('click', shuffleArtist);
 			document.getElementById('playlist-play-btn').addEventListener('click', playPlaylist);
 			document.getElementById('playlist-shuffle-btn').addEventListener('click', shufflePlaylist);
+			document.getElementById('podcast-play-btn').addEventListener('click', playPodcastLatest);
+			document.getElementById('podcast-subscribe-btn').addEventListener('click', togglePodcastSubscription);
 			document.getElementById('np-next-item').addEventListener('click', playNext);
 			document.getElementById('btn-shuffle').addEventListener('click', toggleShuffle);
 			document.getElementById('btn-previous').addEventListener('click', playPrevious);
@@ -2358,6 +2507,7 @@
 			document.querySelector('.menu-item-remove').addEventListener('click', removeFromPlaylist);
 			document.getElementById('confirm-ok-btn').addEventListener('click', runPendingConfirm);
 			document.getElementById('new-playlist-name').addEventListener('keydown', function (event) { if (event.key === 'Enter') { createNewPlaylist(); } else if (event.key === 'Escape') { hideNewPlaylistForm(); } });
+			document.getElementById('new-podcast-url').addEventListener('keydown', function (event) { if (event.key === 'Enter') { createNewPodcast(); } else if (event.key === 'Escape') { hideNewPodcastForm(); } });
 			document.getElementById('picker-new-name').addEventListener('keydown', function (event) { if (event.key === 'Enter') { createPlaylistFromPicker(); } else if (event.key === 'Escape') { cancelPickerNewForm(); } });
 			document.getElementById('playlist-rename-input').addEventListener('keydown', function (event) { if (event.key === 'Enter') { commitPlaylistRename(); } else if (event.key === 'Escape') { cancelPlaylistRename(); } });
 			let leftTabButtons = document.querySelectorAll('.left-tab');
@@ -2387,6 +2537,9 @@
 			else if (action === 'show-new-playlist-form') { event.stopPropagation(); showNewPlaylistForm(); }
 			else if (action === 'hide-new-playlist-form') { hideNewPlaylistForm(); }
 			else if (action === 'create-new-playlist') { createNewPlaylist(); }
+			else if (action === 'show-new-podcast-form') { event.stopPropagation(); showNewPodcastForm(); }
+			else if (action === 'hide-new-podcast-form') { hideNewPodcastForm(); }
+			else if (action === 'create-new-podcast') { createNewPodcast(); }
 			else if (action === 'show-picker-new-form') { event.stopPropagation(); showPickerNewForm(); }
 			else if (action === 'cancel-picker-new-form') { event.stopPropagation(); cancelPickerNewForm(); }
 			else if (action === 'create-playlist-from-picker') { event.stopPropagation(); createPlaylistFromPicker(); }
