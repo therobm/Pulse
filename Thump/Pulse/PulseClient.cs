@@ -107,7 +107,7 @@ namespace Thump.Pulse
 		private bool FetchObjectSync<T>(string url, bool bCacheAllowed, out T value)
 		{
 			value = default(T);
-			string json = HttpGet(url, bCacheAllowed, true);
+			string json = HttpGet(url, bCacheAllowed, true, false);
 			if (string.IsNullOrEmpty(json))
 			{
 				return false;
@@ -138,7 +138,7 @@ namespace Thump.Pulse
 			try
 			{
 				string url = m_baseUrl + "/pulse_v1/ping?u=" + Uri.EscapeDataString(m_user);
-				string json = HttpGet(url, false, false);
+				string json = HttpGet(url, false, false, true);
 				if (string.IsNullOrEmpty(json))
 				{
 					OnPingResult(false);
@@ -586,6 +586,7 @@ namespace Thump.Pulse
 			});
 		}
 
+
 		public override void GetCoverArt(string coverArtId, Action<byte[]> onComplete)
 		{
 			if (string.IsNullOrEmpty(coverArtId))
@@ -626,7 +627,20 @@ namespace Thump.Pulse
 				}
 			}, true);
 		}
-
+		public override byte[] GetCachedCoverArt(string coverArtId)
+		{
+			if (string.IsNullOrEmpty(coverArtId))
+			{
+				return null;
+			}
+			string url = BuildCoverArtUrl(coverArtId);
+			byte[] cached;
+			if (m_imageCache.TryGetValue(url, out cached))
+			{
+				return cached;
+			}
+			return null;
+		}
 		public override void GetTrackAudio(string trackId, Action<byte[]> onComplete)
 		{
 			if (!IsOnline() || string.IsNullOrEmpty(trackId))

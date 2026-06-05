@@ -194,9 +194,6 @@ namespace Thump.Views
 			{
 				return;
 			}
-			m_playlist = playlistDetails.Playlist;
-			m_titleLabel.Text = m_playlist.Name;
-			m_metaLabel.Text = m_playlist.TrackCount + " tracks";
 			m_tracks = playlistDetails.Tracks;
 			m_trackList.ItemsSource = m_tracks;
 		}

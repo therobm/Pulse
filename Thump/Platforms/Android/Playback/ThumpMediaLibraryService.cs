@@ -8,6 +8,7 @@ using System.Timers;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
+using Android.Runtime;
 using AndroidX.Concurrent.Futures;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.ExoPlayer;
@@ -59,37 +60,13 @@ namespace Thump.Playback.AndroidOS
 		// string it gave us.
 		private System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>> m_searchResults = new System.Collections.Concurrent.ConcurrentDictionary<string, List<MediaItem>>();
 
-		// Tracks the currently-playing trackId so we can fire analytics for the
-		// OUTGOING track when ExoPlayer transitions to a new item or hits
-		// STATE_ENDED, and a Started for the incoming one. Cleared after we
-		// report on STATE_ENDED (which sticks for as many ticks as the user
-		// leaves it sitting) so it can't re-fire the same trackId.
-		private string m_lastReportedTrackId;
-
-		// Prior-tick snapshot of the current track's playback state. When the
-		// track changes, this tick's position already belongs to the NEW track
-		// (~0), so the outgoing track is classified Completed-vs-Skipped from
-		// the position/duration we stored on the previous tick. m_wasPlaying
-		// drives pause detection (a playing->paused edge on the same track).
-		private long m_lastPositionMs;
-		private long m_lastDurationMs;
-		private bool m_wasPlaying;
-
-		// A track that advanced past this fraction of its duration counts as
-		// Completed; anything earlier was a Skip. Mirrors the server's existing
-		// <50%-is-a-skip heuristic but biased high so only deliberate skips of
-		// the tail get counted against a track.
-		private const double s_completedThreshold = 0.95;
-
-		// Polled at this interval against m_player to detect track transitions
-		// and queue-end. ExoPlayer's playback state is the source of truth.
-		private const double s_analyticsTickIntervalMs = 500;
-		private System.Timers.Timer m_analyticsTicker;
-		private const int s_playbackStateEnded = 4;
-
 		public override void OnCreate()
 		{
 			base.OnCreate();
+
+			// Trust-all TLS for the native HTTP stack so Media3's DefaultHttpDataSource
+			// streams from the Pulse server without depending on a valid certificate.
+			InsecureTls.Install();
 
 			if (s_mediaClient == null)
 			{
@@ -109,28 +86,16 @@ namespace Thump.Playback.AndroidOS
 			DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
 			extractorsFactory.SetMp3ExtractorFlags( Mp3Extractor.FlagEnableConstantBitrateSeeking | Mp3Extractor.FlagDisableId3Metadata);
 
-			AndroidMediaDataSourceFactory dataSourceFactory = new AndroidMediaDataSourceFactory(s_mediaClient);
+			string cacheBaseDir = Android.App.Application.Context.CacheDir.AbsolutePath;
+			string cacheDir = Path.Combine(cacheBaseDir, "tracks");
+			if (!Directory.Exists(cacheDir))	
+				Directory.CreateDirectory(cacheDir);
+
+			AndroidMediaDataSourceFactory dataSourceFactory = new AndroidMediaDataSourceFactory(s_mediaClient, cacheDir);
 			DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory);
 			builder.SetMediaSourceFactory(mediaSourceFactory);
 
 			m_player = builder.Build();
-
-			//Authoritative track-analytics fire point. ExoPlayer drives the
-			//actual playback regardless of who started the queue (in-app MAUI
-			//via the MediaController, or Android Auto via its own browser),
-			//so polling its state from a single timer here catches every
-			//transition exactly once. The in-app ThumpAndroidPlayer used to
-			//fire its own track analytics from a ticker but that
-			//double-counted with this one and missed the AA-only case where
-			//the MAUI app never opens - so it's gone, this is the single
-			//source of truth. Polling instead of a Player.Listener because
-			//the Xamarin binding doesn't expose Listener callbacks as C#
-			//events on IExoPlayer and implementing IPlayerListener requires
-			//stubbing all 38 methods.
-			m_analyticsTicker = new System.Timers.Timer(s_analyticsTickIntervalMs);
-			m_analyticsTicker.AutoReset = true;
-			m_analyticsTicker.Elapsed += OnAnalyticsTick;
-			m_analyticsTicker.Start();
 
 			AndroidMediaLibraryCallback library = new AndroidMediaLibraryCallback();
 			library.m_onAddMediaItems = null;
@@ -273,92 +238,8 @@ namespace Thump.Playback.AndroidOS
 			}
 		}
 
-		// Timer fires on a thread-pool thread; ExoPlayer requires its API to
-		// be called on the application's main thread, so bounce there before
-		// reading state.
-		private void OnAnalyticsTick(object sender, ElapsedEventArgs e)
-		{
-			MainThread.BeginInvokeOnMainThread(AnalyticsTickMainThread);
-		}
 
-		// Polls ExoPlayer once per tick and emits the full set of track-level
-		// analytics state changes:
-		//  - Started   on a new current MediaItem (auto-advance, next/prev/seek,
-		//              queue replacement, and the first track all surface here),
-		//              including the very first track played.
-		//  - Skipped /
-		//    Completed for the OUTGOING track on that same transition, decided
-		//              from the PREVIOUS tick's position/duration (this tick's
-		//              position already belongs to the new track).
-		//  - Completed on STATE_ENDED, the queue-end case where the last item
-		//              stays sitting as current; m_lastReportedTrackId is cleared
-		//              so steady ticks don't re-fire.
-		//  - Paused    on a playing->paused edge for the same track.
-		// Collection-level Started (album/artist/playlist) is reported from the
-		// UI side in MainView, the only place that knows the collection id.
-		private void AnalyticsTickMainThread()
-		{
-			if (m_player == null)
-			{
-				return;
-			}
 
-			MediaItem currentItem = m_player.CurrentMediaItem;
-			string currentMediaId = null;
-			if (currentItem != null)
-			{
-				currentMediaId = currentItem.MediaId;
-			}
-
-			bool isPlaying = m_player.IsPlaying;
-			long positionMs = m_player.CurrentPosition;
-			long durationMs = m_player.Duration;
-
-			if (currentMediaId != m_lastReportedTrackId)
-			{
-				if (!string.IsNullOrEmpty(m_lastReportedTrackId))
-				{
-					PulseAnalytics.eAction action = PulseAnalytics.eAction.Skipped;
-					if (m_lastDurationMs > 0 && m_lastPositionMs >= (long)(m_lastDurationMs * s_completedThreshold))
-					{
-						action = PulseAnalytics.eAction.Completed;
-					}
-					s_mediaClient.ReportAnalytics(m_lastReportedTrackId, eDataType.Track, action);
-				}
-				if (!string.IsNullOrEmpty(currentMediaId))
-				{
-					s_mediaClient.ReportAnalytics(currentMediaId, eDataType.Track, PulseAnalytics.eAction.Started);
-				}
-				m_lastReportedTrackId = currentMediaId;
-				m_wasPlaying = isPlaying;
-				m_lastPositionMs = positionMs;
-				m_lastDurationMs = durationMs;
-				return;
-			}
-
-			if (m_player.PlaybackState == s_playbackStateEnded)
-			{
-				if (!string.IsNullOrEmpty(m_lastReportedTrackId))
-				{
-					string previous = m_lastReportedTrackId;
-					m_lastReportedTrackId = null;
-					s_mediaClient.ReportAnalytics(previous, eDataType.Track, PulseAnalytics.eAction.Completed);
-				}
-				m_wasPlaying = false;
-				m_lastPositionMs = 0;
-				m_lastDurationMs = 0;
-				return;
-			}
-
-			if (m_wasPlaying && !isPlaying && !string.IsNullOrEmpty(m_lastReportedTrackId))
-			{
-				s_mediaClient.ReportAnalytics(m_lastReportedTrackId, eDataType.Track, PulseAnalytics.eAction.Paused);
-			}
-
-			m_wasPlaying = isPlaying;
-			m_lastPositionMs = positionMs;
-			m_lastDurationMs = durationMs;
-		}
 
 		// Two-step search per the Media3 contract: OnSearch kicks off the
 		// async query and returns an OfVoid future immediately so AA knows
