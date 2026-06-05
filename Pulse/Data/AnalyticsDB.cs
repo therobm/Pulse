@@ -9,9 +9,26 @@ using PulseAPI.CSharp;
 namespace Pulse.Data
 {
 	/// <summary>
-	/// One row in the analytics sessions table, in the shape the
-	/// /analytics read endpoint returns it. Plain public fields; serialized
-	/// through PulseWire which emits field names verbatim.
+	/// High-level grouping an action rolls up to. Derived from the action on
+	/// ingest (see AnalyticsDB.CategoryOf) and stored on each row so reporting
+	/// can group at the category level without re-deriving. Uncategorized is the
+	/// fallback for an action the map doesn't yet cover.
+	/// </summary>
+	public enum eCategory
+	{
+		Uncategorized,
+		App,
+		Navigation,
+		Search,
+		Playback,
+		Library,
+		Network
+	}
+
+	/// <summary>
+	/// One row in the analytics sessions table, in the shape the /analytics read
+	/// endpoint returns it. Plain public fields; serialized through PulseWire
+	/// which emits field names verbatim.
 	/// </summary>
 	public class AnalyticsSessionRow
 	{
@@ -24,26 +41,31 @@ namespace Pulse.Data
 	}
 
 	/// <summary>
-	/// One row in the analytics log_events table, in the shape the
-	/// /analytics read endpoint returns it.
+	/// One row in the analytics events table, in the shape the /analytics read
+	/// endpoint returns it. DurationMs is -1 when the stored value was NULL
+	/// (instantaneous action); ObjectType/ObjectId are empty when the event had
+	/// no object.
 	/// </summary>
 	public class AnalyticsEventRow
 	{
 		public long Id;
 		public string SessionId;
 		public string Timestamp;
-		public string Action;
-		public string Location;
-		public string Result;
-		public string Detail;
 		public string ReceivedAt;
+		public string Category;
+		public string Action;
+		public string Result;
+		public string ObjectType;
+		public string ObjectId;
+		public long DurationMs;
+		public string Detail;
 	}
 
 	/// <summary>
-	/// Carrier the route handler hands to the drain queue: the parsed batch
-	/// plus the server-stamped received_at string. The received_at lives only
-	/// on this carrier -- it is NOT part of the public PulseLogBatch wire type,
-	/// so the client never sees or sends it.
+	/// Carrier the route handler hands to the drain queue: the parsed batch plus
+	/// the server-stamped received_at string. The received_at lives only on this
+	/// carrier -- it is NOT part of the public PulseAnalyticsBatch wire type, so
+	/// the client never sees or sends it.
 	/// </summary>
 	internal class AnalyticsBatchItem
 	{
@@ -52,13 +74,12 @@ namespace Pulse.Data
 	}
 
 	/// <summary>
-	/// Intake + drain ("firehose") for the analytics log pipeline. The route
-	/// handler calls Enqueue from the request thread; a single background
-	/// drain thread pulls batches off the queue, opens one transaction per
-	/// batch, upserts the session row, and inserts every event in the batch.
-	/// The drain thread also runs a 30-day retention prune at startup and on
-	/// a 6-hour cadence after that. The request thread never touches the
-	/// database.
+	/// Intake + drain ("firehose") for the analytics pipeline. The route handler
+	/// calls Enqueue from the request thread; a single background drain thread
+	/// pulls batches off the queue, opens one transaction per batch, upserts the
+	/// session row, and inserts every event in the batch. The drain thread also
+	/// runs a 30-day retention prune at startup and on a 6-hour cadence after
+	/// that. The request thread never touches the database.
 	/// </summary>
 	public class AnalyticsDB
 	{
@@ -109,14 +130,59 @@ namespace Pulse.Data
 
 			m_drainThread = new Thread(DrainLoop);
 			m_drainThread.IsBackground = true;
-			m_drainThread.Name = "PulseanalyticsDrain";
+			m_drainThread.Name = "PulseAnalyticsDrain";
 			m_drainThread.Start();
 		}
 
 		/// <summary>
+		/// The single source of truth for the action-to-category taxonomy. Run at
+		/// ingest to fill the category column. A new action with no case here
+		/// falls to Uncategorized rather than being dropped -- the raw action is
+		/// still stored, so such rows can be re-categorised later once the
+		/// mapping is added.
+		/// </summary>
+		private eCategory CategoryOf(eAction action)
+		{
+			switch (action)
+			{
+				case eAction.Launch:
+				case eAction.Quit:
+				case eAction.Login:
+				case eAction.SettingsChange:
+					return eCategory.App;
+				case eAction.Browse:
+				case eAction.OpenNowPlaying:
+				case eAction.Tab:
+					return eCategory.Navigation;
+				case eAction.Search:
+					return eCategory.Search;
+				case eAction.Play:
+				case eAction.Pause:
+				case eAction.Resume:
+				case eAction.Next:
+				case eAction.Previous:
+				case eAction.Seek:
+				case eAction.QueueAdd:
+				case eAction.ModeChange:
+				case eAction.TrackLoad:
+				case eAction.TrackStream:
+					return eCategory.Playback;
+				case eAction.PlaylistCreate:
+				case eAction.PlaylistEdit:
+				case eAction.FavoriteToggle:
+					return eCategory.Library;
+				case eAction.Connectivity:
+				case eAction.Scrobble:
+					return eCategory.Network;
+				default:
+					return eCategory.Uncategorized;
+			}
+		}
+
+		/// <summary>
 		/// Called from the request thread. Wraps the parsed batch with the
-		/// server-stamped received_at and adds it to the drain queue. Does
-		/// not touch SQLite.
+		/// server-stamped received_at and adds it to the drain queue. Does not
+		/// touch SQLite.
 		/// </summary>
 		public void Enqueue(PulseAnalyticsBatch batch, string receivedAt)
 		{
@@ -158,7 +224,7 @@ namespace Pulse.Data
 				}
 				catch (Exception ex)
 				{
-					Log.Error(-1, "analyticsDB drain failed: " + ex.Message);
+					Log.Error(-1, "AnalyticsDB drain failed: " + ex.Message);
 				}
 			}
 		}
@@ -188,12 +254,12 @@ namespace Pulse.Data
 						int eventCount = batch.Events.Count;
 						for (int eventIndex = 0; eventIndex < eventCount; eventIndex++)
 						{
-							PulseAnalyticsEvent logEvent = batch.Events[eventIndex];
-							if (logEvent == null)
+							PulseAnalyticsEvent analyticsEvent = batch.Events[eventIndex];
+							if (analyticsEvent == null)
 							{
 								continue;
 							}
-							InsertEvent(connection, transaction, batch.SessionId, logEvent, item.ReceivedAt);
+							InsertEvent(connection, transaction, batch.SessionId, analyticsEvent, item.ReceivedAt);
 						}
 					}
 
@@ -202,7 +268,7 @@ namespace Pulse.Data
 				catch (Exception ex)
 				{
 					transaction.Rollback();
-					Log.Error(-1, "analyticsDB.WriteBatch failed: " + ex.Message);
+					Log.Error(-1, "AnalyticsDB.WriteBatch failed: " + ex.Message);
 				}
 			}
 			finally
@@ -247,35 +313,74 @@ namespace Pulse.Data
 			command.ExecuteNonQuery();
 		}
 
-		private void InsertEvent(SqliteConnection connection, SqliteTransaction transaction, string sessionId, PulseAnalyticsEvent logEvent, string receivedAt)
+		private void InsertEvent(SqliteConnection connection, SqliteTransaction transaction, string sessionId, PulseAnalyticsEvent analyticsEvent, string receivedAt)
 		{
 			SqliteCommand command = connection.CreateCommand();
 			command.Transaction = transaction;
-			command.CommandText = "INSERT INTO log_events (session_id, timestamp, action, location, result, detail, received_at) VALUES ($sessionId, $timestamp, $action, $location, $result, $detail, $receivedAt);";
+			command.CommandText = "INSERT INTO events (session_id, timestamp, received_at, category, action, result, object_type, object_id, duration_ms, detail) VALUES ($sessionId, $timestamp, $receivedAt, $category, $action, $result, $objectType, $objectId, $durationMs, $detail);";
 
 			string timestamp = "";
-			if (logEvent.Timestamp != null)
+			if (analyticsEvent.Timestamp != null)
 			{
-				timestamp = logEvent.Timestamp;
+				timestamp = analyticsEvent.Timestamp;
 			}
-			string location = "";
-			if (logEvent.Location != null)
+			string objectType = "";
+			if (analyticsEvent.ObjectType != null)
 			{
-				location = logEvent.Location;
+				objectType = analyticsEvent.ObjectType;
+			}
+			string objectId = "";
+			if (analyticsEvent.ObjectId != null)
+			{
+				objectId = analyticsEvent.ObjectId;
 			}
 			string detail = "";
-			if (logEvent.Detail != null)
+			if (analyticsEvent.Detail != null)
 			{
-				detail = logEvent.Detail;
+				detail = analyticsEvent.Detail;
 			}
+
+			eCategory category = CategoryOf(analyticsEvent.Action);
 
 			command.Parameters.AddWithValue("$sessionId", sessionId);
 			command.Parameters.AddWithValue("$timestamp", timestamp);
-			command.Parameters.AddWithValue("$action", logEvent.Action.ToString());
-			command.Parameters.AddWithValue("$location", location);
-			command.Parameters.AddWithValue("$result", logEvent.Result.ToString());
-			command.Parameters.AddWithValue("$detail", detail);
 			command.Parameters.AddWithValue("$receivedAt", receivedAt);
+			command.Parameters.AddWithValue("$category", category.ToString());
+			command.Parameters.AddWithValue("$action", analyticsEvent.Action.ToString());
+			command.Parameters.AddWithValue("$result", analyticsEvent.Result.ToString());
+
+			// No object -> store NULL for both object columns so they don't
+			// pollute GROUP BY object_type.
+			if (string.IsNullOrEmpty(objectId))
+			{
+				command.Parameters.AddWithValue("$objectType", DBNull.Value);
+				command.Parameters.AddWithValue("$objectId", DBNull.Value);
+			}
+			else
+			{
+				command.Parameters.AddWithValue("$objectType", objectType);
+				command.Parameters.AddWithValue("$objectId", objectId);
+			}
+
+			// Instantaneous actions arrive as -1 -> store NULL duration.
+			if (analyticsEvent.DurationMs < 0)
+			{
+				command.Parameters.AddWithValue("$durationMs", DBNull.Value);
+			}
+			else
+			{
+				command.Parameters.AddWithValue("$durationMs", analyticsEvent.DurationMs);
+			}
+
+			if (string.IsNullOrEmpty(detail))
+			{
+				command.Parameters.AddWithValue("$detail", DBNull.Value);
+			}
+			else
+			{
+				command.Parameters.AddWithValue("$detail", detail);
+			}
+
 			command.ExecuteNonQuery();
 		}
 
@@ -287,7 +392,7 @@ namespace Pulse.Data
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "analyticsDB prune failed: " + ex.Message);
+				Log.Error(-1, "AnalyticsDB prune failed: " + ex.Message);
 			}
 			m_lastPruneUtc = DateTime.UtcNow;
 		}
@@ -300,12 +405,12 @@ namespace Pulse.Data
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "DELETE FROM log_events WHERE received_at < $cutoff;";
+				command.CommandText = "DELETE FROM events WHERE received_at < $cutoff;";
 				command.Parameters.AddWithValue("$cutoff", cutoff);
 				int deleted = command.ExecuteNonQuery();
 				if (deleted > 0)
 				{
-					Log.Info(-1, "analytics retention prune removed " + deleted + " event(s) older than " + cutoff);
+					Log.Info(-1, "Analytics retention prune removed " + deleted + " event(s) older than " + cutoff);
 				}
 			}
 			finally
@@ -316,9 +421,10 @@ namespace Pulse.Data
 
 		/// <summary>
 		/// Read every event for a given session, ordered by client timestamp.
-		/// Empty action / result filters mean "no filter on that column".
+		/// Empty category / action / result filters mean "no filter on that
+		/// column".
 		/// </summary>
-		public List<AnalyticsEventRow> GetEventsForSession(string sessionId, string actionFilter, string resultFilter)
+		public List<AnalyticsEventRow> GetEventsForSession(string sessionId, string categoryFilter, string actionFilter, string resultFilter)
 		{
 			List<AnalyticsEventRow> rows = new List<AnalyticsEventRow>();
 			if (string.IsNullOrEmpty(sessionId))
@@ -330,10 +436,15 @@ namespace Pulse.Data
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
+				bool hasCategory = !string.IsNullOrEmpty(categoryFilter);
 				bool hasAction = !string.IsNullOrEmpty(actionFilter);
 				bool hasResult = !string.IsNullOrEmpty(resultFilter);
 
-				string sql = "SELECT id, session_id, timestamp, action, location, result, detail, received_at FROM log_events WHERE session_id = $sessionId";
+				string sql = "SELECT id, session_id, timestamp, received_at, category, action, result, object_type, object_id, duration_ms, detail FROM events WHERE session_id = $sessionId";
+				if (hasCategory)
+				{
+					sql = sql + " AND category = $category";
+				}
 				if (hasAction)
 				{
 					sql = sql + " AND action = $action";
@@ -346,6 +457,10 @@ namespace Pulse.Data
 				command.CommandText = sql;
 
 				command.Parameters.AddWithValue("$sessionId", sessionId);
+				if (hasCategory)
+				{
+					command.Parameters.AddWithValue("$category", categoryFilter);
+				}
 				if (hasAction)
 				{
 					command.Parameters.AddWithValue("$action", actionFilter);
@@ -422,11 +537,14 @@ namespace Pulse.Data
 			row.Id = reader.GetInt64(0);
 			row.SessionId = ReadString(reader, 1);
 			row.Timestamp = ReadString(reader, 2);
-			row.Action = ReadString(reader, 3);
-			row.Location = ReadString(reader, 4);
-			row.Result = ReadString(reader, 5);
-			row.Detail = ReadString(reader, 6);
-			row.ReceivedAt = ReadString(reader, 7);
+			row.ReceivedAt = ReadString(reader, 3);
+			row.Category = ReadString(reader, 4);
+			row.Action = ReadString(reader, 5);
+			row.Result = ReadString(reader, 6);
+			row.ObjectType = ReadString(reader, 7);
+			row.ObjectId = ReadString(reader, 8);
+			row.DurationMs = ReadLong(reader, 9, -1);
+			row.Detail = ReadString(reader, 10);
 			return row;
 		}
 
@@ -449,6 +567,15 @@ namespace Pulse.Data
 				return "";
 			}
 			return reader.GetString(columnIndex);
+		}
+
+		private long ReadLong(SqliteDataReader reader, int columnIndex, long whenNull)
+		{
+			if (reader.IsDBNull(columnIndex))
+			{
+				return whenNull;
+			}
+			return reader.GetInt64(columnIndex);
 		}
 	}
 }

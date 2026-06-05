@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Devices;
@@ -44,6 +42,9 @@ namespace Thump
 		/// <summary>Buffer length that triggers a flush between scheduled ticks.</summary>
 		private const int s_flushHighWater = 50;
 
+		/// <summary>Sentinel DurationMs for an instantaneous (non-timed) action.</summary>
+		private const long s_noDuration = -1;
+
 		/// <summary>
 		/// Stores the client used to ship batches and starts the background flush
 		/// thread. The object owns its own setup rather than having it wired in
@@ -59,32 +60,57 @@ namespace Thump
 			flushThread.Start();
 		}
 
-		/// <summary>
-		/// Record a usage event with no detail string. The caller-info default
-		/// arguments are the sanctioned exception to the no-default-params rule.
-		/// </summary>
-		public void Event(eAction action, eResult result, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
+		/// <summary>Record an instantaneous, objectless action (e.g. Quit, Next).</summary>
+		public void Event(eAction action, eResult result)
 		{
-			Event(action, result, "", member, file);
+			Record(action, result, "", "", s_noDuration, "");
+		}
+
+		/// <summary>Record an instantaneous, objectless action with free-form detail (e.g. ModeChange "shuffle=on").</summary>
+		public void Event(eAction action, eResult result, string detail)
+		{
+			Record(action, result, "", "", s_noDuration, detail);
+		}
+
+		/// <summary>Record an action attributed to a content object (e.g. Play a playlist, Browse an artist).</summary>
+		public void Event(eAction action, eResult result, eDataType objectType, string objectId)
+		{
+			Record(action, result, ObjectTypeName(objectType), objectId, s_noDuration, "");
+		}
+
+		/// <summary>Record a timed action against a content object, with detail (e.g. TrackLoad, TrackStream).</summary>
+		public void Event(eAction action, eResult result, eDataType objectType, string objectId, long durationMs, string detail)
+		{
+			Record(action, result, ObjectTypeName(objectType), objectId, durationMs, detail);
+		}
+
+		private static string ObjectTypeName(eDataType objectType)
+		{
+			return objectType.ToString().ToLowerInvariant();
 		}
 
 		/// <summary>
-		/// Record a usage event with a free-form detail string. Always writes a
-		/// local breadcrumb to the diagnostic log so the event is visible
-		/// on-device even with remote analytics off; additionally enqueues the
-		/// event for the server when analytics is enabled. Never throws into the
-		/// caller -- recording an event must not destabilise app code.
+		/// Builds the event, writes a local breadcrumb to the diagnostic log so
+		/// it's visible on-device even with remote analytics off, and enqueues it
+		/// for the server when analytics is enabled. Never throws into the caller
+		/// -- recording an event must not destabilise app code.
 		/// </summary>
-		public void Event(eAction action, eResult result, string detail, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
+		private void Record(eAction action, eResult result, string objectType, string objectId, long durationMs, string detail)
 		{
-			string location = Path.GetFileNameWithoutExtension(file) + "." + member;
-			string detailSuffix = "";
+			string crumb = "[analytics] " + action + " " + result;
+			if (!string.IsNullOrEmpty(objectId))
+			{
+				crumb = crumb + " " + objectType + "/" + objectId;
+			}
+			if (durationMs >= 0)
+			{
+				crumb = crumb + " " + durationMs + "ms";
+			}
 			if (!string.IsNullOrEmpty(detail))
 			{
-				detailSuffix = " " + detail;
+				crumb = crumb + " " + detail;
 			}
-
-			Log.Info("[analytics] " + action + " " + result + " " + location + detailSuffix);
+			Log.Info(crumb);
 
 			try
 			{
@@ -106,7 +132,9 @@ namespace Thump
 				PulseAnalyticsEvent record = new PulseAnalyticsEvent();
 				record.Action = action;
 				record.Result = result;
-				record.Location = location;
+				record.ObjectType = objectType;
+				record.ObjectId = objectId;
+				record.DurationMs = durationMs;
 				record.Detail = detail;
 				// Round-trip "o" UTC so the server can order and prune correctly.
 				record.Timestamp = System.DateTime.UtcNow.ToString("o");

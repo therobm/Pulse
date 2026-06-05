@@ -67,8 +67,8 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("unfavorite", Unfavorite);
 			RegisterRoute("reportAnalytics", ReportAnalytics);
 
-			RegisterRoute("ingestLog", PostIngestLog);
-			RegisterRoute("analytics", Getanalytics);
+			RegisterRoute("ingestAnalytics", PostIngestAnalytics);
+			RegisterRoute("analytics", GetAnalytics);
 
 			RegisterRoute("topItems", GetTop);
 
@@ -1413,15 +1413,14 @@ namespace Pulse.Protocols.PulseAPI
 		}
 
 		/// <summary>
-		/// analytics-log intake. Clients POST a PulseLogBatch describing a
-		/// window of client-side events (stream open/close, cache hits/misses,
-		/// HTTP request/response, player errors, etc). The body is JSON;
-		/// HttpServer sets AllowSynchronousIO so the synchronous read is legal.
-		/// The handler stamps received_at on the server clock and hands the
-		/// item to analyticsDB -- the request thread never touches the
-		/// database.
+		/// Analytics intake. Clients POST a PulseAnalyticsBatch describing a
+		/// window of client-side usage events (navigation, playback, failures).
+		/// The body is JSON; HttpServer sets AllowSynchronousIO so the
+		/// synchronous read is legal. The handler stamps received_at on the
+		/// server clock and hands the item to AnalyticsDB -- the request thread
+		/// never touches the database.
 		/// </summary>
-		public IResult PostIngestLog(HttpContext context)
+		public IResult PostIngestAnalytics(HttpContext context)
 		{
 			string body;
 			using (StreamReader reader = new StreamReader(context.Request.Body))
@@ -1454,21 +1453,22 @@ namespace Pulse.Protocols.PulseAPI
 		}
 
 		/// <summary>
-		/// analytics-log read endpoint. With ?session_id=... returns every
-		/// event for that session (optionally filtered by action and result),
+		/// Analytics read endpoint. With ?session_id=... returns every event for
+		/// that session (optionally filtered by category, action, and result),
 		/// ordered by client timestamp. With ?device_id=... returns every
 		/// session for that device, most recent first.
 		/// </summary>
-		public IResult Getanalytics(HttpContext context)
+		public IResult GetAnalytics(HttpContext context)
 		{
 			string sessionId = context.Request.Query["session_id"].FirstOrDefault();
 			string deviceId = context.Request.Query["device_id"].FirstOrDefault();
 
 			if (!string.IsNullOrEmpty(sessionId))
 			{
+				string categoryFilter = context.Request.Query["category"].FirstOrDefault();
 				string actionFilter = context.Request.Query["action"].FirstOrDefault();
 				string resultFilter = context.Request.Query["result"].FirstOrDefault();
-				List<AnalyticsEventRow> events = m_analyticsDB.GetEventsForSession(sessionId, actionFilter, resultFilter);
+				List<AnalyticsEventRow> events = m_analyticsDB.GetEventsForSession(sessionId, categoryFilter, actionFilter, resultFilter);
 				AnalyticsEventsResponse response = new AnalyticsEventsResponse();
 				response.SessionId = sessionId;
 				response.Events = events;
