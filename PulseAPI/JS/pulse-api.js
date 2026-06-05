@@ -40,8 +40,11 @@
 		Genre: 'Genre',
 		GenreDetails: 'GenreDetails',
 		Podcast: 'Podcast',
-		PodcastEpisodes: 'PodcastEpisodes',
+		PodcastDetails: 'PodcastDetails',
 		PodcastEpisode: 'PodcastEpisode',
+		Audiobook: 'Audiobook',
+		Chapter: 'Chapter',
+		AudiobookDetails: 'AudiobookDetails',
 		CoverArt: 'CoverArt',
 		SongData: 'SongData'
 	};
@@ -304,10 +307,45 @@
 		return this.request('reportTrackAnalytics', { id: id });
 	};
 
-	// -- other ------------------------------------------------------------
+	// -- podcasts ---------------------------------------------------------
 
+	// The podcasts this user is subscribed to. Resolves to an array of
+	// PulsePodcast objects.
 	PulseClient.prototype.podcasts = function () {
 		return this._contents('podcasts');
+	};
+
+	// The full podcast catalogue on the server, regardless of subscription.
+	PulseClient.prototype.allPodcasts = function () {
+		return this._contents('allPodcasts');
+	};
+
+	// One podcast's detail: resolves to a PulsePodcastDetails
+	// ({ Series: PulsePodcast, Episodes: [PulsePodcastEpisode] }). Episodes
+	// are the ones available to play (downloaded), newest first.
+	PulseClient.prototype.podcast = function (id) {
+		return this._contents('podcast', { id: id });
+	};
+
+	// Add a feed to the catalogue by RSS URL. subscribe=true also adds it to
+	// this user's subscriptions. Resolves to the PulsePodcast.
+	PulseClient.prototype.addPodcast = function (feedUrl, subscribe) {
+		var subscribeFlag = '0';
+		if (subscribe) { subscribeFlag = '1'; }
+		return this._contents('addPodcast', { feedUrl: feedUrl, subscribe: subscribeFlag });
+	};
+
+	PulseClient.prototype.subscribePodcast = function (id) {
+		return this.request('subscribePodcast', { id: id });
+	};
+
+	PulseClient.prototype.unsubscribePodcast = function (id) {
+		return this.request('unsubscribePodcast', { id: id });
+	};
+
+	// Save this user's playback position (seconds) for an episode/chapter.
+	PulseClient.prototype.saveEpisodeProgress = function (id, positionSeconds) {
+		return this.request('episodeProgress', { id: id, positionSeconds: positionSeconds });
 	};
 
 	return {
