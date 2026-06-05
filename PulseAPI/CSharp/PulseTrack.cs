@@ -10,6 +10,7 @@ namespace PulseAPI.CSharp
 		public string CoverArt;
 		public int Duration;
 		public bool Starred;
+		public bool IsSeries;
 
 		public PulseTrack()
 		{
