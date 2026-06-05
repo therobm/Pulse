@@ -28,11 +28,11 @@ namespace Pulse.Protocols.PulseAPI
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsStore)
+		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
-			m_analyticsDB = analyticsStore;
+			m_analyticsDB = analyticsDB;
 			m_defaultCoverArt = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png"));
 		}
 
@@ -1418,7 +1418,7 @@ namespace Pulse.Protocols.PulseAPI
 		/// HTTP request/response, player errors, etc). The body is JSON;
 		/// HttpServer sets AllowSynchronousIO so the synchronous read is legal.
 		/// The handler stamps received_at on the server clock and hands the
-		/// item to analyticsStore -- the request thread never touches the
+		/// item to analyticsDB -- the request thread never touches the
 		/// database.
 		/// </summary>
 		public IResult PostIngestLog(HttpContext context)

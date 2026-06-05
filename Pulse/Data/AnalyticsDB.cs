@@ -158,7 +158,7 @@ namespace Pulse.Data
 				}
 				catch (Exception ex)
 				{
-					Log.Error(-1, "analyticsStore drain failed: " + ex.Message);
+					Log.Error(-1, "analyticsDB drain failed: " + ex.Message);
 				}
 			}
 		}
@@ -202,7 +202,7 @@ namespace Pulse.Data
 				catch (Exception ex)
 				{
 					transaction.Rollback();
-					Log.Error(-1, "analyticsStore.WriteBatch failed: " + ex.Message);
+					Log.Error(-1, "analyticsDB.WriteBatch failed: " + ex.Message);
 				}
 			}
 			finally
@@ -287,7 +287,7 @@ namespace Pulse.Data
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "analyticsStore prune failed: " + ex.Message);
+				Log.Error(-1, "analyticsDB prune failed: " + ex.Message);
 			}
 			m_lastPruneUtc = DateTime.UtcNow;
 		}
