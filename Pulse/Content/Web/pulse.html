@@ -1649,6 +1649,18 @@
 							<button class="btn btn-primary" id="podcast-play-btn">Play latest</button>
 							<button class="btn btn-ghost" id="podcast-subscribe-btn"></button>
 						</div>
+						<div id="podcast-settings" style="margin-top:12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--text-dim);">
+							<span>Backlog:</span>
+							<select id="podcast-retention" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);padding:5px 8px;font-size:12px;">
+								<option value="KeepAll">Keep all episodes</option>
+								<option value="KeepN">Keep newest</option>
+								<option value="KeepDays">Keep last (days)</option>
+							</select>
+							<input id="podcast-retention-value" type="number" min="1" style="width:64px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);padding:5px 8px;font-size:12px;" />
+							<label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="podcast-autodownload" /> Auto-download</label>
+							<button class="btn btn-ghost" id="podcast-settings-save" style="padding:5px 12px;font-size:12px;min-height:0;">Save</button>
+							<span id="podcast-settings-status"></span>
+						</div>
 					</div>
 				</div>
 				<div class="track-list-header"><span>#</span><span>Episode</span><span>Published</span><span style="text-align:right">Time</span><span></span></div>
@@ -1763,7 +1775,7 @@
 		function adaptPodcast(podcast) {
 			if (!podcast) { return null; }
 			let count = podcast.EpisodeCount; if (count === undefined || count === null) { count = podcast.ItemCount || 0; }
-			return { id: podcast.Id, title: podcast.Title, author: podcast.Author || '', coverArt: podcast.CoverArt || null, description: podcast.Description || '', episodeCount: count, unplayedCount: podcast.UnplayedCount || 0, subscribed: !!podcast.Subscribed, feedUrl: podcast.FeedUrl || '', lastPlayed: normalizeLastPlayed(podcast.LastPlayed) };
+			return { id: podcast.Id, title: podcast.Title, author: podcast.Author || '', coverArt: podcast.CoverArt || null, description: podcast.Description || '', episodeCount: count, unplayedCount: podcast.UnplayedCount || 0, subscribed: !!podcast.Subscribed, feedUrl: podcast.FeedUrl || '', retentionPolicy: podcast.RetentionPolicy || 'KeepAll', retentionValue: podcast.RetentionValue || 0, autoDownload: !!podcast.AutoDownload, pollIntervalMinutes: podcast.PollIntervalMinutes || 60, lastPlayed: normalizeLastPlayed(podcast.LastPlayed) };
 		}
 		function adaptPodcasts(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptPodcast(list[idx])); } } return out; }
 		function adaptEpisode(episode) {
@@ -2154,6 +2166,7 @@
 				document.getElementById('podcast-detail-desc').textContent = podcast.description || '';
 				document.getElementById('podcast-detail-art').innerHTML = artHtml(podcast.coverArt, 400);
 				document.getElementById('podcast-subscribe-btn').textContent = podcast.subscribed ? 'Unsubscribe' : 'Subscribe';
+				populatePodcastSettings(podcast);
 				renderPodcastEpisodes();
 				navigateWithHistory('podcast-detail');
 			}).catch(function (err) { logApiError('podcast', err); });
@@ -2209,6 +2222,35 @@
 		/* No pulse_v1 equivalent yet — stays on the legacy /pulse/ surface until the
 		   planned reportAnalytics(objectType, payload) generalization lands. */
 		function markPlaylistPlayed(playlistId) { fetch('/pulse/markPlaylistPlayed?id=' + encodeURIComponent(playlistId) + '&u=' + encodeURIComponent(API_USER)).then(function () { cachedPlaylists = null; }).catch(function (err) { logApiError('markPlaylistPlayed', err); }); }
+		function syncRetentionValueVisibility() {
+			let policy = document.getElementById('podcast-retention').value;
+			let valueEl = document.getElementById('podcast-retention-value');
+			if (policy === 'KeepAll') { valueEl.style.display = 'none'; } else { valueEl.style.display = ''; }
+		}
+		function populatePodcastSettings(podcast) {
+			document.getElementById('podcast-retention').value = podcast.retentionPolicy || 'KeepAll';
+			let value = podcast.retentionValue || 0;
+			if (value <= 0) { value = ''; }
+			document.getElementById('podcast-retention-value').value = value;
+			document.getElementById('podcast-autodownload').checked = !!podcast.autoDownload;
+			document.getElementById('podcast-settings-status').textContent = '';
+			syncRetentionValueVisibility();
+		}
+		function savePodcastSettings() {
+			if (!currentPodcastDetail) { return; }
+			let podcast = currentPodcastDetail.podcast;
+			let policy = document.getElementById('podcast-retention').value;
+			let value = parseInt(document.getElementById('podcast-retention-value').value, 10);
+			if (isNaN(value) || value < 0) { value = 0; }
+			let autoDownload = document.getElementById('podcast-autodownload').checked;
+			let statusEl = document.getElementById('podcast-settings-status');
+			statusEl.textContent = 'Saving…';
+			pulse.updatePodcast(podcast.id, { retentionPolicy: policy, retentionValue: value, autoDownload: autoDownload, pollIntervalMinutes: podcast.pollIntervalMinutes }).then(function (updated) {
+				let adapted = adaptPodcast(updated);
+				if (adapted) { currentPodcastDetail.podcast = adapted; populatePodcastSettings(adapted); }
+				statusEl.textContent = 'Saved';
+			}).catch(function (err) { statusEl.textContent = 'Save failed'; logApiError('updatePodcast', err); });
+		}
 
 		/* Search */
 		function onSearchInput(value) { if (searchTimeout) { clearTimeout(searchTimeout); } if (value.length === 0) { if (currentView === 'search') { navStack = []; showView('home'); } return; } searchTimeout = setTimeout(function () { performSearch(value); }, 300); }
@@ -2495,6 +2537,8 @@
 			document.getElementById('playlist-shuffle-btn').addEventListener('click', shufflePlaylist);
 			document.getElementById('podcast-play-btn').addEventListener('click', playPodcastLatest);
 			document.getElementById('podcast-subscribe-btn').addEventListener('click', togglePodcastSubscription);
+			document.getElementById('podcast-retention').addEventListener('change', syncRetentionValueVisibility);
+			document.getElementById('podcast-settings-save').addEventListener('click', savePodcastSettings);
 			document.getElementById('np-next-item').addEventListener('click', playNext);
 			document.getElementById('btn-shuffle').addEventListener('click', toggleShuffle);
 			document.getElementById('btn-previous').addEventListener('click', playPrevious);

@@ -343,6 +343,21 @@
 		return this.request('unsubscribePodcast', { id: id });
 	};
 
+	// Change a podcast's backlog settings. settings may include retentionPolicy
+	// ('KeepAll'|'KeepN'|'KeepDays'), retentionValue (int), autoDownload (bool),
+	// and pollIntervalMinutes (int). Resolves to the updated PulsePodcast.
+	PulseClient.prototype.updatePodcast = function (id, settings) {
+		var options = settings || {};
+		var params = { id: id };
+		if (options.retentionPolicy !== undefined) { params.retentionPolicy = options.retentionPolicy; }
+		if (options.retentionValue !== undefined) { params.retentionValue = options.retentionValue; }
+		if (options.pollIntervalMinutes !== undefined) { params.pollIntervalMinutes = options.pollIntervalMinutes; }
+		if (options.autoDownload !== undefined) {
+			if (options.autoDownload) { params.autoDownload = '1'; } else { params.autoDownload = '0'; }
+		}
+		return this._contents('updatePodcast', params);
+	};
+
 	// Save this user's playback position (seconds) for an episode/chapter.
 	PulseClient.prototype.saveEpisodeProgress = function (id, positionSeconds) {
 		return this.request('episodeProgress', { id: id, positionSeconds: positionSeconds });
