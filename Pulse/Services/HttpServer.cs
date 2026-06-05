@@ -20,6 +20,8 @@ namespace Assistant.Services
 
 		private Dictionary<string, Action<HttpContext>> m_routes = new Dictionary<string, Action<HttpContext>>();
 
+		private Dictionary<string, Action<HttpContext>> m_prefixRoutes = new Dictionary<string, Action<HttpContext>>();
+
 		private class ResultRouteAdapter
 		{
 			private Func<HttpContext, IResult> m_handler;
@@ -43,6 +45,11 @@ namespace Assistant.Services
 		public void RegisterRoute(string path, Action<HttpContext> handler)
 		{
 			m_routes[path] = handler;
+		}
+
+		public void RegisterPrefixRoute(string path, Action<HttpContext> handler)
+		{
+			m_prefixRoutes[path] = handler;
 		}
 
 		/// <summary>
@@ -139,23 +146,29 @@ namespace Assistant.Services
 					return Task.CompletedTask;
 				}
 
-				Action<HttpContext> handler = null;
+				Action<HttpContext> exactHandler = null;
+				bool hasExact = m_routes.TryGetValue(path, out exactHandler);
+				if (hasExact)
+				{
+					exactHandler(context);
+					return Task.CompletedTask;
+				}
+
+				Action<HttpContext> prefixHandler = null;
 				int bestLength = 0;
-				foreach (KeyValuePair<string, Action<HttpContext>> route in m_routes)
+				foreach (KeyValuePair<string, Action<HttpContext>> route in m_prefixRoutes)
 				{
 					string routePath = route.Key;
-					if (path == routePath || path.StartsWith(routePath + "/"))
+					bool matches = path == routePath || path.StartsWith(routePath + "/");
+					if (matches && routePath.Length > bestLength)
 					{
-						if (routePath.Length > bestLength)
-						{
-							bestLength = routePath.Length;
-							handler = route.Value;
-						}
+						bestLength = routePath.Length;
+						prefixHandler = route.Value;
 					}
 				}
-				if (handler != null)
+				if (prefixHandler != null)
 				{
-					handler(context);
+					prefixHandler(context);
 					return Task.CompletedTask;
 				}
 
