@@ -43,7 +43,7 @@ namespace PulseAPI.CSharp
 	/// fields -- PulseWire uses IncludeFields and emits field names verbatim
 	/// as wire names.
 	/// </summary>
-	public class PulseLogEvent
+	public class PulseAnalyticsEvent
 	{
 		public eAction Action;
 		public eResult Result;
@@ -57,13 +57,13 @@ namespace PulseAPI.CSharp
 	/// Identity fields describe the sender; Events carries the rows. Plain
 	/// public fields for the same reason as PulseLogEvent.
 	/// </summary>
-	public class PulseLogBatch
+	public class PulseAnalyticsBatch
 	{
 		public string DeviceId;
 		public string SessionId;
 		public string AppVersion;
 		public string User;
 		public string Platform;
-		public List<PulseLogEvent> Events;
+		public List<PulseAnalyticsEvent> Events;
 	}
 }

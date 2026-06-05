@@ -5,18 +5,18 @@ using Microsoft.Data.Sqlite;
 namespace Pulse.Data
 {
 	/// <summary>
-	/// One step in the analyticss-database schema history. The analyticss db
+	/// One step in the analytics-database schema history. The analyticss db
 	/// keeps its own schema_versions table inside its own file -- it does NOT
 	/// share the music db's migration ledger. Adding a new step: pick the next
 	/// version number and append a new MigrationStep entry; never edit a
 	/// previously-shipped step.
 	/// </summary>
-	internal class analyticssMigrationStep
+	internal class AnalyticsMigrationStep
 	{
 		public int Version;
 		public string Sql;
 
-		public analyticssMigrationStep()
+		public AnalyticsMigrationStep()
 		{
 			Version = 0;
 			Sql = "";
@@ -24,7 +24,7 @@ namespace Pulse.Data
 	}
 
 	/// <summary>
-	/// Versioned schema migrations for the analyticss database. Instance-based
+	/// Versioned schema migrations for the analytics database. Instance-based
 	/// so each PulseService owns its own runner against its own factory.
 	/// </summary>
 	public class AnalyticsDBMigrations
@@ -44,11 +44,11 @@ namespace Pulse.Data
 				EnsureSchemaVersionsTable(connection);
 				int currentVersion = GetCurrentSchemaVersion(connection);
 
-				List<analyticssMigrationStep> allMigrations = BuildMigrationList();
+				List<AnalyticsMigrationStep> allMigrations = BuildMigrationList();
 				int migrationCount = allMigrations.Count;
 				for (int migrationIndex = 0; migrationIndex < migrationCount; migrationIndex++)
 				{
-					analyticssMigrationStep step = allMigrations[migrationIndex];
+					AnalyticsMigrationStep step = allMigrations[migrationIndex];
 					if (step.Version > currentVersion)
 					{
 						ApplyMigration(connection, step);
@@ -76,7 +76,7 @@ namespace Pulse.Data
 			return Convert.ToInt32(result);
 		}
 
-		private void ApplyMigration(SqliteConnection connection, analyticssMigrationStep step)
+		private void ApplyMigration(SqliteConnection connection, AnalyticsMigrationStep step)
 		{
 			SqliteTransaction transaction = connection.BeginTransaction();
 			try
@@ -94,21 +94,21 @@ namespace Pulse.Data
 				record.ExecuteNonQuery();
 
 				transaction.Commit();
-				Log.Info(-1, "Applied analyticss schema migration v" + step.Version);
+				Log.Info(-1, "Applied analytics schema migration v" + step.Version);
 			}
 			catch (Exception ex)
 			{
 				transaction.Rollback();
-				Log.Error(-1, "analyticss migration v" + step.Version + " failed: " + ex.Message);
+				Log.Error(-1, "analytics migration v" + step.Version + " failed: " + ex.Message);
 				throw;
 			}
 		}
 
-		private List<analyticssMigrationStep> BuildMigrationList()
+		private List<AnalyticsMigrationStep> BuildMigrationList()
 		{
-			List<analyticssMigrationStep> steps = new List<analyticssMigrationStep>();
+			List<AnalyticsMigrationStep> steps = new List<AnalyticsMigrationStep>();
 
-			analyticssMigrationStep v1 = new analyticssMigrationStep();
+			AnalyticsMigrationStep v1 = new AnalyticsMigrationStep();
 			v1.Version = 1;
 			v1.Sql = @"
 				CREATE TABLE sessions (

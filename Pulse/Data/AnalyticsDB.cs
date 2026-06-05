@@ -13,7 +13,7 @@ namespace Pulse.Data
 	/// /analytics read endpoint returns it. Plain public fields; serialized
 	/// through PulseWire which emits field names verbatim.
 	/// </summary>
-	public class analyticsSessionRow
+	public class AnalyticsSessionRow
 	{
 		public string SessionId;
 		public string DeviceId;
@@ -27,7 +27,7 @@ namespace Pulse.Data
 	/// One row in the analytics log_events table, in the shape the
 	/// /analytics read endpoint returns it.
 	/// </summary>
-	public class analyticsEventRow
+	public class AnalyticsEventRow
 	{
 		public long Id;
 		public string SessionId;
@@ -47,7 +47,7 @@ namespace Pulse.Data
 	/// </summary>
 	internal class AnalyticsBatchItem
 	{
-		public PulseLogBatch Batch;
+		public PulseAnalyticsBatch Batch;
 		public string ReceivedAt;
 	}
 
@@ -118,7 +118,7 @@ namespace Pulse.Data
 		/// server-stamped received_at and adds it to the drain queue. Does
 		/// not touch SQLite.
 		/// </summary>
-		public void Enqueue(PulseLogBatch batch, string receivedAt)
+		public void Enqueue(PulseAnalyticsBatch batch, string receivedAt)
 		{
 			if (batch == null)
 			{
@@ -165,7 +165,7 @@ namespace Pulse.Data
 
 		private void WriteBatch(AnalyticsBatchItem item)
 		{
-			PulseLogBatch batch = item.Batch;
+			PulseAnalyticsBatch batch = item.Batch;
 			if (batch == null)
 			{
 				return;
@@ -188,7 +188,7 @@ namespace Pulse.Data
 						int eventCount = batch.Events.Count;
 						for (int eventIndex = 0; eventIndex < eventCount; eventIndex++)
 						{
-							PulseLogEvent logEvent = batch.Events[eventIndex];
+							PulseAnalyticsEvent logEvent = batch.Events[eventIndex];
 							if (logEvent == null)
 							{
 								continue;
@@ -211,7 +211,7 @@ namespace Pulse.Data
 			}
 		}
 
-		private void UpsertSession(SqliteConnection connection, SqliteTransaction transaction, PulseLogBatch batch, string receivedAt)
+		private void UpsertSession(SqliteConnection connection, SqliteTransaction transaction, PulseAnalyticsBatch batch, string receivedAt)
 		{
 			SqliteCommand command = connection.CreateCommand();
 			command.Transaction = transaction;
@@ -247,7 +247,7 @@ namespace Pulse.Data
 			command.ExecuteNonQuery();
 		}
 
-		private void InsertEvent(SqliteConnection connection, SqliteTransaction transaction, string sessionId, PulseLogEvent logEvent, string receivedAt)
+		private void InsertEvent(SqliteConnection connection, SqliteTransaction transaction, string sessionId, PulseAnalyticsEvent logEvent, string receivedAt)
 		{
 			SqliteCommand command = connection.CreateCommand();
 			command.Transaction = transaction;
@@ -318,9 +318,9 @@ namespace Pulse.Data
 		/// Read every event for a given session, ordered by client timestamp.
 		/// Empty action / result filters mean "no filter on that column".
 		/// </summary>
-		public List<analyticsEventRow> GetEventsForSession(string sessionId, string actionFilter, string resultFilter)
+		public List<AnalyticsEventRow> GetEventsForSession(string sessionId, string actionFilter, string resultFilter)
 		{
-			List<analyticsEventRow> rows = new List<analyticsEventRow>();
+			List<AnalyticsEventRow> rows = new List<AnalyticsEventRow>();
 			if (string.IsNullOrEmpty(sessionId))
 			{
 				return rows;
@@ -360,7 +360,7 @@ namespace Pulse.Data
 				{
 					while (reader.Read())
 					{
-						analyticsEventRow row = ReadEventRow(reader);
+						AnalyticsEventRow row = ReadEventRow(reader);
 						rows.Add(row);
 					}
 				}
@@ -380,9 +380,9 @@ namespace Pulse.Data
 		/// Read every session for a given device id, most recent first by
 		/// server-side started_at.
 		/// </summary>
-		public List<analyticsSessionRow> GetSessionsForDevice(string deviceId)
+		public List<AnalyticsSessionRow> GetSessionsForDevice(string deviceId)
 		{
-			List<analyticsSessionRow> rows = new List<analyticsSessionRow>();
+			List<AnalyticsSessionRow> rows = new List<AnalyticsSessionRow>();
 			if (string.IsNullOrEmpty(deviceId))
 			{
 				return rows;
@@ -400,7 +400,7 @@ namespace Pulse.Data
 				{
 					while (reader.Read())
 					{
-						analyticsSessionRow row = ReadSessionRow(reader);
+						AnalyticsSessionRow row = ReadSessionRow(reader);
 						rows.Add(row);
 					}
 				}
@@ -416,9 +416,9 @@ namespace Pulse.Data
 			return rows;
 		}
 
-		private analyticsEventRow ReadEventRow(SqliteDataReader reader)
+		private AnalyticsEventRow ReadEventRow(SqliteDataReader reader)
 		{
-			analyticsEventRow row = new analyticsEventRow();
+			AnalyticsEventRow row = new AnalyticsEventRow();
 			row.Id = reader.GetInt64(0);
 			row.SessionId = ReadString(reader, 1);
 			row.Timestamp = ReadString(reader, 2);
@@ -430,9 +430,9 @@ namespace Pulse.Data
 			return row;
 		}
 
-		private analyticsSessionRow ReadSessionRow(SqliteDataReader reader)
+		private AnalyticsSessionRow ReadSessionRow(SqliteDataReader reader)
 		{
-			analyticsSessionRow row = new analyticsSessionRow();
+			AnalyticsSessionRow row = new AnalyticsSessionRow();
 			row.SessionId = ReadString(reader, 0);
 			row.DeviceId = ReadString(reader, 1);
 			row.User = ReadString(reader, 2);

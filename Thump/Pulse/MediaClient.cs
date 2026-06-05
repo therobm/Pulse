@@ -283,7 +283,7 @@ namespace Thump.Pulse
 		/// Base implementation is a no-op; the Pulse client overrides this to
 		/// POST the batch. Mirrors ReportAnalytics' fire-and-forget shape.
 		/// </summary>
-		public virtual void PostAnalytics(PulseLogBatch batch)
+		public virtual void PostAnalytics(PulseAnalyticsBatch batch)
 		{
 		}
 	

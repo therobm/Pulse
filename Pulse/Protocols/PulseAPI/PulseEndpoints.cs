@@ -1434,7 +1434,7 @@ namespace Pulse.Protocols.PulseAPI
 				return RespondStatus(context, "missing_body");
 			}
 
-			PulseLogBatch batch = PulseWire.Parse<PulseLogBatch>(body);
+			PulseAnalyticsBatch batch = PulseWire.Parse<PulseAnalyticsBatch>(body);
 			if (batch == null)
 			{
 				return RespondStatus(context, "missing_body");
@@ -1468,8 +1468,8 @@ namespace Pulse.Protocols.PulseAPI
 			{
 				string actionFilter = context.Request.Query["action"].FirstOrDefault();
 				string resultFilter = context.Request.Query["result"].FirstOrDefault();
-				List<analyticsEventRow> events = m_analyticsDB.GetEventsForSession(sessionId, actionFilter, resultFilter);
-				analyticsEventsResponse response = new analyticsEventsResponse();
+				List<AnalyticsEventRow> events = m_analyticsDB.GetEventsForSession(sessionId, actionFilter, resultFilter);
+				AnalyticsEventsResponse response = new AnalyticsEventsResponse();
 				response.SessionId = sessionId;
 				response.Events = events;
 				return Results.Text(PulseWire.Serialize(response), "application/json");
@@ -1477,8 +1477,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (!string.IsNullOrEmpty(deviceId))
 			{
-				List<analyticsSessionRow> sessions = m_analyticsDB.GetSessionsForDevice(deviceId);
-				analyticsSessionsResponse response = new analyticsSessionsResponse();
+				List<AnalyticsSessionRow> sessions = m_analyticsDB.GetSessionsForDevice(deviceId);
+				AnalyticsSessionsResponse response = new AnalyticsSessionsResponse();
 				response.DeviceId = deviceId;
 				response.Sessions = sessions;
 				return Results.Text(PulseWire.Serialize(response), "application/json");
@@ -1492,18 +1492,18 @@ namespace Pulse.Protocols.PulseAPI
 	/// Response envelope for the /analytics events query. Plain public
 	/// fields; serialized through PulseWire which emits field names verbatim.
 	/// </summary>
-	public class analyticsEventsResponse
+	public class AnalyticsEventsResponse
 	{
 		public string SessionId;
-		public List<analyticsEventRow> Events;
+		public List<AnalyticsEventRow> Events;
 	}
 
 	/// <summary>
 	/// Response envelope for the /analytics sessions query.
 	/// </summary>
-	public class analyticsSessionsResponse
+	public class AnalyticsSessionsResponse
 	{
 		public string DeviceId;
-		public List<analyticsSessionRow> Sessions;
+		public List<AnalyticsSessionRow> Sessions;
 	}
 }

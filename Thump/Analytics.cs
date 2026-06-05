@@ -30,7 +30,7 @@ namespace Thump
 		private MediaClient m_client;
 
 		/// <summary>Bounded ring buffer of events awaiting batch POST. Drops oldest when full.</summary>
-		private readonly List<PulseLogEvent> m_eventBuffer = new List<PulseLogEvent>();
+		private readonly List<PulseAnalyticsEvent> m_eventBuffer = new List<PulseAnalyticsEvent>();
 
 		/// <summary>Guards m_eventBuffer; held only for the add/drop and the drain copy.</summary>
 		private readonly object m_bufferLock = new object();
@@ -103,7 +103,7 @@ namespace Thump
 					return;
 				}
 
-				PulseLogEvent record = new PulseLogEvent();
+				PulseAnalyticsEvent record = new PulseAnalyticsEvent();
 				record.Action = action;
 				record.Result = result;
 				record.Location = location;
@@ -171,7 +171,7 @@ namespace Thump
 					return;
 				}
 
-				List<PulseLogEvent> drained = new List<PulseLogEvent>();
+				List<PulseAnalyticsEvent> drained = new List<PulseAnalyticsEvent>();
 				lock (m_bufferLock)
 				{
 					int count = m_eventBuffer.Count;
@@ -186,7 +186,7 @@ namespace Thump
 					m_eventBuffer.Clear();
 				}
 
-				PulseLogBatch batch = new PulseLogBatch();
+				PulseAnalyticsBatch batch = new PulseAnalyticsBatch();
 				batch.DeviceId = ThumpSettings.GetOrCreateDeviceId();
 				batch.SessionId = m_sessionId;
 				batch.User = ThumpSettings.GetUsername();

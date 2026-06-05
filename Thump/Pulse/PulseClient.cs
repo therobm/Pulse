@@ -866,7 +866,7 @@ namespace Thump.Pulse
 		/// pulse_v1/ingestLog route. Swallows its own failures: the analytics
 		/// path must never feed errors back into Log.* or it loops.
 		/// </summary>
-		public override void PostAnalytics(PulseLogBatch batch)
+		public override void PostAnalytics(PulseAnalyticsBatch batch)
 		{
 			if (batch == null)
 			{
