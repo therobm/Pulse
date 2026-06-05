@@ -190,6 +190,16 @@ namespace Thump.Views
 			m_oldestLabel = BuildFieldLabel("Oldest Cached Object: —");
 			section.Children.Add(m_oldestLabel);
 
+			Grid cacheButtonRow = new Grid();
+			cacheButtonRow.Margin = new Thickness(0, 4, 0, 0);
+			cacheButtonRow.ColumnSpacing = 8;
+			ColumnDefinition cacheRefreshColumn = new ColumnDefinition();
+			cacheRefreshColumn.Width = GridLength.Star;
+			ColumnDefinition cacheClearColumn = new ColumnDefinition();
+			cacheClearColumn.Width = GridLength.Star;
+			cacheButtonRow.ColumnDefinitions.Add(cacheRefreshColumn);
+			cacheButtonRow.ColumnDefinitions.Add(cacheClearColumn);
+
 			Button refreshButton = new Button();
 			refreshButton.Text = "Refresh";
 			refreshButton.TextColor = ThumpColors.OnBackground;
@@ -197,9 +207,9 @@ namespace Thump.Views
 			refreshButton.CornerRadius = 8;
 			refreshButton.FontSize = 15;
 			refreshButton.HeightRequest = 44;
-			refreshButton.Margin = new Thickness(0, 4, 0, 0);
 			refreshButton.Clicked += OnRefreshCacheClicked;
-			section.Children.Add(refreshButton);
+			Grid.SetColumn(refreshButton, 0);
+			cacheButtonRow.Children.Add(refreshButton);
 
 			Button clearButton = new Button();
 			clearButton.Text = "Clear Cache";
@@ -208,9 +218,11 @@ namespace Thump.Views
 			clearButton.CornerRadius = 8;
 			clearButton.FontSize = 15;
 			clearButton.HeightRequest = 44;
-			clearButton.Margin = new Thickness(0, 4, 0, 0);
 			clearButton.Clicked += OnClearCacheClicked;
-			section.Children.Add(clearButton);
+			Grid.SetColumn(clearButton, 1);
+			cacheButtonRow.Children.Add(clearButton);
+
+			section.Children.Add(cacheButtonRow);
 
 			return section;
 		}
@@ -220,7 +232,17 @@ namespace Thump.Views
 			VerticalStackLayout section = new VerticalStackLayout();
 			section.Spacing = 12;
 			section.Children.Add(BuildSectionHeader("Diagnostics"));
-			section.Children.Add(BuildFieldLabel("Export the app log file to share when reporting a problem."));
+			section.Children.Add(BuildFieldLabel("Export the app log file to share when reporting a problem, or reset it to drop old data before testing a new build."));
+
+			Grid logButtonRow = new Grid();
+			logButtonRow.Margin = new Thickness(0, 4, 0, 0);
+			logButtonRow.ColumnSpacing = 8;
+			ColumnDefinition logExportColumn = new ColumnDefinition();
+			logExportColumn.Width = GridLength.Star;
+			ColumnDefinition logResetColumn = new ColumnDefinition();
+			logResetColumn.Width = GridLength.Star;
+			logButtonRow.ColumnDefinitions.Add(logExportColumn);
+			logButtonRow.ColumnDefinitions.Add(logResetColumn);
 
 			Button exportButton = new Button();
 			exportButton.Text = "Export Logs";
@@ -229,9 +251,22 @@ namespace Thump.Views
 			exportButton.CornerRadius = 8;
 			exportButton.FontSize = 15;
 			exportButton.HeightRequest = 44;
-			exportButton.Margin = new Thickness(0, 4, 0, 0);
 			exportButton.Clicked += OnExportLogsClicked;
-			section.Children.Add(exportButton);
+			Grid.SetColumn(exportButton, 0);
+			logButtonRow.Children.Add(exportButton);
+
+			Button resetLogButton = new Button();
+			resetLogButton.Text = "Reset Log";
+			resetLogButton.TextColor = ThumpColors.OnBackground;
+			resetLogButton.BackgroundColor = ThumpColors.Surface;
+			resetLogButton.CornerRadius = 8;
+			resetLogButton.FontSize = 15;
+			resetLogButton.HeightRequest = 44;
+			resetLogButton.Clicked += OnResetLogClicked;
+			Grid.SetColumn(resetLogButton, 1);
+			logButtonRow.Children.Add(resetLogButton);
+
+			section.Children.Add(logButtonRow);
 
 			return section;
 		}
@@ -438,6 +473,12 @@ namespace Thump.Views
 			{
 				Log.Exception(ex);
 			}
+		}
+
+		private void OnResetLogClicked(object sender, EventArgs e)
+		{
+			Log.Reset();
+			Log.Info("Log reset by user.");
 		}
 
 		private string ValidateAndNormalizeServer(ref string ip, ref string port)

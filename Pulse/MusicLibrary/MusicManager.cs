@@ -1,5 +1,6 @@
 ﻿using Pulse;
 using Pulse.Data;
+using Pulse.Database;
 using Pulse.Lidarr;
 using PulseAPI.CSharp;
 using System;
@@ -95,12 +96,12 @@ namespace Pulse.MusicLibrary
 		}
 
 		/// <summary>
-		/// Pass-through to the analytics-event rollup used by the topItems /
+		/// Pass-through to the item_stats counter used by the topItems /
 		/// recentlyPlayed routes to rank one media type by play count or recency.
 		/// </summary>
-		public Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType)
+		public Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType)
 		{
-			return m_database.GetStartedAggregates(userName, mediaType);
+			return m_database.GetItemStats(userName, mediaType);
 		}
 
 		public TrackInfo GetTrack(string id)
@@ -256,7 +257,7 @@ namespace Pulse.MusicLibrary
 
 
 
-		private IPulseDatabase m_database;
+		private PulseData m_database;
 		private object m_missingLock = new object();
 		private LidarrSync m_lidarrSync;
 		private Thread m_scanThread;
@@ -410,26 +411,27 @@ namespace Pulse.MusicLibrary
 		}
 
 		/// <summary>
-		/// Entry point for the client analytics feed (pulse_v1/reportAnalytics).
+		/// Entry point for the client playback-event feed (pulse_v1/reportAnalytics).
 		/// Every observed playback state change is appended to the immutable event
-		/// log -- the substrate the topItems / recentlyPlayed routes aggregate
-		/// over for play-count and recency ranking. A 'Started' event also bumps
-		/// the in-memory last-played for its subject so the non-aggregating
-		/// consumers (BuildPlaylist's LastPlayed field, the legacy recents routes,
-		/// track scoring) stay current: a Track Started drives the now-playing
-		/// state machine, while Album/Artist/Playlist Starts update last-played
+		/// log and (for Started events) also bumps the item_stats counter -- the
+		/// substrate the topItems / recentlyPlayed routes consume for play-count
+		/// and recency ranking. A 'Started' event also bumps the in-memory
+		/// last-played for its subject so the non-aggregating consumers
+		/// (BuildPlaylist's LastPlayed field, the legacy recents routes, track
+		/// scoring) stay current: a Track Started drives the now-playing state
+		/// machine, while Album/Artist/Playlist Starts update last-played
 		/// directly (this replaces the retired markPlaylistPlayed call). Albums
 		/// carry no in-memory last-played field, so an album's recency is read
 		/// back from the event log by the routes that need it.
 		/// </summary>
-		public void OnAnalyticsEvent(string userName, PulseAnalytics analytics)
+		public void OnPlaybackEvent(string userName, PulseAnalytics analytics)
 		{
 			if (analytics == null || string.IsNullOrEmpty(analytics.MediaId))
 			{
 				return;
 			}
 
-			m_database.RecordAnalyticsEvent(userName, analytics, DateTime.UtcNow);
+			m_database.RecordPlaybackEvent(userName, analytics, DateTime.UtcNow);
 
 			if (analytics.Action != PulseAnalytics.eAction.Started)
 			{
@@ -747,13 +749,13 @@ namespace Pulse.MusicLibrary
 			// the two run side-by-side without cross-contamination.
 			string sqliteFileName = "pulse_" + environmentName.ToLowerInvariant() + ".db";
 			string sqlitePath = Path.Combine(pulseDataRoot, sqliteFileName);
-			Pulse.Database.SqliteConnectionFactory.SetDatabaseFilePath(sqlitePath);
-			Pulse.Database.Migrations.RunMigrations();
+			Pulse.Database.PulseDBConnector.SetDatabaseFilePath(sqlitePath);
+			Pulse.Database.PulseDBMigrations.RunMigrations();
 			Log.Info(-1, "Pulse DB: env=" + environmentName + " path=" + sqlitePath);
 
-			PulseSqliteDatabase sqliteDb = new PulseSqliteDatabase();
-			m_database = sqliteDb;
-			sqliteDb.Load();
+			PulseData data = new PulseData();
+			m_database = data;
+			data.Load();
 		}
 
 		private void SaveDB(string reason)

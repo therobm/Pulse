@@ -1,380 +1,347 @@
 using Microsoft.Data.Sqlite;
-using Pulse.Database;
 using Pulse.MusicLibrary;
 using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace Pulse.Data
+namespace Pulse.Database
 {
 	/// <summary>
-	/// SQLite-backed implementation of IPulseDatabase. In-memory model lives in
-	/// PulseDatabaseBase (dictionaries) -- SQLite is the persistence layer only.
-	/// Reads hit the dicts; writes flip m_bIsDirty and are flushed to SQLite on Save().
+	/// Per-(user,item) play counter for one media type: how many 'Started' events
+	/// the item has accrued and when it was most recently started. Produced by
+	/// <see cref="PulseDB.GetItemStats"/>, backed by the item_stats
+	/// table (v7).
+	/// </summary>
+	public class ItemStats
+	{
+		public int PlayCount { get; set; }
+		public DateTime LastPlayed { get; set; }
+	}
+
+	// One row loaded from the track_user_scores join table. PulseData attaches
+	// the ScoreData onto the matching TrackInfo.UserScore after every row has
+	// been returned -- the persistence layer never touches the in-memory dicts.
+	public class TrackUserScoreRow
+	{
+		public string TrackId;
+		public string UserName;
+		public ScoreData Score = new ScoreData();
+	}
+
+	// One row loaded from the starred table. PulseData routes the row onto the
+	// matching TrackInfo / AlbumInfo / ArtistInfo Starred dict based on
+	// EntityKind, after every row has been returned.
+	public class StarredRow
+	{
+		public string EntityKind;
+		public string EntityId;
+		public string UserName;
+		public bool Starred;
+	}
+
+	/// <summary>
+	/// SQLite-backed persistence for the Pulse data layer. Stateless: holds no
+	/// dictionaries and never reads or writes one. Load methods return collections;
+	/// Save accepts the dirty set. PulseData composes a PulseDatabase and owns
+	/// every dict, every business rule, and the m_bIsDirty lifecycle.
 	///
 	/// Migration path: see Database/Migrations.cs. Add a new MigrationStep to
 	/// evolve the schema; never edit a shipped one.
 	/// </summary>
-	public class PulseSqliteDatabase : PulseDatabaseBase
+	public class PulseDB
 	{
-		public void Load()
+		private object m_saveLock = new object();
+
+		public List<ArtistInfo> LoadArtists()
 		{
-			Stopwatch sw = Stopwatch.StartNew();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			List<ArtistInfo> result = new List<ArtistInfo>();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
-				LoadArtists(connection);
-				LoadAlbums(connection);
-				LoadTracks(connection);
-				LoadTrackUserScores(connection);
-				LoadStarred(connection);
-				LoadPlaylists(connection);
-				LoadAnalytics(connection);
-				WireUpReferences();
-				CalculateArtistScores();
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT id, name, last_played FROM artists;";
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
+				{
+					ArtistInfo artist = new ArtistInfo();
+					artist.Id = reader.GetString(0);
+					artist.Name = reader.GetString(1);
+					string lastPlayedStr = reader.GetString(2);
+					DateTime lastPlayed;
+					if (!string.IsNullOrEmpty(lastPlayedStr) && DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
+					{
+						artist.LastPlayed = lastPlayed;
+					}
+					result.Add(artist);
+				}
+				reader.Close();
 			}
 			finally
 			{
 				connection.Close();
 			}
-			sw.Stop();
-			Log.Info(-1, "PulseSqliteDatabase loaded in " + sw.ElapsedMilliseconds + "ms: "
-				+ m_tracks.Count + " tracks, " + m_albums.Count + " albums, "
-				+ m_artists.Count + " artists, " + m_playlists.Count + " playlists");
+			return result;
 		}
 
-		private void LoadArtists(SqliteConnection connection)
+		public List<AlbumInfo> LoadAlbums()
 		{
-			SqliteCommand command = connection.CreateCommand();
-			command.CommandText = "SELECT id, name, last_played FROM artists;";
-			SqliteDataReader reader = command.ExecuteReader();
-			while (reader.Read())
+			List<AlbumInfo> result = new List<AlbumInfo>();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
 			{
-				ArtistInfo artist = new ArtistInfo();
-				artist.Id = reader.GetString(0);
-				artist.Name = reader.GetString(1);
-				string lastPlayedStr = reader.GetString(2);
-				DateTime lastPlayed;
-				if (!string.IsNullOrEmpty(lastPlayedStr) && DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT id, name, artist_name, artist_id, genre, cover_art_id, year FROM albums;";
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
 				{
-					artist.LastPlayed = lastPlayed;
+					AlbumInfo album = new AlbumInfo();
+					album.Id = reader.GetString(0);
+					album.Name = reader.GetString(1);
+					album.ArtistName = reader.GetString(2);
+					album.ArtistId = reader.GetString(3);
+					album.Genre = reader.GetString(4);
+					album.CoverArtId = reader.GetString(5);
+					album.Year = reader.GetInt32(6);
+					result.Add(album);
 				}
-				m_artists[artist.Id] = artist;
+				reader.Close();
 			}
-			reader.Close();
+			finally
+			{
+				connection.Close();
+			}
+			return result;
 		}
 
-		private void LoadAlbums(SqliteConnection connection)
+		public List<TrackInfo> LoadTracks()
 		{
-			SqliteCommand command = connection.CreateCommand();
-			command.CommandText = "SELECT id, name, artist_name, artist_id, genre, cover_art_id, year FROM albums;";
-			SqliteDataReader reader = command.ExecuteReader();
-			while (reader.Read())
+			List<TrackInfo> result = new List<TrackInfo>();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
 			{
-				AlbumInfo album = new AlbumInfo();
-				album.Id = reader.GetString(0);
-				album.Name = reader.GetString(1);
-				album.ArtistName = reader.GetString(2);
-				album.ArtistId = reader.GetString(3);
-				album.Genre = reader.GetString(4);
-				album.CoverArtId = reader.GetString(5);
-				album.Year = reader.GetInt32(6);
-				m_albums[album.Id] = album;
-			}
-			reader.Close();
-		}
-
-		private void LoadTracks(SqliteConnection connection)
-		{
-			SqliteCommand command = connection.CreateCommand();
-			command.CommandText = @"SELECT id, title, artist, artist_id, album, album_id, genre, file_path,
-				cover_art_id, track_number, disc_number, year, duration_seconds, file_size_bytes,
-				content_type, suffix, rating, last_played,
-				play_count, skip_count, total_listen_seconds, weighted_score FROM tracks;";
-			SqliteDataReader reader = command.ExecuteReader();
-			while (reader.Read())
-			{
-				TrackInfo track = new TrackInfo();
-				track.Id = reader.GetString(0);
-				track.Title = reader.GetString(1);
-				track.Artist = reader.GetString(2);
-				track.ArtistId = reader.GetString(3);
-				track.Album = reader.GetString(4);
-				track.AlbumId = reader.GetString(5);
-				track.Genre = reader.GetString(6);
-				track.FilePath = reader.GetString(7);
-				track.CoverArtId = reader.GetString(8);
-				track.TrackNumber = reader.GetInt32(9);
-				track.DiscNumber = reader.GetInt32(10);
-				track.Year = reader.GetInt32(11);
-				track.DurationSeconds = reader.GetInt32(12);
-				track.FileSizeBytes = reader.GetInt64(13);
-				track.ContentType = reader.GetString(14);
-				track.Suffix = reader.GetString(15);
-				track.Rating = reader.GetInt32(16);
-				string lastPlayedStr = reader.GetString(17);
-				DateTime lastPlayed;
-				if (DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = @"SELECT id, title, artist, artist_id, album, album_id, genre, file_path,
+					cover_art_id, track_number, disc_number, year, duration_seconds, file_size_bytes,
+					content_type, suffix, rating, last_played,
+					play_count, skip_count, total_listen_seconds, weighted_score FROM tracks;";
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
 				{
-					track.LastPlayed = lastPlayed;
-				}
-				track.Score.PlayCount = reader.GetInt32(18);
-				track.Score.SkipCount = reader.GetInt32(19);
-				track.Score.TotalListenSeconds = reader.GetDouble(20);
-				track.Score.WeightedScore = (float)reader.GetDouble(21);
-				m_tracks[track.Id] = track;
-			}
-			reader.Close();
-		}
-
-		private void LoadTrackUserScores(SqliteConnection connection)
-		{
-			SqliteCommand command = connection.CreateCommand();
-			command.CommandText = "SELECT track_id, user_name, play_count, skip_count, total_listen_seconds, weighted_score FROM track_user_scores;";
-			SqliteDataReader reader = command.ExecuteReader();
-			while (reader.Read())
-			{
-				string trackId = reader.GetString(0);
-				TrackInfo track;
-				if (!m_tracks.TryGetValue(trackId, out track))
-				{
-					continue;
-				}
-				string userName = reader.GetString(1);
-				ScoreData data = new ScoreData();
-				data.PlayCount = reader.GetInt32(2);
-				data.SkipCount = reader.GetInt32(3);
-				data.TotalListenSeconds = reader.GetDouble(4);
-				data.WeightedScore = (float)reader.GetDouble(5);
-				track.UserScore[userName] = data;
-			}
-			reader.Close();
-		}
-
-		private void LoadStarred(SqliteConnection connection)
-		{
-			SqliteCommand command = connection.CreateCommand();
-			command.CommandText = "SELECT entity_kind, entity_id, user_name, starred FROM starred;";
-			SqliteDataReader reader = command.ExecuteReader();
-			while (reader.Read())
-			{
-				string kind = reader.GetString(0);
-				string id = reader.GetString(1);
-				string userName = reader.GetString(2);
-				bool starred = reader.GetInt32(3) != 0;
-
-				if (kind == "track")
-				{
-					TrackInfo track;
-					if (m_tracks.TryGetValue(id, out track)) { track.Starred[userName] = starred; }
-				}
-				else if (kind == "album")
-				{
-					AlbumInfo album;
-					if (m_albums.TryGetValue(id, out album)) { album.Starred[userName] = starred; }
-				}
-				else if (kind == "artist")
-				{
-					ArtistInfo artist;
-					if (m_artists.TryGetValue(id, out artist)) { artist.Starred[userName] = starred; }
-				}
-			}
-			reader.Close();
-		}
-
-		private void LoadPlaylists(SqliteConnection connection)
-		{
-			SqliteCommand command = connection.CreateCommand();
-			command.CommandText = "SELECT id, name, comment, duration_seconds, last_played FROM playlists;";
-			SqliteDataReader reader = command.ExecuteReader();
-			while (reader.Read())
-			{
-				PlaylistInfo playlist = new PlaylistInfo();
-				playlist.Id = reader.GetString(0);
-				playlist.Name = reader.GetString(1);
-				playlist.Comment = reader.GetString(2);
-				playlist.DurationSeconds = reader.GetInt64(3);
-				string lastPlayedStr = reader.GetString(4);
-				DateTime lastPlayed;
-				if (!string.IsNullOrEmpty(lastPlayedStr) && DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
-				{
-					playlist.LastPlayed = lastPlayed;
-				}
-				m_playlists[playlist.Id] = playlist;
-			}
-			reader.Close();
-
-			SqliteCommand tracksCommand = connection.CreateCommand();
-			tracksCommand.CommandText = "SELECT playlist_id, track_id FROM playlist_tracks ORDER BY playlist_id, position;";
-			SqliteDataReader tracksReader = tracksCommand.ExecuteReader();
-			while (tracksReader.Read())
-			{
-				string playlistId = tracksReader.GetString(0);
-				string trackId = tracksReader.GetString(1);
-				PlaylistInfo playlist;
-				if (m_playlists.TryGetValue(playlistId, out playlist))
-				{
-					playlist.TrackIds.Add(trackId);
-				}
-			}
-			tracksReader.Close();
-
-			SqliteCommand userLastPlayedCommand = connection.CreateCommand();
-			userLastPlayedCommand.CommandText = "SELECT playlist_id, user_name, last_played FROM playlist_user_last_played;";
-			SqliteDataReader userLastPlayedReader = userLastPlayedCommand.ExecuteReader();
-			while (userLastPlayedReader.Read())
-			{
-				string playlistId = userLastPlayedReader.GetString(0);
-				string userName = userLastPlayedReader.GetString(1);
-				string lastPlayedStr = userLastPlayedReader.GetString(2);
-				PlaylistInfo playlist;
-				if (!m_playlists.TryGetValue(playlistId, out playlist))
-				{
-					continue;
-				}
-				DateTime lastPlayed;
-				if (string.IsNullOrEmpty(lastPlayedStr) || !DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
-				{
-					continue;
-				}
-				playlist.UserLastPlayed[userName] = lastPlayed;
-			}
-			userLastPlayedReader.Close();
-		}
-
-		private void LoadAnalytics(SqliteConnection connection)
-		{
-			SqliteCommand command = connection.CreateCommand();
-			command.CommandText = "SELECT track_id FROM analytics_recently_played ORDER BY position;";
-			SqliteDataReader reader = command.ExecuteReader();
-			while (reader.Read())
-			{
-				m_analytics.RecentlyPlayed.Add(reader.GetString(0));
-			}
-			reader.Close();
-		}
-
-		/// <summary>
-		/// Wire AlbumInfo.Tracks and ArtistInfo.Albums lists from the foreign-key
-		/// columns now that all rows are loaded.
-		/// </summary>
-		private void WireUpReferences()
-		{
-			foreach (TrackInfo track in m_tracks.Values)
-			{
-				AlbumInfo album;
-				if (m_albums.TryGetValue(track.AlbumId, out album))
-				{
-					album.Tracks.Add(track);
-				}
-				ArtistInfo artist;
-				if (m_artists.TryGetValue(track.ArtistId, out artist))
-				{
-					track.ParentArtist = artist;
-				}
-			}
-
-			foreach (AlbumInfo album in m_albums.Values)
-			{
-				ArtistInfo artist;
-				if (m_artists.TryGetValue(album.ArtistId, out artist))
-				{
-					artist.Albums.Add(album);
-				}
-			}
-		}
-
-		/// <summary>
-		/// Roll the per-track WeightedScore up into per-artist WeightedScore and
-		/// per-user UserWeightedScore -- ArtistInfo's score fields are runtime
-		/// derived state, not persisted, so they need to be recomputed at load.
-		/// Without this the popular-artists sort and the popular carousel see all
-		/// zeros.
-		/// </summary>
-		private void CalculateArtistScores()
-		{
-			foreach (ArtistInfo artist in m_artists.Values)
-			{
-				float totalScore = 0f;
-				int scoredCount = 0;
-				Dictionary<string, float> userTotals = new Dictionary<string, float>();
-				Dictionary<string, int> userCounts = new Dictionary<string, int>();
-
-				for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
-				{
-					AlbumInfo album = artist.Albums[albumIndex];
-					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+					TrackInfo track = new TrackInfo();
+					track.Id = reader.GetString(0);
+					track.Title = reader.GetString(1);
+					track.Artist = reader.GetString(2);
+					track.ArtistId = reader.GetString(3);
+					track.Album = reader.GetString(4);
+					track.AlbumId = reader.GetString(5);
+					track.Genre = reader.GetString(6);
+					track.FilePath = reader.GetString(7);
+					track.CoverArtId = reader.GetString(8);
+					track.TrackNumber = reader.GetInt32(9);
+					track.DiscNumber = reader.GetInt32(10);
+					track.Year = reader.GetInt32(11);
+					track.DurationSeconds = reader.GetInt32(12);
+					track.FileSizeBytes = reader.GetInt64(13);
+					track.ContentType = reader.GetString(14);
+					track.Suffix = reader.GetString(15);
+					track.Rating = reader.GetInt32(16);
+					string lastPlayedStr = reader.GetString(17);
+					DateTime lastPlayed;
+					if (DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
 					{
-						TrackInfo track = album.Tracks[trackIndex];
+						track.LastPlayed = lastPlayed;
+					}
+					track.Score.PlayCount = reader.GetInt32(18);
+					track.Score.SkipCount = reader.GetInt32(19);
+					track.Score.TotalListenSeconds = reader.GetDouble(20);
+					track.Score.WeightedScore = (float)reader.GetDouble(21);
+					result.Add(track);
+				}
+				reader.Close();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
 
-						if (track.Score.PlayCount > 0)
-						{
-							if (track.Score.WeightedScore > 1)
-							{
-								track.Score.WeightedScore = 1;
-							}
-							totalScore += track.Score.WeightedScore;
-							scoredCount++;
-						}
+		public List<TrackUserScoreRow> LoadTrackUserScores()
+		{
+			List<TrackUserScoreRow> result = new List<TrackUserScoreRow>();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT track_id, user_name, play_count, skip_count, total_listen_seconds, weighted_score FROM track_user_scores;";
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
+				{
+					TrackUserScoreRow row = new TrackUserScoreRow();
+					row.TrackId = reader.GetString(0);
+					row.UserName = reader.GetString(1);
+					row.Score.PlayCount = reader.GetInt32(2);
+					row.Score.SkipCount = reader.GetInt32(3);
+					row.Score.TotalListenSeconds = reader.GetDouble(4);
+					row.Score.WeightedScore = (float)reader.GetDouble(5);
+					result.Add(row);
+				}
+				reader.Close();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
 
-						foreach (string userName in track.UserScore.Keys)
-						{
-							ScoreData userData = track.UserScore[userName];
-							if (userData.PlayCount > 0)
-							{
-								if (!userTotals.ContainsKey(userName))
-								{
-									userTotals[userName] = 0f;
-									userCounts[userName] = 0;
-								}
-								if (userData.WeightedScore > 1)
-								{
-									userData.WeightedScore = 1;
-								}
-								userTotals[userName] += userData.WeightedScore;
-								userCounts[userName]++;
-							}
-						}
+		public List<StarredRow> LoadStarred()
+		{
+			List<StarredRow> result = new List<StarredRow>();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT entity_kind, entity_id, user_name, starred FROM starred;";
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
+				{
+					StarredRow row = new StarredRow();
+					row.EntityKind = reader.GetString(0);
+					row.EntityId = reader.GetString(1);
+					row.UserName = reader.GetString(2);
+					row.Starred = reader.GetInt32(3) != 0;
+					result.Add(row);
+				}
+				reader.Close();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
+
+		public List<PlaylistInfo> LoadPlaylists()
+		{
+			List<PlaylistInfo> result = new List<PlaylistInfo>();
+			Dictionary<string, PlaylistInfo> byId = new Dictionary<string, PlaylistInfo>();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT id, name, comment, duration_seconds, last_played FROM playlists;";
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
+				{
+					PlaylistInfo playlist = new PlaylistInfo();
+					playlist.Id = reader.GetString(0);
+					playlist.Name = reader.GetString(1);
+					playlist.Comment = reader.GetString(2);
+					playlist.DurationSeconds = reader.GetInt64(3);
+					string lastPlayedStr = reader.GetString(4);
+					DateTime lastPlayed;
+					if (!string.IsNullOrEmpty(lastPlayedStr) && DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
+					{
+						playlist.LastPlayed = lastPlayed;
+					}
+					result.Add(playlist);
+					byId[playlist.Id] = playlist;
+				}
+				reader.Close();
+
+				SqliteCommand tracksCommand = connection.CreateCommand();
+				tracksCommand.CommandText = "SELECT playlist_id, track_id FROM playlist_tracks ORDER BY playlist_id, position;";
+				SqliteDataReader tracksReader = tracksCommand.ExecuteReader();
+				while (tracksReader.Read())
+				{
+					string playlistId = tracksReader.GetString(0);
+					string trackId = tracksReader.GetString(1);
+					PlaylistInfo playlist;
+					if (byId.TryGetValue(playlistId, out playlist))
+					{
+						playlist.TrackIds.Add(trackId);
 					}
 				}
+				tracksReader.Close();
 
-				if (scoredCount > 0)
+				SqliteCommand userLastPlayedCommand = connection.CreateCommand();
+				userLastPlayedCommand.CommandText = "SELECT playlist_id, user_name, last_played FROM playlist_user_last_played;";
+				SqliteDataReader userLastPlayedReader = userLastPlayedCommand.ExecuteReader();
+				while (userLastPlayedReader.Read())
 				{
-					artist.WeightedScore = totalScore / scoredCount;
+					string playlistId = userLastPlayedReader.GetString(0);
+					string userName = userLastPlayedReader.GetString(1);
+					string lastPlayedStr = userLastPlayedReader.GetString(2);
+					PlaylistInfo playlist;
+					if (!byId.TryGetValue(playlistId, out playlist))
+					{
+						continue;
+					}
+					DateTime lastPlayed;
+					if (string.IsNullOrEmpty(lastPlayedStr) || !DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
+					{
+						continue;
+					}
+					playlist.UserLastPlayed[userName] = lastPlayed;
 				}
-				foreach (string userName in userTotals.Keys)
-				{
-					artist.UserWeightedScore[userName] = userTotals[userName] / userCounts[userName];
-				}
+				userLastPlayedReader.Close();
 			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
 		}
 
-		public override void Save(string reason)
+		public List<string> LoadRecentlyPlayed()
+		{
+			List<string> result = new List<string>();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT track_id FROM analytics_recently_played ORDER BY position;";
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
+				{
+					result.Add(reader.GetString(0));
+				}
+				reader.Close();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
+
+		public void Save(string reason, List<ArtistInfo> dirtyArtists, List<AlbumInfo> dirtyAlbums, List<TrackInfo> dirtyTracks, List<PlaylistInfo> dirtyPlaylists, PulseAnalyticsInfo analytics)
 		{
 			lock (m_saveLock)
 			{
 				Stopwatch sw = Stopwatch.StartNew();
-				SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+				SqliteConnection connection = PulseDBConnector.OpenConnection();
 				try
 				{
 					SqliteTransaction transaction = connection.BeginTransaction();
 					try
 					{
-						int artists = SaveDirtyArtists(connection, transaction);
-						int albums = SaveDirtyAlbums(connection, transaction);
-						int tracks = SaveDirtyTracks(connection, transaction);
-						int playlists = SaveDirtyPlaylists(connection, transaction);
-						int analytics = SaveAnalytics(connection, transaction);
+						int artists = SaveDirtyArtists(connection, transaction, dirtyArtists);
+						int albums = SaveDirtyAlbums(connection, transaction, dirtyAlbums);
+						int tracks = SaveDirtyTracks(connection, transaction, dirtyTracks);
+						int playlists = SaveDirtyPlaylists(connection, transaction, dirtyPlaylists);
+						int analyticsWritten = SaveAnalytics(connection, transaction, analytics);
 						transaction.Commit();
 						sw.Stop();
-						int written = artists + albums + tracks + playlists + analytics;
+						int written = artists + albums + tracks + playlists + analyticsWritten;
 						if (written > 0)
 						{
-							Log.Info(-1, "PulseSqliteDatabase saved " + written + " dirty rows in " + sw.ElapsedMilliseconds + "ms"
+							Log.Info(-1, "PulseDatabase saved " + written + " dirty rows in " + sw.ElapsedMilliseconds + "ms"
 								+ " [" + reason + "]"
 								+ " (artists=" + artists + " albums=" + albums + " tracks=" + tracks
-								+ " playlists=" + playlists + " analytics=" + analytics + ")");
+								+ " playlists=" + playlists + " analytics=" + analyticsWritten + ")");
 						}
 					}
 					catch (Exception ex)
@@ -391,12 +358,12 @@ namespace Pulse.Data
 			}
 		}
 
-		private int SaveDirtyArtists(SqliteConnection connection, SqliteTransaction transaction)
+		private int SaveDirtyArtists(SqliteConnection connection, SqliteTransaction transaction, List<ArtistInfo> dirtyArtists)
 		{
 			int count = 0;
-			foreach (ArtistInfo artist in m_artists.Values)
+			for (int index = 0; index < dirtyArtists.Count; index++)
 			{
-				if (!artist.m_bIsDirty) { continue; }
+				ArtistInfo artist = dirtyArtists[index];
 				UpsertArtist(connection, transaction, artist);
 				WriteStarred(connection, transaction, "artist", artist.Id, artist.Starred);
 				artist.m_bIsDirty = false;
@@ -405,12 +372,12 @@ namespace Pulse.Data
 			return count;
 		}
 
-		private int SaveDirtyAlbums(SqliteConnection connection, SqliteTransaction transaction)
+		private int SaveDirtyAlbums(SqliteConnection connection, SqliteTransaction transaction, List<AlbumInfo> dirtyAlbums)
 		{
 			int count = 0;
-			foreach (AlbumInfo album in m_albums.Values)
+			for (int index = 0; index < dirtyAlbums.Count; index++)
 			{
-				if (!album.m_bIsDirty) { continue; }
+				AlbumInfo album = dirtyAlbums[index];
 				UpsertAlbum(connection, transaction, album);
 				WriteStarred(connection, transaction, "album", album.Id, album.Starred);
 				album.m_bIsDirty = false;
@@ -419,12 +386,12 @@ namespace Pulse.Data
 			return count;
 		}
 
-		private int SaveDirtyTracks(SqliteConnection connection, SqliteTransaction transaction)
+		private int SaveDirtyTracks(SqliteConnection connection, SqliteTransaction transaction, List<TrackInfo> dirtyTracks)
 		{
 			int count = 0;
-			foreach (TrackInfo track in m_tracks.Values)
+			for (int index = 0; index < dirtyTracks.Count; index++)
 			{
-				if (!track.m_bIsDirty) { continue; }
+				TrackInfo track = dirtyTracks[index];
 				UpsertTrack(connection, transaction, track);
 				WriteTrackUserScores(connection, transaction, track);
 				WriteStarred(connection, transaction, "track", track.Id, track.Starred);
@@ -434,12 +401,12 @@ namespace Pulse.Data
 			return count;
 		}
 
-		private int SaveDirtyPlaylists(SqliteConnection connection, SqliteTransaction transaction)
+		private int SaveDirtyPlaylists(SqliteConnection connection, SqliteTransaction transaction, List<PlaylistInfo> dirtyPlaylists)
 		{
 			int count = 0;
-			foreach (PlaylistInfo playlist in m_playlists.Values)
+			for (int index = 0; index < dirtyPlaylists.Count; index++)
 			{
-				if (!playlist.m_bIsDirty) { continue; }
+				PlaylistInfo playlist = dirtyPlaylists[index];
 				UpsertPlaylist(connection, transaction, playlist);
 				WritePlaylistTracks(connection, transaction, playlist);
 				WritePlaylistUserLastPlayed(connection, transaction, playlist);
@@ -447,6 +414,29 @@ namespace Pulse.Data
 				count++;
 			}
 			return count;
+		}
+
+		private int SaveAnalytics(SqliteConnection connection, SqliteTransaction transaction, PulseAnalyticsInfo analytics)
+		{
+			if (analytics == null) { return 0; }
+			if (!analytics.m_bIsDirty) { return 0; }
+
+			SqliteCommand delete = connection.CreateCommand();
+			delete.Transaction = transaction;
+			delete.CommandText = "DELETE FROM analytics_recently_played;";
+			delete.ExecuteNonQuery();
+
+			for (int position = 0; position < analytics.RecentlyPlayed.Count; position++)
+			{
+				SqliteCommand insert = connection.CreateCommand();
+				insert.Transaction = transaction;
+				insert.CommandText = "INSERT INTO analytics_recently_played (position, track_id) VALUES ($position, $track_id);";
+				insert.Parameters.AddWithValue("$position", position);
+				insert.Parameters.AddWithValue("$track_id", analytics.RecentlyPlayed[position]);
+				insert.ExecuteNonQuery();
+			}
+			analytics.m_bIsDirty = false;
+			return 1;
 		}
 
 		// ------- UPSERTs -------
@@ -465,7 +455,7 @@ namespace Pulse.Data
 
 		private static string FormatLastPlayed(DateTime value)
 		{
-			if (value == default(DateTime))
+			if (value == default)
 			{
 				return "";
 			}
@@ -630,7 +620,7 @@ namespace Pulse.Data
 
 			foreach (KeyValuePair<string, DateTime> entry in playlist.UserLastPlayed)
 			{
-				if (entry.Value == default(DateTime))
+				if (entry.Value == default)
 				{
 					continue;
 				}
@@ -666,54 +656,13 @@ namespace Pulse.Data
 			}
 		}
 
-		private int SaveAnalytics(SqliteConnection connection, SqliteTransaction transaction)
+		// Cleans up SQLite rows for a removed track. PulseData decides which of
+		// the album / artist rows have been emptied (their last child went) and
+		// passes those flags in -- the persistence layer has no view of the
+		// in-memory cascade.
+		public void DeleteTrackRows(string trackId, string albumId, string artistId, bool deleteAlbum, bool deleteArtist)
 		{
-			if (!m_analytics.m_bIsDirty) { return 0; }
-
-			SqliteCommand delete = connection.CreateCommand();
-			delete.Transaction = transaction;
-			delete.CommandText = "DELETE FROM analytics_recently_played;";
-			delete.ExecuteNonQuery();
-
-			for (int position = 0; position < m_analytics.RecentlyPlayed.Count; position++)
-			{
-				SqliteCommand insert = connection.CreateCommand();
-				insert.Transaction = transaction;
-				insert.CommandText = "INSERT INTO analytics_recently_played (position, track_id) VALUES ($position, $track_id);";
-				insert.Parameters.AddWithValue("$position", position);
-				insert.Parameters.AddWithValue("$track_id", m_analytics.RecentlyPlayed[position]);
-				insert.ExecuteNonQuery();
-			}
-			m_analytics.m_bIsDirty = false;
-			return 1;
-		}
-
-		// Override the base RemoveTrack to also clean up SQLite. The base operation
-		// only updates dicts; we need to delete the track row (and dependent rows
-		// via CASCADE / explicit cleanup).
-		public override bool RemoveTrack(string trackId)
-		{
-			// Capture the parent ids before base.RemoveTrack mutates the in-memory
-			// maps. base removes the album from m_albums when its last track goes,
-			// and the artist from m_artists when its last album goes -- mirror that
-			// into SQL so orphaned album/artist rows (and their starred rows) don't
-			// survive and reappear on the next Load (#302).
-			string albumId = null;
-			string artistId = null;
-			TrackInfo existing;
-			if (m_tracks.TryGetValue(trackId, out existing))
-			{
-				albumId = existing.AlbumId;
-				artistId = existing.ArtistId;
-			}
-
-			bool removed = base.RemoveTrack(trackId);
-			if (!removed) { return false; }
-
-			bool albumEmptied = !string.IsNullOrEmpty(albumId) && !m_albums.ContainsKey(albumId);
-			bool artistEmptied = !string.IsNullOrEmpty(artistId) && !m_artists.ContainsKey(artistId);
-
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteTransaction transaction = connection.BeginTransaction();
@@ -737,7 +686,7 @@ namespace Pulse.Data
 					delTrack.Parameters.AddWithValue("$id", trackId);
 					delTrack.ExecuteNonQuery();
 
-					if (albumEmptied)
+					if (deleteAlbum)
 					{
 						SqliteCommand delAlbum = connection.CreateCommand();
 						delAlbum.Transaction = transaction;
@@ -752,7 +701,7 @@ namespace Pulse.Data
 						delAlbumStar.ExecuteNonQuery();
 					}
 
-					if (artistEmptied)
+					if (deleteArtist)
 					{
 						SqliteCommand delArtist = connection.CreateCommand();
 						delArtist.Transaction = transaction;
@@ -779,14 +728,11 @@ namespace Pulse.Data
 			{
 				connection.Close();
 			}
-			return true;
 		}
 
-		public override void DeletePlaylist(string playlistId)
+		public void DeletePlaylistRows(string playlistId)
 		{
-			base.DeletePlaylist(playlistId);
-
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				// playlist_tracks has FK with ON DELETE CASCADE, so deleting the
@@ -812,7 +758,7 @@ namespace Pulse.Data
 		// Read-through / write-through: no in-memory cache, no dirty bit. The
 		// access pattern is one row per user max for play queue and small
 		// per-user lists for bookmarks, so the indirection isn't worth it.
-		public override PlayQueueInfo GetPlayQueue(string userName)
+		public PlayQueueInfo GetPlayQueue(string userName)
 		{
 			PlayQueueInfo result = new PlayQueueInfo();
 			if (string.IsNullOrEmpty(userName))
@@ -820,7 +766,7 @@ namespace Pulse.Data
 				return result;
 			}
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand state = connection.CreateCommand();
@@ -858,14 +804,14 @@ namespace Pulse.Data
 			return result;
 		}
 
-		public override void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy)
+		public void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy)
 		{
 			if (string.IsNullOrEmpty(userName))
 			{
 				return;
 			}
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteTransaction transaction = connection.BeginTransaction();
@@ -921,7 +867,7 @@ namespace Pulse.Data
 			}
 		}
 
-		public override List<BookmarkInfo> GetBookmarks(string userName)
+		public List<BookmarkInfo> GetBookmarks(string userName)
 		{
 			List<BookmarkInfo> result = new List<BookmarkInfo>();
 			if (string.IsNullOrEmpty(userName))
@@ -929,7 +875,7 @@ namespace Pulse.Data
 				return result;
 			}
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -963,14 +909,14 @@ namespace Pulse.Data
 			return result;
 		}
 
-		public override void SaveBookmark(string userName, string trackId, long positionMs, string comment)
+		public void SaveBookmark(string userName, string trackId, long positionMs, string comment)
 		{
 			if (string.IsNullOrEmpty(userName) || string.IsNullOrEmpty(trackId))
 			{
 				return;
 			}
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				string nowIso = DateTime.UtcNow.ToString("o");
@@ -995,14 +941,14 @@ namespace Pulse.Data
 			}
 		}
 
-		public override void DeleteBookmark(string userName, string trackId)
+		public void DeleteBookmark(string userName, string trackId)
 		{
 			if (string.IsNullOrEmpty(userName) || string.IsNullOrEmpty(trackId))
 			{
 				return;
 			}
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -1017,30 +963,53 @@ namespace Pulse.Data
 			}
 		}
 
-		// Append-only INSERT into the v6 analytics_events log. Write-through,
-		// one row per event, never updated or deleted (except on user wipe).
-		// action and media_type are stored as the enum *names* to match how
-		// PulseWire serializes them on the wire. A null/empty media id is
-		// dropped -- an event with no subject is not useful to aggregate.
-		public override void RecordAnalyticsEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
+		// Append-only INSERT into the playback_events log -- the raw immutable
+		// event stream (one row per Started/Paused/Skipped/Completed). On a
+		// Started event we additionally upsert the item_stats counter so the
+		// most-played shelves read a single row per (user, item) rather than
+		// re-aggregating the log on every request. Same connection for both
+		// statements; log insert first so the counter never gets ahead of the
+		// log. A null/empty media id is dropped -- an event with no subject is
+		// not useful to count.
+		public void RecordPlaybackEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
 		{
 			if (analytics == null || string.IsNullOrEmpty(analytics.MediaId))
 			{
 				return;
 			}
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			string normalizedUser = userName ?? "";
+			string occurredIso = occurredAt.ToString("o");
+			string actionName = analytics.Action.ToString();
+			string typeName = analytics.MediaType.ToString();
+
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = @"INSERT INTO analytics_events (occurred_at, user_name, action, media_type, media_id)
+				SqliteCommand logCommand = connection.CreateCommand();
+				logCommand.CommandText = @"INSERT INTO playback_events (occurred_at, user_name, action, media_type, media_id)
 					VALUES ($occurred, $u, $action, $type, $id);";
-				command.Parameters.AddWithValue("$occurred", occurredAt.ToString("o"));
-				command.Parameters.AddWithValue("$u", userName ?? "");
-				command.Parameters.AddWithValue("$action", analytics.Action.ToString());
-				command.Parameters.AddWithValue("$type", analytics.MediaType.ToString());
-				command.Parameters.AddWithValue("$id", analytics.MediaId);
-				command.ExecuteNonQuery();
+				logCommand.Parameters.AddWithValue("$occurred", occurredIso);
+				logCommand.Parameters.AddWithValue("$u", normalizedUser);
+				logCommand.Parameters.AddWithValue("$action", actionName);
+				logCommand.Parameters.AddWithValue("$type", typeName);
+				logCommand.Parameters.AddWithValue("$id", analytics.MediaId);
+				logCommand.ExecuteNonQuery();
+
+				if (analytics.Action == PulseAnalytics.eAction.Started)
+				{
+					SqliteCommand upsertCommand = connection.CreateCommand();
+					upsertCommand.CommandText = @"INSERT INTO item_stats (user_name, media_type, media_id, play_count, last_played)
+						VALUES ($u, $type, $id, 1, $occurred)
+						ON CONFLICT(user_name, media_type, media_id) DO UPDATE SET
+							play_count = play_count + 1,
+							last_played = CASE WHEN excluded.last_played > last_played THEN excluded.last_played ELSE last_played END;";
+					upsertCommand.Parameters.AddWithValue("$u", normalizedUser);
+					upsertCommand.Parameters.AddWithValue("$type", typeName);
+					upsertCommand.Parameters.AddWithValue("$id", analytics.MediaId);
+					upsertCommand.Parameters.AddWithValue("$occurred", occurredIso);
+					upsertCommand.ExecuteNonQuery();
+				}
 			}
 			finally
 			{
@@ -1049,32 +1018,33 @@ namespace Pulse.Data
 		}
 
 		/// <summary>
-		/// Rolls up the v6 analytics_events log for one media type. Counts only
-		/// 'Started' events (a collection/track being started is the unit of a
-		/// "play"); media_type and action are matched against the stored enum
-		/// names. When userName is non-empty the rollup is scoped to that user,
-		/// otherwise it spans every user. occurred_at is stored round-trip ("o"),
-		/// so MAX() yields a sortable timestamp the caller parses back.
+		/// Reads the item_stats counter for one media type. Each row already holds
+		/// a Started count and the most-recent occurred_at -- no log aggregation
+		/// at query time. When userName is non-empty the read is scoped to that
+		/// user's counters; otherwise the per-user counters are summed across
+		/// every user (and last_played taken as MAX). last_played is round-trip
+		/// "o" so the caller parses it back. Empty media_id rows are skipped.
 		/// </summary>
-		public override Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType)
+		public Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType)
 		{
-			Dictionary<string, AnalyticsAggregate> aggregates = new Dictionary<string, AnalyticsAggregate>();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			Dictionary<string, ItemStats> stats = new Dictionary<string, ItemStats>();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
 				bool scopedToUser = !string.IsNullOrEmpty(userName);
-				string userClause = scopedToUser ? " AND user_name = $u" : "";
-				command.CommandText = "SELECT media_id, COUNT(*) AS plays, MAX(occurred_at) AS last"
-					+ " FROM analytics_events"
-					+ " WHERE action = $action AND media_type = $type" + userClause
-					+ " GROUP BY media_id;";
-				command.Parameters.AddWithValue("$action", PulseAnalytics.eAction.Started.ToString());
-				command.Parameters.AddWithValue("$type", mediaType.ToString());
 				if (scopedToUser)
 				{
+					command.CommandText = "SELECT media_id, play_count, last_played FROM item_stats"
+						+ " WHERE media_type = $type AND user_name = $u;";
 					command.Parameters.AddWithValue("$u", userName);
 				}
+				else
+				{
+					command.CommandText = "SELECT media_id, SUM(play_count), MAX(last_played) FROM item_stats"
+						+ " WHERE media_type = $type GROUP BY media_id;";
+				}
+				command.Parameters.AddWithValue("$type", mediaType.ToString());
 
 				SqliteDataReader reader = command.ExecuteReader();
 				while (reader.Read())
@@ -1084,17 +1054,24 @@ namespace Pulse.Data
 					{
 						continue;
 					}
-					AnalyticsAggregate aggregate = new AnalyticsAggregate();
-					aggregate.PlayCount = reader.GetInt32(1);
+					ItemStats entry = new ItemStats();
+					if (!reader.IsDBNull(1))
+					{
+						entry.PlayCount = reader.GetInt32(1);
+					}
 					if (!reader.IsDBNull(2))
 					{
-						DateTime parsed;
-						if (DateTime.TryParse(reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind, out parsed))
+						string lastPlayedStr = reader.GetString(2);
+						if (!string.IsNullOrEmpty(lastPlayedStr))
 						{
-							aggregate.LastPlayed = parsed;
+							DateTime parsed;
+							if (DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out parsed))
+							{
+								entry.LastPlayed = parsed;
+							}
 						}
 					}
-					aggregates[mediaId] = aggregate;
+					stats[mediaId] = entry;
 				}
 				reader.Close();
 			}
@@ -1102,17 +1079,17 @@ namespace Pulse.Data
 			{
 				connection.Close();
 			}
-			return aggregates;
+			return stats;
 		}
 
-		// SELECT from the users table, then layer the in-memory per-user counts
-		// on top. Names that have per-user rows but no users-table entry (e.g.
-		// scrobbled after the user was deleted) are surfaced as orphan records
-		// with Created=MinValue so the operator can spot and clean them up.
-		public override List<UserRecord> GetAllUsers()
+		// Returns one record per row in the users table. The per-user counts
+		// (ScoredTrackCount / StarredCount / PlaylistLastPlayedCount) are
+		// layered on by PulseData from its in-memory state -- the persistence
+		// layer has no view of them.
+		public List<UserRecord> ReadAllUsers()
 		{
-			Dictionary<string, UserRecord> byName = new Dictionary<string, UserRecord>();
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			List<UserRecord> result = new List<UserRecord>();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -1120,8 +1097,7 @@ namespace Pulse.Data
 				SqliteDataReader reader = command.ExecuteReader();
 				while (reader.Read())
 				{
-					UserRecord record = ReadUserRecord(reader);
-					byName[record.Name] = record;
+					result.Add(ReadUserRecord(reader));
 				}
 				reader.Close();
 			}
@@ -1129,17 +1105,14 @@ namespace Pulse.Data
 			{
 				connection.Close();
 			}
-			PopulateUserCounts(byName, true);
-			List<UserRecord> users = new List<UserRecord>(byName.Values);
-			users.Sort(CompareUserRecordByName);
-			return users;
+			return result;
 		}
 
-		public override UserRecord GetUser(string name)
+		public UserRecord ReadUser(string name)
 		{
 			if (string.IsNullOrEmpty(name)) { return null; }
 			UserRecord record = null;
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -1174,11 +1147,11 @@ namespace Pulse.Data
 			return record;
 		}
 
-		public override string CreateUser(string name, string displayName, bool isAdmin)
+		public string InsertUser(string name, string displayName, bool isAdmin)
 		{
 			if (string.IsNullOrWhiteSpace(name)) { return "Name is required."; }
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand exists = connection.CreateCommand();
@@ -1209,14 +1182,14 @@ namespace Pulse.Data
 		// columns in every per-user table are also rewritten -- on UNIQUE
 		// constraint violation (e.g. a track already had a row for newName)
 		// the transaction rolls back and the caller gets an error.
-		public override string UpdateUser(string oldName, string newName, string displayName, bool isAdmin)
+		public string UpdateUserRow(string oldName, string newName, string displayName, bool isAdmin)
 		{
 			if (string.IsNullOrWhiteSpace(oldName)) { return "Old name is required."; }
 			if (string.IsNullOrWhiteSpace(newName)) { return "New name is required."; }
 
 			bool renaming = !string.Equals(oldName, newName, StringComparison.Ordinal);
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteCommand oldExists = connection.CreateCommand();
@@ -1259,7 +1232,8 @@ namespace Pulse.Data
 							"playqueue_state",
 							"playqueue_entries",
 							"bookmarks",
-							"analytics_events"
+							"playback_events",
+							"item_stats"
 						};
 						for (int index = 0; index < tables.Length; index++)
 						{
@@ -1292,23 +1266,18 @@ namespace Pulse.Data
 				connection.Close();
 			}
 
-			if (renaming)
-			{
-				RenameUserInMemory(oldName, newName);
-			}
 			return "";
 		}
 
-		// Two-stage wipe: directly delete the non-cached per-user rows
-		// (playqueue + bookmarks) plus the users-table row, then let the base
-		// scrub the in-memory dicts and flag affected tracks/albums/artists/
-		// playlists dirty so the upcoming Save rewrites their starred / score /
-		// last-played rows without this user.
-		public override void DeleteUser(string userName)
+		// Single-transaction wipe of every SQL row that mentions this user --
+		// users table plus the non-cached per-user tables (playqueue, bookmarks,
+		// playback_events, item_stats). PulseData runs the in-memory cascade and
+		// flushes the resulting dirty rows separately.
+		public void DeleteUserRows(string userName)
 		{
 			if (string.IsNullOrEmpty(userName)) { return; }
 
-			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
 				SqliteTransaction transaction = connection.BeginTransaction();
@@ -1332,11 +1301,17 @@ namespace Pulse.Data
 					delBookmarks.Parameters.AddWithValue("$u", userName);
 					delBookmarks.ExecuteNonQuery();
 
-					SqliteCommand delAnalytics = connection.CreateCommand();
-					delAnalytics.Transaction = transaction;
-					delAnalytics.CommandText = "DELETE FROM analytics_events WHERE user_name = $u;";
-					delAnalytics.Parameters.AddWithValue("$u", userName);
-					delAnalytics.ExecuteNonQuery();
+					SqliteCommand delPlaybackEvents = connection.CreateCommand();
+					delPlaybackEvents.Transaction = transaction;
+					delPlaybackEvents.CommandText = "DELETE FROM playback_events WHERE user_name = $u;";
+					delPlaybackEvents.Parameters.AddWithValue("$u", userName);
+					delPlaybackEvents.ExecuteNonQuery();
+
+					SqliteCommand delItemStats = connection.CreateCommand();
+					delItemStats.Transaction = transaction;
+					delItemStats.CommandText = "DELETE FROM item_stats WHERE user_name = $u;";
+					delItemStats.Parameters.AddWithValue("$u", userName);
+					delItemStats.ExecuteNonQuery();
 
 					SqliteCommand delUsersRow = connection.CreateCommand();
 					delUsersRow.Transaction = transaction;
@@ -1357,9 +1332,6 @@ namespace Pulse.Data
 			{
 				connection.Close();
 			}
-
-			base.DeleteUser(userName);
-			Save("delete-user");
 		}
 	}
 }

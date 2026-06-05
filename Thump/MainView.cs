@@ -40,8 +40,10 @@ namespace Thump
 
 		public static MainView Self { get { return s_self; } }
 		public static MediaClient MediaClient { get { return Self.m_mediaClient; } }
+		public static Analytics Analytics { get { return Self.m_analytics; } }
 		private static MainView s_self;
 		private MediaClient m_mediaClient;
+		private Analytics m_analytics;
 		private ThumpCache m_cache;
 		private Grid m_rootGrid;
 		private OfflineBanner m_offlineBanner;
@@ -108,6 +110,8 @@ namespace Thump
 
 			m_cache = new ThumpCache();
 			m_mediaClient = new PulseClient(m_cache, this);
+			m_analytics = new Analytics(m_mediaClient);
+			m_analytics.Event(eAction.Launch, eResult.OK);
 			m_mediaClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetUseHttps());
 
 #if ANDROID
@@ -158,6 +162,12 @@ namespace Thump
 		// the main thread before touching the banner's visibility.
 		public void OnOnlineStateChanged(bool online)
 		{
+			string connectivityDetail = "offline";
+			if (online)
+			{
+				connectivityDetail = "online";
+			}
+			m_analytics.Event(eAction.Connectivity, eResult.OK, connectivityDetail);
 			MainThread.BeginInvokeOnMainThread(() =>
 			{
 				m_offlineBanner.SetIsOnline(online);

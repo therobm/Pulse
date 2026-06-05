@@ -623,18 +623,18 @@ namespace Pulse.Protocols.Subsonic
 
 		public IResult HandleGetGenres(HttpContext context)
 		{
-			List<GenreInfo> genres = ExtractPulseContentList<GenreInfo>(m_pulseAPI.GetGenres(context));
+			SearchResult content = ExtractPulseContent<SearchResult>(m_pulseAPI.GetGenres(context));
 
 			SubsonicResponseBody body = CreateResponse();
 			body.genres = new GenresContainer();
 			body.genres.genre = new List<GenreEntry>();
-			if (genres != null)
+			if (content != null && content.Genres != null)
 			{
-				for (int i = 0; i < genres.Count; i++)
+				for (int i = 0; i < content.Genres.Count; i++)
 				{
-					if (genres[i] != null)
+					if (content.Genres[i] != null)
 					{
-						body.genres.genre.Add(new GenreEntry(genres[i]));
+						body.genres.genre.Add(new GenreEntry(content.Genres[i]));
 					}
 				}
 			}

@@ -8,7 +8,7 @@ namespace Pulse.Database
 	/// on PulseConfig.DatabaseEnvironment. WAL mode is turned on after open so
 	/// readers don't block the background scan-thread's writes.
 	/// </summary>
-	public static class SqliteConnectionFactory
+	public static class PulseDBConnector
 	{
 		private static string s_databaseFilePath = "pulse.db";
 

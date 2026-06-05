@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Http;
-using Pulse.Data;
+using Pulse.Database;
 using Pulse.MusicLibrary;
 using PulseAPI.CSharp;
 using System;
@@ -24,13 +24,15 @@ namespace Pulse.Protocols.PulseAPI
 		IPulseRouteHost m_host;
 		PulseService m_pulseService;
 		MusicManager m_musicManager;
+		AnalyticsDB m_analyticsDB;
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseEndpoints(PulseService pulse, MusicManager musicManager)
+		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
+			m_analyticsDB = analyticsDB;
 			m_defaultCoverArt = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png"));
 		}
 
@@ -65,6 +67,8 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("unfavorite", Unfavorite);
 			RegisterRoute("reportAnalytics", ReportAnalytics);
 
+			RegisterRoute("ingestAnalytics", PostIngestAnalytics);
+			RegisterRoute("analytics", GetAnalytics);
 
 			RegisterRoute("topItems", GetTop);
 
@@ -398,6 +402,10 @@ namespace Pulse.Protocols.PulseAPI
 			string typeRaw = context.Request.Query["type"].FirstOrDefault();
 			int size = QueryParameters.GetInt(context, "size", 20);
 			int offset = QueryParameters.GetInt(context, "offset", 0);
+			if (offset < 0)
+			{
+				offset = 0;
+			}
 			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
 
 			string type = "random";
@@ -669,6 +677,10 @@ namespace Pulse.Protocols.PulseAPI
 			string user = context.Request.Query["u"].FirstOrDefault() ?? "";
 			int count = QueryParameters.GetInt(context, "count", 10);
 			int offset = QueryParameters.GetInt(context, "offset", 0);
+			if (offset < 0)
+			{
+				offset = 0;
+			}
 
 			if (string.IsNullOrEmpty(genre))
 			{
@@ -1121,7 +1133,7 @@ namespace Pulse.Protocols.PulseAPI
 				return RespondStatus(context, "missing_id");
 			}
 
-			m_musicManager.OnAnalyticsEvent(user, analytics);
+			m_musicManager.OnPlaybackEvent(user, analytics);
 			return Respond(context, new PulseResponse());
 		}
 
@@ -1181,7 +1193,7 @@ namespace Pulse.Protocols.PulseAPI
 
 		/// <summary>
 		/// Builds the candidate set for the MostPlays (topItems) ranking. The
-		/// candidate set is driven by the analytics event log, scoped to the
+		/// candidate set is driven by the item_stats counter, scoped to the
 		/// requesting user (global when user is empty): only items that have
 		/// actually been started appear, each carrying its lifetime play count
 		/// and most-recent start time for tie-breaking.
@@ -1192,8 +1204,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeTracks)
 			{
-				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Track);
-				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, eDataType.Track);
+				foreach (KeyValuePair<string, ItemStats> entry in stats)
 				{
 					TrackInfo track = m_musicManager.GetTrack(entry.Key);
 					if (track == null)
@@ -1206,8 +1218,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeArtists)
 			{
-				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Artist);
-				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, eDataType.Artist);
+				foreach (KeyValuePair<string, ItemStats> entry in stats)
 				{
 					ArtistInfo artist = m_musicManager.GetArtist(entry.Key);
 					if (artist == null)
@@ -1220,8 +1232,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeAlbums)
 			{
-				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Album);
-				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, eDataType.Album);
+				foreach (KeyValuePair<string, ItemStats> entry in stats)
 				{
 					AlbumInfo album = m_musicManager.GetAlbum(entry.Key);
 					if (album == null)
@@ -1234,8 +1246,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includePlaylists)
 			{
-				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Playlist);
-				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, eDataType.Playlist);
+				foreach (KeyValuePair<string, ItemStats> entry in stats)
 				{
 					PlaylistInfo playlist = m_musicManager.GetPlaylist(entry.Key);
 					if (playlist == null)
@@ -1254,7 +1266,7 @@ namespace Pulse.Protocols.PulseAPI
 		/// Tracks come from the in-memory FIFO recents list; artists and playlists
 		/// from their in-memory last-played (skipping never-played items); albums,
 		/// which hold no in-memory last-played, have their recency read back from
-		/// the analytics event log.
+		/// the item_stats counter.
 		/// </summary>
 		private List<RecentCandidate> GatherMostRecent(string user, bool includeTracks, bool includeArtists, bool includeAlbums, bool includePlaylists)
 		{
@@ -1307,8 +1319,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeAlbums)
 			{
-				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Album);
-				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, eDataType.Album);
+				foreach (KeyValuePair<string, ItemStats> entry in stats)
 				{
 					AlbumInfo album = m_musicManager.GetAlbum(entry.Key);
 					if (album == null)
@@ -1343,12 +1355,12 @@ namespace Pulse.Protocols.PulseAPI
 			return candidates;
 		}
 
-		private static RecentCandidate MakeCandidate(PulseObject item, AnalyticsAggregate aggregate)
+		private static RecentCandidate MakeCandidate(PulseObject item, ItemStats stats)
 		{
 			RecentCandidate candidate = new RecentCandidate();
 			candidate.Item = item;
-			candidate.PlayCount = aggregate.PlayCount;
-			candidate.LastPlayed = aggregate.LastPlayed;
+			candidate.PlayCount = stats.PlayCount;
+			candidate.LastPlayed = stats.LastPlayed;
 			return candidate;
 		}
 
@@ -1399,5 +1411,99 @@ namespace Pulse.Protocols.PulseAPI
 		{
 			return RespondStatus(context, "not_implemented");
 		}
+
+		/// <summary>
+		/// Analytics intake. Clients POST a PulseAnalyticsBatch describing a
+		/// window of client-side usage events (navigation, playback, failures).
+		/// The body is JSON; HttpServer sets AllowSynchronousIO so the
+		/// synchronous read is legal. The handler stamps received_at on the
+		/// server clock and hands the item to AnalyticsDB -- the request thread
+		/// never touches the database.
+		/// </summary>
+		public IResult PostIngestAnalytics(HttpContext context)
+		{
+			string body;
+			using (StreamReader reader = new StreamReader(context.Request.Body))
+			{
+				body = reader.ReadToEnd();
+			}
+
+			if (string.IsNullOrEmpty(body))
+			{
+				return RespondStatus(context, "missing_body");
+			}
+
+			PulseAnalyticsBatch batch = PulseWire.Parse<PulseAnalyticsBatch>(body);
+			if (batch == null)
+			{
+				return RespondStatus(context, "missing_body");
+			}
+			if (string.IsNullOrEmpty(batch.SessionId))
+			{
+				return RespondStatus(context, "missing_id");
+			}
+			if (batch.Events == null || batch.Events.Count == 0)
+			{
+				return RespondStatus(context, "missing_events");
+			}
+
+			string receivedAt = DateTime.UtcNow.ToString("o");
+			m_analyticsDB.Enqueue(batch, receivedAt);
+			return Respond(context, new PulseResponse());
+		}
+
+		/// <summary>
+		/// Analytics read endpoint. With ?session_id=... returns every event for
+		/// that session (optionally filtered by category, action, and result),
+		/// ordered by client timestamp. With ?device_id=... returns every
+		/// session for that device, most recent first.
+		/// </summary>
+		public IResult GetAnalytics(HttpContext context)
+		{
+			string sessionId = context.Request.Query["session_id"].FirstOrDefault();
+			string deviceId = context.Request.Query["device_id"].FirstOrDefault();
+
+			if (!string.IsNullOrEmpty(sessionId))
+			{
+				string categoryFilter = context.Request.Query["category"].FirstOrDefault();
+				string actionFilter = context.Request.Query["action"].FirstOrDefault();
+				string resultFilter = context.Request.Query["result"].FirstOrDefault();
+				List<PulseAnalyticsEvent> events = m_analyticsDB.GetEventsForSession(sessionId, categoryFilter, actionFilter, resultFilter);
+				AnalyticsEventsResponse response = new AnalyticsEventsResponse();
+				response.SessionId = sessionId;
+				response.Events = events;
+				return Results.Text(PulseWire.Serialize(response), "application/json");
+			}
+
+			if (!string.IsNullOrEmpty(deviceId))
+			{
+				List<PulseAnalyticsSession> sessions = m_analyticsDB.GetSessionsForDevice(deviceId);
+				AnalyticsSessionsResponse response = new AnalyticsSessionsResponse();
+				response.DeviceId = deviceId;
+				response.Sessions = sessions;
+				return Results.Text(PulseWire.Serialize(response), "application/json");
+			}
+
+			return RespondStatus(context, "missing_id");
+		}
+	}
+
+	/// <summary>
+	/// Response envelope for the /analytics events query. Plain public
+	/// fields; serialized through PulseWire which emits field names verbatim.
+	/// </summary>
+	public class AnalyticsEventsResponse
+	{
+		public string SessionId;
+		public List<PulseAnalyticsEvent> Events;
+	}
+
+	/// <summary>
+	/// Response envelope for the /analytics sessions query.
+	/// </summary>
+	public class AnalyticsSessionsResponse
+	{
+		public string DeviceId;
+		public List<PulseAnalyticsSession> Sessions;
 	}
 }
