@@ -130,6 +130,16 @@ namespace Thump.Views.Tiles
 					m_subtitleLabel.Text = genre.TrackCount + " songs";
 				}
 			}
+			else if (item.Kind == eDataType.Podcast)
+			{
+				PulsePodcast podcast = item as PulsePodcast;
+				if (podcast != null)
+				{
+					m_art.SetShape(eArtShape.RoundedRect);
+					m_titleLabel.Text = podcast.Title;
+					m_subtitleLabel.Text = podcast.EpisodeCount + " episodes";
+				}
+			}
 		}
 
 		private void OnTapped(object sender, EventArgs e)

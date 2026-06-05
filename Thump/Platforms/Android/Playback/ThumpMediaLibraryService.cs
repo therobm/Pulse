@@ -544,10 +544,56 @@ namespace Thump.Playback.AndroidOS
 						onDataComplete(genre);
 					});
 					break;
+				case eAAObject.Podcast:
+					s_mediaClient.GetPodcast(objectId, (details) =>
+					{
+						onDataComplete(BuildPodcastEpisodeTracks(details));
+					});
+					break;
 				default:
 					onDataComplete(new List<PulseTrack>());
 					break;
 			}
+		}
+
+		// Adapter from the podcast details wire-type to the PulseTrack list the
+		// player/queue expects. The stream endpoint resolves either a track id or
+		// an episode id, so an episode's Id is the track Id. Series art is the
+		// fallback when the episode payload lacks its own cover.
+		private List<PulseTrack> BuildPodcastEpisodeTracks(PulsePodcastDetails details)
+		{
+			List<PulseTrack> tracks = new List<PulseTrack>();
+			if (details == null || details.Episodes == null)
+			{
+				return tracks;
+			}
+			string podcastTitle = "";
+			string podcastArt = "";
+			if (details.Series != null)
+			{
+				podcastTitle = details.Series.Title;
+				podcastArt = details.Series.CoverArt;
+			}
+			for (int index = 0; index < details.Episodes.Count; index++)
+			{
+				PulsePodcastEpisode episode = details.Episodes[index];
+				PulseTrack track = new PulseTrack();
+				track.Id = episode.Id;
+				track.Title = episode.Title;
+				track.Artist = podcastTitle;
+				track.Album = podcastTitle;
+				if (string.IsNullOrEmpty(episode.CoverArt))
+				{
+					track.CoverArt = podcastArt;
+				}
+				else
+				{
+					track.CoverArt = episode.CoverArt;
+				}
+				track.Duration = episode.Duration;
+				tracks.Add(track);
+			}
+			return tracks;
 		}
 
 		private static void ShuffleInPlace<T>(List<T> list)
@@ -609,12 +655,11 @@ namespace Thump.Playback.AndroidOS
 					}
 				case eAADirectory.Podcasts:
 					{
-						/* deprecated
 						s_mediaClient.GetPodcasts((podcasts) =>
 						{
-							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(podcasts, "Podcasts");
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(podcasts);
 							request.OnComplete(items);
-						});*/
+						});
 						break;
 					}
 				case eAADirectory.Library:
@@ -722,6 +767,13 @@ namespace Thump.Playback.AndroidOS
 					s_mediaClient.GetTracksForGenre(objectID, (genreTracks) =>
 					{
 						request.OnComplete<PulseAlbum>(genreTracks, objectType, objectID);
+					});
+					break;
+				case eAAObject.Podcast:
+					s_mediaClient.GetPodcast(objectID, (details) =>
+					{
+						List<PulseTrack> episodeTracks = BuildPodcastEpisodeTracks(details);
+						request.OnComplete<PulseAlbum>(episodeTracks, objectType, objectID);
 					});
 					break;
 			}
