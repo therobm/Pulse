@@ -98,12 +98,12 @@ namespace Pulse.Series
 
 		/// <summary>
 		/// Offline-testable core of feed ingest: parse the supplied stream,
-		/// upsert the series row, refresh series_items, and update only the
-		/// LastPolled column on the existing podcast_feeds row. Feed
-		/// settings (PollIntervalMinutes, Retention, RetentionValue,
-		/// AutoDownload) are NOT touched here -- they are set once at
-		/// AddPodcast time and only changed by deliberate user action; a
-		/// poll cycle must never clobber them.
+		/// upsert the series row (metadata columns only), refresh
+		/// series_items, and update only the LastPolled column on the
+		/// existing series row. Feed settings (PollIntervalMinutes,
+		/// Retention, RetentionValue, AutoDownload) are NOT touched here --
+		/// they are set once at AddPodcast time and only changed by
+		/// deliberate user action; a poll cycle must never clobber them.
 		/// </summary>
 		public void IngestFeedStream(string seriesId, string feedUrl, Stream feedXml)
 		{
@@ -134,9 +134,9 @@ namespace Pulse.Series
 				series.ArtworkPath = existingSeries.ArtworkPath;
 			}
 			series.DateAdded = dateAdded;
-			m_db.UpsertSeries(series);
+			m_db.UpsertSeriesMetadata(series);
 
-			m_db.SetFeedLastPolled(seriesId, nowIso);
+			m_db.SetSeriesLastPolled(seriesId, nowIso);
 
 			List<string> existingGuids = m_db.LoadItemGuidsForSeries(seriesId);
 			HashSet<string> existingSet = new HashSet<string>(existingGuids);
@@ -184,32 +184,19 @@ namespace Pulse.Series
 		/// <summary>
 		/// Fetches the feed at feedUrl over HTTP (follow-redirects, 60s
 		/// timeout, "Pulse/1.0" UA), routes the response stream into
-		/// IngestFeedStream, then optionally records a subscription for
-		/// userName. The seriesId is derived deterministically from the
-		/// feed URL so re-adding the same feed lands on the same row.
-		/// First-add only: creates the podcast_feeds row with default
-		/// PollIntervalMinutes / Retention / AutoDownload values if none
-		/// exists yet -- subsequent calls leave the user's settings alone.
-		/// After ingest the series artwork is cached locally and any
-		/// already-eligible items begin downloading.
+		/// IngestFeedStream (which creates the series row), then -- if this
+		/// is the first add for this feed -- stamps the default
+		/// PollIntervalMinutes / Retention / RetentionValue / AutoDownload
+		/// onto the series row via SetSeriesFeed. The seriesId is derived
+		/// deterministically from the feed URL so re-adding the same feed
+		/// lands on the same row, and the "FeedUrl already set" check keeps
+		/// re-adds from clobbering the user's settings. After ingest the
+		/// series artwork is cached locally and any already-eligible items
+		/// begin downloading.
 		/// </summary>
 		public SeriesInfo AddPodcast(string feedUrl, string userName, bool subscribe)
 		{
 			string seriesId = MusicManager.GenerateID(feedUrl);
-
-			PodcastFeedInfo existingFeed = m_db.LoadPodcastFeed(seriesId);
-			if (existingFeed == null)
-			{
-				PodcastFeedInfo feed = new PodcastFeedInfo();
-				feed.SeriesId = seriesId;
-				feed.FeedUrl = feedUrl;
-				feed.PollIntervalMinutes = 60;
-				feed.Retention = eRetentionPolicy.KeepN;
-				feed.RetentionValue = 10;
-				feed.AutoDownload = true;
-				feed.LastPolled = "";
-				m_db.UpsertPodcastFeed(feed);
-			}
 
 			HttpResponseMessage response = s_httpClient.GetAsync(feedUrl).GetAwaiter().GetResult();
 			try
@@ -230,10 +217,17 @@ namespace Pulse.Series
 				response.Dispose();
 			}
 
+			string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+
+			SeriesInfo storedAfterIngest = GetSeries(seriesId);
+			if (storedAfterIngest != null && string.IsNullOrEmpty(storedAfterIngest.FeedUrl))
+			{
+				m_db.SetSeriesFeed(seriesId, feedUrl, 60, eRetentionPolicy.KeepN, 10, true, nowIso);
+			}
+
 			bool shouldSubscribe = subscribe && !string.IsNullOrEmpty(userName);
 			if (shouldSubscribe)
 			{
-				string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 				m_db.SetSubscribed(seriesId, userName, true, nowIso);
 			}
 
@@ -364,7 +358,7 @@ namespace Pulse.Series
 		}
 
 		/// <summary>
-		/// Walks the keep set produced by the feed's retention policy and
+		/// Walks the keep set produced by the series' retention policy and
 		/// invokes DownloadItem for any keep-set item that isn't already
 		/// Downloaded (or whose LocalPath no longer points at a real file).
 		/// Honors AutoDownload: if the user turned auto-download off, this
@@ -372,18 +366,18 @@ namespace Pulse.Series
 		/// </summary>
 		public void DownloadPendingForFeed(string seriesId)
 		{
-			PodcastFeedInfo feed = m_db.LoadPodcastFeed(seriesId);
-			if (feed == null)
+			SeriesInfo series = m_db.LoadSeries(seriesId);
+			if (series == null)
 			{
 				return;
 			}
-			if (!feed.AutoDownload)
+			if (!series.AutoDownload)
 			{
 				return;
 			}
 
 			List<SeriesItemInfo> items = m_db.LoadItemsForSeries(seriesId);
-			List<SeriesItemInfo> keepSet = ComputeKeepSet(items, feed);
+			List<SeriesItemInfo> keepSet = ComputeKeepSet(items, series);
 
 			int keepCount = keepSet.Count;
 			for (int keepIndex = 0; keepIndex < keepCount; keepIndex++)
@@ -428,7 +422,7 @@ namespace Pulse.Series
 		}
 
 		/// <summary>
-		/// Applies the feed's retention policy: items not in the keep set
+		/// Applies the series' retention policy: items not in the keep set
 		/// have their local file deleted and their row reset to
 		/// Discovered / LocalPath="" (the metadata row is preserved so the
 		/// item can be re-downloaded later without re-ingesting the feed).
@@ -437,18 +431,18 @@ namespace Pulse.Series
 		/// </summary>
 		public void ApplyRetention(string seriesId)
 		{
-			PodcastFeedInfo feed = m_db.LoadPodcastFeed(seriesId);
-			if (feed == null)
+			SeriesInfo series = m_db.LoadSeries(seriesId);
+			if (series == null)
 			{
 				return;
 			}
-			if (feed.Retention == eRetentionPolicy.KeepAll)
+			if (series.Retention == eRetentionPolicy.KeepAll)
 			{
 				return;
 			}
 
 			List<SeriesItemInfo> items = m_db.LoadItemsForSeries(seriesId);
-			List<SeriesItemInfo> keepSet = ComputeKeepSet(items, feed);
+			List<SeriesItemInfo> keepSet = ComputeKeepSet(items, series);
 			HashSet<string> keepIds = new HashSet<string>();
 			int keepCount = keepSet.Count;
 			for (int keepIndex = 0; keepIndex < keepCount; keepIndex++)
@@ -579,26 +573,26 @@ namespace Pulse.Series
 		/// </summary>
 		public void RefreshFeed(string seriesId)
 		{
-			PodcastFeedInfo feed = m_db.LoadPodcastFeed(seriesId);
-			if (feed == null)
+			SeriesInfo series = m_db.LoadSeries(seriesId);
+			if (series == null)
 			{
 				return;
 			}
-			if (string.IsNullOrEmpty(feed.FeedUrl))
+			if (string.IsNullOrEmpty(series.FeedUrl))
 			{
 				return;
 			}
 
 			try
 			{
-				HttpResponseMessage response = s_httpClient.GetAsync(feed.FeedUrl).GetAwaiter().GetResult();
+				HttpResponseMessage response = s_httpClient.GetAsync(series.FeedUrl).GetAwaiter().GetResult();
 				try
 				{
 					response.EnsureSuccessStatusCode();
 					Stream contentStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
 					try
 					{
-						IngestFeedStream(seriesId, feed.FeedUrl, contentStream);
+						IngestFeedStream(seriesId, series.FeedUrl, contentStream);
 					}
 					finally
 					{
@@ -625,8 +619,8 @@ namespace Pulse.Series
 		}
 
 		/// <summary>
-		/// Starts the single background poll thread. The thread walks all
-		/// podcast_feeds rows once per cycle, calls RefreshFeed on any
+		/// Starts the single background poll thread. The thread walks every
+		/// podcast series row once per cycle, calls RefreshFeed on any
 		/// whose LastPolled is older than PollIntervalMinutes (treating an
 		/// empty or unparseable LastPolled as "due"), then sleeps 60s
 		/// before the next cycle. The infinite while-loop is the sanctioned
@@ -650,16 +644,16 @@ namespace Pulse.Series
 			{
 				try
 				{
-					List<PodcastFeedInfo> feeds = m_db.LoadAllPodcastFeeds();
-					int feedCount = feeds.Count;
+					List<SeriesInfo> podcasts = m_db.LoadAllPodcastSeries();
+					int podcastCount = podcasts.Count;
 					DateTime nowUtc = DateTime.UtcNow;
-					for (int feedIndex = 0; feedIndex < feedCount; feedIndex++)
+					for (int podcastIndex = 0; podcastIndex < podcastCount; podcastIndex++)
 					{
-						PodcastFeedInfo feed = feeds[feedIndex];
-						bool due = IsFeedDue(feed, nowUtc);
+						SeriesInfo podcast = podcasts[podcastIndex];
+						bool due = IsFeedDue(podcast, nowUtc);
 						if (due)
 						{
-							RefreshFeed(feed.SeriesId);
+							RefreshFeed(podcast.Id);
 						}
 					}
 				}
@@ -671,25 +665,25 @@ namespace Pulse.Series
 			}
 		}
 
-		private bool IsFeedDue(PodcastFeedInfo feed, DateTime nowUtc)
+		private bool IsFeedDue(SeriesInfo series, DateTime nowUtc)
 		{
-			if (string.IsNullOrEmpty(feed.LastPolled))
+			if (string.IsNullOrEmpty(series.LastPolled))
 			{
 				return true;
 			}
 			DateTimeOffset lastPolled;
-			bool parseOk = DateTimeOffset.TryParse(feed.LastPolled, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out lastPolled);
+			bool parseOk = DateTimeOffset.TryParse(series.LastPolled, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out lastPolled);
 			if (!parseOk)
 			{
 				return true;
 			}
 			TimeSpan since = nowUtc - lastPolled.UtcDateTime;
-			TimeSpan interval = TimeSpan.FromMinutes(feed.PollIntervalMinutes);
+			TimeSpan interval = TimeSpan.FromMinutes(series.PollIntervalMinutes);
 			return since >= interval;
 		}
 
 		/// <summary>
-		/// Picks the items that should be on disk per the feed's
+		/// Picks the items that should be on disk per the series'
 		/// retention policy. KeepAll returns everything; KeepN returns the
 		/// newest N by PublishedDate (descending); KeepDays returns items
 		/// whose PublishedDate is within the last RetentionValue days, and
@@ -697,16 +691,16 @@ namespace Pulse.Series
 		/// PublishedDate is ISO-8601 ("yyyy-MM-ddTHH:mm:ssZ") so a string
 		/// sort is equivalent to a chronological sort.
 		/// </summary>
-		private List<SeriesItemInfo> ComputeKeepSet(List<SeriesItemInfo> items, PodcastFeedInfo feed)
+		private List<SeriesItemInfo> ComputeKeepSet(List<SeriesItemInfo> items, SeriesInfo series)
 		{
 			List<SeriesItemInfo> result = new List<SeriesItemInfo>();
-			if (items == null || feed == null)
+			if (items == null || series == null)
 			{
 				return result;
 			}
 
 			int itemCount = items.Count;
-			if (feed.Retention == eRetentionPolicy.KeepAll)
+			if (series.Retention == eRetentionPolicy.KeepAll)
 			{
 				for (int itemIndex = 0; itemIndex < itemCount; itemIndex++)
 				{
@@ -718,9 +712,9 @@ namespace Pulse.Series
 			List<SeriesItemInfo> sortedByDateDesc = new List<SeriesItemInfo>(items);
 			sortedByDateDesc.Sort(CompareByPublishedDescending);
 
-			if (feed.Retention == eRetentionPolicy.KeepN)
+			if (series.Retention == eRetentionPolicy.KeepN)
 			{
-				int keep = feed.RetentionValue;
+				int keep = series.RetentionValue;
 				if (keep < 0)
 				{
 					keep = 0;
@@ -738,9 +732,9 @@ namespace Pulse.Series
 				return result;
 			}
 
-			if (feed.Retention == eRetentionPolicy.KeepDays)
+			if (series.Retention == eRetentionPolicy.KeepDays)
 			{
-				DateTime cutoff = DateTime.UtcNow - TimeSpan.FromDays(feed.RetentionValue);
+				DateTime cutoff = DateTime.UtcNow - TimeSpan.FromDays(series.RetentionValue);
 				int sortedCount = sortedByDateDesc.Count;
 				for (int sortedIndex = 0; sortedIndex < sortedCount; sortedIndex++)
 				{
@@ -811,19 +805,10 @@ namespace Pulse.Series
 		}
 
 		/// <summary>
-		/// The podcast_feeds row for this series, or null if the series is
-		/// not a podcast or has no feed configured yet.
-		/// </summary>
-		public PodcastFeedInfo GetFeed(string seriesId)
-		{
-			return m_db.LoadPodcastFeed(seriesId);
-		}
-
-		/// <summary>
 		/// Per-user subscription / resume-anchor row, or null if the user
 		/// has never touched this series.
 		/// </summary>
-		public UserSeriesInfo GetUserSeries(string seriesId, string userName)
+		public SeriesUserDataInfo GetUserSeries(string seriesId, string userName)
 		{
 			return m_db.LoadUserSeries(seriesId, userName);
 		}
@@ -832,7 +817,7 @@ namespace Pulse.Series
 		/// Per-user playback progress for one item, or null when the user
 		/// has never played it.
 		/// </summary>
-		public ItemProgressInfo GetProgress(string itemId, string userName)
+		public SeriesItemUserDataInfo GetProgress(string itemId, string userName)
 		{
 			return m_db.LoadProgress(itemId, userName);
 		}
@@ -850,7 +835,7 @@ namespace Pulse.Series
 			for (int itemIndex = 0; itemIndex < downloadedCount; itemIndex++)
 			{
 				SeriesItemInfo item = downloaded[itemIndex];
-				ItemProgressInfo progress = m_db.LoadProgress(item.Id, userName);
+				SeriesItemUserDataInfo progress = m_db.LoadProgress(item.Id, userName);
 				if (progress == null)
 				{
 					unplayed++;
@@ -877,11 +862,12 @@ namespace Pulse.Series
 
 		/// <summary>
 		/// Record playback progress for one user on one item. Upserts the
-		/// item_progress row, flips Completed once playback passes 95% of
-		/// the known duration (a previously-true Completed stays true so a
-		/// stray seek backwards doesn't unset it), and refreshes the
-		/// series resume anchor (user_series.last_item_id / last_played)
-		/// so the UI can jump straight back to where they left off.
+		/// series_items_user_data row, flips Completed once playback passes
+		/// 95% of the known duration (a previously-true Completed stays
+		/// true so a stray seek backwards doesn't unset it), and refreshes
+		/// the series resume anchor
+		/// (series_user_data.last_item_id / last_played) so the UI can jump
+		/// straight back to where they left off.
 		/// </summary>
 		public void SaveProgress(string itemId, string userName, int positionSeconds)
 		{
@@ -893,7 +879,7 @@ namespace Pulse.Series
 
 			string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 
-			ItemProgressInfo existing = m_db.LoadProgress(itemId, userName);
+			SeriesItemUserDataInfo existing = m_db.LoadProgress(itemId, userName);
 			bool wasCompleted = false;
 			if (existing != null)
 			{
@@ -910,7 +896,7 @@ namespace Pulse.Series
 				}
 			}
 
-			ItemProgressInfo progress = new ItemProgressInfo();
+			SeriesItemUserDataInfo progress = new SeriesItemUserDataInfo();
 			progress.ItemId = itemId;
 			progress.UserName = userName;
 			progress.PositionSeconds = positionSeconds;
