@@ -43,6 +43,23 @@ namespace Thump
 			}
 		}
 
+		/// <summary>Clear the on-disk log file. Used to drop stale data before testing a new build.</summary>
+		public static void Reset()
+		{
+			lock (s_fileLock)
+			{
+				try
+				{
+					string path = ResolveLogFilePath();
+					File.WriteAllText(path, "");
+				}
+				catch (Exception ex)
+				{
+					Debug.WriteLine("[EXCEPTION] Log reset failed: " + ex);
+				}
+			}
+		}
+
 
 		private static void Write(string level, string message, bool saveToDisk = true)
 		{
