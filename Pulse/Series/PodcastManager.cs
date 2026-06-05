@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using Pulse.Database;
 using Pulse.MusicLibrary;
@@ -83,17 +84,112 @@ namespace Pulse.Series
 		/// Returns the on-disk directory where episode media (and the
 		/// cached artwork file) for this series live. Creates the path on
 		/// demand so callers can immediately write into it without their
-		/// own mkdir step. Layout: {MusicPath}/PulseData/Podcasts/{seriesId}.
+		/// own mkdir step. Layout:
+		/// {MusicPath}/PulseData/Podcasts/{sanitized series title}.
+		/// The folder is named by the series title (not the id) so the
+		/// media is browsable outside Pulse; two podcasts whose titles
+		/// sanitize identically would share a folder, which is acceptable.
 		/// </summary>
-		public string GetSeriesMediaDir(string seriesId)
+		public string GetSeriesMediaDir(SeriesInfo series)
 		{
 			string podcastsRoot = Path.Combine(m_musicPath, "PulseData", "Podcasts");
-			string seriesDir = Path.Combine(podcastsRoot, seriesId);
+			string folderName = SanitizeForFileName(series.Title);
+			string seriesDir = Path.Combine(podcastsRoot, folderName);
 			if (!Directory.Exists(seriesDir))
 			{
 				Directory.CreateDirectory(seriesDir);
 			}
 			return seriesDir;
+		}
+
+		/// <summary>
+		/// Sanitizes an arbitrary string for use as a Windows-safe path
+		/// component: replaces every illegal path char (&lt; &gt; : " / \ | ? *)
+		/// and every ASCII control char (value &lt; 32) with a single
+		/// space, collapses runs of whitespace, trims, drops any trailing
+		/// '.' or ' ' (Windows disallows trailing dot/space on names),
+		/// caps the length at 150 characters, and returns "untitled" if
+		/// the result would otherwise be empty.
+		/// </summary>
+		private string SanitizeForFileName(string name)
+		{
+			if (string.IsNullOrEmpty(name))
+			{
+				return "untitled";
+			}
+
+			StringBuilder builder = new StringBuilder(name.Length);
+			int nameLength = name.Length;
+			bool lastWasSpace = false;
+			for (int charIndex = 0; charIndex < nameLength; charIndex++)
+			{
+				char currentChar = name[charIndex];
+				bool isIllegal = false;
+				if (currentChar == '<' || currentChar == '>' || currentChar == ':' || currentChar == '"' || currentChar == '/' || currentChar == '\\' || currentChar == '|' || currentChar == '?' || currentChar == '*')
+				{
+					isIllegal = true;
+				}
+				else if (currentChar < 32)
+				{
+					isIllegal = true;
+				}
+
+				char outputChar;
+				if (isIllegal)
+				{
+					outputChar = ' ';
+				}
+				else
+				{
+					outputChar = currentChar;
+				}
+
+				if (outputChar == ' ')
+				{
+					if (lastWasSpace)
+					{
+						continue;
+					}
+					lastWasSpace = true;
+				}
+				else
+				{
+					lastWasSpace = false;
+				}
+
+				builder.Append(outputChar);
+			}
+
+			string trimmed = builder.ToString().Trim();
+
+			int trimEnd = trimmed.Length;
+			for (int tailIndex = trimmed.Length - 1; tailIndex >= 0; tailIndex--)
+			{
+				char tailChar = trimmed[tailIndex];
+				if (tailChar == '.' || tailChar == ' ')
+				{
+					trimEnd = tailIndex;
+				}
+				else
+				{
+					break;
+				}
+			}
+			if (trimEnd < trimmed.Length)
+			{
+				trimmed = trimmed.Substring(0, trimEnd);
+			}
+
+			if (trimmed.Length > 150)
+			{
+				trimmed = trimmed.Substring(0, 150).Trim();
+			}
+
+			if (trimmed.Length == 0)
+			{
+				return "untitled";
+			}
+			return trimmed;
 		}
 
 		/// <summary>
@@ -268,12 +364,15 @@ namespace Pulse.Series
 
 		/// <summary>
 		/// Downloads one item's media to {MusicPath}/PulseData/Podcasts/
-		/// {seriesId}/{itemId}{ext}, stamping LocalPath, FileSizeBytes,
-		/// DurationSeconds (probed from TagLib when the RSS had none), and
-		/// DownloadState back onto the row. Streams the HTTP body straight
-		/// to disk so memory stays flat regardless of episode size. Never
-		/// re-throws -- a single bad download must not stop the poll loop;
-		/// the item is marked Failed and the next cycle can retry.
+		/// {sanitized series title}/{sanitized episode title}{ext},
+		/// stamping LocalPath, FileSizeBytes, DurationSeconds (probed from
+		/// TagLib when the RSS had none), and DownloadState back onto the
+		/// row. Streams the HTTP body straight to disk so memory stays
+		/// flat regardless of episode size. If two episodes sanitize to
+		/// the same filename, " (2)", " (3)" ... is appended until a free
+		/// path is found. Never re-throws -- a single bad download must
+		/// not stop the poll loop; the item is marked Failed and the next
+		/// cycle can retry.
 		/// </summary>
 		public void DownloadItem(SeriesItemInfo item)
 		{
@@ -291,12 +390,31 @@ namespace Pulse.Series
 				return;
 			}
 
+			SeriesInfo series = m_db.LoadSeries(item.SeriesId);
+			if (series == null)
+			{
+				return;
+			}
+
 			item.DownloadState = eDownloadState.Downloading;
 			m_db.UpsertItem(item);
 
 			string extension = ExtensionForMediaSourceUrl(item.MediaSourceUrl);
-			string seriesDir = GetSeriesMediaDir(item.SeriesId);
-			string targetPath = Path.Combine(seriesDir, item.Id + extension);
+			string seriesDir = GetSeriesMediaDir(series);
+			string baseName = SanitizeForFileName(item.Title);
+			string targetPath = Path.Combine(seriesDir, baseName + extension);
+			if (File.Exists(targetPath))
+			{
+				for (int attempt = 2; attempt <= 9999; attempt++)
+				{
+					string candidate = Path.Combine(seriesDir, baseName + " (" + attempt + ")" + extension);
+					if (!File.Exists(candidate))
+					{
+						targetPath = candidate;
+						break;
+					}
+				}
+			}
 
 			try
 			{
@@ -483,11 +601,11 @@ namespace Pulse.Series
 
 		/// <summary>
 		/// Localises a series' artwork: if ArtworkPath is still a remote
-		/// URL, downloads it to {seriesDir}/artwork.jpg and rewrites the
-		/// series row to point at the local file. Skips work if a local
-		/// artwork file is already present on disk. Failures leave the
-		/// remote URL intact -- a missing thumbnail is not worth aborting
-		/// a poll cycle for.
+		/// URL, downloads it to {seriesDir}/folder.jpg (the convention
+		/// music players recognise) and rewrites the series row to point
+		/// at the local file. Skips work if a local artwork file is
+		/// already present on disk. Failures leave the remote URL intact
+		/// -- a missing thumbnail is not worth aborting a poll cycle for.
 		/// </summary>
 		public void CacheArtwork(SeriesInfo series)
 		{
@@ -504,8 +622,8 @@ namespace Pulse.Series
 				return;
 			}
 
-			string seriesDir = GetSeriesMediaDir(series.Id);
-			string artworkPath = Path.Combine(seriesDir, "artwork.jpg");
+			string seriesDir = GetSeriesMediaDir(series);
+			string artworkPath = Path.Combine(seriesDir, "folder.jpg");
 			if (File.Exists(artworkPath))
 			{
 				series.ArtworkPath = artworkPath;
