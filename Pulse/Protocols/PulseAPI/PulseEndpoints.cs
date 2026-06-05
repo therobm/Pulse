@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Pulse.Database;
 using Pulse.MusicLibrary;
+using Pulse.Series;
 using PulseAPI.CSharp;
 using System;
 using System.Collections.Concurrent;
@@ -25,14 +26,16 @@ namespace Pulse.Protocols.PulseAPI
 		PulseService m_pulseService;
 		MusicManager m_musicManager;
 		AnalyticsDB m_analyticsDB;
+		PodcastManager m_podcastManager;
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB)
+		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB, PodcastManager podcastManager)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
 			m_analyticsDB = analyticsDB;
+			m_podcastManager = podcastManager;
 			m_defaultCoverArt = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png"));
 		}
 
@@ -74,6 +77,12 @@ namespace Pulse.Protocols.PulseAPI
 
 
 			RegisterRoute("podcasts", GetPodcasts);
+			RegisterRoute("allPodcasts", GetAllPodcasts);
+			RegisterRoute("podcast", GetPodcast);
+			RegisterRoute("addPodcast", AddPodcast);
+			RegisterRoute("subscribePodcast", SubscribePodcast);
+			RegisterRoute("unsubscribePodcast", UnsubscribePodcast);
+			RegisterRoute("episodeProgress", EpisodeProgress);
 		}
 
 		private void RegisterRoute(string route, Func<HttpContext, IResult> handler)
@@ -221,13 +230,25 @@ namespace Pulse.Protocols.PulseAPI
 		{
 			string id = context.Request.Query["id"].FirstOrDefault();
 			TrackInfo track = m_musicManager.GetTrack(id);
-			if (track == null)
+			if (track != null)
 			{
-				return RespondStatus(context, "not_found");
+				FileStream fileStream = new FileStream(track.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+				return Results.File(fileStream, track.ContentType, enableRangeProcessing: true);
 			}
 
-			FileStream fileStream = new FileStream(track.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-			return Results.File(fileStream, track.ContentType, enableRangeProcessing: true);
+			SeriesItemInfo item = m_podcastManager.GetItem(id);
+			if (item != null && !string.IsNullOrEmpty(item.LocalPath) && File.Exists(item.LocalPath))
+			{
+				string contentType = "audio/mpeg";
+				if (item.LocalPath.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase))
+				{
+					contentType = "audio/mp4";
+				}
+				FileStream podcastStream = new FileStream(item.LocalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+				return Results.File(podcastStream, contentType, enableRangeProcessing: true);
+			}
+
+			return RespondStatus(context, "not_found");
 		}
 
 		// Cover art ids carry a one-char source hint: "ar-" for artist images and
@@ -309,6 +330,18 @@ namespace Pulse.Protocols.PulseAPI
 						return Results.Bytes(imageBytes, contentType);
 					}
 				}
+			}
+			else if (id.StartsWith("se-", StringComparison.Ordinal))
+			{
+				string seriesId = id.Substring(3);
+				SeriesInfo series = m_podcastManager.GetSeries(seriesId);
+				if (series != null && !string.IsNullOrEmpty(series.ArtworkPath) && File.Exists(series.ArtworkPath))
+				{
+					byte[] bytes = File.ReadAllBytes(series.ArtworkPath);
+					m_coverArtCache[id] = bytes;
+					return Results.Bytes(bytes, "image/jpeg");
+				}
+				return Results.Bytes(m_defaultCoverArt, "image/png");
 			}
 			else
 			{
@@ -1407,9 +1440,182 @@ namespace Pulse.Protocols.PulseAPI
 			public PulseObject Item;
 		}
 
+		private PulsePodcast BuildPulsePodcast(SeriesInfo series, string user)
+		{
+			PulsePodcast pulsePodcast = new PulsePodcast();
+			pulsePodcast.Id = series.Id;
+			pulsePodcast.Title = series.Title;
+			pulsePodcast.Author = series.Author;
+			pulsePodcast.Narrator = series.Narrator;
+			pulsePodcast.Description = series.Description;
+			pulsePodcast.Collection = series.Collection;
+			pulsePodcast.CollectionIndex = series.CollectionIndex;
+			pulsePodcast.CoverArt = "se-" + series.Id;
+
+			List<SeriesItemInfo> downloaded = m_podcastManager.GetDownloadedItems(series.Id);
+			pulsePodcast.EpisodeCount = downloaded.Count;
+			pulsePodcast.ItemCount = downloaded.Count;
+			pulsePodcast.UnplayedCount = m_podcastManager.GetUnplayedCount(series.Id, user);
+
+			UserSeriesInfo userSeries = m_podcastManager.GetUserSeries(series.Id, user);
+			if (userSeries != null)
+			{
+				pulsePodcast.Subscribed = userSeries.Subscribed;
+				pulsePodcast.LastItemId = userSeries.LastItemId;
+				pulsePodcast.LastPlayed = userSeries.LastPlayed;
+			}
+
+			PodcastFeedInfo feed = m_podcastManager.GetFeed(series.Id);
+			if (feed != null)
+			{
+				pulsePodcast.FeedUrl = feed.FeedUrl;
+				pulsePodcast.AutoDownload = feed.AutoDownload;
+			}
+
+			return pulsePodcast;
+		}
+
+		private PulsePodcastEpisode BuildPulsePodcastEpisode(SeriesItemInfo item, string user)
+		{
+			PulsePodcastEpisode episode = new PulsePodcastEpisode();
+			episode.Id = item.Id;
+			episode.SeriesId = item.SeriesId;
+			episode.Title = item.Title;
+			episode.Description = item.Description;
+			episode.OrderIndex = item.OrderIndex;
+			episode.PublishedDate = item.PublishedDate;
+			episode.Duration = item.DurationSeconds;
+			episode.CoverArt = "se-" + item.SeriesId;
+
+			ItemProgressInfo progress = m_podcastManager.GetProgress(item.Id, user);
+			if (progress != null)
+			{
+				episode.PositionSeconds = progress.PositionSeconds;
+				episode.Completed = progress.Completed;
+			}
+			return episode;
+		}
+
 		public IResult GetPodcasts(HttpContext context)
 		{
-			return RespondStatus(context, "not_implemented");
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null)
+			{
+				user = "";
+			}
+
+			List<SeriesInfo> subscribed = m_podcastManager.GetSubscribedPodcasts(user);
+			List<PulsePodcast> pulsePodcasts = new List<PulsePodcast>();
+			for (int index = 0; index < subscribed.Count; index++)
+			{
+				pulsePodcasts.Add(BuildPulsePodcast(subscribed[index], user));
+			}
+			return RespondList(context, pulsePodcasts);
+		}
+
+		public IResult GetAllPodcasts(HttpContext context)
+		{
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null)
+			{
+				user = "";
+			}
+
+			List<SeriesInfo> allSeries = m_podcastManager.GetAllPodcasts();
+			List<PulsePodcast> pulsePodcasts = new List<PulsePodcast>();
+			for (int index = 0; index < allSeries.Count; index++)
+			{
+				pulsePodcasts.Add(BuildPulsePodcast(allSeries[index], user));
+			}
+			return RespondList(context, pulsePodcasts);
+		}
+
+		public IResult GetPodcast(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null)
+			{
+				user = "";
+			}
+
+			SeriesInfo series = m_podcastManager.GetSeries(id);
+			if (series == null)
+			{
+				return RespondStatus(context, "not_found");
+			}
+
+			PulsePodcastDetails details = new PulsePodcastDetails();
+			details.Series = BuildPulsePodcast(series, user);
+
+			List<SeriesItemInfo> downloaded = m_podcastManager.GetDownloadedItems(id);
+			for (int index = 0; index < downloaded.Count; index++)
+			{
+				details.Episodes.Add(BuildPulsePodcastEpisode(downloaded[index], user));
+			}
+			return RespondObject(context, details);
+		}
+
+		public IResult AddPodcast(HttpContext context)
+		{
+			string feedUrl = context.Request.Query["feedUrl"].FirstOrDefault();
+			if (string.IsNullOrEmpty(feedUrl))
+			{
+				return RespondStatus(context, "missing_feedUrl");
+			}
+			string subscribeRaw = context.Request.Query["subscribe"].FirstOrDefault();
+			bool subscribe = subscribeRaw == "1";
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null)
+			{
+				user = "";
+			}
+
+			SeriesInfo series = m_podcastManager.AddPodcast(feedUrl, user, subscribe);
+			if (series == null)
+			{
+				return RespondStatus(context, "add_failed");
+			}
+			return RespondObject(context, BuildPulsePodcast(series, user));
+		}
+
+		public IResult SubscribePodcast(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null)
+			{
+				user = "";
+			}
+			m_podcastManager.SetSubscribed(id, user, true);
+			return RespondStatus(context, "ok");
+		}
+
+		public IResult UnsubscribePodcast(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null)
+			{
+				user = "";
+			}
+			m_podcastManager.SetSubscribed(id, user, false);
+			return RespondStatus(context, "ok");
+		}
+
+		public IResult EpisodeProgress(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null)
+			{
+				user = "";
+			}
+			string positionRaw = context.Request.Query["positionSeconds"].FirstOrDefault();
+			int positionSeconds = 0;
+			int.TryParse(positionRaw, out positionSeconds);
+			m_podcastManager.SaveProgress(id, user, positionSeconds);
+			return RespondStatus(context, "ok");
 		}
 
 		/// <summary>
