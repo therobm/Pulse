@@ -77,6 +77,8 @@ namespace Pulse
 		private PulseEndpoints m_pulseEndpoints;
 		private Pulse.Protocols.LegacyPulse.LegacyPulseAPI m_legacyPulse;
 		private MusicManager m_musicManager;
+		private DiagnosticsConnectionFactory m_diagnosticsFactory;
+		private DiagnosticsStore m_diagnosticsStore;
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 		private object m_spotifySyncsLock = new object();
 		// Pending Spotify OAuth attempts, keyed by a server-issued random state
@@ -97,8 +99,9 @@ namespace Pulse
 			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
 
+			StartDiagnostics(config);
 
-			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager);
+			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_diagnosticsStore);
 			m_legacyPulse = new global::Pulse.Protocols.LegacyPulse.LegacyPulseAPI(this, m_musicManager);
 			m_subsonic = new Subsonic(m_legacyPulse);
 
@@ -108,6 +111,48 @@ namespace Pulse
 			IsRunning = true;
 		}
 	
+		/// <summary>
+		/// Stand up the diagnostic / telemetry log pipeline: pick a database
+		/// file path per environment (separate file from the music DB), run
+		/// the diagnostics-only migrations, and start the drain thread. The
+		/// debug-build override mirrors the music DB's safety lockout -- a
+		/// debugger attached forces Staging so a developer session can never
+		/// touch the production diagnostics file.
+		/// </summary>
+		private void StartDiagnostics(PulseConfig config)
+		{
+			string environmentName = config.DatabaseEnvironment;
+			if (string.IsNullOrWhiteSpace(environmentName))
+			{
+				environmentName = "Production";
+			}
+#if DEBUG
+			if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
+			{
+				Log.Warning(-1, "Debugger attached: forcing Staging environment for diagnostics DB (config said '" + environmentName + "').");
+			}
+			environmentName = "Staging";
+#endif
+
+			string pulseDataRoot = Path.Combine(config.MusicPath, "PulseData");
+			if (!Directory.Exists(pulseDataRoot))
+			{
+				Directory.CreateDirectory(pulseDataRoot);
+			}
+
+			string diagnosticsFileName = "pulse_diagnostics_" + environmentName.ToLowerInvariant() + ".db";
+			string diagnosticsPath = Path.Combine(pulseDataRoot, diagnosticsFileName);
+
+			m_diagnosticsFactory = new DiagnosticsConnectionFactory();
+			m_diagnosticsFactory.SetDatabaseFilePath(diagnosticsPath);
+
+			DiagnosticsMigrations diagnosticsMigrations = new DiagnosticsMigrations(m_diagnosticsFactory);
+			diagnosticsMigrations.RunMigrations();
+			Log.Info(-1, "Pulse diagnostics DB: env=" + environmentName + " path=" + diagnosticsPath);
+
+			m_diagnosticsStore = new DiagnosticsStore(m_diagnosticsFactory);
+		}
+
 		private void RegisterRoutes(IPulseRouteHost host)
 		{
 			m_pulseEndpoints.RegisterRoutes(host);
