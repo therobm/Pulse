@@ -41,7 +41,9 @@ namespace PulseAPI.CSharp
 		FavoriteToggle,
 		// Network / health
 		Connectivity,
-		Scrobble
+		Scrobble,
+		//
+		Invalid
 	}
 
 	/// <summary>
@@ -53,9 +55,19 @@ namespace PulseAPI.CSharp
 		OK,
 		Fail,
 		Timeout,
-		Cancelled
+		Cancelled,
+		Invalid
 	}
 
+	public class PulseAnalyticsSession
+	{
+		public string SessionId;
+		public string DeviceId;
+		public string User;
+		public string AppVersion;
+		public string Platform;
+		public string StartedAt;
+	}
 	/// <summary>
 	/// One analytics event recorded on the client. ObjectType/ObjectId attribute
 	/// the event to a piece of content -- both empty when the action has no

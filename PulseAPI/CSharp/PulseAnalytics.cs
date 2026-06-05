@@ -4,6 +4,7 @@ using System.Text;
 
 namespace PulseAPI.CSharp
 {
+	[Obsolete]
 	public class PulseAnalytics : PulseObject
 	{
 		public enum eAction

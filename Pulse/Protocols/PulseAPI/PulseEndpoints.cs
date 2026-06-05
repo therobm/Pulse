@@ -1468,7 +1468,7 @@ namespace Pulse.Protocols.PulseAPI
 				string categoryFilter = context.Request.Query["category"].FirstOrDefault();
 				string actionFilter = context.Request.Query["action"].FirstOrDefault();
 				string resultFilter = context.Request.Query["result"].FirstOrDefault();
-				List<AnalyticsEventRow> events = m_analyticsDB.GetEventsForSession(sessionId, categoryFilter, actionFilter, resultFilter);
+				List<PulseAnalyticsEvent> events = m_analyticsDB.GetEventsForSession(sessionId, categoryFilter, actionFilter, resultFilter);
 				AnalyticsEventsResponse response = new AnalyticsEventsResponse();
 				response.SessionId = sessionId;
 				response.Events = events;
@@ -1477,7 +1477,7 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (!string.IsNullOrEmpty(deviceId))
 			{
-				List<AnalyticsSessionRow> sessions = m_analyticsDB.GetSessionsForDevice(deviceId);
+				List<PulseAnalyticsSession> sessions = m_analyticsDB.GetSessionsForDevice(deviceId);
 				AnalyticsSessionsResponse response = new AnalyticsSessionsResponse();
 				response.DeviceId = deviceId;
 				response.Sessions = sessions;
@@ -1495,7 +1495,7 @@ namespace Pulse.Protocols.PulseAPI
 	public class AnalyticsEventsResponse
 	{
 		public string SessionId;
-		public List<AnalyticsEventRow> Events;
+		public List<PulseAnalyticsEvent> Events;
 	}
 
 	/// <summary>
@@ -1504,6 +1504,6 @@ namespace Pulse.Protocols.PulseAPI
 	public class AnalyticsSessionsResponse
 	{
 		public string DeviceId;
-		public List<AnalyticsSessionRow> Sessions;
+		public List<PulseAnalyticsSession> Sessions;
 	}
 }

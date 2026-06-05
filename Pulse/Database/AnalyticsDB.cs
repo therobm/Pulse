@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading;
 using Microsoft.Data.Sqlite;
 using PulseAPI.CSharp;
+using TagLib.Id3v2;
 
 namespace Pulse.Database
 {
@@ -25,41 +26,6 @@ namespace Pulse.Database
 		Network
 	}
 
-	/// <summary>
-	/// One row in the analytics sessions table, in the shape the /analytics read
-	/// endpoint returns it. Plain public fields; serialized through PulseWire
-	/// which emits field names verbatim.
-	/// </summary>
-	public class AnalyticsSessionRow
-	{
-		public string SessionId;
-		public string DeviceId;
-		public string User;
-		public string AppVersion;
-		public string Platform;
-		public string StartedAt;
-	}
-
-	/// <summary>
-	/// One row in the analytics events table, in the shape the /analytics read
-	/// endpoint returns it. DurationMs is -1 when the stored value was NULL
-	/// (instantaneous action); ObjectType/ObjectId are empty when the event had
-	/// no object.
-	/// </summary>
-	public class AnalyticsEventRow
-	{
-		public long Id;
-		public string SessionId;
-		public string Timestamp;
-		public string ReceivedAt;
-		public string Category;
-		public string Action;
-		public string Result;
-		public string ObjectType;
-		public string ObjectId;
-		public long DurationMs;
-		public string Detail;
-	}
 
 	/// <summary>
 	/// Carrier the route handler hands to the drain queue: the parsed batch plus
@@ -83,6 +49,43 @@ namespace Pulse.Database
 	/// </summary>
 	public class AnalyticsDB
 	{
+		/// <summary>
+		/// One row in the analytics sessions table, in the shape the /analytics read
+		/// endpoint returns it. Plain public fields; serialized through PulseWire
+		/// which emits field names verbatim.
+		/// </summary>
+		private class AnalyticsSessionRow
+		{
+			public string SessionId;
+			public string DeviceId;
+			public string User;
+			public string AppVersion;
+			public string Platform;
+			public string StartedAt;
+		}
+
+		/// <summary>
+		/// One row in the analytics events table, in the shape the /analytics read
+		/// endpoint returns it. DurationMs is -1 when the stored value was NULL
+		/// (instantaneous action); ObjectType/ObjectId are empty when the event had
+		/// no object.
+		/// </summary>
+		private class AnalyticsEventRow
+		{
+			public long Id;
+			public string SessionId;
+			public string Timestamp;
+			public string ReceivedAt;
+			public string Category;
+			public string Action;
+			public string Result;
+			public string ObjectType;
+			public string ObjectId;
+			public long DurationMs;
+			public string Detail;
+		}
+
+
 		private AnalyticsDBConnector m_connector;
 		private BlockingCollection<AnalyticsBatchItem> m_queue;
 		private Thread m_drainThread;
@@ -424,9 +427,9 @@ namespace Pulse.Database
 		/// Empty category / action / result filters mean "no filter on that
 		/// column".
 		/// </summary>
-		public List<AnalyticsEventRow> GetEventsForSession(string sessionId, string categoryFilter, string actionFilter, string resultFilter)
+		public List<PulseAnalyticsEvent> GetEventsForSession(string sessionId, string categoryFilter, string actionFilter, string resultFilter)
 		{
-			List<AnalyticsEventRow> rows = new List<AnalyticsEventRow>();
+			List<PulseAnalyticsEvent> rows = new List<PulseAnalyticsEvent>();
 			if (string.IsNullOrEmpty(sessionId))
 			{
 				return rows;
@@ -476,7 +479,22 @@ namespace Pulse.Database
 					while (reader.Read())
 					{
 						AnalyticsEventRow row = ReadEventRow(reader);
-						rows.Add(row);
+
+						PulseAnalyticsEvent evt = new PulseAnalyticsEvent();
+
+						if (Enum.TryParse<eAction>(row.Action, out evt.Action))
+							evt.Action = eAction.Invalid;
+
+						if (Enum.TryParse<eResult>(row.Result, out evt.Result))
+							evt.Result = eResult.Invalid;
+
+						evt.ObjectType = row.ObjectType;
+						evt.ObjectId = row.ObjectId;
+						evt.DurationMs = row.DurationMs;
+						evt.Detail = row.Detail;
+						evt.Timestamp = row.Timestamp;
+
+						rows.Add(evt);
 					}
 				}
 				finally
@@ -495,9 +513,9 @@ namespace Pulse.Database
 		/// Read every session for a given device id, most recent first by
 		/// server-side started_at.
 		/// </summary>
-		public List<AnalyticsSessionRow> GetSessionsForDevice(string deviceId)
+		public List<PulseAnalyticsSession> GetSessionsForDevice(string deviceId)
 		{
-			List<AnalyticsSessionRow> rows = new List<AnalyticsSessionRow>();
+			List<PulseAnalyticsSession> rows = new List<PulseAnalyticsSession>();
 			if (string.IsNullOrEmpty(deviceId))
 			{
 				return rows;
@@ -516,7 +534,16 @@ namespace Pulse.Database
 					while (reader.Read())
 					{
 						AnalyticsSessionRow row = ReadSessionRow(reader);
-						rows.Add(row);
+
+						PulseAnalyticsSession session = new PulseAnalyticsSession();
+						session.SessionId = row.SessionId;
+						session.DeviceId = row.DeviceId;
+						session.User = row.User;
+						session.AppVersion = row.AppVersion;
+						session.Platform = row.Platform;
+						session.StartedAt = row.StartedAt;
+
+						rows.Add(session);
 					}
 				}
 				finally
