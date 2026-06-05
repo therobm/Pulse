@@ -939,20 +939,15 @@ namespace Pulse.Data
 			}
 		}
 
-		// Bumps the per-(user, item) play counter for a 'Started' event. Only
-		// 'Started' is consumed (it's the unit of a "play"); the other actions
-		// aren't read anywhere, so they're dropped rather than stored. media_type
-		// is stored as the enum *name* to match how PulseWire serializes it on the
-		// wire. A null/empty media id is dropped -- an event with no subject is
-		// not useful. last_played keeps the latest start (guards out-of-order
-		// reports with a max).
+		// Persists every playback event to the append-only analytics_events log,
+		// and additionally bumps the per-(user, item) play counter on a 'Started'
+		// event (the counter backs GetItemAnalytics so the most-played read stays
+		// bounded). action and media_type are stored as the enum *names* to match
+		// how PulseWire serializes them on the wire. A null/empty media id is
+		// dropped -- an event with no subject is not useful.
 		public void RecordAnalyticsEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
 		{
 			if (analytics == null || string.IsNullOrEmpty(analytics.MediaId))
-			{
-				return;
-			}
-			if (analytics.Action != PulseAnalytics.eAction.Started)
 			{
 				return;
 			}
@@ -960,17 +955,30 @@ namespace Pulse.Data
 			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
 			try
 			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = @"INSERT INTO item_user_analytics (user_name, media_type, media_id, play_count, last_played)
-					VALUES ($u, $type, $id, 1, $occurred)
-					ON CONFLICT(user_name, media_type, media_id) DO UPDATE SET
-						play_count = play_count + 1,
-						last_played = CASE WHEN excluded.last_played > last_played THEN excluded.last_played ELSE last_played END;";
-				command.Parameters.AddWithValue("$u", userName ?? "");
-				command.Parameters.AddWithValue("$type", analytics.MediaType.ToString());
-				command.Parameters.AddWithValue("$id", analytics.MediaId);
-				command.Parameters.AddWithValue("$occurred", occurredAt.ToString("o"));
-				command.ExecuteNonQuery();
+				SqliteCommand logCommand = connection.CreateCommand();
+				logCommand.CommandText = @"INSERT INTO analytics_events (occurred_at, user_name, action, media_type, media_id)
+					VALUES ($occurred, $u, $action, $type, $id);";
+				logCommand.Parameters.AddWithValue("$occurred", occurredAt.ToString("o"));
+				logCommand.Parameters.AddWithValue("$u", userName ?? "");
+				logCommand.Parameters.AddWithValue("$action", analytics.Action.ToString());
+				logCommand.Parameters.AddWithValue("$type", analytics.MediaType.ToString());
+				logCommand.Parameters.AddWithValue("$id", analytics.MediaId);
+				logCommand.ExecuteNonQuery();
+
+				if (analytics.Action == PulseAnalytics.eAction.Started)
+				{
+					SqliteCommand countCommand = connection.CreateCommand();
+					countCommand.CommandText = @"INSERT INTO item_user_analytics (user_name, media_type, media_id, play_count, last_played)
+						VALUES ($u, $type, $id, 1, $occurred)
+						ON CONFLICT(user_name, media_type, media_id) DO UPDATE SET
+							play_count = play_count + 1,
+							last_played = CASE WHEN excluded.last_played > last_played THEN excluded.last_played ELSE last_played END;";
+					countCommand.Parameters.AddWithValue("$u", userName ?? "");
+					countCommand.Parameters.AddWithValue("$type", analytics.MediaType.ToString());
+					countCommand.Parameters.AddWithValue("$id", analytics.MediaId);
+					countCommand.Parameters.AddWithValue("$occurred", occurredAt.ToString("o"));
+					countCommand.ExecuteNonQuery();
+				}
 			}
 			finally
 			{
@@ -1182,6 +1190,7 @@ namespace Pulse.Data
 							"playqueue_state",
 							"playqueue_entries",
 							"bookmarks",
+							"analytics_events",
 							"item_user_analytics"
 						};
 						for (int index = 0; index < tables.Length; index++)
@@ -1248,6 +1257,12 @@ namespace Pulse.Data
 					delBookmarks.CommandText = "DELETE FROM bookmarks WHERE user_name = $u;";
 					delBookmarks.Parameters.AddWithValue("$u", userName);
 					delBookmarks.ExecuteNonQuery();
+
+					SqliteCommand delAnalyticsLog = connection.CreateCommand();
+					delAnalyticsLog.Transaction = transaction;
+					delAnalyticsLog.CommandText = "DELETE FROM analytics_events WHERE user_name = $u;";
+					delAnalyticsLog.Parameters.AddWithValue("$u", userName);
+					delAnalyticsLog.ExecuteNonQuery();
 
 					SqliteCommand delAnalytics = connection.CreateCommand();
 					delAnalytics.Transaction = transaction;
