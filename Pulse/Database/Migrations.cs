@@ -299,6 +299,34 @@ namespace Pulse.Database
 			";
 			steps.Add(v6);
 
+			// v7: replace the append-only analytics_events log with a per-(user, item)
+			// play counter. The log was only ever read to produce a Started-count and
+			// last-played per object; an incremental counter gives the same answer in
+			// bounded space with O(1) writes and a keyed read. Backfill the counter from
+			// the existing Started events, then drop the log.
+			MigrationStep v7 = new MigrationStep();
+			v7.Version = 7;
+			v7.Sql = @"
+				CREATE TABLE item_user_analytics (
+					user_name TEXT NOT NULL DEFAULT '',
+					media_type TEXT NOT NULL,
+					media_id TEXT NOT NULL,
+					play_count INTEGER NOT NULL DEFAULT 0,
+					last_played TEXT NOT NULL DEFAULT '',
+					PRIMARY KEY (user_name, media_type, media_id)
+				);
+				CREATE INDEX idx_item_analytics_type ON item_user_analytics(media_type);
+
+				INSERT INTO item_user_analytics (user_name, media_type, media_id, play_count, last_played)
+					SELECT user_name, media_type, media_id, COUNT(*), MAX(occurred_at)
+					FROM analytics_events
+					WHERE action = 'Started'
+					GROUP BY user_name, media_type, media_id;
+
+				DROP TABLE analytics_events;
+			";
+			steps.Add(v7);
+
 			return steps;
 		}
 	}
