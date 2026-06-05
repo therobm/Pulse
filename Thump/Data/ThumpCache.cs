@@ -50,7 +50,11 @@ namespace Thump.Data
 		{
 			using (SqliteCommand cmd = m_connection.CreateCommand())
 			{
-				cmd.CommandText = "PRAGMA journal_mode=WAL;PRAGMA foreign_keys=ON;";
+				// busy_timeout: the UI and the Android Auto playback service each hold
+				// their own connection to this DB, so a contended writer must wait and
+				// retry rather than fail fast with SQLITE_BUSY (which ExecuteSync would
+				// swallow, silently dropping the cache write).
+				cmd.CommandText = "PRAGMA journal_mode=WAL;PRAGMA foreign_keys=ON;PRAGMA busy_timeout=5000;";
 				cmd.ExecuteNonQuery();
 			}
 			using (SqliteCommand cmd = m_connection.CreateCommand())
