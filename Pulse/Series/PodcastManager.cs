@@ -242,9 +242,34 @@ namespace Pulse.Series
 			{
 				CacheArtwork(storedSeries);
 			}
-			DownloadPendingForFeed(seriesId);
+
+			Thread downloadThread = new Thread(RunInitialDownload);
+			downloadThread.IsBackground = true;
+			downloadThread.Name = "Pulse.PodcastInitialDownload";
+			downloadThread.Start(seriesId);
 
 			return GetSeries(seriesId);
+		}
+
+		/// <summary>
+		/// Background-thread entry point that runs the first DownloadPendingForFeed
+		/// for a newly added podcast off the request thread. The HTTP handler
+		/// returns as soon as the feed has been ingested and the series row is
+		/// usable; the (potentially hundreds-of-MB) media downloads happen
+		/// behind it. Any exception is caught and logged -- an uncaught throw
+		/// out of a background thread would tear down the process.
+		/// </summary>
+		private void RunInitialDownload(object seriesIdObject)
+		{
+			string seriesId = (string)seriesIdObject;
+			try
+			{
+				DownloadPendingForFeed(seriesId);
+			}
+			catch (Exception ex)
+			{
+				Log.Error(-1, "Initial podcast download failed for " + seriesId + ": " + ex.Message);
+			}
 		}
 
 		/// <summary>
@@ -744,6 +769,163 @@ namespace Pulse.Series
 		private int CompareByPublishedDescending(SeriesItemInfo left, SeriesItemInfo right)
 		{
 			return string.CompareOrdinal(right.PublishedDate, left.PublishedDate);
+		}
+
+		/// <summary>
+		/// Subscribed podcast series for one user. Thin facade over
+		/// SeriesDB.LoadSubscribedSeries scoped to eSeriesType.Podcast --
+		/// keeps PulseEndpoints from reaching past the manager.
+		/// </summary>
+		public List<SeriesInfo> GetSubscribedPodcasts(string userName)
+		{
+			return m_db.LoadSubscribedSeries(userName, eSeriesType.Podcast);
+		}
+
+		/// <summary>
+		/// Every podcast series known to the database, subscribed or not.
+		/// Used by the discovery endpoint that lists podcasts across users.
+		/// </summary>
+		public List<SeriesInfo> GetAllPodcasts()
+		{
+			return m_db.LoadAllSeriesByType(eSeriesType.Podcast);
+		}
+
+		/// <summary>
+		/// Items presented to clients: only episodes whose media is on disk
+		/// are returned, sorted newest-first by PublishedDate so the UI
+		/// reads chronologically without re-sorting.
+		/// </summary>
+		public List<SeriesItemInfo> GetDownloadedItems(string seriesId)
+		{
+			List<SeriesItemInfo> items = m_db.LoadDownloadedItemsForSeries(seriesId);
+			items.Sort(CompareByPublishedDescending);
+			return items;
+		}
+
+		/// <summary>
+		/// One series item by primary key. Facade over SeriesDB.LoadItem.
+		/// </summary>
+		public SeriesItemInfo GetItem(string id)
+		{
+			return m_db.LoadItem(id);
+		}
+
+		/// <summary>
+		/// The podcast_feeds row for this series, or null if the series is
+		/// not a podcast or has no feed configured yet.
+		/// </summary>
+		public PodcastFeedInfo GetFeed(string seriesId)
+		{
+			return m_db.LoadPodcastFeed(seriesId);
+		}
+
+		/// <summary>
+		/// Per-user subscription / resume-anchor row, or null if the user
+		/// has never touched this series.
+		/// </summary>
+		public UserSeriesInfo GetUserSeries(string seriesId, string userName)
+		{
+			return m_db.LoadUserSeries(seriesId, userName);
+		}
+
+		/// <summary>
+		/// Per-user playback progress for one item, or null when the user
+		/// has never played it.
+		/// </summary>
+		public ItemProgressInfo GetProgress(string itemId, string userName)
+		{
+			return m_db.LoadProgress(itemId, userName);
+		}
+
+		/// <summary>
+		/// Count of downloaded episodes the user has not yet completed: an
+		/// episode counts as unplayed when its per-user progress row is
+		/// missing OR its Completed flag is still false.
+		/// </summary>
+		public int GetUnplayedCount(string seriesId, string userName)
+		{
+			List<SeriesItemInfo> downloaded = GetDownloadedItems(seriesId);
+			int unplayed = 0;
+			int downloadedCount = downloaded.Count;
+			for (int itemIndex = 0; itemIndex < downloadedCount; itemIndex++)
+			{
+				SeriesItemInfo item = downloaded[itemIndex];
+				ItemProgressInfo progress = m_db.LoadProgress(item.Id, userName);
+				if (progress == null)
+				{
+					unplayed++;
+					continue;
+				}
+				if (!progress.Completed)
+				{
+					unplayed++;
+				}
+			}
+			return unplayed;
+		}
+
+		/// <summary>
+		/// Subscribe or unsubscribe a user from a series. Wraps
+		/// SeriesDB.SetSubscribed so callers don't have to format the
+		/// date_added sentinel themselves.
+		/// </summary>
+		public void SetSubscribed(string seriesId, string userName, bool subscribed)
+		{
+			string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+			m_db.SetSubscribed(seriesId, userName, subscribed, nowIso);
+		}
+
+		/// <summary>
+		/// Record playback progress for one user on one item. Upserts the
+		/// item_progress row, flips Completed once playback passes 95% of
+		/// the known duration (a previously-true Completed stays true so a
+		/// stray seek backwards doesn't unset it), and refreshes the
+		/// series resume anchor (user_series.last_item_id / last_played)
+		/// so the UI can jump straight back to where they left off.
+		/// </summary>
+		public void SaveProgress(string itemId, string userName, int positionSeconds)
+		{
+			SeriesItemInfo item = m_db.LoadItem(itemId);
+			if (item == null)
+			{
+				return;
+			}
+
+			string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+
+			ItemProgressInfo existing = m_db.LoadProgress(itemId, userName);
+			bool wasCompleted = false;
+			if (existing != null)
+			{
+				wasCompleted = existing.Completed;
+			}
+
+			bool passedThreshold = false;
+			if (item.DurationSeconds > 0)
+			{
+				int threshold = item.DurationSeconds * 95 / 100;
+				if (positionSeconds > threshold)
+				{
+					passedThreshold = true;
+				}
+			}
+
+			ItemProgressInfo progress = new ItemProgressInfo();
+			progress.ItemId = itemId;
+			progress.UserName = userName;
+			progress.PositionSeconds = positionSeconds;
+			progress.LastPlayed = nowIso;
+			if (wasCompleted || passedThreshold)
+			{
+				progress.Completed = true;
+			}
+			else
+			{
+				progress.Completed = false;
+			}
+			m_db.UpsertProgress(progress);
+
+			m_db.SetSeriesLastItem(item.SeriesId, userName, itemId, nowIso, nowIso);
 		}
 
 		/// <summary>

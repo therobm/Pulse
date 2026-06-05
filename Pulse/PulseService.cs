@@ -106,7 +106,7 @@ namespace Pulse
 			m_podcastManager = new PodcastManager(config);
 			m_podcastManager.Run();
 
-			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_analyticsDB);
+			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_analyticsDB, m_podcastManager);
 			m_legacyPulse = new global::Pulse.Protocols.LegacyPulse.LegacyPulseAPI(this, m_musicManager);
 			m_subsonic = new Subsonic(m_legacyPulse);
 
