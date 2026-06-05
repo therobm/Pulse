@@ -10,7 +10,7 @@ namespace Pulse.MusicLibrary
 	/// (e.g. <c>TrackInfo.ParentArtist</c>), the
 	/// <see cref="m_bIsDirty"/> flag, and transient scoring/analytics state,
 	/// and are wired together at startup by <c>WireUpReferences</c> after the
-	/// SQLite load. <c>PulseSqliteDatabase</c> reads and writes these directly,
+	/// SQLite load. <c>PulseDatabase</c> reads and writes these directly,
 	/// column by column; there is no separate on-disk record shape.
 	/// </summary>
 	public abstract class PulseInfo

@@ -1,97 +1,31 @@
-﻿using Pulse.MusicLibrary;
+using Pulse.MusicLibrary;
 using PulseAPI.CSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
+using System.Diagnostics;
 
 namespace Pulse.Data
 {
 	/// <summary>
-	/// Per-(user,item) play counter for one media type: how many 'Started' events
-	/// the item has accrued and when it was most recently started. Produced by
-	/// <see cref="IPulseDatabase.GetItemStats"/>, backed by the item_stats
-	/// table (v7).
+	/// Domain layer for the Pulse music data. Owns the in-memory dictionaries
+	/// (tracks/albums/artists/playlists/auto-playlists), the analytics state,
+	/// and every business rule -- the object-graph wiring, score rollup,
+	/// smart-playlist build, GetOrCreate semantics, rename/delete cascades, and
+	/// the dirty lifecycle. Composes a PulseDatabase for persistence; the two
+	/// classes never both hold the same data.
 	/// </summary>
-	public class ItemStats
+	public class PulseData
 	{
-		public int PlayCount { get; set; }
-		public DateTime LastPlayed { get; set; }
-	}
+		private ConcurrentDictionary<string, TrackInfo> m_tracks = new ConcurrentDictionary<string, TrackInfo>();
+		private ConcurrentDictionary<string, AlbumInfo> m_albums = new ConcurrentDictionary<string, AlbumInfo>();
+		private ConcurrentDictionary<string, ArtistInfo> m_artists = new ConcurrentDictionary<string, ArtistInfo>();
+		private ConcurrentDictionary<string, PlaylistInfo> m_playlists = new ConcurrentDictionary<string, PlaylistInfo>();
+		private ConcurrentDictionary<string, PlaylistInfo> m_autoPlaylists = new ConcurrentDictionary<string, PlaylistInfo>();
+		private PulseAnalyticsInfo m_analytics = new PulseAnalyticsInfo();
 
-	public interface IPulseDatabase
-	{
-		int GetTrackCount();
-		int GetAlbumCount();
-		int GetArtistCount();
-		PulseAnalyticsInfo GetAnalytics();
+		private PulseDatabase m_db = new PulseDatabase();
 
-		TrackInfo GetTrack(string id);
-		AlbumInfo GetAlbum(string id);
-		ArtistInfo GetArtist(string id);
-		List<TrackInfo> GetAllTracks();
-		List<AlbumInfo> GetAllAlbums();
-		List<ArtistInfo> GetAllArtists();
-		bool TrackExists(string trackId);
-
-		void SetRating(string trackId, int rating);
-		void UpdateStar(string userName, string trackId, string albumId, string artistId, bool starred);
-		ArtistInfo GetOrCreateArtist(string id, string name);
-		AlbumInfo GetOrCreateAlbum(string id, string name, string artistId, string artistName, int year, string genre);
-		void AddTrack(TrackInfo track, string albumId);
-		bool RemoveTrack(string trackId);
-
-
-		PlaylistInfo GetPlaylist(string id);
-		List<PlaylistInfo> GetAllPlaylists(string userName);
-		List<TrackInfo> GetPlaylistTracks(string playlistId);
-		void DeletePlaylist(string playlistId);
-		void CreateOrUpdate(PlaylistInfo playlist);
-		void CreateOrUpdate(ArtistInfo artist);
-
-
-		void Save(string reason);
-
-		// Subsonic getPlayQueue / savePlayQueue / getBookmarks support (Flatline
-		// #168). Written through directly to the persistence layer -- not cached
-		// in memory and not part of the per-PulseInfo dirty flow. PulseSqliteDatabase
-		// implements them against the v4 schema; PulseDatabaseBase keeps no-op
-		// defaults.
-		PlayQueueInfo GetPlayQueue(string userName);
-		void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy);
-		List<BookmarkInfo> GetBookmarks(string userName);
-		void SaveBookmark(string userName, string trackId, long positionMs, string comment);
-		void DeleteBookmark(string userName, string trackId);
-
-		// Append-only playback event log (v6 schema, renamed in v7 to
-		// playback_events). Each client-observed playback state change lands as
-		// one immutable row, stored both globally and per-user. Write-through,
-		// not cached. PulseSqliteDatabase also upserts the item_stats counter
-		// on 'Started' events; PulseDatabaseBase keeps a no-op default.
-		void RecordPlaybackEvent(string userName, PulseAnalytics analytics, DateTime occurredAt);
-
-		/// <summary>
-		/// Returns per-id item stats for one media type: 'Started' count and the
-		/// most recent occurrence, read from the item_stats counter (v7). Scoped
-		/// to a single user when <paramref name="userName"/> is non-empty,
-		/// otherwise rolled up across every user. PulseSqliteDatabase queries the
-		/// table; PulseDatabaseBase returns an empty map.
-		/// </summary>
-		Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType);
-
-		// Settings-page CRUD over the v5 `users` table plus the per-user rows in
-		// every other table (Flatline #201). PulseSqliteDatabase is the real
-		// implementation; PulseDatabaseBase keeps in-memory no-op defaults.
-		List<UserRecord> GetAllUsers();
-		UserRecord GetUser(string name);
-		string CreateUser(string name, string displayName, bool isAdmin);
-		string UpdateUser(string oldName, string newName, string displayName, bool isAdmin);
-		void DeleteUser(string userName);
-	}
-
-	public abstract class PulseDatabaseBase : IPulseDatabase
-	{
 		public int GetTrackCount()
 		{
 			return m_tracks.Count;
@@ -109,16 +43,6 @@ namespace Pulse.Data
 			return m_analytics;
 		}
 
-		protected ConcurrentDictionary<string, TrackInfo> m_tracks = new ConcurrentDictionary<string, TrackInfo>();
-		protected ConcurrentDictionary<string, AlbumInfo> m_albums = new ConcurrentDictionary<string, AlbumInfo>();
-		protected ConcurrentDictionary<string, ArtistInfo> m_artists = new ConcurrentDictionary<string, ArtistInfo>();
-		protected ConcurrentDictionary<string, PlaylistInfo> m_playlists = new ConcurrentDictionary<string, PlaylistInfo>();
-		protected ConcurrentDictionary<string, PlaylistInfo> m_autoPlaylists = new ConcurrentDictionary<string, PlaylistInfo>();
-		protected PulseAnalyticsInfo m_analytics = new PulseAnalyticsInfo();
-
-		protected object m_saveLock = new object();
-		
-	
 		public TrackInfo GetTrack(string id)
 		{
 			TrackInfo track;
@@ -251,10 +175,13 @@ namespace Pulse.Data
 			}
 			return tracks;
 		}
-		public virtual void DeletePlaylist(string playlistId)
+
+		public void DeletePlaylist(string playlistId)
 		{
 			m_playlists.TryRemove(playlistId, out _);
+			m_db.DeletePlaylistRows(playlistId);
 		}
+
 		public void CreateOrUpdate(PlaylistInfo playlist)
 		{
 			m_playlists[playlist.Id] = playlist;
@@ -332,7 +259,35 @@ namespace Pulse.Data
 			}
 		}
 
-		public virtual bool RemoveTrack(string trackId)
+		// Capture the parent ids before the in-memory cascade mutates the maps.
+		// The cascade removes the album from m_albums when its last track goes,
+		// and the artist from m_artists when its last album goes -- mirror that
+		// into SQL so orphaned album/artist rows (and their starred rows) don't
+		// survive and reappear on the next Load (#302).
+		public bool RemoveTrack(string trackId)
+		{
+			string albumId = null;
+			string artistId = null;
+			TrackInfo existing;
+			if (m_tracks.TryGetValue(trackId, out existing))
+			{
+				albumId = existing.AlbumId;
+				artistId = existing.ArtistId;
+			}
+
+			if (!RemoveTrackInMemory(trackId))
+			{
+				return false;
+			}
+
+			bool albumEmptied = !string.IsNullOrEmpty(albumId) && !m_albums.ContainsKey(albumId);
+			bool artistEmptied = !string.IsNullOrEmpty(artistId) && !m_artists.ContainsKey(artistId);
+
+			m_db.DeleteTrackRows(trackId, albumId, artistId, albumEmptied, artistEmptied);
+			return true;
+		}
+
+		private bool RemoveTrackInMemory(string trackId)
 		{
 			TrackInfo track;
 			if (!m_tracks.TryRemove(trackId, out track))
@@ -376,84 +331,314 @@ namespace Pulse.Data
 			return true;
 		}
 
-		public abstract void Save(string reason);
-
-		// Default no-op implementations (#168). PulseSqliteDatabase overrides them;
-		// these remain as harmless base defaults.
-		public virtual PlayQueueInfo GetPlayQueue(string userName)
+		public void Load()
 		{
-			return new PlayQueueInfo();
+			Stopwatch sw = Stopwatch.StartNew();
+
+			List<ArtistInfo> artists = m_db.LoadArtists();
+			for (int index = 0; index < artists.Count; index++)
+			{
+				m_artists[artists[index].Id] = artists[index];
+			}
+
+			List<AlbumInfo> albums = m_db.LoadAlbums();
+			for (int index = 0; index < albums.Count; index++)
+			{
+				m_albums[albums[index].Id] = albums[index];
+			}
+
+			List<TrackInfo> tracks = m_db.LoadTracks();
+			for (int index = 0; index < tracks.Count; index++)
+			{
+				m_tracks[tracks[index].Id] = tracks[index];
+			}
+
+			List<TrackUserScoreRow> userScoreRows = m_db.LoadTrackUserScores();
+			for (int index = 0; index < userScoreRows.Count; index++)
+			{
+				TrackUserScoreRow row = userScoreRows[index];
+				TrackInfo track;
+				if (!m_tracks.TryGetValue(row.TrackId, out track))
+				{
+					continue;
+				}
+				track.UserScore[row.UserName] = row.Score;
+			}
+
+			List<StarredRow> starredRows = m_db.LoadStarred();
+			for (int index = 0; index < starredRows.Count; index++)
+			{
+				StarredRow row = starredRows[index];
+				if (row.EntityKind == "track")
+				{
+					TrackInfo track;
+					if (m_tracks.TryGetValue(row.EntityId, out track))
+					{
+						track.Starred[row.UserName] = row.Starred;
+					}
+				}
+				else if (row.EntityKind == "album")
+				{
+					AlbumInfo album;
+					if (m_albums.TryGetValue(row.EntityId, out album))
+					{
+						album.Starred[row.UserName] = row.Starred;
+					}
+				}
+				else if (row.EntityKind == "artist")
+				{
+					ArtistInfo artist;
+					if (m_artists.TryGetValue(row.EntityId, out artist))
+					{
+						artist.Starred[row.UserName] = row.Starred;
+					}
+				}
+			}
+
+			List<PlaylistInfo> playlists = m_db.LoadPlaylists();
+			for (int index = 0; index < playlists.Count; index++)
+			{
+				m_playlists[playlists[index].Id] = playlists[index];
+			}
+
+			List<string> recentlyPlayed = m_db.LoadRecentlyPlayed();
+			for (int index = 0; index < recentlyPlayed.Count; index++)
+			{
+				m_analytics.RecentlyPlayed.Add(recentlyPlayed[index]);
+			}
+
+			WireUpReferences();
+			CalculateArtistScores();
+
+			sw.Stop();
+			Log.Info(-1, "PulseData loaded in " + sw.ElapsedMilliseconds + "ms: "
+				+ m_tracks.Count + " tracks, " + m_albums.Count + " albums, "
+				+ m_artists.Count + " artists, " + m_playlists.Count + " playlists");
 		}
 
-		public virtual void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy)
+		public void Save(string reason)
 		{
+			List<ArtistInfo> dirtyArtists = new List<ArtistInfo>();
+			foreach (ArtistInfo artist in m_artists.Values)
+			{
+				if (artist.m_bIsDirty) { dirtyArtists.Add(artist); }
+			}
+
+			List<AlbumInfo> dirtyAlbums = new List<AlbumInfo>();
+			foreach (AlbumInfo album in m_albums.Values)
+			{
+				if (album.m_bIsDirty) { dirtyAlbums.Add(album); }
+			}
+
+			List<TrackInfo> dirtyTracks = new List<TrackInfo>();
+			foreach (TrackInfo track in m_tracks.Values)
+			{
+				if (track.m_bIsDirty) { dirtyTracks.Add(track); }
+			}
+
+			List<PlaylistInfo> dirtyPlaylists = new List<PlaylistInfo>();
+			foreach (PlaylistInfo playlist in m_playlists.Values)
+			{
+				if (playlist.m_bIsDirty) { dirtyPlaylists.Add(playlist); }
+			}
+
+			m_db.Save(reason, dirtyArtists, dirtyAlbums, dirtyTracks, dirtyPlaylists, m_analytics);
 		}
 
-		public virtual List<BookmarkInfo> GetBookmarks(string userName)
+		/// <summary>
+		/// Wire AlbumInfo.Tracks and ArtistInfo.Albums lists from the foreign-key
+		/// columns now that all rows are loaded.
+		/// </summary>
+		private void WireUpReferences()
 		{
-			return new List<BookmarkInfo>();
+			foreach (TrackInfo track in m_tracks.Values)
+			{
+				AlbumInfo album;
+				if (m_albums.TryGetValue(track.AlbumId, out album))
+				{
+					album.Tracks.Add(track);
+				}
+				ArtistInfo artist;
+				if (m_artists.TryGetValue(track.ArtistId, out artist))
+				{
+					track.ParentArtist = artist;
+				}
+			}
+
+			foreach (AlbumInfo album in m_albums.Values)
+			{
+				ArtistInfo artist;
+				if (m_artists.TryGetValue(album.ArtistId, out artist))
+				{
+					artist.Albums.Add(album);
+				}
+			}
 		}
 
-		public virtual void SaveBookmark(string userName, string trackId, long positionMs, string comment)
+		/// <summary>
+		/// Roll the per-track WeightedScore up into per-artist WeightedScore and
+		/// per-user UserWeightedScore -- ArtistInfo's score fields are runtime
+		/// derived state, not persisted, so they need to be recomputed at load.
+		/// Without this the popular-artists sort and the popular carousel see all
+		/// zeros.
+		/// </summary>
+		private void CalculateArtistScores()
 		{
+			foreach (ArtistInfo artist in m_artists.Values)
+			{
+				float totalScore = 0f;
+				int scoredCount = 0;
+				Dictionary<string, float> userTotals = new Dictionary<string, float>();
+				Dictionary<string, int> userCounts = new Dictionary<string, int>();
+
+				for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
+				{
+					AlbumInfo album = artist.Albums[albumIndex];
+					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+					{
+						TrackInfo track = album.Tracks[trackIndex];
+
+						if (track.Score.PlayCount > 0)
+						{
+							if (track.Score.WeightedScore > 1)
+							{
+								track.Score.WeightedScore = 1;
+							}
+							totalScore += track.Score.WeightedScore;
+							scoredCount++;
+						}
+
+						foreach (string userName in track.UserScore.Keys)
+						{
+							ScoreData userData = track.UserScore[userName];
+							if (userData.PlayCount > 0)
+							{
+								if (!userTotals.ContainsKey(userName))
+								{
+									userTotals[userName] = 0f;
+									userCounts[userName] = 0;
+								}
+								if (userData.WeightedScore > 1)
+								{
+									userData.WeightedScore = 1;
+								}
+								userTotals[userName] += userData.WeightedScore;
+								userCounts[userName]++;
+							}
+						}
+					}
+				}
+
+				if (scoredCount > 0)
+				{
+					artist.WeightedScore = totalScore / scoredCount;
+				}
+				foreach (string userName in userTotals.Keys)
+				{
+					artist.UserWeightedScore[userName] = userTotals[userName] / userCounts[userName];
+				}
+			}
 		}
 
-		public virtual void DeleteBookmark(string userName, string trackId)
+		// Subsonic getPlayQueue / savePlayQueue / getBookmarks pass-through
+		// (Flatline #168). Written through directly to the persistence layer --
+		// not cached in memory and not part of the per-PulseInfo dirty flow.
+		public PlayQueueInfo GetPlayQueue(string userName)
 		{
+			return m_db.GetPlayQueue(userName);
 		}
 
-		public virtual void RecordPlaybackEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
+		public void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy)
 		{
+			m_db.SavePlayQueue(userName, trackIds, currentTrackId, positionMs, changedBy);
 		}
 
-		public virtual Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType)
+		public List<BookmarkInfo> GetBookmarks(string userName)
 		{
-			return new Dictionary<string, ItemStats>();
+			return m_db.GetBookmarks(userName);
 		}
 
-		// Base implementation walks the in-memory stores to synthesize a record
-		// per observed name -- a base default only. PulseSqliteDatabase overrides
-		// this to read the real users table and layers the in-memory counts on
-		// top via PopulateUserCounts.
-		public virtual List<UserRecord> GetAllUsers()
+		public void SaveBookmark(string userName, string trackId, long positionMs, string comment)
+		{
+			m_db.SaveBookmark(userName, trackId, positionMs, comment);
+		}
+
+		public void DeleteBookmark(string userName, string trackId)
+		{
+			m_db.DeleteBookmark(userName, trackId);
+		}
+
+		public void RecordPlaybackEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
+		{
+			m_db.RecordPlaybackEvent(userName, analytics, occurredAt);
+		}
+
+		public Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType)
+		{
+			return m_db.GetItemStats(userName, mediaType);
+		}
+
+		// SELECT from the users table, then layer the in-memory per-user counts
+		// on top. Names that have per-user rows but no users-table entry (e.g.
+		// scrobbled after the user was deleted) are surfaced as orphan records
+		// with Created=MinValue so the operator can spot and clean them up.
+		public List<UserRecord> GetAllUsers()
 		{
 			Dictionary<string, UserRecord> byName = new Dictionary<string, UserRecord>();
+			List<UserRecord> rows = m_db.ReadAllUsers();
+			for (int index = 0; index < rows.Count; index++)
+			{
+				byName[rows[index].Name] = rows[index];
+			}
 			PopulateUserCounts(byName, true);
 			List<UserRecord> users = new List<UserRecord>(byName.Values);
 			users.Sort(CompareUserRecordByName);
 			return users;
 		}
 
-		public virtual UserRecord GetUser(string name)
+		public UserRecord GetUser(string name)
 		{
-			List<UserRecord> all = GetAllUsers();
-			for (int index = 0; index < all.Count; index++)
+			return m_db.ReadUser(name);
+		}
+
+		public string CreateUser(string name, string displayName, bool isAdmin)
+		{
+			return m_db.InsertUser(name, displayName, isAdmin);
+		}
+
+		public string UpdateUser(string oldName, string newName, string displayName, bool isAdmin)
+		{
+			string error = m_db.UpdateUserRow(oldName, newName, displayName, isAdmin);
+			if (!string.IsNullOrEmpty(error))
 			{
-				if (string.Equals(all[index].Name, name, StringComparison.Ordinal))
-				{
-					return all[index];
-				}
+				return error;
 			}
-			return null;
-		}
-
-		public virtual string CreateUser(string name, string displayName, bool isAdmin)
-		{
+			if (!string.Equals(oldName, newName, StringComparison.Ordinal))
+			{
+				RenameUserInMemory(oldName, newName);
+			}
 			return "";
 		}
 
-		public virtual string UpdateUser(string oldName, string newName, string displayName, bool isAdmin)
+		// Two-stage wipe: rows first (non-cached per-user tables + users row),
+		// then scrub the in-memory dicts and flag affected entities dirty so
+		// the upcoming Save rewrites their starred / score / last-played rows
+		// without this user.
+		public void DeleteUser(string userName)
 		{
-			return "";
+			if (string.IsNullOrEmpty(userName)) { return; }
+
+			m_db.DeleteUserRows(userName);
+			DeleteUserInMemory(userName);
+			Save("delete-user");
 		}
 
 		// Walks the in-memory stores and bumps ScoredTrackCount / StarredCount /
 		// PlaylistLastPlayedCount on the matching record. When `createMissing` is
-		// true (legacy file-backend path) a record is materialized for any name
-		// that doesn't already have one in the dict; when false (SQLite path)
-		// names that aren't in the `users` table are ignored -- they'd be orphan
-		// per-user rows, not real users.
-		protected void PopulateUserCounts(Dictionary<string, UserRecord> byName, bool createMissing)
+		// true a record is materialized for any name that doesn't already have
+		// one in the dict -- this surfaces orphan per-user rows whose users-row
+		// no longer exists.
+		private void PopulateUserCounts(Dictionary<string, UserRecord> byName, bool createMissing)
 		{
 			foreach (TrackInfo track in m_tracks.Values)
 			{
@@ -497,7 +682,7 @@ namespace Pulse.Data
 			}
 		}
 
-		protected static int CompareUserRecordByName(UserRecord left, UserRecord right)
+		private static int CompareUserRecordByName(UserRecord left, UserRecord right)
 		{
 			return string.Compare(left.Name, right.Name, StringComparison.Ordinal);
 		}
@@ -520,10 +705,10 @@ namespace Pulse.Data
 			return record;
 		}
 
-		// Cascades a rename across every in-memory store. Concrete subclasses
-		// run this AFTER the SQL UPDATE succeeded so a constraint failure rolls
-		// the SQL back without leaving in-memory in a half-renamed state.
-		protected void RenameUserInMemory(string oldName, string newName)
+		// Cascades a rename across every in-memory store. Runs AFTER the SQL
+		// UPDATE succeeded so a constraint failure rolls the SQL back without
+		// leaving in-memory in a half-renamed state.
+		private void RenameUserInMemory(string oldName, string newName)
 		{
 			if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName)) { return; }
 			if (string.Equals(oldName, newName, StringComparison.Ordinal)) { return; }
@@ -572,14 +757,10 @@ namespace Pulse.Data
 			}
 		}
 
-		// Removes every in-memory trace of `userName` and flags the touched entities
-		// dirty so the next Save rewrites their per-user rows. Concrete subclasses
-		// override this to also wipe rows that aren't held in memory (bookmarks,
-		// play queues) before chaining to the base implementation.
-		public virtual void DeleteUser(string userName)
+		// Removes every in-memory trace of `userName` and flags the touched
+		// entities dirty so the next Save rewrites their per-user rows.
+		private void DeleteUserInMemory(string userName)
 		{
-			if (string.IsNullOrEmpty(userName)) { return; }
-
 			foreach (TrackInfo track in m_tracks.Values)
 			{
 				bool touched = false;
@@ -604,7 +785,7 @@ namespace Pulse.Data
 		private void RebuildSmartPlaylists(string userName)
 		{
 			RebuildSmartPlaylist("Shared", null);
-			if (!string.IsNullOrEmpty(userName)) 
+			if (!string.IsNullOrEmpty(userName))
 			{
 				RebuildSmartPlaylist(userName, userName);
 			}
@@ -633,6 +814,4 @@ namespace Pulse.Data
 			m_autoPlaylists[playlistId] = playlist;
 		}
 	}
-
-
 }
