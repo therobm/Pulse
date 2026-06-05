@@ -269,11 +269,11 @@ namespace Thump.Pulse
 			});
 		}
 
-		public override void GetPodcasts(Action<List<PulsePodcastChannel>> onComplete)
+		public override void GetPodcasts(Action<List<PulsePodcast>> onComplete)
 		{
 			if (!IsOnline())
 			{
-				CompleteOnMain(onComplete, new List<PulsePodcastChannel>());
+				CompleteOnMain(onComplete, new List<PulsePodcast>());
 				return;
 			}
 			// Server-side podcasts are still on the roadmap: the route exists
@@ -281,9 +281,9 @@ namespace Thump.Pulse
 			// hand back an empty list. The call is made anyway so the client
 			// lights up automatically once the server starts serving them.
 			string url = BuildPulseUrl("podcasts", null);
-			FetchObject<List<PulsePodcastChannel>>(url, true, (channels) =>
+			FetchObject<List<PulsePodcast>>(url, true, (channels) =>
 			{
-				List<PulsePodcastChannel> results = new List<PulsePodcastChannel>();
+				List<PulsePodcast> results = new List<PulsePodcast>();
 				if (channels != null)
 				{
 					results = channels;

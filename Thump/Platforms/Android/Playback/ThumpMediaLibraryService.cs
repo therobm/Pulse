@@ -609,11 +609,12 @@ namespace Thump.Playback.AndroidOS
 					}
 				case eAADirectory.Podcasts:
 					{
+						/* deprecated
 						s_mediaClient.GetPodcasts((podcasts) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItemsGrouped(podcasts, "Podcasts");
 							request.OnComplete(items);
-						});
+						});*/
 						break;
 					}
 				case eAADirectory.Library:
