@@ -20,7 +20,9 @@ on:
       - master
     paths:
       - 'Thump/**'
-      - 'PulseAPI/**'
+      # Only the C# contract is consumed by Thump; PulseAPI/JS is the web
+      # client and must not trigger an Android release build.
+      - 'PulseAPI/CSharp/**'
 
 permissions:
   contents: write
