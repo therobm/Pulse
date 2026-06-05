@@ -24,15 +24,15 @@ namespace Pulse.Protocols.PulseAPI
 		IPulseRouteHost m_host;
 		PulseService m_pulseService;
 		MusicManager m_musicManager;
-		DiagnosticsStore m_diagnosticsStore;
+		AnalyticsDB m_analyticsDB;
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseEndpoints(PulseService pulse, MusicManager musicManager, DiagnosticsStore diagnosticsStore)
+		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsStore)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
-			m_diagnosticsStore = diagnosticsStore;
+			m_analyticsDB = analyticsStore;
 			m_defaultCoverArt = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png"));
 		}
 
@@ -68,7 +68,7 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("reportAnalytics", ReportAnalytics);
 
 			RegisterRoute("ingestLog", PostIngestLog);
-			RegisterRoute("diagnostics", GetDiagnostics);
+			RegisterRoute("analytics", Getanalytics);
 
 			RegisterRoute("topItems", GetTop);
 
@@ -1413,12 +1413,12 @@ namespace Pulse.Protocols.PulseAPI
 		}
 
 		/// <summary>
-		/// Diagnostic-log intake. Clients POST a PulseLogBatch describing a
+		/// analytics-log intake. Clients POST a PulseLogBatch describing a
 		/// window of client-side events (stream open/close, cache hits/misses,
 		/// HTTP request/response, player errors, etc). The body is JSON;
 		/// HttpServer sets AllowSynchronousIO so the synchronous read is legal.
 		/// The handler stamps received_at on the server clock and hands the
-		/// item to DiagnosticsStore -- the request thread never touches the
+		/// item to analyticsStore -- the request thread never touches the
 		/// database.
 		/// </summary>
 		public IResult PostIngestLog(HttpContext context)
@@ -1449,17 +1449,17 @@ namespace Pulse.Protocols.PulseAPI
 			}
 
 			string receivedAt = DateTime.UtcNow.ToString("o");
-			m_diagnosticsStore.Enqueue(batch, receivedAt);
+			m_analyticsDB.Enqueue(batch, receivedAt);
 			return Respond(context, new PulseResponse());
 		}
 
 		/// <summary>
-		/// Diagnostic-log read endpoint. With ?session_id=... returns every
+		/// analytics-log read endpoint. With ?session_id=... returns every
 		/// event for that session (optionally filtered by action and result),
 		/// ordered by client timestamp. With ?device_id=... returns every
 		/// session for that device, most recent first.
 		/// </summary>
-		public IResult GetDiagnostics(HttpContext context)
+		public IResult Getanalytics(HttpContext context)
 		{
 			string sessionId = context.Request.Query["session_id"].FirstOrDefault();
 			string deviceId = context.Request.Query["device_id"].FirstOrDefault();
@@ -1468,8 +1468,8 @@ namespace Pulse.Protocols.PulseAPI
 			{
 				string actionFilter = context.Request.Query["action"].FirstOrDefault();
 				string resultFilter = context.Request.Query["result"].FirstOrDefault();
-				List<DiagnosticsEventRow> events = m_diagnosticsStore.GetEventsForSession(sessionId, actionFilter, resultFilter);
-				DiagnosticsEventsResponse response = new DiagnosticsEventsResponse();
+				List<analyticsEventRow> events = m_analyticsDB.GetEventsForSession(sessionId, actionFilter, resultFilter);
+				analyticsEventsResponse response = new analyticsEventsResponse();
 				response.SessionId = sessionId;
 				response.Events = events;
 				return Results.Text(PulseWire.Serialize(response), "application/json");
@@ -1477,8 +1477,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (!string.IsNullOrEmpty(deviceId))
 			{
-				List<DiagnosticsSessionRow> sessions = m_diagnosticsStore.GetSessionsForDevice(deviceId);
-				DiagnosticsSessionsResponse response = new DiagnosticsSessionsResponse();
+				List<analyticsSessionRow> sessions = m_analyticsDB.GetSessionsForDevice(deviceId);
+				analyticsSessionsResponse response = new analyticsSessionsResponse();
 				response.DeviceId = deviceId;
 				response.Sessions = sessions;
 				return Results.Text(PulseWire.Serialize(response), "application/json");
@@ -1489,21 +1489,21 @@ namespace Pulse.Protocols.PulseAPI
 	}
 
 	/// <summary>
-	/// Response envelope for the /diagnostics events query. Plain public
+	/// Response envelope for the /analytics events query. Plain public
 	/// fields; serialized through PulseWire which emits field names verbatim.
 	/// </summary>
-	public class DiagnosticsEventsResponse
+	public class analyticsEventsResponse
 	{
 		public string SessionId;
-		public List<DiagnosticsEventRow> Events;
+		public List<analyticsEventRow> Events;
 	}
 
 	/// <summary>
-	/// Response envelope for the /diagnostics sessions query.
+	/// Response envelope for the /analytics sessions query.
 	/// </summary>
-	public class DiagnosticsSessionsResponse
+	public class analyticsSessionsResponse
 	{
 		public string DeviceId;
-		public List<DiagnosticsSessionRow> Sessions;
+		public List<analyticsSessionRow> Sessions;
 	}
 }

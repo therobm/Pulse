@@ -38,7 +38,7 @@ namespace PulseAPI.CSharp
 	}
 
 	/// <summary>
-	/// One diagnostic event recorded on the client. Timestamp is the client
+	/// One analytics event recorded on the client. Timestamp is the client
 	/// clock at the moment of the event, in ISO-8601 format. Plain public
 	/// fields -- PulseWire uses IncludeFields and emits field names verbatim
 	/// as wire names.
@@ -53,7 +53,7 @@ namespace PulseAPI.CSharp
 	}
 
 	/// <summary>
-	/// A batch of diagnostic events POSTed by the client to the server intake.
+	/// A batch of analytics events POSTed by the client to the server intake.
 	/// Identity fields describe the sender; Events carries the rows. Plain
 	/// public fields for the same reason as PulseLogEvent.
 	/// </summary>

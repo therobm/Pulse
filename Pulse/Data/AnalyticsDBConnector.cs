@@ -3,20 +3,20 @@ using Microsoft.Data.Sqlite;
 namespace Pulse.Data
 {
 	/// <summary>
-	/// Instance-based SQLite connection factory for the diagnostic / telemetry
+	/// Instance-based SQLite connection factory for the analytics / telemetry
 	/// log database. Deliberately separate from the music DB factory: the two
 	/// databases live in different files, evolve their schemas independently,
 	/// and must not share the singleton path that the music side uses. WAL +
 	/// synchronous=NORMAL on every open so the drain thread's writes don't
-	/// block reads from the diagnostics read endpoint.
+	/// block reads from the analytics read endpoint.
 	/// </summary>
-	public class DiagnosticsConnectionFactory
+	public class AnalyticsDBConnector
 	{
 		private string m_databaseFilePath;
 
-		public DiagnosticsConnectionFactory()
+		public AnalyticsDBConnector()
 		{
-			m_databaseFilePath = "pulse_diagnostics.db";
+			m_databaseFilePath = "pulse_analytics.db";
 		}
 
 		public void SetDatabaseFilePath(string filePath)

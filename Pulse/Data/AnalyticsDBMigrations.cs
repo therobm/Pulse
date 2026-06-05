@@ -5,18 +5,18 @@ using Microsoft.Data.Sqlite;
 namespace Pulse.Data
 {
 	/// <summary>
-	/// One step in the diagnostics-database schema history. The diagnostics db
+	/// One step in the analyticss-database schema history. The analyticss db
 	/// keeps its own schema_versions table inside its own file -- it does NOT
 	/// share the music db's migration ledger. Adding a new step: pick the next
 	/// version number and append a new MigrationStep entry; never edit a
 	/// previously-shipped step.
 	/// </summary>
-	internal class DiagnosticsMigrationStep
+	internal class analyticssMigrationStep
 	{
 		public int Version;
 		public string Sql;
 
-		public DiagnosticsMigrationStep()
+		public analyticssMigrationStep()
 		{
 			Version = 0;
 			Sql = "";
@@ -24,31 +24,31 @@ namespace Pulse.Data
 	}
 
 	/// <summary>
-	/// Versioned schema migrations for the diagnostics database. Instance-based
+	/// Versioned schema migrations for the analyticss database. Instance-based
 	/// so each PulseService owns its own runner against its own factory.
 	/// </summary>
-	public class DiagnosticsMigrations
+	public class AnalyticsDBMigrations
 	{
-		private DiagnosticsConnectionFactory m_factory;
+		private AnalyticsDBConnector m_connector;
 
-		public DiagnosticsMigrations(DiagnosticsConnectionFactory factory)
+		public AnalyticsDBMigrations(AnalyticsDBConnector connector)
 		{
-			m_factory = factory;
+			m_connector = connector;
 		}
 
 		public void RunMigrations()
 		{
-			SqliteConnection connection = m_factory.OpenConnection();
+			SqliteConnection connection = m_connector.OpenConnection();
 			try
 			{
 				EnsureSchemaVersionsTable(connection);
 				int currentVersion = GetCurrentSchemaVersion(connection);
 
-				List<DiagnosticsMigrationStep> allMigrations = BuildMigrationList();
+				List<analyticssMigrationStep> allMigrations = BuildMigrationList();
 				int migrationCount = allMigrations.Count;
 				for (int migrationIndex = 0; migrationIndex < migrationCount; migrationIndex++)
 				{
-					DiagnosticsMigrationStep step = allMigrations[migrationIndex];
+					analyticssMigrationStep step = allMigrations[migrationIndex];
 					if (step.Version > currentVersion)
 					{
 						ApplyMigration(connection, step);
@@ -76,7 +76,7 @@ namespace Pulse.Data
 			return Convert.ToInt32(result);
 		}
 
-		private void ApplyMigration(SqliteConnection connection, DiagnosticsMigrationStep step)
+		private void ApplyMigration(SqliteConnection connection, analyticssMigrationStep step)
 		{
 			SqliteTransaction transaction = connection.BeginTransaction();
 			try
@@ -94,21 +94,21 @@ namespace Pulse.Data
 				record.ExecuteNonQuery();
 
 				transaction.Commit();
-				Log.Info(-1, "Applied diagnostics schema migration v" + step.Version);
+				Log.Info(-1, "Applied analyticss schema migration v" + step.Version);
 			}
 			catch (Exception ex)
 			{
 				transaction.Rollback();
-				Log.Error(-1, "Diagnostics migration v" + step.Version + " failed: " + ex.Message);
+				Log.Error(-1, "analyticss migration v" + step.Version + " failed: " + ex.Message);
 				throw;
 			}
 		}
 
-		private List<DiagnosticsMigrationStep> BuildMigrationList()
+		private List<analyticssMigrationStep> BuildMigrationList()
 		{
-			List<DiagnosticsMigrationStep> steps = new List<DiagnosticsMigrationStep>();
+			List<analyticssMigrationStep> steps = new List<analyticssMigrationStep>();
 
-			DiagnosticsMigrationStep v1 = new DiagnosticsMigrationStep();
+			analyticssMigrationStep v1 = new analyticssMigrationStep();
 			v1.Version = 1;
 			v1.Sql = @"
 				CREATE TABLE sessions (

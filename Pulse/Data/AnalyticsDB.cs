@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using Microsoft.Data.Sqlite;
 using PulseAPI.CSharp;
@@ -8,11 +9,11 @@ using PulseAPI.CSharp;
 namespace Pulse.Data
 {
 	/// <summary>
-	/// One row in the diagnostics sessions table, in the shape the
-	/// /diagnostics read endpoint returns it. Plain public fields; serialized
+	/// One row in the analytics sessions table, in the shape the
+	/// /analytics read endpoint returns it. Plain public fields; serialized
 	/// through PulseWire which emits field names verbatim.
 	/// </summary>
-	public class DiagnosticsSessionRow
+	public class analyticsSessionRow
 	{
 		public string SessionId;
 		public string DeviceId;
@@ -23,10 +24,10 @@ namespace Pulse.Data
 	}
 
 	/// <summary>
-	/// One row in the diagnostics log_events table, in the shape the
-	/// /diagnostics read endpoint returns it.
+	/// One row in the analytics log_events table, in the shape the
+	/// /analytics read endpoint returns it.
 	/// </summary>
-	public class DiagnosticsEventRow
+	public class analyticsEventRow
 	{
 		public long Id;
 		public string SessionId;
@@ -44,14 +45,14 @@ namespace Pulse.Data
 	/// on this carrier -- it is NOT part of the public PulseLogBatch wire type,
 	/// so the client never sees or sends it.
 	/// </summary>
-	internal class DiagnosticsBatchItem
+	internal class AnalyticsBatchItem
 	{
 		public PulseLogBatch Batch;
 		public string ReceivedAt;
 	}
 
 	/// <summary>
-	/// Intake + drain ("firehose") for the diagnostic log pipeline. The route
+	/// Intake + drain ("firehose") for the analytics log pipeline. The route
 	/// handler calls Enqueue from the request thread; a single background
 	/// drain thread pulls batches off the queue, opens one transaction per
 	/// batch, upserts the session row, and inserts every event in the batch.
@@ -59,20 +60,48 @@ namespace Pulse.Data
 	/// a 6-hour cadence after that. The request thread never touches the
 	/// database.
 	/// </summary>
-	public class DiagnosticsStore
+	public class AnalyticsDB
 	{
-		private DiagnosticsConnectionFactory m_factory;
-		private BlockingCollection<DiagnosticsBatchItem> m_queue;
+		private AnalyticsDBConnector m_connector;
+		private BlockingCollection<AnalyticsBatchItem> m_queue;
 		private Thread m_drainThread;
 		private TimeSpan m_takeTimeout;
 		private TimeSpan m_pruneInterval;
 		private int m_retentionDays;
 		private DateTime m_lastPruneUtc;
 
-		public DiagnosticsStore(DiagnosticsConnectionFactory factory)
+		public AnalyticsDB(PulseConfig config)
 		{
-			m_factory = factory;
-			m_queue = new BlockingCollection<DiagnosticsBatchItem>();
+			string environmentName = config.DatabaseEnvironment;
+			if (string.IsNullOrWhiteSpace(environmentName))
+			{
+				environmentName = "Production";
+			}
+#if DEBUG
+			if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
+			{
+				Log.Warning(-1, "Debugger attached: forcing Staging environment for analytics DB (config said '" + environmentName + "').");
+			}
+			environmentName = "Staging";
+#endif
+
+			string pulseDataRoot = Path.Combine(config.MusicPath, "PulseData");
+			if (!Directory.Exists(pulseDataRoot))
+			{
+				Directory.CreateDirectory(pulseDataRoot);
+			}
+
+			string analyticsFileName = "pulse_analytics_" + environmentName.ToLowerInvariant() + ".db";
+			string analyticsPath = Path.Combine(pulseDataRoot, analyticsFileName);
+
+			m_connector = new AnalyticsDBConnector();
+			m_connector.SetDatabaseFilePath(analyticsPath);
+
+			AnalyticsDBMigrations analyticsMigrations = new AnalyticsDBMigrations(m_connector);
+			analyticsMigrations.RunMigrations();
+			Log.Info(-1, "Pulse analytics DB: env=" + environmentName + " path=" + analyticsPath);
+
+			m_queue = new BlockingCollection<AnalyticsBatchItem>();
 			m_takeTimeout = TimeSpan.FromMinutes(1);
 			m_pruneInterval = TimeSpan.FromHours(6);
 			m_retentionDays = 30;
@@ -80,7 +109,7 @@ namespace Pulse.Data
 
 			m_drainThread = new Thread(DrainLoop);
 			m_drainThread.IsBackground = true;
-			m_drainThread.Name = "PulseDiagnosticsDrain";
+			m_drainThread.Name = "PulseanalyticsDrain";
 			m_drainThread.Start();
 		}
 
@@ -95,7 +124,7 @@ namespace Pulse.Data
 			{
 				return;
 			}
-			DiagnosticsBatchItem item = new DiagnosticsBatchItem();
+			AnalyticsBatchItem item = new AnalyticsBatchItem();
 			item.Batch = batch;
 			item.ReceivedAt = receivedAt;
 			m_queue.Add(item);
@@ -111,7 +140,7 @@ namespace Pulse.Data
 			{
 				try
 				{
-					DiagnosticsBatchItem item;
+					AnalyticsBatchItem item;
 					bool gotItem = m_queue.TryTake(out item, m_takeTimeout);
 					if (gotItem)
 					{
@@ -129,12 +158,12 @@ namespace Pulse.Data
 				}
 				catch (Exception ex)
 				{
-					Log.Error(-1, "DiagnosticsStore drain failed: " + ex.Message);
+					Log.Error(-1, "analyticsStore drain failed: " + ex.Message);
 				}
 			}
 		}
 
-		private void WriteBatch(DiagnosticsBatchItem item)
+		private void WriteBatch(AnalyticsBatchItem item)
 		{
 			PulseLogBatch batch = item.Batch;
 			if (batch == null)
@@ -146,7 +175,7 @@ namespace Pulse.Data
 				return;
 			}
 
-			SqliteConnection connection = m_factory.OpenConnection();
+			SqliteConnection connection = m_connector.OpenConnection();
 			try
 			{
 				SqliteTransaction transaction = connection.BeginTransaction();
@@ -173,7 +202,7 @@ namespace Pulse.Data
 				catch (Exception ex)
 				{
 					transaction.Rollback();
-					Log.Error(-1, "DiagnosticsStore.WriteBatch failed: " + ex.Message);
+					Log.Error(-1, "analyticsStore.WriteBatch failed: " + ex.Message);
 				}
 			}
 			finally
@@ -258,7 +287,7 @@ namespace Pulse.Data
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "DiagnosticsStore prune failed: " + ex.Message);
+				Log.Error(-1, "analyticsStore prune failed: " + ex.Message);
 			}
 			m_lastPruneUtc = DateTime.UtcNow;
 		}
@@ -267,7 +296,7 @@ namespace Pulse.Data
 		{
 			string cutoff = DateTime.UtcNow.AddDays(-m_retentionDays).ToString("o");
 
-			SqliteConnection connection = m_factory.OpenConnection();
+			SqliteConnection connection = m_connector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -276,7 +305,7 @@ namespace Pulse.Data
 				int deleted = command.ExecuteNonQuery();
 				if (deleted > 0)
 				{
-					Log.Info(-1, "Diagnostics retention prune removed " + deleted + " event(s) older than " + cutoff);
+					Log.Info(-1, "analytics retention prune removed " + deleted + " event(s) older than " + cutoff);
 				}
 			}
 			finally
@@ -289,15 +318,15 @@ namespace Pulse.Data
 		/// Read every event for a given session, ordered by client timestamp.
 		/// Empty action / result filters mean "no filter on that column".
 		/// </summary>
-		public List<DiagnosticsEventRow> GetEventsForSession(string sessionId, string actionFilter, string resultFilter)
+		public List<analyticsEventRow> GetEventsForSession(string sessionId, string actionFilter, string resultFilter)
 		{
-			List<DiagnosticsEventRow> rows = new List<DiagnosticsEventRow>();
+			List<analyticsEventRow> rows = new List<analyticsEventRow>();
 			if (string.IsNullOrEmpty(sessionId))
 			{
 				return rows;
 			}
 
-			SqliteConnection connection = m_factory.OpenConnection();
+			SqliteConnection connection = m_connector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -331,7 +360,7 @@ namespace Pulse.Data
 				{
 					while (reader.Read())
 					{
-						DiagnosticsEventRow row = ReadEventRow(reader);
+						analyticsEventRow row = ReadEventRow(reader);
 						rows.Add(row);
 					}
 				}
@@ -351,15 +380,15 @@ namespace Pulse.Data
 		/// Read every session for a given device id, most recent first by
 		/// server-side started_at.
 		/// </summary>
-		public List<DiagnosticsSessionRow> GetSessionsForDevice(string deviceId)
+		public List<analyticsSessionRow> GetSessionsForDevice(string deviceId)
 		{
-			List<DiagnosticsSessionRow> rows = new List<DiagnosticsSessionRow>();
+			List<analyticsSessionRow> rows = new List<analyticsSessionRow>();
 			if (string.IsNullOrEmpty(deviceId))
 			{
 				return rows;
 			}
 
-			SqliteConnection connection = m_factory.OpenConnection();
+			SqliteConnection connection = m_connector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
@@ -371,7 +400,7 @@ namespace Pulse.Data
 				{
 					while (reader.Read())
 					{
-						DiagnosticsSessionRow row = ReadSessionRow(reader);
+						analyticsSessionRow row = ReadSessionRow(reader);
 						rows.Add(row);
 					}
 				}
@@ -387,9 +416,9 @@ namespace Pulse.Data
 			return rows;
 		}
 
-		private DiagnosticsEventRow ReadEventRow(SqliteDataReader reader)
+		private analyticsEventRow ReadEventRow(SqliteDataReader reader)
 		{
-			DiagnosticsEventRow row = new DiagnosticsEventRow();
+			analyticsEventRow row = new analyticsEventRow();
 			row.Id = reader.GetInt64(0);
 			row.SessionId = ReadString(reader, 1);
 			row.Timestamp = ReadString(reader, 2);
@@ -401,9 +430,9 @@ namespace Pulse.Data
 			return row;
 		}
 
-		private DiagnosticsSessionRow ReadSessionRow(SqliteDataReader reader)
+		private analyticsSessionRow ReadSessionRow(SqliteDataReader reader)
 		{
-			DiagnosticsSessionRow row = new DiagnosticsSessionRow();
+			analyticsSessionRow row = new analyticsSessionRow();
 			row.SessionId = ReadString(reader, 0);
 			row.DeviceId = ReadString(reader, 1);
 			row.User = ReadString(reader, 2);
