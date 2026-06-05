@@ -245,7 +245,6 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/createPlaylist", m_legacyPulse.CreatePlaylist);
 			host.RegisterResultRoute("pulse/updatePlaylist", m_legacyPulse.UpdatePlaylist);
 			host.RegisterResultRoute("pulse/deletePlaylist", m_legacyPulse.DeletePlaylist);
-			host.RegisterResultRoute("pulse/podcasts", m_legacyPulse.GetPodcasts);
 			
 			host.RegisterResultRoute("pulse/stats", HandleStats);
 			host.RegisterRoute("web/stats.html", HandleStatsPage);

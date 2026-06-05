@@ -15,6 +15,7 @@ namespace Thump.Views
 		Artists,
 		Albums,
 		Playlists,
+		Podcasts,
 		Genres,
 	}
 
@@ -46,7 +47,9 @@ namespace Thump.Views
 		private Button m_buttonArtists;
 		private Button m_buttonAlbums;
 		private Button m_buttonPlaylists;
+		private Button m_buttonPodcasts;
 		private Button m_buttonGenres;
+		private Button m_addPodcastButton;
 
 		private Button m_sortAlphabetical;
 		private Button m_sortDateReleased;
@@ -57,12 +60,14 @@ namespace Thump.Views
 		private CollectionView m_artistsList;
 		private CollectionView m_albumsList;
 		private CollectionView m_playlistsList;
+		private CollectionView m_podcastsList;
 		private CollectionView m_genresList;
 		private Grid m_letterOverlay;
 
 		private List<PulseArtist> m_artists;
 		private List<PulseAlbum> m_albums;
 		private List<PulsePlaylist> m_playlists;
+		private List<PulsePodcast> m_podcasts;
 		private List<PulseGenre> m_genres;
 
 		public LibraryView(MainView mainView) : base(mainView)
@@ -104,15 +109,42 @@ namespace Thump.Views
 
 		private View BuildTitle()
 		{
+			Grid titleGrid = new Grid();
+
+			ColumnDefinition headerColumn = new ColumnDefinition();
+			headerColumn.Width = GridLength.Star;
+			ColumnDefinition addColumn = new ColumnDefinition();
+			addColumn.Width = GridLength.Auto;
+			titleGrid.ColumnDefinitions.Add(headerColumn);
+			titleGrid.ColumnDefinitions.Add(addColumn);
+
 			Label header = new Label();
 			header.Text = "Library";
 			header.FontSize = 24;
 			header.FontAttributes = FontAttributes.Bold;
 			header.TextColor = ThumpColors.OnBackground;
 			header.Padding = new Thickness(16, 12);
+			header.VerticalOptions = LayoutOptions.Center;
+			Grid.SetColumn(header, 0);
+			titleGrid.Children.Add(header);
 
-			Grid.SetRow(header, 0);
-			return header;
+			m_addPodcastButton = new Button();
+			m_addPodcastButton.Text = "+ Add Podcast";
+			m_addPodcastButton.TextColor = s_buttonInactiveText;
+			m_addPodcastButton.BackgroundColor = s_buttonInactiveBackground;
+			m_addPodcastButton.CornerRadius = 16;
+			m_addPodcastButton.FontSize = 13;
+			m_addPodcastButton.Padding = new Thickness(14, 4);
+			m_addPodcastButton.HeightRequest = 32;
+			m_addPodcastButton.Margin = new Thickness(0, 0, 16, 0);
+			m_addPodcastButton.VerticalOptions = LayoutOptions.Center;
+			m_addPodcastButton.IsVisible = false;
+			m_addPodcastButton.Clicked += OnAddPodcastClicked;
+			Grid.SetColumn(m_addPodcastButton, 1);
+			titleGrid.Children.Add(m_addPodcastButton);
+
+			Grid.SetRow(titleGrid, 0);
+			return titleGrid;
 		}
 
 		private View BuildButtons()
@@ -132,6 +164,10 @@ namespace Thump.Views
 			m_buttonPlaylists = BuildFilterButton("Playlists");
 			m_buttonPlaylists.Clicked += OnButtonPlaylistsClicked;
 			buttonStack.Children.Add(m_buttonPlaylists);
+
+			m_buttonPodcasts = BuildFilterButton("Podcasts");
+			m_buttonPodcasts.Clicked += OnButtonPodcastsClicked;
+			buttonStack.Children.Add(m_buttonPodcasts);
 
 			m_buttonGenres = BuildFilterButton("Genres");
 			m_buttonGenres.Clicked += OnButtonGenresClicked;
@@ -254,6 +290,11 @@ namespace Thump.Views
 			m_playlistsList.BackgroundColor = ThumpColors.Background;
 			listContainer.Children.Add(m_playlistsList);
 
+			m_podcastsList = new CollectionView();
+			m_podcastsList.IsVisible = false;
+			m_podcastsList.BackgroundColor = ThumpColors.Background;
+			listContainer.Children.Add(m_podcastsList);
+
 			m_genresList = new CollectionView();
 			m_genresList.IsVisible = false;
 			m_genresList.BackgroundColor = ThumpColors.Background;
@@ -350,6 +391,7 @@ namespace Thump.Views
 			MainView.MediaClient.GetArtists(OnArtistsLoaded);
 			MainView.MediaClient.GetAlbums(OnAlbumsLoaded);
 			MainView.MediaClient.GetPlaylists(OnPlaylistsLoaded);
+			MainView.MediaClient.GetPodcasts(OnPodcastsLoaded);
 			MainView.MediaClient.GetGenres(OnGenresLoaded);
 		}
 
@@ -369,6 +411,12 @@ namespace Thump.Views
 		{
 			m_playlists = playlists;
 			BindPlaylists();
+		}
+
+		private void OnPodcastsLoaded(List<PulsePodcast> podcasts)
+		{
+			m_podcasts = podcasts;
+			BindPodcasts();
 		}
 
 		private void OnGenresLoaded(List<PulseGenre> genres)
@@ -414,6 +462,16 @@ namespace Thump.Views
 			m_playlistsList.ItemsSource = new List<PulsePlaylist>(m_playlists);
 		}
 
+		private void BindPodcasts()
+		{
+			if (m_podcasts == null)
+			{
+				return;
+			}
+			m_podcasts.Sort(ComparePodcastByTitle);
+			m_podcastsList.ItemsSource = new List<PulsePodcast>(m_podcasts);
+		}
+
 		private void BindGenres()
 		{
 			if (m_genres == null)
@@ -448,6 +506,11 @@ namespace Thump.Views
 			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}
 
+		private static int ComparePodcastByTitle(PulsePodcast first, PulsePodcast second)
+		{
+			return string.Compare(first.Title, second.Title, StringComparison.OrdinalIgnoreCase);
+		}
+
 		private static int CompareGenreByName(PulseGenre first, PulseGenre second)
 		{
 			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
@@ -463,12 +526,15 @@ namespace Thump.Views
 			m_buttonAlbums.TextColor = s_buttonInactiveText;
 			m_buttonPlaylists.BackgroundColor = s_buttonInactiveBackground;
 			m_buttonPlaylists.TextColor = s_buttonInactiveText;
+			m_buttonPodcasts.BackgroundColor = s_buttonInactiveBackground;
+			m_buttonPodcasts.TextColor = s_buttonInactiveText;
 			m_buttonGenres.BackgroundColor = s_buttonInactiveBackground;
 			m_buttonGenres.TextColor = s_buttonInactiveText;
 
 			m_artistsList.IsVisible = false;
 			m_albumsList.IsVisible = false;
 			m_playlistsList.IsVisible = false;
+			m_podcastsList.IsVisible = false;
 			m_genresList.IsVisible = false;
 
 			if (button == eLibraryButton.Artists)
@@ -489,6 +555,12 @@ namespace Thump.Views
 				m_buttonPlaylists.TextColor = s_buttonActiveText;
 				m_playlistsList.IsVisible = true;
 			}
+			else if (button == eLibraryButton.Podcasts)
+			{
+				m_buttonPodcasts.BackgroundColor = s_buttonActiveBackground;
+				m_buttonPodcasts.TextColor = s_buttonActiveText;
+				m_podcastsList.IsVisible = true;
+			}
 			else if (button == eLibraryButton.Genres)
 			{
 				m_buttonGenres.BackgroundColor = s_buttonActiveBackground;
@@ -503,6 +575,18 @@ namespace Thump.Views
 			{
 				SetActiveSort(eLibrarySort.Alphabetical);
 			}
+
+			m_addPodcastButton.IsVisible = button == eLibraryButton.Podcasts;
+		}
+
+		public void ReloadPodcasts()
+		{
+			MainView.MediaClient.GetPodcasts(OnPodcastsLoaded);
+		}
+
+		private void OnAddPodcastClicked(object sender, EventArgs e)
+		{
+			m_mainView.OnAddPodcast();
 		}
 
 		private void SetActiveSort(eLibrarySort sort)
@@ -526,6 +610,7 @@ namespace Thump.Views
 			BindArtists();
 			BindAlbums();
 			BindPlaylists();
+			BindPodcasts();
 			BindGenres();
 		}
 
@@ -534,6 +619,7 @@ namespace Thump.Views
 			ApplyLayoutToList(m_artistsList, typeof(ArtistRowTile));
 			ApplyLayoutToList(m_albumsList, typeof(AlbumRowTile));
 			ApplyLayoutToList(m_playlistsList, typeof(PlaylistRowTile));
+			ApplyLayoutToList(m_podcastsList, typeof(PodcastRowTile));
 			ApplyLayoutToList(m_genresList, typeof(GenreRowTile));
 		}
 
@@ -560,6 +646,10 @@ namespace Thump.Views
 			if (m_activeButton == eLibraryButton.Playlists)
 			{
 				return m_playlistsList;
+			}
+			if (m_activeButton == eLibraryButton.Podcasts)
+			{
+				return m_podcastsList;
 			}
 			if (m_activeButton == eLibraryButton.Genres)
 			{
@@ -615,6 +705,18 @@ namespace Thump.Views
 				for (int index = 0; index < m_playlists.Count; index++)
 				{
 					names.Add(m_playlists[index].Name);
+				}
+				return names;
+			}
+			if (m_activeButton == eLibraryButton.Podcasts)
+			{
+				if (m_podcasts == null)
+				{
+					return null;
+				}
+				for (int index = 0; index < m_podcasts.Count; index++)
+				{
+					names.Add(m_podcasts[index].Title);
 				}
 				return names;
 			}
@@ -687,6 +789,11 @@ namespace Thump.Views
 		private void OnButtonPlaylistsClicked(object sender, EventArgs e)
 		{
 			SetActiveButton(eLibraryButton.Playlists);
+		}
+
+		private void OnButtonPodcastsClicked(object sender, EventArgs e)
+		{
+			SetActiveButton(eLibraryButton.Podcasts);
 		}
 
 		private void OnButtonGenresClicked(object sender, EventArgs e)

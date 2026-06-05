@@ -27,7 +27,8 @@ namespace Thump.Playback.AndroidOS
 		Artist,
 		Playlist,
 		Genre,
-		Track
+		Track,
+		Podcast
 	}
 
 	public class MediaItemBuilder
@@ -52,6 +53,7 @@ namespace Thump.Playback.AndroidOS
 			{ eAAObject.Artist, "artist" },
 			{ eAAObject.Playlist, "playlist" },
 			{ eAAObject.Genre, "genre" },
+			{ eAAObject.Podcast, "podcast" },
 		};
 
 		public static MediaLibraryService.LibraryParams BuildContentStyleParams()
@@ -301,6 +303,12 @@ namespace Thump.Playback.AndroidOS
 							items.Add(BuildBrowsableItem("genre/" + genre.Name, genre.Name));
 							break;
 						}
+					case eDataType.Podcast:
+						{
+							PulsePodcast podcast = (PulsePodcast)pulseObject;
+							items.Add(BuildBrowsableItem("podcast/" + podcast.Id, podcast.Title, podcast.CoverArt));
+							break;
+						}
 				}
 			}
 			return items;
@@ -345,6 +353,12 @@ namespace Thump.Playback.AndroidOS
 						{
 							PulseGenre genre = (PulseGenre)pulseObject;
 							items.Add(BuildBrowsableItemGrouped("genre/" + genre.Name, genre.Name, null, groupTitle));
+							break;
+						}
+					case eDataType.Podcast:
+						{
+							PulsePodcast podcast = (PulsePodcast)pulseObject;
+							items.Add(BuildBrowsableItemGrouped("podcast/" + podcast.Id, podcast.Title, podcast.CoverArt, groupTitle));
 							break;
 						}
 				}

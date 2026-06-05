@@ -276,10 +276,6 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, new List<PulsePodcast>());
 				return;
 			}
-			// Server-side podcasts are still on the roadmap: the route exists
-			// but returns status "not_implemented", so the fetch fails and we
-			// hand back an empty list. The call is made anyway so the client
-			// lights up automatically once the server starts serving them.
 			string url = BuildPulseUrl("podcasts", null);
 			FetchObject<List<PulsePodcast>>(url, true, (channels) =>
 			{
@@ -293,6 +289,96 @@ namespace Thump.Pulse
 					onComplete(results);
 				}
 			});
+		}
+
+		public override void GetAllPodcasts(Action<List<PulsePodcast>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, new List<PulsePodcast>());
+				return;
+			}
+			string url = BuildPulseUrl("allPodcasts", null);
+			FetchObject<List<PulsePodcast>>(url, true, (channels) =>
+			{
+				List<PulsePodcast> results = new List<PulsePodcast>();
+				if (channels != null)
+				{
+					results = channels;
+				}
+				if (onComplete != null)
+				{
+					onComplete(results);
+				}
+			});
+		}
+
+		public override void GetPodcast(string podcastId, Action<PulsePodcastDetails> onComplete)
+		{
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, null);
+				return;
+			}
+			string url = BuildPulseUrl("podcast", "id=" + Uri.EscapeDataString(podcastId));
+			FetchObject<PulsePodcastDetails>(url, true, (details) =>
+			{
+				if (onComplete != null)
+				{
+					onComplete(details);
+				}
+			});
+		}
+
+		public override void AddPodcast(string feedUrl, bool subscribe, Action<PulsePodcast> onComplete)
+		{
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, null);
+				return;
+			}
+			string url = BuildPulseUrl("addPodcast", "feedUrl=" + Uri.EscapeDataString(feedUrl) + "&subscribe=" + (subscribe ? "1" : "0"));
+			FetchObject<PulsePodcast>(url, false, (podcast) =>
+			{
+				if (onComplete != null)
+				{
+					onComplete(podcast);
+				}
+			});
+		}
+
+		public override void SubscribePodcast(string podcastId, Action<bool> onComplete)
+		{
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, false);
+				return;
+			}
+			string param = "id=" + Uri.EscapeDataString(podcastId);
+			RunCommand(BuildPulseUrl("subscribePodcast", param));
+			CompleteOnMain(onComplete, true);
+		}
+
+		public override void UnsubscribePodcast(string podcastId, Action<bool> onComplete)
+		{
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, false);
+				return;
+			}
+			string param = "id=" + Uri.EscapeDataString(podcastId);
+			RunCommand(BuildPulseUrl("unsubscribePodcast", param));
+			CompleteOnMain(onComplete, true);
+		}
+
+		public override void SaveEpisodeProgress(string episodeId, int positionSeconds)
+		{
+			if (!IsOnline())
+			{
+				return;
+			}
+			string param = "id=" + Uri.EscapeDataString(episodeId) + "&positionSeconds=" + positionSeconds;
+			RunCommand(BuildPulseUrl("episodeProgress", param));
 		}
 
 		public override void Search(string query, Action<PulseSearchData> onComplete)
@@ -940,6 +1026,8 @@ namespace Thump.Pulse
 					return PulseWire.Parse<PulseArtist>(raw);
 				case eDataType.Genre:
 					return PulseWire.Parse<PulseGenre>(raw);
+				case eDataType.Podcast:
+					return PulseWire.Parse<PulsePodcast>(raw);
 				default:
 					return probe;
 			}
