@@ -371,6 +371,27 @@ namespace Thump.Pulse
 			CompleteOnMain(onComplete, true);
 		}
 
+		public override void UpdatePodcast(string podcastId, string retentionPolicy, int retentionValue, int pollIntervalMinutes, bool autoDownload, Action<PulsePodcast> onComplete)
+		{
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, null);
+				return;
+			}
+			string param = "id=" + Uri.EscapeDataString(podcastId)
+				+ "&retentionPolicy=" + Uri.EscapeDataString(retentionPolicy)
+				+ "&retentionValue=" + retentionValue
+				+ "&pollIntervalMinutes=" + pollIntervalMinutes
+				+ "&autoDownload=" + (autoDownload ? "1" : "0");
+			FetchObject<PulsePodcast>(BuildPulseUrl("updatePodcast", param), false, (podcast) =>
+			{
+				if (onComplete != null)
+				{
+					onComplete(podcast);
+				}
+			});
+		}
+
 		public override void SaveEpisodeProgress(string episodeId, int positionSeconds)
 		{
 			if (!IsOnline())
