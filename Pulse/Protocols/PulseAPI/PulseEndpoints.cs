@@ -1200,8 +1200,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeTracks)
 			{
-				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Track);
-				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				Dictionary<string, ItemAnalytics> itemAnalytics = m_musicManager.GetItemAnalytics(user, eDataType.Track);
+				foreach (KeyValuePair<string, ItemAnalytics> entry in itemAnalytics)
 				{
 					TrackInfo track = m_musicManager.GetTrack(entry.Key);
 					if (track == null)
@@ -1214,8 +1214,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeArtists)
 			{
-				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Artist);
-				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				Dictionary<string, ItemAnalytics> dataItems = m_musicManager.GetItemAnalytics(user, eDataType.Artist);
+				foreach (KeyValuePair<string, ItemAnalytics> entry in dataItems)
 				{
 					ArtistInfo artist = m_musicManager.GetArtist(entry.Key);
 					if (artist == null)
@@ -1228,8 +1228,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeAlbums)
 			{
-				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Album);
-				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				Dictionary<string, ItemAnalytics> albumAnalytics = m_musicManager.GetItemAnalytics(user, eDataType.Album);
+				foreach (KeyValuePair<string, ItemAnalytics> entry in albumAnalytics)
 				{
 					AlbumInfo album = m_musicManager.GetAlbum(entry.Key);
 					if (album == null)
@@ -1242,8 +1242,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includePlaylists)
 			{
-				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Playlist);
-				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				Dictionary<string, ItemAnalytics> playlistAnalytics = m_musicManager.GetItemAnalytics(user, eDataType.Playlist);
+				foreach (KeyValuePair<string, ItemAnalytics> entry in playlistAnalytics)
 				{
 					PlaylistInfo playlist = m_musicManager.GetPlaylist(entry.Key);
 					if (playlist == null)
@@ -1315,8 +1315,8 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (includeAlbums)
 			{
-				Dictionary<string, AnalyticsAggregate> aggregates = m_musicManager.GetStartedAggregates(user, eDataType.Album);
-				foreach (KeyValuePair<string, AnalyticsAggregate> entry in aggregates)
+				Dictionary<string, ItemAnalytics> albumAnalytics = m_musicManager.GetItemAnalytics(user, eDataType.Album);
+				foreach (KeyValuePair<string, ItemAnalytics> entry in albumAnalytics)
 				{
 					AlbumInfo album = m_musicManager.GetAlbum(entry.Key);
 					if (album == null)
@@ -1351,12 +1351,12 @@ namespace Pulse.Protocols.PulseAPI
 			return candidates;
 		}
 
-		private static RecentCandidate MakeCandidate(PulseObject item, AnalyticsAggregate aggregate)
+		private static RecentCandidate MakeCandidate(PulseObject item, ItemAnalytics itemAnalytics)
 		{
 			RecentCandidate candidate = new RecentCandidate();
 			candidate.Item = item;
-			candidate.PlayCount = aggregate.PlayCount;
-			candidate.LastPlayed = aggregate.LastPlayed;
+			candidate.PlayCount = itemAnalytics.PlayCount;
+			candidate.LastPlayed = itemAnalytics.LastPlayed;
 			return candidate;
 		}
 

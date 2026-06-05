@@ -98,9 +98,9 @@ namespace Pulse.MusicLibrary
 		/// Pass-through to the analytics-event rollup used by the topItems /
 		/// recentlyPlayed routes to rank one media type by play count or recency.
 		/// </summary>
-		public Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType)
+		public Dictionary<string, ItemAnalytics> GetItemAnalytics(string userName, eDataType mediaType)
 		{
-			return m_database.GetStartedAggregates(userName, mediaType);
+			return m_database.GetItemAnalytics(userName, mediaType);
 		}
 
 		public TrackInfo GetTrack(string id)
@@ -832,7 +832,11 @@ namespace Pulse.MusicLibrary
 
 				try
 				{
-					ScannedTrack scanned = ParseFile(filePath, musicPath);
+					ScannedTrack scanned = null;
+					if (!ParseFile(filePath, musicPath, out scanned))
+					{
+						return;
+					}
 					if (scanned == null)
 					{
 						return;
@@ -904,85 +908,96 @@ namespace Pulse.MusicLibrary
 		/// threads concurrently. The result is committed serially by
 		/// <see cref="CommitScannedTrack"/>.
 		/// </summary>
-		private ScannedTrack ParseFile(string filePath, string musicRoot)
+		private bool ParseFile(string filePath, string musicRoot, out ScannedTrack scannedTrack)
 		{
-			TagLib.File tagFile = TagLib.File.Create(filePath);
-
-			string artist = tagFile.Tag.FirstAlbumArtist;
-			if (string.IsNullOrEmpty(artist))
+			scannedTrack = new ScannedTrack();
+			try
 			{
-				artist = tagFile.Tag.FirstPerformer;
+				TagLib.File tagFile = TagLib.File.Create(filePath);
+
+				string artist = tagFile.Tag.FirstAlbumArtist;
+				if (string.IsNullOrEmpty(artist))
+				{
+					artist = tagFile.Tag.FirstPerformer;
+				}
+				if (string.IsNullOrEmpty(artist))
+				{
+					string relativePath = Path.GetRelativePath(musicRoot, filePath);
+					string[] parts = relativePath.Split(Path.DirectorySeparatorChar);
+					if (parts.Length > 1)
+					{
+						artist = parts[0];
+					}
+					else
+					{
+						artist = "Unknown Artist";
+					}
+				}
+
+				string album = tagFile.Tag.Album;
+				if (string.IsNullOrEmpty(album))
+				{
+					string relativePath = Path.GetRelativePath(musicRoot, filePath);
+					string[] parts = relativePath.Split(Path.DirectorySeparatorChar);
+					if (parts.Length > 2)
+					{
+						album = parts[1];
+					}
+					else
+					{
+						album = "Unknown Album";
+					}
+				}
+
+				string title = tagFile.Tag.Title;
+				if (string.IsNullOrEmpty(title))
+				{
+					title = Path.GetFileNameWithoutExtension(filePath);
+				}
+
+				string artistId = MusicManager.GenerateID(artist);
+				string albumId = MusicManager.GenerateID(artist + "/" + album);
+
+				string extension = Path.GetExtension(filePath).ToLowerInvariant();
+				FileInfo fileInfo = new FileInfo(filePath);
+
+				TrackInfo track = new TrackInfo();
+				track.Id = MusicManager.GenerateID(filePath);
+				track.Title = title;
+				track.Artist = artist;
+				track.ArtistId = artistId;
+				track.Album = album;
+				track.AlbumId = albumId;
+				track.Genre = tagFile.Tag.FirstGenre ?? "";
+				track.FilePath = filePath;
+				track.CoverArtId = albumId;
+				track.TrackNumber = (int)tagFile.Tag.Track;
+				track.DiscNumber = (int)tagFile.Tag.Disc;
+				track.Year = (int)tagFile.Tag.Year;
+				track.DurationSeconds = (int)tagFile.Properties.Duration.TotalSeconds;
+				track.FileSizeBytes = fileInfo.Length;
+				track.Suffix = extension.TrimStart('.');
+				track.ContentType = GetContentType(extension);
+
+				tagFile.Dispose();
+
+
+				
+				scannedTrack.ArtistId = artistId;
+				scannedTrack.ArtistName = artist;
+				scannedTrack.AlbumId = albumId;
+				scannedTrack.AlbumName = album;
+				scannedTrack.Year = track.Year;
+				scannedTrack.Genre = track.Genre;
+				scannedTrack.Track = track;
+				return true;
 			}
-			if (string.IsNullOrEmpty(artist))
+			catch (Exception ex)
 			{
-				string relativePath = Path.GetRelativePath(musicRoot, filePath);
-				string[] parts = relativePath.Split(Path.DirectorySeparatorChar);
-				if (parts.Length > 1)
-				{
-					artist = parts[0];
-				}
-				else
-				{
-					artist = "Unknown Artist";
-				}
+				Log.Warning(0, filePath + ": " + ex.Message);
 			}
-		
-			string album = tagFile.Tag.Album;
-			if (string.IsNullOrEmpty(album))
-			{
-				string relativePath = Path.GetRelativePath(musicRoot, filePath);
-				string[] parts = relativePath.Split(Path.DirectorySeparatorChar);
-				if (parts.Length > 2)
-				{
-					album = parts[1];
-				}
-				else
-				{
-					album = "Unknown Album";
-				}
-			}
+			return false;
 
-			string title = tagFile.Tag.Title;
-			if (string.IsNullOrEmpty(title))
-			{
-				title = Path.GetFileNameWithoutExtension(filePath);
-			}
-
-			string artistId = MusicManager.GenerateID(artist);
-			string albumId = MusicManager.GenerateID(artist + "/" + album);
-
-			string extension = Path.GetExtension(filePath).ToLowerInvariant();
-			FileInfo fileInfo = new FileInfo(filePath);
-
-			TrackInfo track = new TrackInfo();
-			track.Id = MusicManager.GenerateID(filePath);
-			track.Title = title;
-			track.Artist = artist;
-			track.ArtistId = artistId;
-			track.Album = album;
-			track.AlbumId = albumId;
-			track.Genre = tagFile.Tag.FirstGenre ?? "";
-			track.FilePath = filePath;
-			track.CoverArtId = albumId;
-			track.TrackNumber = (int)tagFile.Tag.Track;
-			track.DiscNumber = (int)tagFile.Tag.Disc;
-			track.Year = (int)tagFile.Tag.Year;
-			track.DurationSeconds = (int)tagFile.Properties.Duration.TotalSeconds;
-			track.FileSizeBytes = fileInfo.Length;
-			track.Suffix = extension.TrimStart('.');
-			track.ContentType = GetContentType(extension);
-
-			tagFile.Dispose();
-
-			ScannedTrack scanned = new ScannedTrack();
-			scanned.ArtistId = artistId;
-			scanned.ArtistName = artist;
-			scanned.AlbumId = albumId;
-			scanned.AlbumName = album;
-			scanned.Year = track.Year;
-			scanned.Genre = track.Genre;
-			scanned.Track = track;
-			return scanned;
 		}
 
 		/// <summary>

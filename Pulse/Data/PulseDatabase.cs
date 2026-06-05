@@ -11,9 +11,9 @@ namespace Pulse.Data
 	/// <summary>
 	/// Per-id rollup of the analytics event log for one media type: how many
 	/// 'Started' events the item has accrued and when it was most recently
-	/// started. Produced by <see cref="PulseDatabase.GetStartedAggregates"/>.
+	/// started. Produced by <see cref="PulseDatabase.GetItemAnalytics"/>.
 	/// </summary>
-	public class AnalyticsAggregate
+	public class ItemAnalytics
 	{
 		public int PlayCount { get; set; }
 		public DateTime LastPlayed { get; set; }
@@ -978,9 +978,9 @@ namespace Pulse.Data
 		/// otherwise it spans every user. occurred_at is stored round-trip ("o"),
 		/// so MAX() yields a sortable timestamp the caller parses back.
 		/// </summary>
-		public Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType)
+		public Dictionary<string, ItemAnalytics> GetItemAnalytics(string userName, eDataType mediaType)
 		{
-			Dictionary<string, AnalyticsAggregate> aggregates = new Dictionary<string, AnalyticsAggregate>();
+			Dictionary<string, ItemAnalytics> itemAnalytics = new Dictionary<string, ItemAnalytics>();
 			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
 			try
 			{
@@ -1006,17 +1006,17 @@ namespace Pulse.Data
 					{
 						continue;
 					}
-					AnalyticsAggregate aggregate = new AnalyticsAggregate();
-					aggregate.PlayCount = reader.GetInt32(1);
+					ItemAnalytics itemData = new ItemAnalytics();
+					itemData.PlayCount = reader.GetInt32(1);
 					if (!reader.IsDBNull(2))
 					{
 						DateTime parsed;
 						if (DateTime.TryParse(reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind, out parsed))
 						{
-							aggregate.LastPlayed = parsed;
+							itemData.LastPlayed = parsed;
 						}
 					}
-					aggregates[mediaId] = aggregate;
+					itemAnalytics[mediaId] = itemData;
 				}
 				reader.Close();
 			}
@@ -1024,7 +1024,7 @@ namespace Pulse.Data
 			{
 				connection.Close();
 			}
-			return aggregates;
+			return itemAnalytics;
 		}
 
 		// SELECT from the users table. The caller layers per-user counts on top

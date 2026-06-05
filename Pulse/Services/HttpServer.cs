@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
 using Pulse;
 using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics;
 
 namespace Assistant.Services
 {
@@ -22,6 +23,7 @@ namespace Assistant.Services
 
 		private class ResultRouteAdapter
 		{
+			Stopwatch m_watch = new Stopwatch();
 			private Func<HttpContext, IResult> m_handler;
 			public ResultRouteAdapter(Func<HttpContext, IResult> handler)
 			{
@@ -29,8 +31,14 @@ namespace Assistant.Services
 			}
 			public void Invoke(HttpContext context)
 			{
+				m_watch.Restart();
 				IResult result = m_handler(context);
 				result.ExecuteAsync(context).Wait();
+				m_watch.Stop();
+
+				long responseBytes = context.Response.ContentLength ?? 0;
+				int status = context.Response.StatusCode;
+				Log.Info(0, "[" + m_watch.ElapsedMilliseconds + "ms] [" + status + "] [" + responseBytes + "B] " + context.Request.Path + context.Request.QueryString);
 			}
 		}
 

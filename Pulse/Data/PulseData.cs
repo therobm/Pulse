@@ -477,9 +477,9 @@ namespace Pulse.Data
 			m_db.RecordAnalyticsEvent(userName, analytics, occurredAt);
 		}
 
-		public Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType)
+		public Dictionary<string, ItemAnalytics> GetItemAnalytics(string userName, eDataType mediaType)
 		{
-			return m_db.GetStartedAggregates(userName, mediaType);
+			return m_db.GetItemAnalytics(userName, mediaType);
 		}
 
 		// Reads the users table via the persistence layer, layers the
