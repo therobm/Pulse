@@ -24,6 +24,7 @@ namespace Thump
 		Artist,
 		Playlist,
 		Genre,
+		Podcast,
 	}
 	public enum eTab
 	{
@@ -301,7 +302,14 @@ namespace Thump
 			detail.Initialize();
 			PushDetail(detail);
 		}
-		
+
+		public void OnPodcastSelected(PulsePodcast podcast)
+		{
+			PodcastDetailView detail = new PodcastDetailView(this, podcast);
+			detail.Initialize();
+			PushDetail(detail);
+		}
+
 		public void OnGenreSelected(PulseGenre genre)
 		{
 			GenreDetailView detail = new GenreDetailView(this, genre);
