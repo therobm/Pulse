@@ -482,10 +482,10 @@ namespace Pulse.Database
 
 						PulseAnalyticsEvent evt = new PulseAnalyticsEvent();
 
-						if (Enum.TryParse<eAction>(row.Action, out evt.Action))
+						if (!Enum.TryParse<eAction>(row.Action, out evt.Action))
 							evt.Action = eAction.Invalid;
 
-						if (Enum.TryParse<eResult>(row.Result, out evt.Result))
+						if (!Enum.TryParse<eResult>(row.Result, out evt.Result))
 							evt.Result = eResult.Invalid;
 
 						evt.ObjectType = row.ObjectType;

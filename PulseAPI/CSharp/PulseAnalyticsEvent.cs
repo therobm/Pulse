@@ -13,6 +13,7 @@ namespace PulseAPI.CSharp
 	/// </summary>
 	public enum eAction
 	{
+		Invalid,
 		// App lifecycle
 		Launch,
 		Quit,
@@ -42,8 +43,6 @@ namespace PulseAPI.CSharp
 		// Network / health
 		Connectivity,
 		Scrobble,
-		//
-		Invalid
 	}
 
 	/// <summary>
@@ -52,11 +51,11 @@ namespace PulseAPI.CSharp
 	/// </summary>
 	public enum eResult
 	{
+		Invalid,
 		OK,
 		Fail,
 		Timeout,
 		Cancelled,
-		Invalid
 	}
 
 	public class PulseAnalyticsSession
