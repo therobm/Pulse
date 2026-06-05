@@ -975,6 +975,40 @@ namespace Pulse.Series
 		}
 
 		/// <summary>
+		/// Writes the four backlog settings (PollIntervalMinutes,
+		/// Retention, RetentionValue, AutoDownload) for one series via
+		/// SeriesDB.UpdateFeedSettings, then kicks a background thread
+		/// that runs ApplyRetention + DownloadPendingForFeed against the
+		/// new settings so the change takes effect immediately rather
+		/// than waiting for the next poll cycle. Mirrors the
+		/// guarded-thread pattern used by AddPodcast for the same
+		/// reason: a settings change can imply hundreds of MB of media
+		/// movement and must not block the request thread.
+		/// </summary>
+		public void UpdatePodcastSettings(string seriesId, int pollIntervalMinutes, eRetentionPolicy retention, int retentionValue, bool autoDownload)
+		{
+			m_db.UpdateFeedSettings(seriesId, pollIntervalMinutes, retention, retentionValue, autoDownload);
+			Thread settingsThread = new Thread(RunSettingsApply);
+			settingsThread.IsBackground = true;
+			settingsThread.Name = "Pulse.PodcastSettingsApply";
+			settingsThread.Start(seriesId);
+		}
+
+		private void RunSettingsApply(object seriesIdObject)
+		{
+			string seriesId = (string)seriesIdObject;
+			try
+			{
+				ApplyRetention(seriesId);
+				DownloadPendingForFeed(seriesId);
+			}
+			catch (Exception ex)
+			{
+				Log.Error(-1, "Podcast settings apply failed for " + seriesId + ": " + ex.Message);
+			}
+		}
+
+		/// <summary>
 		/// Subscribe or unsubscribe a user from a series. Wraps
 		/// SeriesDB.SetSubscribed so callers don't have to format the
 		/// date_added sentinel themselves.
