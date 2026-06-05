@@ -9,11 +9,12 @@ using System.Text.Json;
 namespace Pulse.Data
 {
 	/// <summary>
-	/// Per-id rollup of the analytics event log for one media type: how many
-	/// 'Started' events the item has accrued and when it was most recently
-	/// started. Produced by <see cref="IPulseDatabase.GetStartedAggregates"/>.
+	/// Per-(user,item) play counter for one media type: how many 'Started' events
+	/// the item has accrued and when it was most recently started. Produced by
+	/// <see cref="IPulseDatabase.GetItemStats"/>, backed by the item_stats
+	/// table (v7).
 	/// </summary>
-	public class AnalyticsAggregate
+	public class ItemStats
 	{
 		public int PlayCount { get; set; }
 		public DateTime LastPlayed { get; set; }
@@ -63,20 +64,21 @@ namespace Pulse.Data
 		void SaveBookmark(string userName, string trackId, long positionMs, string comment);
 		void DeleteBookmark(string userName, string trackId);
 
-		// Append-only analytics event log (v6 schema). Each client-observed
-		// playback state change lands as one immutable row, stored both
-		// globally and per-user. Write-through, not cached. PulseSqliteDatabase
-		// implements it; PulseDatabaseBase keeps a no-op default.
-		void RecordAnalyticsEvent(string userName, PulseAnalytics analytics, DateTime occurredAt);
+		// Append-only playback event log (v6 schema, renamed in v7 to
+		// playback_events). Each client-observed playback state change lands as
+		// one immutable row, stored both globally and per-user. Write-through,
+		// not cached. PulseSqliteDatabase also upserts the item_stats counter
+		// on 'Started' events; PulseDatabaseBase keeps a no-op default.
+		void RecordPlaybackEvent(string userName, PulseAnalytics analytics, DateTime occurredAt);
 
 		/// <summary>
-		/// Aggregates the analytics event log for one media type, returning a
-		/// per-id count of 'Started' events and the most recent occurrence.
-		/// Scoped to a single user when <paramref name="userName"/> is non-empty,
+		/// Returns per-id item stats for one media type: 'Started' count and the
+		/// most recent occurrence, read from the item_stats counter (v7). Scoped
+		/// to a single user when <paramref name="userName"/> is non-empty,
 		/// otherwise rolled up across every user. PulseSqliteDatabase queries the
-		/// v6 table; PulseDatabaseBase returns an empty map.
+		/// table; PulseDatabaseBase returns an empty map.
 		/// </summary>
-		Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType);
+		Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType);
 
 		// Settings-page CRUD over the v5 `users` table plus the per-user rows in
 		// every other table (Flatline #201). PulseSqliteDatabase is the real
@@ -400,13 +402,13 @@ namespace Pulse.Data
 		{
 		}
 
-		public virtual void RecordAnalyticsEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
+		public virtual void RecordPlaybackEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
 		{
 		}
 
-		public virtual Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType)
+		public virtual Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType)
 		{
-			return new Dictionary<string, AnalyticsAggregate>();
+			return new Dictionary<string, ItemStats>();
 		}
 
 		// Base implementation walks the in-memory stores to synthesize a record

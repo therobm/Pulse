@@ -299,6 +299,36 @@ namespace Pulse.Database
 			";
 			steps.Add(v6);
 
+			// v7: ItemStats domain rename. The v6 analytics_events log is renamed
+			// to playback_events (the "analytics" in v6 conflated this business-
+			// logic playback log with the unrelated product-analytics sidecar DB);
+			// the raw event stream is kept intact. Alongside it, a per-(user,item)
+			// item_stats counter is introduced so the most-played shelves can read
+			// a single upserted row per item instead of re-aggregating the log on
+			// every request. Backfilled once from the existing 'Started' rows so
+			// existing data carries forward.
+			MigrationStep v7 = new MigrationStep();
+			v7.Version = 7;
+			v7.Sql = @"
+				ALTER TABLE analytics_events RENAME TO playback_events;
+
+				CREATE TABLE item_stats (
+					user_name TEXT NOT NULL DEFAULT '',
+					media_type TEXT NOT NULL,
+					media_id TEXT NOT NULL,
+					play_count INTEGER NOT NULL DEFAULT 0,
+					last_played TEXT NOT NULL DEFAULT '',
+					PRIMARY KEY (user_name, media_type, media_id)
+				);
+				CREATE INDEX idx_item_stats_type ON item_stats(media_type);
+
+				INSERT INTO item_stats (user_name, media_type, media_id, play_count, last_played)
+					SELECT user_name, media_type, media_id, COUNT(*), MAX(occurred_at)
+					FROM playback_events WHERE action = 'Started'
+					GROUP BY user_name, media_type, media_id;
+			";
+			steps.Add(v7);
+
 			return steps;
 		}
 	}
