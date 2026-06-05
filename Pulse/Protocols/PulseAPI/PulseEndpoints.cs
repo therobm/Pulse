@@ -83,6 +83,7 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("updatePodcast", UpdatePodcast);
 			RegisterRoute("subscribePodcast", SubscribePodcast);
 			RegisterRoute("unsubscribePodcast", UnsubscribePodcast);
+			RegisterRoute("searchPodcasts", SearchPodcasts);
 			RegisterRoute("episodeProgress", EpisodeProgress);
 		}
 
@@ -1577,6 +1578,50 @@ namespace Pulse.Protocols.PulseAPI
 				return RespondStatus(context, "add_failed");
 			}
 			return RespondObject(context, BuildPulsePodcast(series, user));
+		}
+
+		/// <summary>
+		/// Podcast discovery: searches the configured provider by name and
+		/// returns the hits as PulsePodcasts. These are NOT catalogued series -
+		/// they have no Id; the client adds one via AddPodcast using its FeedUrl.
+		/// CoverArt carries the provider's remote artwork URL directly (clients
+		/// load it as-is rather than through the coverArt endpoint).
+		/// </summary>
+		public IResult SearchPodcasts(HttpContext context)
+		{
+			string query = context.Request.Query["query"].FirstOrDefault();
+			if (string.IsNullOrEmpty(query))
+			{
+				query = context.Request.Query["q"].FirstOrDefault();
+			}
+
+			List<Pulse.Series.PodcastSearchResult> hits = m_podcastManager.SearchPodcasts(query);
+			List<PulsePodcast> pulsePodcasts = new List<PulsePodcast>();
+			for (int index = 0; index < hits.Count; index++)
+			{
+				pulsePodcasts.Add(BuildSearchResultPodcast(hits[index]));
+			}
+			return RespondList(context, pulsePodcasts);
+		}
+
+		/// <summary>
+		/// Maps a remote discovery hit to the PulsePodcast wire shape. Id is left
+		/// empty (not in the catalogue yet) and CoverArt holds the remote artwork
+		/// URL so the search UI can render it without a server-side cover.
+		/// </summary>
+		private PulsePodcast BuildSearchResultPodcast(Pulse.Series.PodcastSearchResult hit)
+		{
+			PulsePodcast pulsePodcast = new PulsePodcast();
+			pulsePodcast.Id = "";
+			pulsePodcast.Title = hit.Title;
+			pulsePodcast.Author = hit.Author;
+			pulsePodcast.Description = hit.Description;
+			pulsePodcast.CoverArt = hit.ArtworkUrl;
+			pulsePodcast.FeedUrl = hit.FeedUrl;
+			pulsePodcast.Subscribed = false;
+			pulsePodcast.EpisodeCount = 0;
+			pulsePodcast.ItemCount = 0;
+			return pulsePodcast;
 		}
 
 		/// <summary>

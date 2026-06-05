@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using Pulse.Database;
 using Pulse.MusicLibrary;
@@ -27,6 +28,7 @@ namespace Pulse.Series
 		private SeriesDBConnector m_connector;
 		private SeriesDB m_db;
 		private string m_musicPath;
+		private string m_podcastSearchUrl;
 		private Thread m_pollThread;
 
 		public PodcastManager(PulseConfig config)
@@ -45,6 +47,7 @@ namespace Pulse.Series
 #endif
 
 			m_musicPath = config.MusicPath;
+			m_podcastSearchUrl = config.PodcastSearchUrl;
 
 			string pulseDataRoot = Path.Combine(config.MusicPath, "PulseData");
 			if (!Directory.Exists(pulseDataRoot))
@@ -907,6 +910,99 @@ namespace Pulse.Series
 		public List<SeriesInfo> GetAllPodcasts()
 		{
 			return m_db.LoadAllSeriesByType(eSeriesType.Podcast);
+		}
+
+		/// <summary>
+		/// Discover podcasts by name through the configured search service
+		/// (PulseConfig.PodcastSearchUrl). Returns remote candidates the user
+		/// can add by FeedUrl; hits without a feed URL are dropped since they
+		/// cannot be subscribed. The server owns this entirely so swapping the
+		/// provider is a config change. Network/parse failures return an empty
+		/// list rather than throwing.
+		/// </summary>
+		public List<PodcastSearchResult> SearchPodcasts(string query)
+		{
+			List<PodcastSearchResult> results = new List<PodcastSearchResult>();
+			if (string.IsNullOrWhiteSpace(query))
+			{
+				return results;
+			}
+			if (string.IsNullOrWhiteSpace(m_podcastSearchUrl))
+			{
+				return results;
+			}
+
+			string url = m_podcastSearchUrl.Replace("{query}", Uri.EscapeDataString(query));
+			try
+			{
+				HttpResponseMessage response = s_httpClient.GetAsync(url).GetAwaiter().GetResult();
+				if (!response.IsSuccessStatusCode)
+				{
+					Log.Warning(-1, "Podcast search failed (" + ((int)response.StatusCode).ToString() + ") for query '" + query + "'");
+					return results;
+				}
+
+				string body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+				JsonDocument document = JsonDocument.Parse(body);
+				try
+				{
+					JsonElement root = document.RootElement;
+					JsonElement resultsElement;
+					bool hasResults = root.TryGetProperty("results", out resultsElement);
+					if (!hasResults || resultsElement.ValueKind != JsonValueKind.Array)
+					{
+						return results;
+					}
+
+					foreach (JsonElement entry in resultsElement.EnumerateArray())
+					{
+						string feedUrl = ReadJsonString(entry, "feedUrl");
+						if (string.IsNullOrWhiteSpace(feedUrl))
+						{
+							continue;
+						}
+						PodcastSearchResult result = new PodcastSearchResult();
+						result.Title = ReadJsonString(entry, "collectionName");
+						result.Author = ReadJsonString(entry, "artistName");
+						result.FeedUrl = feedUrl;
+						string artwork = ReadJsonString(entry, "artworkUrl600");
+						if (string.IsNullOrEmpty(artwork))
+						{
+							artwork = ReadJsonString(entry, "artworkUrl100");
+						}
+						result.ArtworkUrl = artwork;
+						results.Add(result);
+					}
+				}
+				finally
+				{
+					document.Dispose();
+				}
+			}
+			catch (Exception ex)
+			{
+				Log.Error(-1, "Podcast search error for query '" + query + "': " + ex.Message);
+			}
+			return results;
+		}
+
+		/// <summary>
+		/// Reads a string property from a JSON object, returning "" when the
+		/// property is missing or not a string. Keeps SearchPodcasts terse.
+		/// </summary>
+		private static string ReadJsonString(JsonElement element, string propertyName)
+		{
+			JsonElement value;
+			bool found = element.TryGetProperty(propertyName, out value);
+			if (!found)
+			{
+				return "";
+			}
+			if (value.ValueKind != JsonValueKind.String)
+			{
+				return "";
+			}
+			return value.GetString();
 		}
 
 		/// <summary>
