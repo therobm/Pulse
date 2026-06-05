@@ -24,13 +24,15 @@ namespace Pulse.Protocols.PulseAPI
 		IPulseRouteHost m_host;
 		PulseService m_pulseService;
 		MusicManager m_musicManager;
+		AnalyticsDB m_analyticsDB;
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseEndpoints(PulseService pulse, MusicManager musicManager)
+		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
+			m_analyticsDB = analyticsDB;
 			m_defaultCoverArt = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png"));
 		}
 
@@ -65,6 +67,8 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("unfavorite", Unfavorite);
 			RegisterRoute("reportAnalytics", ReportAnalytics);
 
+			RegisterRoute("ingestLog", PostIngestLog);
+			RegisterRoute("analytics", Getanalytics);
 
 			RegisterRoute("topItems", GetTop);
 
@@ -1407,5 +1411,99 @@ namespace Pulse.Protocols.PulseAPI
 		{
 			return RespondStatus(context, "not_implemented");
 		}
+
+		/// <summary>
+		/// analytics-log intake. Clients POST a PulseLogBatch describing a
+		/// window of client-side events (stream open/close, cache hits/misses,
+		/// HTTP request/response, player errors, etc). The body is JSON;
+		/// HttpServer sets AllowSynchronousIO so the synchronous read is legal.
+		/// The handler stamps received_at on the server clock and hands the
+		/// item to analyticsDB -- the request thread never touches the
+		/// database.
+		/// </summary>
+		public IResult PostIngestLog(HttpContext context)
+		{
+			string body;
+			using (StreamReader reader = new StreamReader(context.Request.Body))
+			{
+				body = reader.ReadToEnd();
+			}
+
+			if (string.IsNullOrEmpty(body))
+			{
+				return RespondStatus(context, "missing_body");
+			}
+
+			PulseAnalyticsBatch batch = PulseWire.Parse<PulseAnalyticsBatch>(body);
+			if (batch == null)
+			{
+				return RespondStatus(context, "missing_body");
+			}
+			if (string.IsNullOrEmpty(batch.SessionId))
+			{
+				return RespondStatus(context, "missing_id");
+			}
+			if (batch.Events == null || batch.Events.Count == 0)
+			{
+				return RespondStatus(context, "missing_events");
+			}
+
+			string receivedAt = DateTime.UtcNow.ToString("o");
+			m_analyticsDB.Enqueue(batch, receivedAt);
+			return Respond(context, new PulseResponse());
+		}
+
+		/// <summary>
+		/// analytics-log read endpoint. With ?session_id=... returns every
+		/// event for that session (optionally filtered by action and result),
+		/// ordered by client timestamp. With ?device_id=... returns every
+		/// session for that device, most recent first.
+		/// </summary>
+		public IResult Getanalytics(HttpContext context)
+		{
+			string sessionId = context.Request.Query["session_id"].FirstOrDefault();
+			string deviceId = context.Request.Query["device_id"].FirstOrDefault();
+
+			if (!string.IsNullOrEmpty(sessionId))
+			{
+				string actionFilter = context.Request.Query["action"].FirstOrDefault();
+				string resultFilter = context.Request.Query["result"].FirstOrDefault();
+				List<AnalyticsEventRow> events = m_analyticsDB.GetEventsForSession(sessionId, actionFilter, resultFilter);
+				AnalyticsEventsResponse response = new AnalyticsEventsResponse();
+				response.SessionId = sessionId;
+				response.Events = events;
+				return Results.Text(PulseWire.Serialize(response), "application/json");
+			}
+
+			if (!string.IsNullOrEmpty(deviceId))
+			{
+				List<AnalyticsSessionRow> sessions = m_analyticsDB.GetSessionsForDevice(deviceId);
+				AnalyticsSessionsResponse response = new AnalyticsSessionsResponse();
+				response.DeviceId = deviceId;
+				response.Sessions = sessions;
+				return Results.Text(PulseWire.Serialize(response), "application/json");
+			}
+
+			return RespondStatus(context, "missing_id");
+		}
+	}
+
+	/// <summary>
+	/// Response envelope for the /analytics events query. Plain public
+	/// fields; serialized through PulseWire which emits field names verbatim.
+	/// </summary>
+	public class AnalyticsEventsResponse
+	{
+		public string SessionId;
+		public List<AnalyticsEventRow> Events;
+	}
+
+	/// <summary>
+	/// Response envelope for the /analytics sessions query.
+	/// </summary>
+	public class AnalyticsSessionsResponse
+	{
+		public string DeviceId;
+		public List<AnalyticsSessionRow> Sessions;
 	}
 }

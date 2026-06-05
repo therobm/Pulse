@@ -277,6 +277,15 @@ namespace Thump.Pulse
 		public virtual void ReportAnalytics(string mediaId, eDataType mediaType, PulseAnalytics.eAction action)
 		{
 		}
+
+		/// <summary>
+		/// Ship a batch of structured product-analytics events to the server.
+		/// Base implementation is a no-op; the Pulse client overrides this to
+		/// POST the batch. Mirrors ReportAnalytics' fire-and-forget shape.
+		/// </summary>
+		public virtual void PostAnalytics(PulseAnalyticsBatch batch)
+		{
+		}
 	
 		public byte[] GetTrackAudioFromCache(string trackId)
 		{

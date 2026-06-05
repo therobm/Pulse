@@ -23,6 +23,8 @@ namespace Thump.Data
 		private const string s_keyUsername = "thump.login.username";
 		private const string s_keyPassword = "thump.login.password";
 		private const string s_keyUseHttps = "thump.login.useHttps";
+		private const string s_keyAnalyticsEnabled = "thump.analytics.enabled";
+		private const string s_keyDeviceId = "thump.analytics.deviceId";
 
 		public static eNormalizeVolume GetNormalizeVolume()
 		{
@@ -126,6 +128,38 @@ namespace Thump.Data
 		public static void SetUseHttps(bool value)
 		{
 			Preferences.Set(s_keyUseHttps, value);
+		}
+
+		/// <summary>
+		/// Whether the product-analytics pipeline ships usage events to the
+		/// server. Opt-in: defaults to false so a fresh install does not POST
+		/// analytics until the user enables it.
+		/// </summary>
+		public static bool GetAnalyticsEnabled()
+		{
+			return Preferences.Get(s_keyAnalyticsEnabled, false);
+		}
+		/// <summary>Persist the analytics opt-in toggle.</summary>
+		public static void SetAnalyticsEnabled(bool value)
+		{
+			Preferences.Set(s_keyAnalyticsEnabled, value);
+		}
+
+		/// <summary>
+		/// Returns a stable per-install identifier for analytics batches.
+		/// Generates a new Guid on first call and persists it so subsequent
+		/// launches reuse the same value.
+		/// </summary>
+		public static string GetOrCreateDeviceId()
+		{
+			string stored = Preferences.Get(s_keyDeviceId, "");
+			if (!string.IsNullOrEmpty(stored))
+			{
+				return stored;
+			}
+			string created = System.Guid.NewGuid().ToString();
+			Preferences.Set(s_keyDeviceId, created);
+			return created;
 		}
 	}
 }

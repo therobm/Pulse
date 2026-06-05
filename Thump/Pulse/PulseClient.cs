@@ -861,6 +861,44 @@ namespace Thump.Pulse
 			});
 		}
 
+		/// <summary>
+		/// POST a batch of structured product-analytics events to the server's
+		/// pulse_v1/ingestLog route. Swallows its own failures: the analytics
+		/// path must never feed errors back into Log.* or it loops.
+		/// </summary>
+		public override void PostAnalytics(PulseAnalyticsBatch batch)
+		{
+			if (batch == null)
+			{
+				return;
+			}
+			if (batch.Events == null || batch.Events.Count == 0)
+			{
+				return;
+			}
+			if (!IsOnline())
+			{
+				return;
+			}
+			Task.Run(() =>
+			{
+				try
+				{
+					string url = BuildPulseUrl("ingestLog", null);
+					string json = PulseWire.Serialize(batch);
+					// logPerf=false: analytics POSTs must not spam the perf log.
+					HttpPostJson(url, json, false);
+				}
+				catch (Exception ex)
+				{
+					// CRITICAL: the analytics path swallows its OWN failures.
+					// Do NOT call Log.Exception / Log.Error / any Log.* here -- that
+					// would feed the failure back into the pipeline (recursion / loop).
+					System.Diagnostics.Debug.WriteLine("[analytics] PostAnalytics failed: " + ex.Message);
+				}
+			});
+		}
+
 		// The recentlyPlayed feed is heterogeneous: each element carries its own
 		// Kind discriminator. Probe Kind off the raw element, then re-parse into
 		// the matching concrete PulseObject subtype.

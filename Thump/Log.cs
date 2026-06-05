@@ -66,7 +66,7 @@ namespace Thump
 			string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " [" + level + "] " + message;
 			Debug.WriteLine(line);
 
-			if (saveToDisk) 
+			if (saveToDisk)
 			{
 				lock (s_fileLock)
 				{
