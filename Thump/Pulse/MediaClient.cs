@@ -279,11 +279,11 @@ namespace Thump.Pulse
 		}
 
 		/// <summary>
-		/// Ship a batch of structured diagnostic events to the server. Base
-		/// implementation is a no-op; the Pulse client overrides this to POST
-		/// the batch. Mirrors ReportAnalytics' fire-and-forget shape.
+		/// Ship a batch of structured product-analytics events to the server.
+		/// Base implementation is a no-op; the Pulse client overrides this to
+		/// POST the batch. Mirrors ReportAnalytics' fire-and-forget shape.
 		/// </summary>
-		public virtual void PostDiagnostics(PulseLogBatch batch)
+		public virtual void PostAnalytics(PulseLogBatch batch)
 		{
 		}
 	

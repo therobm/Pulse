@@ -23,8 +23,8 @@ namespace Thump.Data
 		private const string s_keyUsername = "thump.login.username";
 		private const string s_keyPassword = "thump.login.password";
 		private const string s_keyUseHttps = "thump.login.useHttps";
-		private const string s_keyRemoteLogging = "thump.diagnostics.remoteLoggingEnabled";
-		private const string s_keyDeviceId = "thump.diagnostics.deviceId";
+		private const string s_keyAnalyticsEnabled = "thump.analytics.enabled";
+		private const string s_keyDeviceId = "thump.analytics.deviceId";
 
 		public static eNormalizeVolume GetNormalizeVolume()
 		{
@@ -131,22 +131,22 @@ namespace Thump.Data
 		}
 
 		/// <summary>
-		/// Whether the structured diagnostic log pipeline ships events to the
+		/// Whether the product-analytics pipeline ships usage events to the
 		/// server. Opt-in: defaults to false so a fresh install does not POST
-		/// diagnostics until the user enables it.
+		/// analytics until the user enables it.
 		/// </summary>
-		public static bool GetRemoteLoggingEnabled()
+		public static bool GetAnalyticsEnabled()
 		{
-			return Preferences.Get(s_keyRemoteLogging, false);
+			return Preferences.Get(s_keyAnalyticsEnabled, false);
 		}
-		/// <summary>Persist the remote-logging toggle.</summary>
-		public static void SetRemoteLoggingEnabled(bool value)
+		/// <summary>Persist the analytics opt-in toggle.</summary>
+		public static void SetAnalyticsEnabled(bool value)
 		{
-			Preferences.Set(s_keyRemoteLogging, value);
+			Preferences.Set(s_keyAnalyticsEnabled, value);
 		}
 
 		/// <summary>
-		/// Returns a stable per-install identifier for diagnostic batches.
+		/// Returns a stable per-install identifier for analytics batches.
 		/// Generates a new Guid on first call and persists it so subsequent
 		/// launches reuse the same value.
 		/// </summary>
