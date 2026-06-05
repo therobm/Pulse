@@ -89,6 +89,15 @@ namespace Thump.Views
 				m_image.IsVisible = false;
 				return;
 			}
+			// Podcast discovery hits carry a remote artwork URL instead of a server
+			// cover id (see PulseClient.SearchPodcasts); load those straight from
+			// the provider CDN rather than through the coverArt endpoint.
+			if (coverArtId.StartsWith("http://") || coverArtId.StartsWith("https://"))
+			{
+				m_image.Source = ImageSource.FromUri(new System.Uri(coverArtId));
+				m_image.IsVisible = true;
+				return;
+			}
 			if (MainView.MediaClient == null)
 			{
 				m_image.IsVisible = false;

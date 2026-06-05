@@ -243,6 +243,7 @@ namespace Thump.Pulse
 		public abstract void GetArtist(string artistId, Action<PulseArtistDetails> onComplete);
 		public abstract void GetPodcasts(Action<List<PulsePodcast>> onComplete);
 		public abstract void GetAllPodcasts(Action<List<PulsePodcast>> onComplete);
+		public abstract void SearchPodcasts(string query, Action<List<PulsePodcast>> onComplete);
 		public abstract void GetPodcast(string podcastId, Action<PulsePodcastDetails> onComplete);
 		public abstract void AddPodcast(string feedUrl, bool subscribe, Action<PulsePodcast> onComplete);
 		public abstract void SubscribePodcast(string podcastId, Action<bool> onComplete);

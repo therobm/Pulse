@@ -330,6 +330,28 @@ namespace Thump.Pulse
 			});
 		}
 
+		public override void SearchPodcasts(string query, Action<List<PulsePodcast>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, new List<PulsePodcast>());
+				return;
+			}
+			string url = BuildPulseUrl("searchPodcasts", "query=" + Uri.EscapeDataString(query));
+			FetchObject<List<PulsePodcast>>(url, false, (hits) =>
+			{
+				List<PulsePodcast> results = new List<PulsePodcast>();
+				if (hits != null)
+				{
+					results = hits;
+				}
+				if (onComplete != null)
+				{
+					onComplete(results);
+				}
+			});
+		}
+
 		public override void AddPodcast(string feedUrl, bool subscribe, Action<PulsePodcast> onComplete)
 		{
 			if (!IsOnline())

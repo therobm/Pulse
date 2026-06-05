@@ -15,10 +15,12 @@ namespace Thump.Views
 		private Label m_albumsHeader;
 		private Label m_songsHeader;
 		private Label m_playlistsHeader;
+		private Label m_podcastsHeader;
 		private CollectionView m_artistResults;
 		private CollectionView m_albumResults;
 		private CollectionView m_songResults;
 		private CollectionView m_playlistResults;
+		private CollectionView m_podcastResults;
 
 		public SearchView(MainView mainView) : base(mainView)
 		{
@@ -134,6 +136,17 @@ namespace Thump.Views
 			m_songResults.ItemTemplate = new DataTemplate(typeof(TrackRowTile));
 			stack.Children.Add(m_songResults);
 
+			m_podcastsHeader = new Label();
+			m_podcastsHeader.Text = "Podcasts";
+			m_podcastsHeader.FontSize = 16;
+			m_podcastsHeader.TextColor = ThumpColors.OnBackground;
+			m_podcastsHeader.Padding = new Thickness(16, 0);
+			stack.Children.Add(m_podcastsHeader);
+
+			m_podcastResults = new CollectionView();
+			m_podcastResults.ItemTemplate = new DataTemplate(typeof(PodcastResultTile));
+			stack.Children.Add(m_podcastResults);
+
 			m_artistsHeader.IsVisible = false;
 			m_artistResults.IsVisible = false;
 			m_albumsHeader.IsVisible = false;
@@ -142,6 +155,8 @@ namespace Thump.Views
 			m_songResults.IsVisible = false;
 			m_playlistsHeader.IsVisible = false;
 			m_playlistResults.IsVisible = false;
+			m_podcastsHeader.IsVisible = false;
+			m_podcastResults.IsVisible = false;
 
 			scroll.Content = stack;
 
@@ -162,6 +177,23 @@ namespace Thump.Views
 				return;
 			}
 			MainView.MediaClient.Search(query, OnSearchResults);
+			MainView.MediaClient.SearchPodcasts(query, OnPodcastSearchResults);
+		}
+
+		private void OnPodcastSearchResults(System.Collections.Generic.List<PulsePodcast> podcasts)
+		{
+			if (podcasts != null && podcasts.Count > 0)
+			{
+				m_podcastResults.ItemsSource = podcasts;
+				m_podcastResults.IsVisible = true;
+				m_podcastsHeader.IsVisible = true;
+			}
+			else
+			{
+				m_podcastResults.ItemsSource = null;
+				m_podcastResults.IsVisible = false;
+				m_podcastsHeader.IsVisible = false;
+			}
 		}
 
 		private void OnSearchResults(PulseSearchData results)
