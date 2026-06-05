@@ -121,15 +121,11 @@ namespace Pulse.Database
 					date_added TEXT NOT NULL,
 					narrator TEXT,
 					collection TEXT,
-					collection_index INTEGER NOT NULL DEFAULT 0
-				);
-
-				CREATE TABLE podcast_feeds (
-					series_id TEXT PRIMARY KEY REFERENCES series(id) ON DELETE CASCADE,
-					feed_url TEXT NOT NULL,
+					collection_index INTEGER NOT NULL DEFAULT 0,
+					feed_url TEXT,
 					last_polled TEXT,
 					poll_interval_minutes INTEGER NOT NULL DEFAULT 60,
-					retention_policy TEXT NOT NULL,
+					retention_policy TEXT,
 					retention_value INTEGER NOT NULL DEFAULT 0,
 					auto_download INTEGER NOT NULL DEFAULT 0
 				);
@@ -152,7 +148,7 @@ namespace Pulse.Database
 				CREATE INDEX idx_series_items_series_id ON series_items(series_id);
 				CREATE INDEX idx_series_items_downloaded ON series_items(series_id, local_path);
 
-				CREATE TABLE item_progress (
+				CREATE TABLE series_items_user_data (
 					item_id TEXT NOT NULL REFERENCES series_items(id) ON DELETE CASCADE,
 					user_name TEXT NOT NULL,
 					position_seconds INTEGER NOT NULL DEFAULT 0,
@@ -161,7 +157,7 @@ namespace Pulse.Database
 					PRIMARY KEY (item_id, user_name)
 				);
 
-				CREATE TABLE user_series (
+				CREATE TABLE series_user_data (
 					series_id TEXT NOT NULL REFERENCES series(id) ON DELETE CASCADE,
 					user_name TEXT NOT NULL,
 					subscribed INTEGER NOT NULL DEFAULT 0,
@@ -171,7 +167,7 @@ namespace Pulse.Database
 					PRIMARY KEY (series_id, user_name)
 				);
 
-				CREATE INDEX idx_user_series_user ON user_series(user_name);
+				CREATE INDEX idx_series_user_data_user ON series_user_data(user_name);
 			";
 			steps.Add(v1);
 

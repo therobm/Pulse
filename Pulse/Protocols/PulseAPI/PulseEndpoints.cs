@@ -1457,7 +1457,7 @@ namespace Pulse.Protocols.PulseAPI
 			pulsePodcast.ItemCount = downloaded.Count;
 			pulsePodcast.UnplayedCount = m_podcastManager.GetUnplayedCount(series.Id, user);
 
-			UserSeriesInfo userSeries = m_podcastManager.GetUserSeries(series.Id, user);
+			SeriesUserDataInfo userSeries = m_podcastManager.GetUserSeries(series.Id, user);
 			if (userSeries != null)
 			{
 				pulsePodcast.Subscribed = userSeries.Subscribed;
@@ -1465,12 +1465,8 @@ namespace Pulse.Protocols.PulseAPI
 				pulsePodcast.LastPlayed = userSeries.LastPlayed;
 			}
 
-			PodcastFeedInfo feed = m_podcastManager.GetFeed(series.Id);
-			if (feed != null)
-			{
-				pulsePodcast.FeedUrl = feed.FeedUrl;
-				pulsePodcast.AutoDownload = feed.AutoDownload;
-			}
+			pulsePodcast.FeedUrl = series.FeedUrl;
+			pulsePodcast.AutoDownload = series.AutoDownload;
 
 			return pulsePodcast;
 		}
@@ -1487,7 +1483,7 @@ namespace Pulse.Protocols.PulseAPI
 			episode.Duration = item.DurationSeconds;
 			episode.CoverArt = "se-" + item.SeriesId;
 
-			ItemProgressInfo progress = m_podcastManager.GetProgress(item.Id, user);
+			SeriesItemUserDataInfo progress = m_podcastManager.GetProgress(item.Id, user);
 			if (progress != null)
 			{
 				episode.PositionSeconds = progress.PositionSeconds;
