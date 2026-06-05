@@ -36,6 +36,13 @@ namespace Pulse.Series
 			{
 				environmentName = "Production";
 			}
+#if DEBUG
+			if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
+			{
+				Log.Warning(-1, "Debugger attached: forcing Staging environment for series DB (config said '" + environmentName + "').");
+			}
+			environmentName = "Staging";
+#endif
 
 			m_musicPath = config.MusicPath;
 
