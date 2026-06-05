@@ -1017,30 +1017,53 @@ namespace Pulse.Data
 			}
 		}
 
-		// Append-only INSERT into the v6 analytics_events log. Write-through,
-		// one row per event, never updated or deleted (except on user wipe).
-		// action and media_type are stored as the enum *names* to match how
-		// PulseWire serializes them on the wire. A null/empty media id is
-		// dropped -- an event with no subject is not useful to aggregate.
-		public override void RecordAnalyticsEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
+		// Append-only INSERT into the playback_events log -- the raw immutable
+		// event stream (one row per Started/Paused/Skipped/Completed). On a
+		// Started event we additionally upsert the play_stats counter so the
+		// most-played shelves read a single row per (user, item) rather than
+		// re-aggregating the log on every request. Same connection for both
+		// statements; log insert first so the counter never gets ahead of the
+		// log. A null/empty media id is dropped -- an event with no subject is
+		// not useful to count.
+		public override void RecordPlaybackEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
 		{
 			if (analytics == null || string.IsNullOrEmpty(analytics.MediaId))
 			{
 				return;
 			}
 
+			string normalizedUser = userName ?? "";
+			string occurredIso = occurredAt.ToString("o");
+			string actionName = analytics.Action.ToString();
+			string typeName = analytics.MediaType.ToString();
+
 			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
 			try
 			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = @"INSERT INTO analytics_events (occurred_at, user_name, action, media_type, media_id)
+				SqliteCommand logCommand = connection.CreateCommand();
+				logCommand.CommandText = @"INSERT INTO playback_events (occurred_at, user_name, action, media_type, media_id)
 					VALUES ($occurred, $u, $action, $type, $id);";
-				command.Parameters.AddWithValue("$occurred", occurredAt.ToString("o"));
-				command.Parameters.AddWithValue("$u", userName ?? "");
-				command.Parameters.AddWithValue("$action", analytics.Action.ToString());
-				command.Parameters.AddWithValue("$type", analytics.MediaType.ToString());
-				command.Parameters.AddWithValue("$id", analytics.MediaId);
-				command.ExecuteNonQuery();
+				logCommand.Parameters.AddWithValue("$occurred", occurredIso);
+				logCommand.Parameters.AddWithValue("$u", normalizedUser);
+				logCommand.Parameters.AddWithValue("$action", actionName);
+				logCommand.Parameters.AddWithValue("$type", typeName);
+				logCommand.Parameters.AddWithValue("$id", analytics.MediaId);
+				logCommand.ExecuteNonQuery();
+
+				if (analytics.Action == PulseAnalytics.eAction.Started)
+				{
+					SqliteCommand upsertCommand = connection.CreateCommand();
+					upsertCommand.CommandText = @"INSERT INTO play_stats (user_name, media_type, media_id, play_count, last_played)
+						VALUES ($u, $type, $id, 1, $occurred)
+						ON CONFLICT(user_name, media_type, media_id) DO UPDATE SET
+							play_count = play_count + 1,
+							last_played = CASE WHEN excluded.last_played > last_played THEN excluded.last_played ELSE last_played END;";
+					upsertCommand.Parameters.AddWithValue("$u", normalizedUser);
+					upsertCommand.Parameters.AddWithValue("$type", typeName);
+					upsertCommand.Parameters.AddWithValue("$id", analytics.MediaId);
+					upsertCommand.Parameters.AddWithValue("$occurred", occurredIso);
+					upsertCommand.ExecuteNonQuery();
+				}
 			}
 			finally
 			{
@@ -1049,32 +1072,33 @@ namespace Pulse.Data
 		}
 
 		/// <summary>
-		/// Rolls up the v6 analytics_events log for one media type. Counts only
-		/// 'Started' events (a collection/track being started is the unit of a
-		/// "play"); media_type and action are matched against the stored enum
-		/// names. When userName is non-empty the rollup is scoped to that user,
-		/// otherwise it spans every user. occurred_at is stored round-trip ("o"),
-		/// so MAX() yields a sortable timestamp the caller parses back.
+		/// Reads the play_stats counter for one media type. Each row already holds
+		/// a Started count and the most-recent occurred_at -- no log aggregation
+		/// at query time. When userName is non-empty the read is scoped to that
+		/// user's counters; otherwise the per-user counters are summed across
+		/// every user (and last_played taken as MAX). last_played is round-trip
+		/// "o" so the caller parses it back. Empty media_id rows are skipped.
 		/// </summary>
-		public override Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType)
+		public override Dictionary<string, ItemPlayStats> GetItemPlayStats(string userName, eDataType mediaType)
 		{
-			Dictionary<string, AnalyticsAggregate> aggregates = new Dictionary<string, AnalyticsAggregate>();
+			Dictionary<string, ItemPlayStats> stats = new Dictionary<string, ItemPlayStats>();
 			SqliteConnection connection = SqliteConnectionFactory.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
 				bool scopedToUser = !string.IsNullOrEmpty(userName);
-				string userClause = scopedToUser ? " AND user_name = $u" : "";
-				command.CommandText = "SELECT media_id, COUNT(*) AS plays, MAX(occurred_at) AS last"
-					+ " FROM analytics_events"
-					+ " WHERE action = $action AND media_type = $type" + userClause
-					+ " GROUP BY media_id;";
-				command.Parameters.AddWithValue("$action", PulseAnalytics.eAction.Started.ToString());
-				command.Parameters.AddWithValue("$type", mediaType.ToString());
 				if (scopedToUser)
 				{
+					command.CommandText = "SELECT media_id, play_count, last_played FROM play_stats"
+						+ " WHERE media_type = $type AND user_name = $u;";
 					command.Parameters.AddWithValue("$u", userName);
 				}
+				else
+				{
+					command.CommandText = "SELECT media_id, SUM(play_count), MAX(last_played) FROM play_stats"
+						+ " WHERE media_type = $type GROUP BY media_id;";
+				}
+				command.Parameters.AddWithValue("$type", mediaType.ToString());
 
 				SqliteDataReader reader = command.ExecuteReader();
 				while (reader.Read())
@@ -1084,17 +1108,24 @@ namespace Pulse.Data
 					{
 						continue;
 					}
-					AnalyticsAggregate aggregate = new AnalyticsAggregate();
-					aggregate.PlayCount = reader.GetInt32(1);
+					ItemPlayStats entry = new ItemPlayStats();
+					if (!reader.IsDBNull(1))
+					{
+						entry.PlayCount = reader.GetInt32(1);
+					}
 					if (!reader.IsDBNull(2))
 					{
-						DateTime parsed;
-						if (DateTime.TryParse(reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind, out parsed))
+						string lastPlayedStr = reader.GetString(2);
+						if (!string.IsNullOrEmpty(lastPlayedStr))
 						{
-							aggregate.LastPlayed = parsed;
+							DateTime parsed;
+							if (DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out parsed))
+							{
+								entry.LastPlayed = parsed;
+							}
 						}
 					}
-					aggregates[mediaId] = aggregate;
+					stats[mediaId] = entry;
 				}
 				reader.Close();
 			}
@@ -1102,7 +1133,7 @@ namespace Pulse.Data
 			{
 				connection.Close();
 			}
-			return aggregates;
+			return stats;
 		}
 
 		// SELECT from the users table, then layer the in-memory per-user counts
@@ -1259,7 +1290,8 @@ namespace Pulse.Data
 							"playqueue_state",
 							"playqueue_entries",
 							"bookmarks",
-							"analytics_events"
+							"playback_events",
+							"play_stats"
 						};
 						for (int index = 0; index < tables.Length; index++)
 						{
@@ -1332,11 +1364,17 @@ namespace Pulse.Data
 					delBookmarks.Parameters.AddWithValue("$u", userName);
 					delBookmarks.ExecuteNonQuery();
 
-					SqliteCommand delAnalytics = connection.CreateCommand();
-					delAnalytics.Transaction = transaction;
-					delAnalytics.CommandText = "DELETE FROM analytics_events WHERE user_name = $u;";
-					delAnalytics.Parameters.AddWithValue("$u", userName);
-					delAnalytics.ExecuteNonQuery();
+					SqliteCommand delPlaybackEvents = connection.CreateCommand();
+					delPlaybackEvents.Transaction = transaction;
+					delPlaybackEvents.CommandText = "DELETE FROM playback_events WHERE user_name = $u;";
+					delPlaybackEvents.Parameters.AddWithValue("$u", userName);
+					delPlaybackEvents.ExecuteNonQuery();
+
+					SqliteCommand delPlayStats = connection.CreateCommand();
+					delPlayStats.Transaction = transaction;
+					delPlayStats.CommandText = "DELETE FROM play_stats WHERE user_name = $u;";
+					delPlayStats.Parameters.AddWithValue("$u", userName);
+					delPlayStats.ExecuteNonQuery();
 
 					SqliteCommand delUsersRow = connection.CreateCommand();
 					delUsersRow.Transaction = transaction;
