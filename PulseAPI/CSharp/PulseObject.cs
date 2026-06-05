@@ -18,7 +18,7 @@ namespace PulseAPI.CSharp
 		Genre,
 		GenreDetails,
 		Podcast,
-		PodcastEpisodes,
+		PodcastDetails,
 		PodcastEpisode,
 		CoverArt,
 		SongData,

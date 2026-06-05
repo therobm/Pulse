@@ -21,12 +21,12 @@ namespace PulseAPI.CSharp
 	public class PulsePodcastDetails : PulseObject
 	{
 		public PulsePodcast Series;
-		public List<PulseEpisode> Episodes;
+		public List<PulsePodcastEpisode> Episodes;
 
 		public PulsePodcastDetails()
 		{
-			Episodes = new List<PulseEpisode>();
-			Kind = eDataType.PodcastEpisodes;
+			Episodes = new List<PulsePodcastEpisode>();
+			Kind = eDataType.PodcastDetails;
 		}
 	}
 }

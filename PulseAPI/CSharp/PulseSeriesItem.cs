@@ -4,7 +4,7 @@ namespace PulseAPI.CSharp
 	/// Wire-type base for a single item belonging to a Series
 	/// (episode or chapter). Concrete subclass sets Kind in its ctor.
 	/// </summary>
-	public class PulseSeriesItem : PulseObject
+	public abstract class PulseSeriesItem : PulseObject
 	{
 		public string SeriesId;
 		public string Title;
@@ -19,11 +19,11 @@ namespace PulseAPI.CSharp
 	/// <summary>
 	/// Wire-type for a podcast episode belonging to a PulsePodcast.
 	/// </summary>
-	public class PulseEpisode : PulseSeriesItem
+	public class PulsePodcastEpisode : PulseSeriesItem
 	{
 		public string PublishedDate;
 
-		public PulseEpisode()
+		public PulsePodcastEpisode()
 		{
 			Kind = eDataType.PodcastEpisode;
 		}

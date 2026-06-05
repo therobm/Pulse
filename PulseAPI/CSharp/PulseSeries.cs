@@ -4,7 +4,7 @@ namespace PulseAPI.CSharp
 	/// Wire-type base for a Series (podcast or audiobook). Shared
 	/// metadata only; the concrete subclass sets Kind in its ctor.
 	/// </summary>
-	public class PulseSeries : PulseObject
+	public abstract class PulseSeries : PulseObject
 	{
 		public string Title;
 		public string Author;
