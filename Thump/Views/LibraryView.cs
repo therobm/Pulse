@@ -49,6 +49,7 @@ namespace Thump.Views
 		private Button m_buttonPlaylists;
 		private Button m_buttonPodcasts;
 		private Button m_buttonGenres;
+		private Button m_addPodcastButton;
 
 		private Button m_sortAlphabetical;
 		private Button m_sortDateReleased;
@@ -108,15 +109,42 @@ namespace Thump.Views
 
 		private View BuildTitle()
 		{
+			Grid titleGrid = new Grid();
+
+			ColumnDefinition headerColumn = new ColumnDefinition();
+			headerColumn.Width = GridLength.Star;
+			ColumnDefinition addColumn = new ColumnDefinition();
+			addColumn.Width = GridLength.Auto;
+			titleGrid.ColumnDefinitions.Add(headerColumn);
+			titleGrid.ColumnDefinitions.Add(addColumn);
+
 			Label header = new Label();
 			header.Text = "Library";
 			header.FontSize = 24;
 			header.FontAttributes = FontAttributes.Bold;
 			header.TextColor = ThumpColors.OnBackground;
 			header.Padding = new Thickness(16, 12);
+			header.VerticalOptions = LayoutOptions.Center;
+			Grid.SetColumn(header, 0);
+			titleGrid.Children.Add(header);
 
-			Grid.SetRow(header, 0);
-			return header;
+			m_addPodcastButton = new Button();
+			m_addPodcastButton.Text = "+ Add Podcast";
+			m_addPodcastButton.TextColor = s_buttonInactiveText;
+			m_addPodcastButton.BackgroundColor = s_buttonInactiveBackground;
+			m_addPodcastButton.CornerRadius = 16;
+			m_addPodcastButton.FontSize = 13;
+			m_addPodcastButton.Padding = new Thickness(14, 4);
+			m_addPodcastButton.HeightRequest = 32;
+			m_addPodcastButton.Margin = new Thickness(0, 0, 16, 0);
+			m_addPodcastButton.VerticalOptions = LayoutOptions.Center;
+			m_addPodcastButton.IsVisible = false;
+			m_addPodcastButton.Clicked += OnAddPodcastClicked;
+			Grid.SetColumn(m_addPodcastButton, 1);
+			titleGrid.Children.Add(m_addPodcastButton);
+
+			Grid.SetRow(titleGrid, 0);
+			return titleGrid;
 		}
 
 		private View BuildButtons()
@@ -547,6 +575,18 @@ namespace Thump.Views
 			{
 				SetActiveSort(eLibrarySort.Alphabetical);
 			}
+
+			m_addPodcastButton.IsVisible = button == eLibraryButton.Podcasts;
+		}
+
+		public void ReloadPodcasts()
+		{
+			MainView.MediaClient.GetPodcasts(OnPodcastsLoaded);
+		}
+
+		private void OnAddPodcastClicked(object sender, EventArgs e)
+		{
+			m_mainView.OnAddPodcast();
 		}
 
 		private void SetActiveSort(eLibrarySort sort)

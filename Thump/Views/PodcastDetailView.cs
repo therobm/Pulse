@@ -14,6 +14,7 @@ namespace Thump.Views
 		private ArtImage m_art;
 		private Label m_titleLabel;
 		private Label m_metaLabel;
+		private Button m_subscribeButton;
 		private CollectionView m_episodeList;
 		private PulsePodcast m_podcast;
 		private List<PulsePodcastEpisode> m_episodes;
@@ -132,6 +133,15 @@ namespace Thump.Views
 			playButton.Clicked += OnPlayClicked;
 			buttonStack.Children.Add(playButton);
 
+			m_subscribeButton = new Button();
+			m_subscribeButton.TextColor = ThumpColors.OnBackground;
+			m_subscribeButton.BackgroundColor = ThumpColors.Surface;
+			m_subscribeButton.CornerRadius = 8;
+			m_subscribeButton.FontSize = 14;
+			m_subscribeButton.Padding = new Thickness(20, 8);
+			m_subscribeButton.Clicked += OnSubscribeClicked;
+			buttonStack.Children.Add(m_subscribeButton);
+
 			ScrollView scroller = new ScrollView();
 			scroller.Orientation = ScrollOrientation.Horizontal;
 			scroller.HorizontalScrollBarVisibility = ScrollBarVisibility.Never;
@@ -158,6 +168,7 @@ namespace Thump.Views
 			m_titleLabel.Text = m_podcast.Title;
 			m_metaLabel.Text = m_podcast.EpisodeCount + " episodes";
 			m_art.SetCoverArt(m_podcast.CoverArt);
+			UpdateSubscribeButtonLabel();
 
 			// The podcast from the list endpoint carries no episodes; fetch the
 			// full podcast (GetPodcast) which includes its episodes.
@@ -179,11 +190,24 @@ namespace Thump.Views
 				m_titleLabel.Text = m_podcast.Title;
 				m_metaLabel.Text = m_podcast.EpisodeCount + " episodes";
 				m_art.SetCoverArt(m_podcast.CoverArt);
+				UpdateSubscribeButtonLabel();
 			}
 
 			m_episodes = podcastDetails.Episodes;
 			m_episodeTracks = BuildEpisodeTracks(m_episodes);
 			m_episodeList.ItemsSource = m_episodes;
+		}
+
+		private void UpdateSubscribeButtonLabel()
+		{
+			if (m_podcast.Subscribed)
+			{
+				m_subscribeButton.Text = "Unsubscribe";
+			}
+			else
+			{
+				m_subscribeButton.Text = "Subscribe";
+			}
 		}
 
 		private List<PulseTrack> BuildEpisodeTracks(List<PulsePodcastEpisode> episodes)
@@ -256,6 +280,32 @@ namespace Thump.Views
 				return;
 			}
 			m_mainView.OnPlayTracks(m_episodeTracks, 0, eQueueSource.Podcast, m_podcast.Id);
+		}
+
+		private void OnSubscribeClicked(object sender, EventArgs e)
+		{
+			if (m_podcast.Subscribed)
+			{
+				MainView.MediaClient.UnsubscribePodcast(m_podcast.Id, (ok) =>
+				{
+					if (ok)
+					{
+						m_podcast.Subscribed = false;
+						UpdateSubscribeButtonLabel();
+					}
+				});
+			}
+			else
+			{
+				MainView.MediaClient.SubscribePodcast(m_podcast.Id, (ok) =>
+				{
+					if (ok)
+					{
+						m_podcast.Subscribed = true;
+						UpdateSubscribeButtonLabel();
+					}
+				});
+			}
 		}
 	}
 }

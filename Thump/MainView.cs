@@ -677,6 +677,24 @@ namespace Thump
 			}
 		}
 
+		public async void OnAddPodcast()
+		{
+			string url = await DisplayPromptAsync("Add Podcast", "Enter the podcast's RSS feed URL", "Add", "Cancel", "https://...", -1, Microsoft.Maui.Keyboard.Url, "");
+			if (string.IsNullOrWhiteSpace(url))
+			{
+				return;
+			}
+			string feedUrl = url.Trim();
+			m_mediaClient.AddPodcast(feedUrl, true, (podcast) =>
+			{
+				// CompleteOnMain marshals to the UI thread already.
+				if (m_libraryView != null)
+				{
+					m_libraryView.ReloadPodcasts();
+				}
+			});
+		}
+
 		public void OnPlaybackStateChanged(ePlaybackState state)
 		{
 			m_playbackState = state;
