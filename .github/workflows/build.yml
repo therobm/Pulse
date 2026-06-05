@@ -1,10 +1,10 @@
 name: Pulse Build and Release
 
 # Unified build strategy (shared with Flatline). A merge to master publishes a
-# self-contained win-x64 single-file exe versioned straight from the VERSION
-# file (Major.Minor.Build), then increments the build component in VERSION and
+# self-contained win-x64 single-file exe versioned straight from the VERSION_PULSE
+# file (Major.Minor.Build), then increments the build component in VERSION_PULSE and
 # commits it back so the next release picks up the new number. To bump the
-# major or minor version, edit VERSION by hand and reset the build (e.g.
+# major or minor version, edit VERSION_PULSE by hand and reset the build (e.g.
 # 0.3.21 -> 0.4.0). The build commit is made with the repo token and marked
 # [skip ci], so it does not trigger another run. The self-contained/single-file
 # publish settings live in Pulse/Pulse.csproj.
@@ -17,7 +17,7 @@ on:
     paths:
       - 'Pulse/**'
       - 'PulseAPI/**'
-      - 'VERSION'
+      - 'VERSION_PULSE'
 
 permissions:
   contents: write
@@ -45,9 +45,9 @@ jobs:
         id: version
         shell: bash
         run: |
-          version=$(tr -d ' \t\r\n' < VERSION)
+          version=$(tr -d ' \t\r\n' < VERSION_PULSE)
           if ! echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "VERSION must be MAJOR.MINOR.BUILD; got '$version'" >&2
+            echo "VERSION_PULSE must be MAJOR.MINOR.BUILD; got '$version'" >&2
             exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
@@ -77,7 +77,7 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Increment build number in VERSION
+      - name: Increment build number in VERSION_PULSE
         shell: bash
         run: |
           version="${{ steps.version.outputs.version }}"
@@ -85,9 +85,9 @@ jobs:
           minor=$(echo "$version" | cut -d. -f2)
           build=$(echo "$version" | cut -d. -f3)
           next="${major}.${minor}.$((build + 1))"
-          printf '%s\n' "$next" > VERSION
+          printf '%s\n' "$next" > VERSION_PULSE
           git config user.name "Vibratron"
           git config user.email "vibratron@flatline.local"
-          git add VERSION
+          git add VERSION_PULSE
           git commit -m "Bump build to ${next} [skip ci]"
           git push origin HEAD:master
