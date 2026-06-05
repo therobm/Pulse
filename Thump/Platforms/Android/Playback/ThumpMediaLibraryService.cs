@@ -29,8 +29,7 @@ namespace Thump.Playback.AndroidOS
 
 	public class ThumpLoadErrorPolicy : DefaultLoadErrorHandlingPolicy
 	{
-		private const int MAX_RETRIES = 5;
-		private const long BASE_DELAY_MS = 500;
+		private const int MAX_RETRIES = 6;
 
 		public override long GetRetryDelayMsFor(LoadErrorHandlingPolicyLoadErrorInfo loadErrorInfo)
 		{
@@ -38,9 +37,10 @@ namespace Thump.Playback.AndroidOS
 			{
 				return C.TimeUnset;
 			}
-			return BASE_DELAY_MS * loadErrorInfo.ErrorCount;
+			return 500L * (1L << (loadErrorInfo.ErrorCount - 1));
 		}
 	}
+
 	/// <summary>
 	/// A lightweight process for Android's media player to leverage so it can access
 	/// Thump specific data and functionality
