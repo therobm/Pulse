@@ -20,6 +20,7 @@ using System.Threading;
 using Pulse.Protocols.LegacyPulse;
 using Pulse.Protocols.PulseAPI;
 using Pulse.Database;
+using Pulse.Series;
 
 namespace Pulse
 {
@@ -79,6 +80,7 @@ namespace Pulse
 		private Pulse.Protocols.LegacyPulse.LegacyPulseAPI m_legacyPulse;
 		private MusicManager m_musicManager;
 		private AnalyticsDB m_analyticsDB;
+		private PodcastManager m_podcastManager;
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 		private object m_spotifySyncsLock = new object();
 		// Pending Spotify OAuth attempts, keyed by a server-issued random state
@@ -100,6 +102,9 @@ namespace Pulse
 			m_musicManager.Run(config.MusicPath);
 
 			m_analyticsDB = new AnalyticsDB(config);
+
+			m_podcastManager = new PodcastManager(config);
+			m_podcastManager.Run();
 
 			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_analyticsDB);
 			m_legacyPulse = new global::Pulse.Protocols.LegacyPulse.LegacyPulseAPI(this, m_musicManager);

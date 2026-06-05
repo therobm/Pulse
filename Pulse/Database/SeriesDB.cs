@@ -243,6 +243,35 @@ namespace Pulse.Database
 			return result;
 		}
 
+		/// <summary>
+		/// Targeted UPDATE that touches only the last_polled column for a
+		/// feed row. Used by the poll-refresh path so re-ingesting a feed
+		/// does not clobber user-set fields (PollIntervalMinutes, Retention,
+		/// RetentionValue, AutoDownload) the way a full UpsertPodcastFeed
+		/// would. If no row exists for the seriesId, this is a no-op.
+		/// </summary>
+		public void SetFeedLastPolled(string seriesId, string lastPolledIso)
+		{
+			if (string.IsNullOrEmpty(seriesId))
+			{
+				return;
+			}
+
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "UPDATE podcast_feeds SET last_polled = $last_polled WHERE series_id = $series_id;";
+				command.Parameters.AddWithValue("$last_polled", lastPolledIso);
+				command.Parameters.AddWithValue("$series_id", seriesId);
+				command.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
 		public void UpsertPodcastFeed(PodcastFeedInfo feed)
 		{
 			if (feed == null)
