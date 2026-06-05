@@ -171,6 +171,9 @@
 
 	PulseClient.prototype.coverArtUrl = function (id, size) {
 		if (!id) { return ''; }
+		// Podcast discovery hits carry a remote artwork URL in place of a server
+		// cover id (see searchPodcasts); load those directly.
+		if (id.indexOf('http://') === 0 || id.indexOf('https://') === 0) { return id; }
 		return this.url('coverArt', { id: id, size: size });
 	};
 
@@ -313,6 +316,14 @@
 	// PulsePodcast objects.
 	PulseClient.prototype.podcasts = function () {
 		return this._contents('podcasts');
+	};
+
+	// Discover podcasts by name through the server's configured search provider.
+	// Resolves to an array of PulsePodcast hits: each has Title/Author/FeedUrl
+	// and a remote artwork URL in CoverArt, but no Id (not catalogued yet). Add
+	// one via addPodcast(feedUrl, true).
+	PulseClient.prototype.searchPodcasts = function (query) {
+		return this._contents('searchPodcasts', { query: query });
 	};
 
 	// The full podcast catalogue on the server, regardless of subscription.
