@@ -21,7 +21,10 @@ namespace PulseAPI.CSharp
 		PodcastEpisodes,
 		PodcastEpisode,
 		CoverArt,
-		SongData
+		SongData,
+		Audiobook,
+		Chapter,
+		AudiobookDetails
 	}
 
 	public class PulseObject
