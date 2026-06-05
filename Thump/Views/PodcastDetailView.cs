@@ -245,6 +245,7 @@ namespace Thump.Views
 				track.CoverArt = episode.CoverArt;
 			}
 			track.Duration = episode.Duration;
+			track.IsSeries = true;
 			return track;
 		}
 

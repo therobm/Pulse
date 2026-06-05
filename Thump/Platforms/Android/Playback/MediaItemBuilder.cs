@@ -532,6 +532,13 @@ namespace Thump.Playback.AndroidOS
 			{
 				metadata.SetArtworkUri(artworkUri);
 			}
+			// Flag series items so ThumpForwardingPlayer can redirect next/prev to a 10s seek.
+			if (track.IsSeries)
+			{
+				Android.OS.Bundle extras = new Android.OS.Bundle();
+				extras.PutBoolean("is_series", true);
+				metadata.SetExtras(extras);
+			}
 
 			Android.Net.Uri uri = GetURI(track.Id);
 			MediaItem.Builder builder = new MediaItem.Builder();
