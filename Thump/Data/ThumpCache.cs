@@ -209,7 +209,7 @@ namespace Thump.Data
 					}
 					else 
 					{ 
-						retData = (byte[])result;
+						retData = result as byte[];
 						if (retData == null)
 						{
 							Log.Error("Invalid data cached for " + url);

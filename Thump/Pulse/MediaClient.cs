@@ -313,7 +313,7 @@ namespace Thump.Pulse
 			{
 				return retVal;
 			}
-			HttpResponseMessage response = HttpGet_Internal(url, true, token);
+			using HttpResponseMessage response = HttpGet_Internal(url, true, token);
 			if (!response.IsSuccessStatusCode)
 			{
 				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
@@ -339,7 +339,7 @@ namespace Thump.Pulse
 			{
 				return retVal;
 			}
-			HttpResponseMessage response = HttpGet_Internal(url, logPerf, CancellationToken.None);
+			using HttpResponseMessage response = HttpGet_Internal(url, logPerf, CancellationToken.None);
 			if (!response.IsSuccessStatusCode)
 			{
 				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
@@ -512,7 +512,7 @@ namespace Thump.Pulse
 		// root. Returns the response body on success, null on failure.
 		protected string HttpPostJson(string url, string json, bool logPerf)
 		{
-			HttpResponseMessage response = HttpPostJson_Internal(url, json, logPerf);
+			using HttpResponseMessage response = HttpPostJson_Internal(url, json, logPerf);
 			if (!response.IsSuccessStatusCode)
 			{
 				Log.Error("HTTP POST failed: " + url + " status: " + response.StatusCode);
