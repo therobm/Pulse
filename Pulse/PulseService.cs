@@ -27,6 +27,7 @@ namespace Pulse
 	public interface IPulseRouteHost
 	{
 		void RegisterRoute(string path, Action<HttpContext> handler);
+		void RegisterPrefixRoute(string path, Action<HttpContext> handler);
 		void RegisterResultRoute(string path, Func<HttpContext, IResult> handler);
 	}
 
@@ -259,7 +260,7 @@ namespace Pulse
 
 
 			host.RegisterRoute("spotify/callback", HandleSpotifyCallback);
-			host.RegisterRoute("spotify/authorize", HandleSpotifyAuthorize);
+			host.RegisterPrefixRoute("spotify/authorize", HandleSpotifyAuthorize);
 		}
 
 		private class PendingSpotifyAuth
