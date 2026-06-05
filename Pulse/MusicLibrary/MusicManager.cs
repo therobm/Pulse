@@ -256,7 +256,7 @@ namespace Pulse.MusicLibrary
 
 
 
-		private IPulseDatabase m_database;
+		private PulseSqliteDatabase m_database;
 		private object m_missingLock = new object();
 		private LidarrSync m_lidarrSync;
 		private Thread m_scanThread;

@@ -11,7 +11,7 @@ namespace Pulse.Data
 	/// <summary>
 	/// Per-id rollup of the analytics event log for one media type: how many
 	/// 'Started' events the item has accrued and when it was most recently
-	/// started. Produced by <see cref="IPulseDatabase.GetStartedAggregates"/>.
+	/// started. Produced by <see cref="PulseDatabaseBase.GetStartedAggregates"/>.
 	/// </summary>
 	public class AnalyticsAggregate
 	{
@@ -19,76 +19,7 @@ namespace Pulse.Data
 		public DateTime LastPlayed { get; set; }
 	}
 
-	public interface IPulseDatabase
-	{
-		int GetTrackCount();
-		int GetAlbumCount();
-		int GetArtistCount();
-		PulseAnalyticsInfo GetAnalytics();
-
-		TrackInfo GetTrack(string id);
-		AlbumInfo GetAlbum(string id);
-		ArtistInfo GetArtist(string id);
-		List<TrackInfo> GetAllTracks();
-		List<AlbumInfo> GetAllAlbums();
-		List<ArtistInfo> GetAllArtists();
-		bool TrackExists(string trackId);
-
-		void SetRating(string trackId, int rating);
-		void UpdateStar(string userName, string trackId, string albumId, string artistId, bool starred);
-		ArtistInfo GetOrCreateArtist(string id, string name);
-		AlbumInfo GetOrCreateAlbum(string id, string name, string artistId, string artistName, int year, string genre);
-		void AddTrack(TrackInfo track, string albumId);
-		bool RemoveTrack(string trackId);
-
-
-		PlaylistInfo GetPlaylist(string id);
-		List<PlaylistInfo> GetAllPlaylists(string userName);
-		List<TrackInfo> GetPlaylistTracks(string playlistId);
-		void DeletePlaylist(string playlistId);
-		void CreateOrUpdate(PlaylistInfo playlist);
-		void CreateOrUpdate(ArtistInfo artist);
-
-
-		void Save(string reason);
-
-		// Subsonic getPlayQueue / savePlayQueue / getBookmarks support (Flatline
-		// #168). Written through directly to the persistence layer -- not cached
-		// in memory and not part of the per-PulseInfo dirty flow. PulseSqliteDatabase
-		// implements them against the v4 schema; PulseDatabaseBase keeps no-op
-		// defaults.
-		PlayQueueInfo GetPlayQueue(string userName);
-		void SavePlayQueue(string userName, List<string> trackIds, string currentTrackId, long positionMs, string changedBy);
-		List<BookmarkInfo> GetBookmarks(string userName);
-		void SaveBookmark(string userName, string trackId, long positionMs, string comment);
-		void DeleteBookmark(string userName, string trackId);
-
-		// Append-only analytics event log (v6 schema). Each client-observed
-		// playback state change lands as one immutable row, stored both
-		// globally and per-user. Write-through, not cached. PulseSqliteDatabase
-		// implements it; PulseDatabaseBase keeps a no-op default.
-		void RecordAnalyticsEvent(string userName, PulseAnalytics analytics, DateTime occurredAt);
-
-		/// <summary>
-		/// Aggregates the analytics event log for one media type, returning a
-		/// per-id count of 'Started' events and the most recent occurrence.
-		/// Scoped to a single user when <paramref name="userName"/> is non-empty,
-		/// otherwise rolled up across every user. PulseSqliteDatabase queries the
-		/// v6 table; PulseDatabaseBase returns an empty map.
-		/// </summary>
-		Dictionary<string, AnalyticsAggregate> GetStartedAggregates(string userName, eDataType mediaType);
-
-		// Settings-page CRUD over the v5 `users` table plus the per-user rows in
-		// every other table (Flatline #201). PulseSqliteDatabase is the real
-		// implementation; PulseDatabaseBase keeps in-memory no-op defaults.
-		List<UserRecord> GetAllUsers();
-		UserRecord GetUser(string name);
-		string CreateUser(string name, string displayName, bool isAdmin);
-		string UpdateUser(string oldName, string newName, string displayName, bool isAdmin);
-		void DeleteUser(string userName);
-	}
-
-	public abstract class PulseDatabaseBase : IPulseDatabase
+	public abstract class PulseDatabaseBase
 	{
 		public int GetTrackCount()
 		{

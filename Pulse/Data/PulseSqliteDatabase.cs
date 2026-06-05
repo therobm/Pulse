@@ -9,7 +9,7 @@ using System.Diagnostics;
 namespace Pulse.Data
 {
 	/// <summary>
-	/// SQLite-backed implementation of IPulseDatabase. In-memory model lives in
+	/// SQLite-backed database. In-memory model lives in
 	/// PulseDatabaseBase (dictionaries) -- SQLite is the persistence layer only.
 	/// Reads hit the dicts; writes flip m_bIsDirty and are flushed to SQLite on Save().
 	///
