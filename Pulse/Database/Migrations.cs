@@ -299,11 +299,11 @@ namespace Pulse.Database
 			";
 			steps.Add(v6);
 
-			// v7: replace the append-only analytics_events log with a per-(user, item)
-			// play counter. The log was only ever read to produce a Started-count and
-			// last-played per object; an incremental counter gives the same answer in
-			// bounded space with O(1) writes and a keyed read. Backfill the counter from
-			// the existing Started events, then drop the log.
+			// v7: add a per-(user, item) play counter that backs GetItemAnalytics, so
+			// the most-played read is a bounded keyed lookup instead of a COUNT/GROUP BY
+			// over the analytics_events log on every shelf load. The log itself stays --
+			// it remains the raw record of every playback event. Backfill the counter
+			// from the existing Started events so current counts carry over.
 			MigrationStep v7 = new MigrationStep();
 			v7.Version = 7;
 			v7.Sql = @"
@@ -322,8 +322,6 @@ namespace Pulse.Database
 					FROM analytics_events
 					WHERE action = 'Started'
 					GROUP BY user_name, media_type, media_id;
-
-				DROP TABLE analytics_events;
 			";
 			steps.Add(v7);
 
