@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
+using System.Threading;
 using Pulse.Database;
 using Pulse.MusicLibrary;
 
@@ -11,10 +12,12 @@ namespace Pulse.Series
 	/// <summary>
 	/// Facade over the series database for the podcast subset, sibling to
 	/// MusicManager. Owns a SeriesDBConnector pointed at PulseData/
-	/// pulse_series_{env}.db plus the SeriesDB it talks through. Holds no
-	/// poll thread, no download pipeline, no HTTP routing -- those land in
-	/// a later task. The single static HttpClient is reused for every fetch
-	/// so RSS polls don't churn TCP/TLS state.
+	/// pulse_series_{env}.db plus the SeriesDB it talks through, and (when
+	/// Run() is called) a single background poll thread that walks every
+	/// feed on its configured interval, refreshes the RSS, downloads
+	/// pending media, and applies the retention policy. The single static
+	/// HttpClient is reused for every fetch so RSS polls and media GETs
+	/// don't churn TCP/TLS state.
 	/// </summary>
 	public class PodcastManager
 	{
@@ -22,6 +25,8 @@ namespace Pulse.Series
 
 		private SeriesDBConnector m_connector;
 		private SeriesDB m_db;
+		private string m_musicPath;
+		private Thread m_pollThread;
 
 		public PodcastManager(PulseConfig config)
 		{
@@ -30,6 +35,8 @@ namespace Pulse.Series
 			{
 				environmentName = "Production";
 			}
+
+			m_musicPath = config.MusicPath;
 
 			string pulseDataRoot = Path.Combine(config.MusicPath, "PulseData");
 			if (!Directory.Exists(pulseDataRoot))
@@ -73,12 +80,30 @@ namespace Pulse.Series
 		}
 
 		/// <summary>
+		/// Returns the on-disk directory where episode media (and the
+		/// cached artwork file) for this series live. Creates the path on
+		/// demand so callers can immediately write into it without their
+		/// own mkdir step. Layout: {MusicPath}/PulseData/Podcasts/{seriesId}.
+		/// </summary>
+		public string GetSeriesMediaDir(string seriesId)
+		{
+			string podcastsRoot = Path.Combine(m_musicPath, "PulseData", "Podcasts");
+			string seriesDir = Path.Combine(podcastsRoot, seriesId);
+			if (!Directory.Exists(seriesDir))
+			{
+				Directory.CreateDirectory(seriesDir);
+			}
+			return seriesDir;
+		}
+
+		/// <summary>
 		/// Offline-testable core of feed ingest: parse the supplied stream,
-		/// upsert the series + podcast_feeds rows, then diff parsed item
-		/// guids against what's already stored and batch-insert only the
-		/// new ones. The caller owns the Stream's lifetime. ArtworkPath is
-		/// set to the remote channel image URL for now -- localising it to
-		/// PulseData is a later task.
+		/// upsert the series row, refresh series_items, and update only the
+		/// LastPolled column on the existing podcast_feeds row. Feed
+		/// settings (PollIntervalMinutes, Retention, RetentionValue,
+		/// AutoDownload) are NOT touched here -- they are set once at
+		/// AddPodcast time and only changed by deliberate user action; a
+		/// poll cycle must never clobber them.
 		/// </summary>
 		public void IngestFeedStream(string seriesId, string feedUrl, Stream feedXml)
 		{
@@ -101,18 +126,17 @@ namespace Pulse.Series
 			series.Author = parsed.Channel.Author;
 			series.Description = parsed.Channel.Description;
 			series.ArtworkPath = parsed.Channel.ArtworkUrl;
+			// Preserve a previously-cached local artwork path across a
+			// re-poll; otherwise a freshly parsed (remote) URL would
+			// overwrite the localised one and re-trigger a fetch.
+			if (existingSeries != null && !string.IsNullOrEmpty(existingSeries.ArtworkPath) && !existingSeries.ArtworkPath.StartsWith("http"))
+			{
+				series.ArtworkPath = existingSeries.ArtworkPath;
+			}
 			series.DateAdded = dateAdded;
 			m_db.UpsertSeries(series);
 
-			PodcastFeedInfo feed = new PodcastFeedInfo();
-			feed.SeriesId = seriesId;
-			feed.FeedUrl = feedUrl;
-			feed.PollIntervalMinutes = 60;
-			feed.Retention = eRetentionPolicy.KeepN;
-			feed.RetentionValue = 10;
-			feed.AutoDownload = true;
-			feed.LastPolled = nowIso;
-			m_db.UpsertPodcastFeed(feed);
+			m_db.SetFeedLastPolled(seriesId, nowIso);
 
 			List<string> existingGuids = m_db.LoadItemGuidsForSeries(seriesId);
 			HashSet<string> existingSet = new HashSet<string>(existingGuids);
@@ -163,10 +187,29 @@ namespace Pulse.Series
 		/// IngestFeedStream, then optionally records a subscription for
 		/// userName. The seriesId is derived deterministically from the
 		/// feed URL so re-adding the same feed lands on the same row.
+		/// First-add only: creates the podcast_feeds row with default
+		/// PollIntervalMinutes / Retention / AutoDownload values if none
+		/// exists yet -- subsequent calls leave the user's settings alone.
+		/// After ingest the series artwork is cached locally and any
+		/// already-eligible items begin downloading.
 		/// </summary>
 		public SeriesInfo AddPodcast(string feedUrl, string userName, bool subscribe)
 		{
 			string seriesId = MusicManager.GenerateID(feedUrl);
+
+			PodcastFeedInfo existingFeed = m_db.LoadPodcastFeed(seriesId);
+			if (existingFeed == null)
+			{
+				PodcastFeedInfo feed = new PodcastFeedInfo();
+				feed.SeriesId = seriesId;
+				feed.FeedUrl = feedUrl;
+				feed.PollIntervalMinutes = 60;
+				feed.Retention = eRetentionPolicy.KeepN;
+				feed.RetentionValue = 10;
+				feed.AutoDownload = true;
+				feed.LastPolled = "";
+				m_db.UpsertPodcastFeed(feed);
+			}
 
 			HttpResponseMessage response = s_httpClient.GetAsync(feedUrl).GetAwaiter().GetResult();
 			try
@@ -194,7 +237,548 @@ namespace Pulse.Series
 				m_db.SetSubscribed(seriesId, userName, true, nowIso);
 			}
 
+			SeriesInfo storedSeries = GetSeries(seriesId);
+			if (storedSeries != null)
+			{
+				CacheArtwork(storedSeries);
+			}
+			DownloadPendingForFeed(seriesId);
+
 			return GetSeries(seriesId);
+		}
+
+		/// <summary>
+		/// Downloads one item's media to {MusicPath}/PulseData/Podcasts/
+		/// {seriesId}/{itemId}{ext}, stamping LocalPath, FileSizeBytes,
+		/// DurationSeconds (probed from TagLib when the RSS had none), and
+		/// DownloadState back onto the row. Streams the HTTP body straight
+		/// to disk so memory stays flat regardless of episode size. Never
+		/// re-throws -- a single bad download must not stop the poll loop;
+		/// the item is marked Failed and the next cycle can retry.
+		/// </summary>
+		public void DownloadItem(SeriesItemInfo item)
+		{
+			if (item == null)
+			{
+				return;
+			}
+			if (string.IsNullOrEmpty(item.MediaSourceUrl))
+			{
+				return;
+			}
+			bool alreadyOnDisk = !string.IsNullOrEmpty(item.LocalPath) && File.Exists(item.LocalPath);
+			if (alreadyOnDisk)
+			{
+				return;
+			}
+
+			item.DownloadState = eDownloadState.Downloading;
+			m_db.UpsertItem(item);
+
+			string extension = ExtensionForMediaSourceUrl(item.MediaSourceUrl);
+			string seriesDir = GetSeriesMediaDir(item.SeriesId);
+			string targetPath = Path.Combine(seriesDir, item.Id + extension);
+
+			try
+			{
+				HttpResponseMessage response = s_httpClient.GetAsync(item.MediaSourceUrl, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+				try
+				{
+					response.EnsureSuccessStatusCode();
+					Stream responseStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+					try
+					{
+						FileStream fileStream = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None);
+						try
+						{
+							responseStream.CopyTo(fileStream);
+						}
+						finally
+						{
+							fileStream.Close();
+						}
+					}
+					finally
+					{
+						responseStream.Close();
+					}
+				}
+				finally
+				{
+					response.Dispose();
+				}
+
+				FileInfo info = new FileInfo(targetPath);
+				item.LocalPath = targetPath;
+				item.FileSizeBytes = info.Length;
+				if (item.DurationSeconds == 0)
+				{
+					item.DurationSeconds = ProbeDurationSeconds(targetPath);
+				}
+				item.DownloadState = eDownloadState.Downloaded;
+				m_db.UpsertItem(item);
+				Log.Info(-1, "Podcast downloaded: " + item.Title);
+			}
+			catch (Exception ex)
+			{
+				item.DownloadState = eDownloadState.Failed;
+				m_db.UpsertItem(item);
+				Log.Warning(-1, "Podcast download failed: " + item.Title + " -- " + ex.Message);
+				if (File.Exists(targetPath))
+				{
+					try
+					{
+						File.Delete(targetPath);
+					}
+					catch (Exception deleteEx)
+					{
+						Log.Warning(-1, "Podcast partial delete failed: " + targetPath + " -- " + deleteEx.Message);
+					}
+				}
+			}
+		}
+
+		/// <summary>
+		/// Walks the keep set produced by the feed's retention policy and
+		/// invokes DownloadItem for any keep-set item that isn't already
+		/// Downloaded (or whose LocalPath no longer points at a real file).
+		/// Honors AutoDownload: if the user turned auto-download off, this
+		/// is a no-op even when retention selects items.
+		/// </summary>
+		public void DownloadPendingForFeed(string seriesId)
+		{
+			PodcastFeedInfo feed = m_db.LoadPodcastFeed(seriesId);
+			if (feed == null)
+			{
+				return;
+			}
+			if (!feed.AutoDownload)
+			{
+				return;
+			}
+
+			List<SeriesItemInfo> items = m_db.LoadItemsForSeries(seriesId);
+			List<SeriesItemInfo> keepSet = ComputeKeepSet(items, feed);
+
+			int keepCount = keepSet.Count;
+			for (int keepIndex = 0; keepIndex < keepCount; keepIndex++)
+			{
+				SeriesItemInfo candidate = keepSet[keepIndex];
+				bool fileMissing = string.IsNullOrEmpty(candidate.LocalPath) || !File.Exists(candidate.LocalPath);
+				bool needsDownload = candidate.DownloadState != eDownloadState.Downloaded || fileMissing;
+				if (needsDownload)
+				{
+					DownloadItem(candidate);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Best-effort duration probe via TagLib. Returns 0 when the file
+		/// is unsupported or corrupt rather than propagating the exception
+		/// -- a missing duration is a cosmetic loss, not a download
+		/// failure. Used by DownloadItem only when the feed didn't supply
+		/// an itunes:duration.
+		/// </summary>
+		public int ProbeDurationSeconds(string filePath)
+		{
+			try
+			{
+				TagLib.File tagFile = TagLib.File.Create(filePath);
+				try
+				{
+					int seconds = (int)tagFile.Properties.Duration.TotalSeconds;
+					return seconds;
+				}
+				finally
+				{
+					tagFile.Dispose();
+				}
+			}
+			catch (Exception ex)
+			{
+				Log.Warning(-1, "Podcast duration probe failed: " + filePath + " -- " + ex.Message);
+				return 0;
+			}
+		}
+
+		/// <summary>
+		/// Applies the feed's retention policy: items not in the keep set
+		/// have their local file deleted and their row reset to
+		/// Discovered / LocalPath="" (the metadata row is preserved so the
+		/// item can be re-downloaded later without re-ingesting the feed).
+		/// KeepAll culls nothing; KeepN keeps the newest N by
+		/// PublishedDate; KeepDays keeps anything within the last N days.
+		/// </summary>
+		public void ApplyRetention(string seriesId)
+		{
+			PodcastFeedInfo feed = m_db.LoadPodcastFeed(seriesId);
+			if (feed == null)
+			{
+				return;
+			}
+			if (feed.Retention == eRetentionPolicy.KeepAll)
+			{
+				return;
+			}
+
+			List<SeriesItemInfo> items = m_db.LoadItemsForSeries(seriesId);
+			List<SeriesItemInfo> keepSet = ComputeKeepSet(items, feed);
+			HashSet<string> keepIds = new HashSet<string>();
+			int keepCount = keepSet.Count;
+			for (int keepIndex = 0; keepIndex < keepCount; keepIndex++)
+			{
+				keepIds.Add(keepSet[keepIndex].Id);
+			}
+
+			int itemCount = items.Count;
+			for (int itemIndex = 0; itemIndex < itemCount; itemIndex++)
+			{
+				SeriesItemInfo item = items[itemIndex];
+				if (item.DownloadState != eDownloadState.Downloaded)
+				{
+					continue;
+				}
+				bool kept = keepIds.Contains(item.Id);
+				if (kept)
+				{
+					continue;
+				}
+
+				if (!string.IsNullOrEmpty(item.LocalPath) && File.Exists(item.LocalPath))
+				{
+					try
+					{
+						File.Delete(item.LocalPath);
+					}
+					catch (Exception ex)
+					{
+						Log.Warning(-1, "Podcast retention delete failed: " + item.LocalPath + " -- " + ex.Message);
+					}
+				}
+				item.LocalPath = "";
+				item.DownloadState = eDownloadState.Discovered;
+				m_db.UpsertItem(item);
+			}
+		}
+
+		/// <summary>
+		/// Localises a series' artwork: if ArtworkPath is still a remote
+		/// URL, downloads it to {seriesDir}/artwork.jpg and rewrites the
+		/// series row to point at the local file. Skips work if a local
+		/// artwork file is already present on disk. Failures leave the
+		/// remote URL intact -- a missing thumbnail is not worth aborting
+		/// a poll cycle for.
+		/// </summary>
+		public void CacheArtwork(SeriesInfo series)
+		{
+			if (series == null)
+			{
+				return;
+			}
+			if (string.IsNullOrEmpty(series.ArtworkPath))
+			{
+				return;
+			}
+			if (!series.ArtworkPath.StartsWith("http"))
+			{
+				return;
+			}
+
+			string seriesDir = GetSeriesMediaDir(series.Id);
+			string artworkPath = Path.Combine(seriesDir, "artwork.jpg");
+			if (File.Exists(artworkPath))
+			{
+				series.ArtworkPath = artworkPath;
+				m_db.UpsertSeries(series);
+				return;
+			}
+
+			try
+			{
+				HttpResponseMessage response = s_httpClient.GetAsync(series.ArtworkPath, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+				try
+				{
+					response.EnsureSuccessStatusCode();
+					Stream responseStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+					try
+					{
+						FileStream fileStream = new FileStream(artworkPath, FileMode.Create, FileAccess.Write, FileShare.None);
+						try
+						{
+							responseStream.CopyTo(fileStream);
+						}
+						finally
+						{
+							fileStream.Close();
+						}
+					}
+					finally
+					{
+						responseStream.Close();
+					}
+				}
+				finally
+				{
+					response.Dispose();
+				}
+
+				series.ArtworkPath = artworkPath;
+				m_db.UpsertSeries(series);
+			}
+			catch (Exception ex)
+			{
+				Log.Warning(-1, "Podcast artwork cache failed: " + series.Title + " -- " + ex.Message);
+				if (File.Exists(artworkPath))
+				{
+					try
+					{
+						File.Delete(artworkPath);
+					}
+					catch (Exception deleteEx)
+					{
+						Log.Warning(-1, "Podcast artwork partial delete failed: " + artworkPath + " -- " + deleteEx.Message);
+					}
+				}
+			}
+		}
+
+		/// <summary>
+		/// One complete refresh of a single feed: HTTP GET the feed URL,
+		/// ingest into the DB (series + items + LastPolled), localise the
+		/// artwork if still remote, pull any items that retention says
+		/// should be on disk, and cull anything that retention no longer
+		/// wants. Any feed-level failure (network, XML, etc.) is logged
+		/// and swallowed so a single bad feed never tears down the poll
+		/// thread.
+		/// </summary>
+		public void RefreshFeed(string seriesId)
+		{
+			PodcastFeedInfo feed = m_db.LoadPodcastFeed(seriesId);
+			if (feed == null)
+			{
+				return;
+			}
+			if (string.IsNullOrEmpty(feed.FeedUrl))
+			{
+				return;
+			}
+
+			try
+			{
+				HttpResponseMessage response = s_httpClient.GetAsync(feed.FeedUrl).GetAwaiter().GetResult();
+				try
+				{
+					response.EnsureSuccessStatusCode();
+					Stream contentStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+					try
+					{
+						IngestFeedStream(seriesId, feed.FeedUrl, contentStream);
+					}
+					finally
+					{
+						contentStream.Close();
+					}
+				}
+				finally
+				{
+					response.Dispose();
+				}
+
+				SeriesInfo storedSeries = GetSeries(seriesId);
+				if (storedSeries != null)
+				{
+					CacheArtwork(storedSeries);
+				}
+				DownloadPendingForFeed(seriesId);
+				ApplyRetention(seriesId);
+			}
+			catch (Exception ex)
+			{
+				Log.Warning(-1, "Podcast feed refresh failed: " + seriesId + " -- " + ex.Message);
+			}
+		}
+
+		/// <summary>
+		/// Starts the single background poll thread. The thread walks all
+		/// podcast_feeds rows once per cycle, calls RefreshFeed on any
+		/// whose LastPolled is older than PollIntervalMinutes (treating an
+		/// empty or unparseable LastPolled as "due"), then sleeps 60s
+		/// before the next cycle. The infinite while-loop is the sanctioned
+		/// pattern for a worker thread (mirrors the analytics drain).
+		/// </summary>
+		public void Run()
+		{
+			if (m_pollThread != null)
+			{
+				return;
+			}
+			m_pollThread = new Thread(PollLoop);
+			m_pollThread.IsBackground = true;
+			m_pollThread.Name = "Pulse.PodcastPoll";
+			m_pollThread.Start();
+		}
+
+		private void PollLoop()
+		{
+			while (true)
+			{
+				try
+				{
+					List<PodcastFeedInfo> feeds = m_db.LoadAllPodcastFeeds();
+					int feedCount = feeds.Count;
+					DateTime nowUtc = DateTime.UtcNow;
+					for (int feedIndex = 0; feedIndex < feedCount; feedIndex++)
+					{
+						PodcastFeedInfo feed = feeds[feedIndex];
+						bool due = IsFeedDue(feed, nowUtc);
+						if (due)
+						{
+							RefreshFeed(feed.SeriesId);
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					Log.Error(-1, "Podcast poll cycle failed: " + ex.Message);
+				}
+				Thread.Sleep(60000);
+			}
+		}
+
+		private bool IsFeedDue(PodcastFeedInfo feed, DateTime nowUtc)
+		{
+			if (string.IsNullOrEmpty(feed.LastPolled))
+			{
+				return true;
+			}
+			DateTimeOffset lastPolled;
+			bool parseOk = DateTimeOffset.TryParse(feed.LastPolled, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out lastPolled);
+			if (!parseOk)
+			{
+				return true;
+			}
+			TimeSpan since = nowUtc - lastPolled.UtcDateTime;
+			TimeSpan interval = TimeSpan.FromMinutes(feed.PollIntervalMinutes);
+			return since >= interval;
+		}
+
+		/// <summary>
+		/// Picks the items that should be on disk per the feed's
+		/// retention policy. KeepAll returns everything; KeepN returns the
+		/// newest N by PublishedDate (descending); KeepDays returns items
+		/// whose PublishedDate is within the last RetentionValue days, and
+		/// keeps any item with an unparseable date on the safe side.
+		/// PublishedDate is ISO-8601 ("yyyy-MM-ddTHH:mm:ssZ") so a string
+		/// sort is equivalent to a chronological sort.
+		/// </summary>
+		private List<SeriesItemInfo> ComputeKeepSet(List<SeriesItemInfo> items, PodcastFeedInfo feed)
+		{
+			List<SeriesItemInfo> result = new List<SeriesItemInfo>();
+			if (items == null || feed == null)
+			{
+				return result;
+			}
+
+			int itemCount = items.Count;
+			if (feed.Retention == eRetentionPolicy.KeepAll)
+			{
+				for (int itemIndex = 0; itemIndex < itemCount; itemIndex++)
+				{
+					result.Add(items[itemIndex]);
+				}
+				return result;
+			}
+
+			List<SeriesItemInfo> sortedByDateDesc = new List<SeriesItemInfo>(items);
+			sortedByDateDesc.Sort(CompareByPublishedDescending);
+
+			if (feed.Retention == eRetentionPolicy.KeepN)
+			{
+				int keep = feed.RetentionValue;
+				if (keep < 0)
+				{
+					keep = 0;
+				}
+				int sortedCount = sortedByDateDesc.Count;
+				int upper = keep;
+				if (upper > sortedCount)
+				{
+					upper = sortedCount;
+				}
+				for (int sortedIndex = 0; sortedIndex < upper; sortedIndex++)
+				{
+					result.Add(sortedByDateDesc[sortedIndex]);
+				}
+				return result;
+			}
+
+			if (feed.Retention == eRetentionPolicy.KeepDays)
+			{
+				DateTime cutoff = DateTime.UtcNow - TimeSpan.FromDays(feed.RetentionValue);
+				int sortedCount = sortedByDateDesc.Count;
+				for (int sortedIndex = 0; sortedIndex < sortedCount; sortedIndex++)
+				{
+					SeriesItemInfo candidate = sortedByDateDesc[sortedIndex];
+					DateTimeOffset parsed;
+					bool parseOk = DateTimeOffset.TryParse(candidate.PublishedDate, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out parsed);
+					if (!parseOk)
+					{
+						// Unparseable published-date: keep on the safe side
+						// rather than evict (we'd rather hold disk than
+						// silently drop a real episode).
+						result.Add(candidate);
+						continue;
+					}
+					if (parsed.UtcDateTime >= cutoff)
+					{
+						result.Add(candidate);
+					}
+				}
+				return result;
+			}
+
+			return result;
+		}
+
+		private int CompareByPublishedDescending(SeriesItemInfo left, SeriesItemInfo right)
+		{
+			return string.CompareOrdinal(right.PublishedDate, left.PublishedDate);
+		}
+
+		/// <summary>
+		/// Picks the on-disk file extension for a downloaded episode. The
+		/// RSS-parsed MIME type isn't carried on SeriesItemInfo, so the
+		/// URL's own path-suffix is the only signal once an item lives in
+		/// the DB. Maps the common audio suffixes to .mp3 / .m4a and
+		/// falls back to .mp3 (the dominant podcast format) when the URL
+		/// gives no usable hint.
+		/// </summary>
+		private string ExtensionForMediaSourceUrl(string mediaSourceUrl)
+		{
+			if (string.IsNullOrEmpty(mediaSourceUrl))
+			{
+				return ".mp3";
+			}
+			string lowered = mediaSourceUrl.ToLowerInvariant();
+			int queryStart = lowered.IndexOf('?');
+			if (queryStart >= 0)
+			{
+				lowered = lowered.Substring(0, queryStart);
+			}
+			if (lowered.EndsWith(".m4a"))
+			{
+				return ".m4a";
+			}
+			if (lowered.EndsWith(".mp4"))
+			{
+				return ".m4a";
+			}
+			if (lowered.EndsWith(".aac"))
+			{
+				return ".m4a";
+			}
+			return ".mp3";
 		}
 	}
 }
