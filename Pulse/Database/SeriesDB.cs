@@ -457,6 +457,119 @@ namespace Pulse.Database
 			}
 		}
 
+		/// <summary>
+		/// Batched upsert for a list of items: a single open connection and a
+		/// single transaction wrap all rows. The per-row INSERT...ON CONFLICT
+		/// shape matches UpsertItem so callers see identical semantics; the
+		/// difference is purely cost. RSS ingest can present 2 800+ items on
+		/// a first poll -- opening that many connections is the wrong shape.
+		/// </summary>
+		public void UpsertItems(List<SeriesItemInfo> items)
+		{
+			if (items == null)
+			{
+				return;
+			}
+			int itemCount = items.Count;
+			if (itemCount == 0)
+			{
+				return;
+			}
+
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteTransaction transaction = connection.BeginTransaction();
+				try
+				{
+					for (int itemIndex = 0; itemIndex < itemCount; itemIndex++)
+					{
+						SeriesItemInfo item = items[itemIndex];
+						SqliteCommand command = connection.CreateCommand();
+						command.Transaction = transaction;
+						command.CommandText = @"INSERT INTO series_items (id, series_id, guid, title, description, duration_seconds, order_index, published_date, media_source_url, local_path, file_size_bytes, download_state)
+							VALUES ($id, $series_id, $guid, $title, $description, $duration_seconds, $order_index, $published_date, $media_source_url, $local_path, $file_size_bytes, $download_state)
+							ON CONFLICT(id) DO UPDATE SET
+								series_id = excluded.series_id,
+								guid = excluded.guid,
+								title = excluded.title,
+								description = excluded.description,
+								duration_seconds = excluded.duration_seconds,
+								order_index = excluded.order_index,
+								published_date = excluded.published_date,
+								media_source_url = excluded.media_source_url,
+								local_path = excluded.local_path,
+								file_size_bytes = excluded.file_size_bytes,
+								download_state = excluded.download_state;";
+						command.Parameters.AddWithValue("$id", item.Id);
+						command.Parameters.AddWithValue("$series_id", item.SeriesId);
+						command.Parameters.AddWithValue("$guid", item.Guid);
+						command.Parameters.AddWithValue("$title", item.Title);
+						command.Parameters.AddWithValue("$description", item.Description);
+						command.Parameters.AddWithValue("$duration_seconds", item.DurationSeconds);
+						command.Parameters.AddWithValue("$order_index", item.OrderIndex);
+						command.Parameters.AddWithValue("$published_date", item.PublishedDate);
+						command.Parameters.AddWithValue("$media_source_url", item.MediaSourceUrl);
+						command.Parameters.AddWithValue("$local_path", item.LocalPath);
+						command.Parameters.AddWithValue("$file_size_bytes", item.FileSizeBytes);
+						command.Parameters.AddWithValue("$download_state", item.DownloadState.ToString());
+						command.ExecuteNonQuery();
+					}
+					transaction.Commit();
+				}
+				catch
+				{
+					transaction.Rollback();
+					throw;
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		/// <summary>
+		/// Returns just the guid column for every item in the series. Used
+		/// by ingest to dedup parsed RSS items against what's already stored
+		/// without paying to materialise full SeriesItemInfo rows.
+		/// </summary>
+		public List<string> LoadItemGuidsForSeries(string seriesId)
+		{
+			List<string> result = new List<string>();
+			if (string.IsNullOrEmpty(seriesId))
+			{
+				return result;
+			}
+
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT guid FROM series_items WHERE series_id = $series_id;";
+				command.Parameters.AddWithValue("$series_id", seriesId);
+
+				SqliteDataReader reader = command.ExecuteReader();
+				try
+				{
+					while (reader.Read())
+					{
+						string guid = ReadString(reader, 0);
+						result.Add(guid);
+					}
+				}
+				finally
+				{
+					reader.Close();
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
+
 		public ItemProgressInfo LoadProgress(string itemId, string userName)
 		{
 			if (string.IsNullOrEmpty(itemId))
