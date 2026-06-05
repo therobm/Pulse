@@ -242,9 +242,34 @@ namespace Pulse.Series
 			{
 				CacheArtwork(storedSeries);
 			}
-			DownloadPendingForFeed(seriesId);
+
+			Thread downloadThread = new Thread(RunInitialDownload);
+			downloadThread.IsBackground = true;
+			downloadThread.Name = "Pulse.PodcastInitialDownload";
+			downloadThread.Start(seriesId);
 
 			return GetSeries(seriesId);
+		}
+
+		/// <summary>
+		/// Background-thread entry point that runs the first DownloadPendingForFeed
+		/// for a newly added podcast off the request thread. The HTTP handler
+		/// returns as soon as the feed has been ingested and the series row is
+		/// usable; the (potentially hundreds-of-MB) media downloads happen
+		/// behind it. Any exception is caught and logged -- an uncaught throw
+		/// out of a background thread would tear down the process.
+		/// </summary>
+		private void RunInitialDownload(object seriesIdObject)
+		{
+			string seriesId = (string)seriesIdObject;
+			try
+			{
+				DownloadPendingForFeed(seriesId);
+			}
+			catch (Exception ex)
+			{
+				Log.Error(-1, "Initial podcast download failed for " + seriesId + ": " + ex.Message);
+			}
 		}
 
 		/// <summary>
