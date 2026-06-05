@@ -148,6 +148,7 @@ namespace Pulse.Lidarr
 		private bool FetchExistingArtists()
 		{
 			m_lidarrArtistNames.Clear();
+			m_lidarrArtistMBIDs.Clear();
 
 			string json = LidarrGet("artist");
 			if (json == null)
