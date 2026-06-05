@@ -161,6 +161,7 @@ namespace Thump.Views
 			{
 				return;
 			}
+			Log.Trace("Search '" + query + "'");
 			MainView.MediaClient.Search(query, OnSearchResults);
 		}
 

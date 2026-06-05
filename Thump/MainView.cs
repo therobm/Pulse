@@ -158,6 +158,12 @@ namespace Thump
 		// the main thread before touching the banner's visibility.
 		public void OnOnlineStateChanged(bool online)
 		{
+			string onlineState = "offline";
+			if (online)
+			{
+				onlineState = "online";
+			}
+			Log.Trace("Online state changed -> " + onlineState);
 			MainThread.BeginInvokeOnMainThread(() =>
 			{
 				m_offlineBanner.SetIsOnline(online);
@@ -178,6 +184,7 @@ namespace Thump
 
 		public void NavigateToHome()
 		{
+			Log.Trace("Nav -> Home");
 			m_activeTab = eTab.Home;
 			m_detailStack.Clear();
 			SetActiveContent(m_homeView);
@@ -187,6 +194,7 @@ namespace Thump
 
 		public void NavigateToLibrary()
 		{
+			Log.Trace("Nav -> Library");
 			m_activeTab = eTab.Library;
 			m_detailStack.Clear();
 			SetActiveContent(m_libraryView);
@@ -196,6 +204,7 @@ namespace Thump
 
 		public void NavigateToSearch()
 		{
+			Log.Trace("Nav -> Search");
 			m_activeTab = eTab.Search;
 			m_detailStack.Clear();
 			SetActiveContent(m_searchView);
@@ -205,6 +214,7 @@ namespace Thump
 
 		public void NavigateToSettings()
 		{
+			Log.Trace("Nav -> Settings");
 			m_activeTab = eTab.Settings;
 			m_detailStack.Clear();
 			SetActiveContent(m_settingsView);
@@ -220,6 +230,7 @@ namespace Thump
 
 		public void OnBackPressed()
 		{
+			Log.Trace("Back pressed (detailStack=" + m_detailStack.Count + ")");
 			if (m_detailStack.Count == 0)
 			{
 				return;
@@ -273,6 +284,7 @@ namespace Thump
 
 		public void OnArtistSelected(PulseArtist artist)
 		{
+			Log.Trace("Open artist " + artist.Id + " '" + artist.Name + "'");
 			ArtistDetailView detail = new ArtistDetailView(this, artist);
 			detail.Initialize();
 			PushDetail(detail);
@@ -280,6 +292,7 @@ namespace Thump
 
 		public void OnAlbumSelected(PulseAlbum album)
 		{
+			Log.Trace("Open album " + album.Id + " '" + album.Name + "'");
 			AlbumDetailView detail = new AlbumDetailView(this, album);
 			detail.Initialize();
 			PushDetail(detail);
@@ -287,6 +300,7 @@ namespace Thump
 
 		public void OnPlaylistSelected(PulsePlaylist playlist)
 		{
+			Log.Trace("Open playlist " + playlist.Id + " '" + playlist.Name + "'");
 			PlaylistDetailView detail = new PlaylistDetailView(this, playlist);
 			detail.Initialize();
 			PushDetail(detail);
@@ -294,6 +308,7 @@ namespace Thump
 		
 		public void OnGenreSelected(PulseGenre genre)
 		{
+			Log.Trace("Open genre " + genre.Id + " '" + genre.Name + "'");
 			GenreDetailView detail = new GenreDetailView(this, genre);
 			detail.Initialize();
 			PushDetail(detail);
@@ -350,6 +365,7 @@ namespace Thump
 			{
 				return;
 			}
+			Log.Trace("Play " + tracks.Count + " track(s) source=" + source + " sourceId=" + sourceId + " start=" + startIndex);
 			int clampedIndex = startIndex;
 			if (clampedIndex < 0 || clampedIndex >= tracks.Count)
 			{
@@ -410,6 +426,7 @@ namespace Thump
 			{
 				return;
 			}
+			Log.Trace("Play shuffled " + tracks.Count + " track(s) source=" + source + " sourceId=" + sourceId);
 			// Shuffle the list ONCE here and submit the shuffled queue. Do NOT toggle the
 			// player's persistent ShuffleModeEnabled — that is a separate user-controlled
 			// setting (the Now Playing ⇋ button). The album/playlist/etc. Shuffle button
@@ -428,6 +445,7 @@ namespace Thump
 
 		public void OnTogglePlayPause()
 		{
+			Log.Trace("Toggle play/pause (state=" + m_playbackState + ")");
 			if (m_playbackState == ePlaybackState.Playing || m_playbackState == ePlaybackState.Buffering)
 			{
 				m_player.Pause();
@@ -440,16 +458,19 @@ namespace Thump
 
 		public void OnNext()
 		{
+			Log.Trace("Next");
 			m_player.Next();
 		}
 
 		public void OnPrevious()
 		{
+			Log.Trace("Previous");
 			m_player.Previous();
 		}
 
 		public void OnSeekToFraction(double fraction)
 		{
+			Log.Trace("Seek to fraction " + fraction.ToString("0.000"));
 			long position = (long)(fraction * m_currentDurationMs);
 			m_player.SeekTo(position);
 		}
@@ -461,6 +482,7 @@ namespace Thump
 
 		private void SetShuffleState(bool enabled)
 		{
+			Log.Trace("Shuffle -> " + enabled);
 			m_shuffleEnabled = enabled;
 			ThumpSettings.SetShuffleEnabled(enabled);
 			m_player.SetShuffleEnabled(enabled);
@@ -490,6 +512,7 @@ namespace Thump
 
 		private void SetRepeatState(eRepeatMode mode)
 		{
+			Log.Trace("Repeat -> " + mode);
 			m_repeatMode = mode;
 			ThumpSettings.SetRepeatMode(mode);
 			m_player.SetRepeatMode(mode);
@@ -512,6 +535,7 @@ namespace Thump
 		/// <summary>Start a sleep timer that will pause playback after the given number of minutes. Re-selecting a preset resets the countdown. minutes &lt;= 0 cancels.</summary>
 		public void OnSetSleepTimer(int minutes)
 		{
+			Log.Trace("Set sleep timer " + minutes + " min");
 			if (minutes <= 0)
 			{
 				OnCancelSleepTimer();
@@ -530,6 +554,7 @@ namespace Thump
 		/// <summary>Cancel any active sleep timer. Safe to call when no timer is running.</summary>
 		public void OnCancelSleepTimer()
 		{
+			Log.Trace("Cancel sleep timer");
 			m_sleepTimerTick.Stop();
 			m_sleepTimerActive = false;
 			m_sleepTimerRemainingSeconds = 0;
@@ -557,6 +582,7 @@ namespace Thump
 			{
 				return;
 			}
+			Log.Trace("Add to queue " + tracks.Count + " track(s) source=" + source);
 			if (m_currentQueue.Count == 0)
 			{
 				OnPlayTracks(tracks, 0, source, sourceId);
@@ -578,6 +604,7 @@ namespace Thump
 			{
 				return;
 			}
+			Log.Trace("Play next " + tracks.Count + " track(s) source=" + source);
 			if (m_currentQueue.Count == 0)
 			{
 				OnPlayTracks(tracks, 0, source, sourceId);
@@ -603,6 +630,7 @@ namespace Thump
 
 		public void OnSeekToQueueItem(int index)
 		{
+			Log.Trace("Seek to queue item " + index);
 			if (index < 0 || index >= m_currentQueue.Count)
 			{
 				return;
@@ -646,6 +674,7 @@ namespace Thump
 			}
 			string playNext = "Play Next";
 			string addToQueue = "Add to Queue";
+			Log.Trace("Track options for " + track.Id + " '" + track.Title + "'");
 			string choice = await DisplayActionSheet(track.Title, "Cancel", null, playNext, addToQueue);
 			List<PulseTrack> single = new List<PulseTrack>();
 			single.Add(track);
@@ -661,6 +690,7 @@ namespace Thump
 
 		public void OnPlaybackStateChanged(ePlaybackState state)
 		{
+			Log.Trace("Playback state -> " + state);
 			m_playbackState = state;
 			bool playing = state == ePlaybackState.Playing;
 			m_miniPlayer.SetPlaying(playing);
@@ -691,6 +721,7 @@ namespace Thump
 			{
 				return;
 			}
+			Log.Trace("Current track -> " + track.Id + " '" + track.Title + "'");
 			m_currentTrack = track;
 			int foundIndex = m_currentQueue.IndexOf(track);
 			if (foundIndex >= 0)
@@ -707,6 +738,7 @@ namespace Thump
 
 		public void OnTrackEnded()
 		{
+			Log.Trace("Track ended");
 			m_playbackState = ePlaybackState.Ended;
 			m_miniPlayer.SetPlaying(false);
 			if (m_nowPlayingView != null)
@@ -721,6 +753,7 @@ namespace Thump
 			{
 				return;
 			}
+			Log.Trace("Play artist " + artist.Id + " '" + artist.Name + "' shuffle=" + shuffle);
 			bool started = false;
 			m_mediaClient.GetArtistTracks(artist.Id, (tracks) =>
 			{
@@ -754,6 +787,7 @@ namespace Thump
 
 		public void OpenNowPlaying()
 		{
+			Log.Trace("Open Now Playing");
 			if (m_nowPlayingView == null)
 			{
 				m_nowPlayingView = new NowPlayingView(this);

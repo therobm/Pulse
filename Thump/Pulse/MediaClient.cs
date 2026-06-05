@@ -141,6 +141,8 @@ namespace Thump.Pulse
 			m_baseUrl = prefix + ip + ":" + port;
 			m_user = username;
 			m_apiParams = "u=" + Uri.EscapeDataString(m_user) + "&p=enc:" + Uri.EscapeDataString(password) + "&v=1.13.0&c=PulseMaui&f=json";
+			// Server endpoint + user only; never log the password.
+			Log.Trace("Server params set: " + m_baseUrl + " user=" + m_user + " ssl=" + enableSSL);
 		
 
 			if (m_httpClient != null)

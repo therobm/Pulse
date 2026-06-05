@@ -25,6 +25,16 @@ namespace Thump
 			Write("ERROR", message);
 		}
 
+		/// <summary>
+		/// Breadcrumb of a user action or significant flow step. Archived to the
+		/// log file so a reported exception or error can be read in the context of
+		/// what the user did to reach it.
+		/// </summary>
+		public static void Trace(string message)
+		{
+			Write("TRACE", message);
+		}
+
 		public static void Perf(string message)
 		{
 			Write("PERF", message, false);
