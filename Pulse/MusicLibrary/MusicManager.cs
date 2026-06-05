@@ -256,7 +256,7 @@ namespace Pulse.MusicLibrary
 
 
 
-		private IPulseDatabase m_database;
+		private PulseData m_database;
 		private object m_missingLock = new object();
 		private LidarrSync m_lidarrSync;
 		private Thread m_scanThread;
@@ -751,9 +751,9 @@ namespace Pulse.MusicLibrary
 			Pulse.Database.Migrations.RunMigrations();
 			Log.Info(-1, "Pulse DB: env=" + environmentName + " path=" + sqlitePath);
 
-			PulseSqliteDatabase sqliteDb = new PulseSqliteDatabase();
-			m_database = sqliteDb;
-			sqliteDb.Load();
+			PulseData pulseData = new PulseData();
+			m_database = pulseData;
+			pulseData.Load();
 		}
 
 		private void SaveDB(string reason)
