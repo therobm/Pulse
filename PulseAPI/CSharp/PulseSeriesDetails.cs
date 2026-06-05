@@ -16,4 +16,17 @@ namespace PulseAPI.CSharp
 			Kind = eDataType.AudiobookDetails;
 		}
 	}
+
+	/// <summary> Podcast series plus the episodes the client should show. </summary>
+	public class PulsePodcastDetails : PulseObject
+	{
+		public PulsePodcast Series;
+		public List<PulseEpisode> Episodes;
+
+		public PulsePodcastDetails()
+		{
+			Episodes = new List<PulseEpisode>();
+			Kind = eDataType.PodcastEpisodes;
+		}
+	}
 }
