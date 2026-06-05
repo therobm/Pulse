@@ -863,8 +863,8 @@ namespace Thump.Pulse
 
 		/// <summary>
 		/// POST a batch of structured product-analytics events to the server's
-		/// pulse_v1/ingestLog route. Swallows its own failures: the analytics
-		/// path must never feed errors back into Log.* or it loops.
+		/// pulse_v1/ingestAnalytics route. Swallows its own failures: the
+		/// analytics path must never feed errors back into Log.* or it loops.
 		/// </summary>
 		public override void PostAnalytics(PulseAnalyticsBatch batch)
 		{
@@ -884,7 +884,7 @@ namespace Thump.Pulse
 			{
 				try
 				{
-					string url = BuildPulseUrl("ingestLog", null);
+					string url = BuildPulseUrl("ingestAnalytics", null);
 					string json = PulseWire.Serialize(batch);
 					// logPerf=false: analytics POSTs must not spam the perf log.
 					HttpPostJson(url, json, false);

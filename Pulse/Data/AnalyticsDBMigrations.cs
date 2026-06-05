@@ -120,21 +120,26 @@ namespace Pulse.Data
 					started_at TEXT NOT NULL
 				);
 
-				CREATE TABLE log_events (
+				CREATE TABLE events (
 					id INTEGER PRIMARY KEY AUTOINCREMENT,
 					session_id TEXT NOT NULL,
 					timestamp TEXT NOT NULL,
-					action TEXT NOT NULL,
-					location TEXT NOT NULL,
-					result TEXT NOT NULL,
-					detail TEXT,
 					received_at TEXT NOT NULL,
+					category TEXT NOT NULL,
+					action TEXT NOT NULL,
+					result TEXT NOT NULL,
+					object_type TEXT,
+					object_id TEXT,
+					duration_ms INTEGER,
+					detail TEXT,
 					FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 				);
 
-				CREATE INDEX idx_events_session_time ON log_events (session_id, timestamp);
-				CREATE INDEX idx_events_action ON log_events (action);
-				CREATE INDEX idx_events_result ON log_events (result);
+				CREATE INDEX idx_events_session_time ON events (session_id, timestamp);
+				CREATE INDEX idx_events_category ON events (category);
+				CREATE INDEX idx_events_action ON events (action);
+				CREATE INDEX idx_events_result ON events (result);
+				CREATE INDEX idx_events_object ON events (object_type, object_id);
 			";
 			steps.Add(v1);
 
