@@ -12,6 +12,7 @@ using AndroidX.Concurrent.Futures;
 using AndroidX.Media3.Common;
 using AndroidX.Media3.ExoPlayer;
 using AndroidX.Media3.ExoPlayer.Source;
+using AndroidX.Media3.ExoPlayer.Upstream;
 using AndroidX.Media3.Extractor;
 using AndroidX.Media3.Extractor.Mp3;
 using AndroidX.Media3.Session;
@@ -24,7 +25,20 @@ using Thump.Pulse;
 
 namespace Thump.Playback.AndroidOS
 {
-	
+	public class ThumpLoadErrorPolicy : DefaultLoadErrorHandlingPolicy
+	{
+		private const int MAX_RETRIES = 5;
+		private const long BASE_DELAY_MS = 500;
+
+		public override long GetRetryDelayMsFor(LoadErrorHandlingPolicyLoadErrorInfo loadErrorInfo)
+		{
+			if (loadErrorInfo.ErrorCount > MAX_RETRIES)
+			{
+				return C.TimeUnset;
+			}
+			return BASE_DELAY_MS * loadErrorInfo.ErrorCount;
+		}
+	}
 
 	/// <summary>
 	/// A lightweight process for Android's media player to leverage so it can access
@@ -111,6 +125,7 @@ namespace Thump.Playback.AndroidOS
 
 			AndroidMediaDataSourceFactory dataSourceFactory = new AndroidMediaDataSourceFactory(s_mediaClient);
 			DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory);
+			mediaSourceFactory.SetLoadErrorHandlingPolicy(new ThumpLoadErrorPolicy());
 			builder.SetMediaSourceFactory(mediaSourceFactory);
 
 			m_player = builder.Build();
