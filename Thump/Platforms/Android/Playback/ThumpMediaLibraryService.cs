@@ -90,6 +90,20 @@ namespace Thump.Playback.AndroidOS
 			ExoPlayerBuilder builder = new ExoPlayerBuilder(this);
 			builder.SetHandleAudioBecomingNoisy(true);
 
+			int minBufferSize = 1000 * 30; //30 sec
+			int maxBufferSize = 1000 * 300; //5mins
+			int minBufferStart = (int)(1000 * 2.5f);
+			int minBufferRestart = (int)(1000 * 5.0f);
+
+			DefaultLoadControl loadControl = new DefaultLoadControl.Builder().SetBufferDurationsMs(
+					minBufferSize,
+					maxBufferSize,  
+					minBufferStart,  
+					minBufferRestart  
+				).Build();
+			builder.SetLoadControl(loadControl);
+
+
 			// Request audio focus so ExoPlayer activates the audio route on play; without this the player streams but is silent until another app grabs focus.
 			AudioAttributes.Builder audioAttributesBuilder = new AudioAttributes.Builder();
 			audioAttributesBuilder.SetUsage(C.UsageMedia);

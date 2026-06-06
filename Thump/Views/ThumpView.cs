@@ -114,7 +114,7 @@ namespace Thump.Views
 
 				if (existing >= 0)
 				{
-					if (!collection[existing].Equals(incoming[i]))
+					if (!getId(collection[existing]).Equals(getId(incoming[i])))
 					{
 						collection[existing] = incoming[i];
 					}
@@ -180,7 +180,7 @@ namespace Thump.Views
 					{
 						collection.Move(found, i);
 					}
-					if (!collection[i].Equals(incoming[i]))
+					if (!getId(collection[i]).Equals(getId(incoming[i])))
 					{
 						collection[i] = incoming[i];
 					}

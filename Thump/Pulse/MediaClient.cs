@@ -63,7 +63,7 @@ namespace Thump.Pulse
 		private object m_httpClientLock = new object();
 
 		private bool m_bInitialized = false;
-		private volatile bool m_bIsOnline = true;
+		private volatile bool m_bIsOnline = false;
 		private int m_pingFailureCount = 0;
 
 		/// <summary>
@@ -180,7 +180,7 @@ namespace Thump.Pulse
 			}
 
 			m_bInitialized = true;
-			Ping(out JsonElement discard);
+			//Ping(out JsonElement discard);
 		}
 
 		
@@ -344,8 +344,10 @@ namespace Thump.Pulse
 
 		public byte[] HttpGetBinary(string url, eMediaCacheStrategy cacheStrategy, CancellationToken token)
 		{
+			bool tryCacheFirst = !IsOnline() || cacheStrategy == eMediaCacheStrategy.CacheFirst;
+
 			byte[] retVal = null;
-			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedResults(url, out retVal))
+			if (tryCacheFirst && GetCachedResults(url, out retVal))
 			{
 				return retVal;
 			}
@@ -379,8 +381,14 @@ namespace Thump.Pulse
 
 		public string HttpGet(string url, eMediaCacheStrategy cacheStrategy, bool logPerf, bool ignoreOnline)
 		{
+			bool tryCacheFirst = !IsOnline() || cacheStrategy == eMediaCacheStrategy.CacheFirst;
+			
+			//never permit cache reads for network only calls (ping is impacted)
+			if (cacheStrategy == eMediaCacheStrategy.NetworkOnly)
+				tryCacheFirst = false;
+
 			string retVal = null;
-			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedResults(url, out retVal))
+			if (tryCacheFirst && GetCachedResults(url, out retVal))
 			{
 				return retVal;
 			}
@@ -716,6 +724,18 @@ namespace Thump.Pulse
 		public bool GetCachedResults(string url, out string data)
 		{
 			return m_cache.GetCachedResults(url, out data);
+		}
+
+		protected void CompleteOnMain<T>(Action<T> onComplete, T value)
+		{
+			if (onComplete == null)
+			{
+				return;
+			}
+			MainThread.BeginInvokeOnMainThread(() =>
+			{
+				onComplete(value);
+			});
 		}
 	}
 }
