@@ -132,23 +132,68 @@ namespace Pulse.Series
 				list.Add(file);
 			}
 
-			int bookCount = 0;
+			HashSet<string> liveSeriesIds = new HashSet<string>();
+			HashSet<string> liveItemIds = new HashSet<string>();
+			int folderCount = 0;
 			foreach (KeyValuePair<string, List<string>> pair in filesByFolder)
 			{
 				try
 				{
-					ScanBook(pair.Key, pair.Value);
-					bookCount++;
+					ScanBook(pair.Key, pair.Value, liveSeriesIds, liveItemIds);
+					folderCount++;
 				}
 				catch (Exception ex)
 				{
 					Log.Warning(-1, "Audiobook scan failed for " + pair.Key + ": " + ex.Message);
 				}
 			}
-			Log.Info(-1, "Audiobook scan complete: " + bookCount + " book(s) under " + m_audiobooksPath);
+
+			// Drop catalogued books/chapters whose files are gone (or that an
+			// earlier scan created before a layout change). Scoped to audiobooks,
+			// so podcasts are untouched.
+			PruneRemoved(liveSeriesIds, liveItemIds);
+
+			Log.Info(-1, "Audiobook scan complete: " + liveSeriesIds.Count + " book(s) from " + folderCount + " folder(s) under " + m_audiobooksPath);
 		}
 
-		private void ScanBook(string folder, List<string> files)
+		private void PruneRemoved(HashSet<string> liveSeriesIds, HashSet<string> liveItemIds)
+		{
+			int removedBooks = 0;
+			int removedChapters = 0;
+			List<SeriesInfo> existing = m_db.LoadAllSeriesByType(eSeriesType.Audiobook);
+			for (int seriesIndex = 0; seriesIndex < existing.Count; seriesIndex++)
+			{
+				SeriesInfo series = existing[seriesIndex];
+				List<SeriesItemInfo> items = m_db.LoadItemsForSeries(series.Id);
+				if (!liveSeriesIds.Contains(series.Id))
+				{
+					for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
+					{
+						m_db.DeleteItem(items[itemIndex].Id);
+						removedChapters++;
+					}
+					m_db.DeleteSeries(series.Id);
+					removedBooks++;
+				}
+				else
+				{
+					for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
+					{
+						if (!liveItemIds.Contains(items[itemIndex].Id))
+						{
+							m_db.DeleteItem(items[itemIndex].Id);
+							removedChapters++;
+						}
+					}
+				}
+			}
+			if (removedBooks > 0 || removedChapters > 0)
+			{
+				Log.Info(-1, "Audiobook prune: removed " + removedBooks + " book(s) and " + removedChapters + " chapter(s) no longer on disk.");
+			}
+		}
+
+		private void ScanBook(string folder, List<string> files, HashSet<string> liveSeriesIds, HashSet<string> liveItemIds)
 		{
 			// Read tags once per file. A folder is not always one book: it can be an
 			// author folder holding several single-file books. Partition by album
@@ -184,11 +229,11 @@ namespace Pulse.Series
 			{
 				List<AudiobookFileEntry> group = byAlbum[albumOrder[albumIndex]];
 				group.Sort(CompareEntries);
-				BuildBook(folder, folderRelative, group, multipleBooks);
+				BuildBook(folder, folderRelative, group, multipleBooks, liveSeriesIds, liveItemIds);
 			}
 		}
 
-		private void BuildBook(string folder, string folderRelative, List<AudiobookFileEntry> entries, bool multipleBooks)
+		private void BuildBook(string folder, string folderRelative, List<AudiobookFileEntry> entries, bool multipleBooks, HashSet<string> liveSeriesIds, HashSet<string> liveItemIds)
 		{
 			AudiobookFileEntry firstEntry = entries[0];
 
@@ -200,6 +245,7 @@ namespace Pulse.Series
 				idInput = folderRelative + "|" + AlbumKey(firstEntry.Tags.Album);
 			}
 			string seriesId = StableId("ab", idInput);
+			liveSeriesIds.Add(seriesId);
 
 			// When a folder yields several books it is acting as an author folder,
 			// so its name is the author fallback; a single-book folder is the book
@@ -239,6 +285,7 @@ namespace Pulse.Series
 				item.FileSizeBytes = FileSize(entry.Path);
 				item.DownloadState = eDownloadState.Downloaded;
 				items.Add(item);
+				liveItemIds.Add(item.Id);
 			}
 			m_db.UpsertItems(items);
 		}
