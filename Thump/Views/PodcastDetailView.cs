@@ -18,7 +18,6 @@ namespace Thump.Views
 		private Button m_subscribeButton;
 		private Picker m_retentionPicker;
 		private Entry m_retentionValueEntry;
-		private Switch m_autoDownloadSwitch;
 		private Label m_settingsStatusLabel;
 		private CollectionView m_episodeList;
 		// Retention policy names in the order they appear in m_retentionPicker;
@@ -161,7 +160,7 @@ namespace Thump.Views
 			scroller.HorizontalScrollBarVisibility = ScrollBarVisibility.Never;
 			scroller.Content = buttonStack;
 
-			Grid.SetRow(scroller, 3);
+			Grid.SetRow(scroller, 4);
 			return scroller;
 		}
 
@@ -177,9 +176,9 @@ namespace Thump.Views
 			return m_episodeList;
 		}
 
-		// Backlog (retention) settings row: how many episodes the server keeps
-		// downloaded for this feed, plus whether new episodes auto-download.
-		// Mirrors the web podcast detail's "Backlog" controls (TMP147).
+		// Backlog (retention) settings: the retention policy and its count sit
+		// side by side above the play/unsubscribe buttons. Mirrors the web
+		// podcast detail's "Backlog" controls (TMP147).
 		private View BuildSettings()
 		{
 			StackLayout settingsStack = new StackLayout();
@@ -192,6 +191,16 @@ namespace Thump.Views
 			heading.TextColor = ThumpColors.TextDim;
 			settingsStack.Children.Add(heading);
 
+			// Policy picker (fills the row) and its count (fixed, right) side by side.
+			Grid optionsRow = new Grid();
+			optionsRow.ColumnSpacing = 8;
+			ColumnDefinition pickerColumn = new ColumnDefinition();
+			pickerColumn.Width = GridLength.Star;
+			ColumnDefinition valueColumn = new ColumnDefinition();
+			valueColumn.Width = GridLength.Auto;
+			optionsRow.ColumnDefinitions.Add(pickerColumn);
+			optionsRow.ColumnDefinitions.Add(valueColumn);
+
 			m_retentionPicker = new Picker();
 			m_retentionPicker.TextColor = ThumpColors.OnBackground;
 			m_retentionPicker.TitleColor = ThumpColors.TextDim;
@@ -200,27 +209,20 @@ namespace Thump.Views
 			m_retentionPicker.Items.Add("Keep last (days)");
 			m_retentionPicker.SelectedIndex = 0;
 			m_retentionPicker.SelectedIndexChanged += OnRetentionChanged;
-			settingsStack.Children.Add(m_retentionPicker);
+			Grid.SetColumn(m_retentionPicker, 0);
+			optionsRow.Children.Add(m_retentionPicker);
 
 			m_retentionValueEntry = new Entry();
 			m_retentionValueEntry.Keyboard = Keyboard.Numeric;
 			m_retentionValueEntry.Placeholder = "Count";
+			m_retentionValueEntry.WidthRequest = 80;
 			m_retentionValueEntry.TextColor = ThumpColors.OnBackground;
 			m_retentionValueEntry.PlaceholderColor = ThumpColors.TextDim;
 			m_retentionValueEntry.IsVisible = false;
-			settingsStack.Children.Add(m_retentionValueEntry);
+			Grid.SetColumn(m_retentionValueEntry, 1);
+			optionsRow.Children.Add(m_retentionValueEntry);
 
-			HorizontalStackLayout autoRow = new HorizontalStackLayout();
-			autoRow.Spacing = 8;
-			m_autoDownloadSwitch = new Switch();
-			autoRow.Children.Add(m_autoDownloadSwitch);
-			Label autoLabel = new Label();
-			autoLabel.Text = "Auto-download new episodes";
-			autoLabel.FontSize = 14;
-			autoLabel.TextColor = ThumpColors.OnBackground;
-			autoLabel.VerticalOptions = LayoutOptions.Center;
-			autoRow.Children.Add(autoLabel);
-			settingsStack.Children.Add(autoRow);
+			settingsStack.Children.Add(optionsRow);
 
 			HorizontalStackLayout saveRow = new HorizontalStackLayout();
 			saveRow.Spacing = 12;
@@ -242,7 +244,7 @@ namespace Thump.Views
 			saveRow.Children.Add(m_settingsStatusLabel);
 			settingsStack.Children.Add(saveRow);
 
-			Grid.SetRow(settingsStack, 4);
+			Grid.SetRow(settingsStack, 3);
 			return settingsStack;
 		}
 
@@ -323,7 +325,6 @@ namespace Thump.Views
 			{
 				m_retentionValueEntry.Text = "";
 			}
-			m_autoDownloadSwitch.IsToggled = m_podcast.AutoDownload;
 			m_settingsStatusLabel.Text = "";
 			UpdateRetentionValueVisibility();
 		}
@@ -369,9 +370,10 @@ namespace Thump.Views
 			{
 				retentionValue = 0;
 			}
-			bool autoDownload = m_autoDownloadSwitch.IsToggled;
 			m_settingsStatusLabel.Text = "Saving…";
-			MainView.MediaClient.UpdatePodcast(m_podcast.Id, policy, retentionValue, m_podcast.PollIntervalMinutes, autoDownload, (updated) =>
+			// Auto-download is no longer surfaced in the UI; preserve whatever the
+			// feed already had so saving the backlog doesn't change it.
+			MainView.MediaClient.UpdatePodcast(m_podcast.Id, policy, retentionValue, m_podcast.PollIntervalMinutes, m_podcast.AutoDownload, (updated) =>
 			{
 				if (updated == null)
 				{
