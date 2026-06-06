@@ -21,6 +21,7 @@ using Pulse.Protocols.LegacyPulse;
 using Pulse.Protocols.PulseAPI;
 using Pulse.Database;
 using Pulse.Series;
+using Pulse.Services;
 
 namespace Pulse
 {
@@ -83,6 +84,7 @@ namespace Pulse
 		private AnalyticsDB m_analyticsDB;
 		private PodcastManager m_podcastManager;
 		private AudiobookManager m_audiobookManager;
+		private AuthEndpoints m_authEndpoints;
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 		private object m_spotifySyncsLock = new object();
 		// Pending Spotify OAuth attempts, keyed by a server-issued random state
@@ -114,6 +116,7 @@ namespace Pulse
 			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_analyticsDB, m_podcastManager, m_audiobookManager);
 			m_legacyPulse = new global::Pulse.Protocols.LegacyPulse.LegacyPulseAPI(this, m_musicManager);
 			m_subsonic = new Subsonic(m_legacyPulse);
+			m_authEndpoints = new AuthEndpoints(m_musicManager);
 
 			RegisterRoutes(webServer);
 			SyncSpotify();
@@ -124,6 +127,7 @@ namespace Pulse
 		private void RegisterRoutes(IPulseRouteHost host)
 		{
 			m_pulseEndpoints.RegisterRoutes(host);
+			m_authEndpoints.RegisterRoutes(host);
 
 			host.RegisterResultRoute("rest/ping.view", m_subsonic.HandlePing);
 			host.RegisterResultRoute("rest/ping", m_subsonic.HandlePing);
