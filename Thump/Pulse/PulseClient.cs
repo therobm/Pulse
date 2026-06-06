@@ -187,13 +187,15 @@ namespace Thump.Pulse
 			string url = BuildPulseUrl("artists", null);
 			FetchObject<List<PulseArtist>>(url, eMediaCacheStrategy.NetworkFirst, (data) =>
 			{
+				List<PulseArtist> results = new List<PulseArtist>();
 				if (data != null)
 				{
-					data.Sort(CompareArtistByName);
+					results = data;
 				}
+				results.Sort(CompareArtistByName);
 				if (onComplete != null)
 				{
-					onComplete(data);
+					onComplete(results);
 				}
 			});
 		}
