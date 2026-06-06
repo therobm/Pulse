@@ -150,8 +150,9 @@ namespace Pulse.Series
 
 		private void ScanBook(string folder, List<string> files)
 		{
-			// Read tags once per file, then order by track number, falling back to
-			// filename (the "users conform" surface: tag your tracks or zero-pad).
+			// Read tags once per file. A folder is not always one book: it can be an
+			// author folder holding several single-file books. Partition by album
+			// tag - chapters of one book share an album; separate books don't.
 			List<AudiobookFileEntry> entries = new List<AudiobookFileEntry>();
 			for (int index = 0; index < files.Count; index++)
 			{
@@ -160,20 +161,64 @@ namespace Pulse.Series
 				entry.Tags = ReadFileTags(files[index]);
 				entries.Add(entry);
 			}
-			entries.Sort(CompareEntries);
 
+			Dictionary<string, List<AudiobookFileEntry>> byAlbum = new Dictionary<string, List<AudiobookFileEntry>>();
+			List<string> albumOrder = new List<string>();
+			for (int index = 0; index < entries.Count; index++)
+			{
+				string key = AlbumKey(entries[index].Tags.Album);
+				List<AudiobookFileEntry> group;
+				bool found = byAlbum.TryGetValue(key, out group);
+				if (!found)
+				{
+					group = new List<AudiobookFileEntry>();
+					byAlbum[key] = group;
+					albumOrder.Add(key);
+				}
+				group.Add(entries[index]);
+			}
+
+			bool multipleBooks = byAlbum.Count > 1;
 			string folderRelative = MakeRelative(folder);
-			string seriesId = StableId("ab", folderRelative);
+			for (int albumIndex = 0; albumIndex < albumOrder.Count; albumIndex++)
+			{
+				List<AudiobookFileEntry> group = byAlbum[albumOrder[albumIndex]];
+				group.Sort(CompareEntries);
+				BuildBook(folder, folderRelative, group, multipleBooks);
+			}
+		}
 
+		private void BuildBook(string folder, string folderRelative, List<AudiobookFileEntry> entries, bool multipleBooks)
+		{
 			AudiobookFileEntry firstEntry = entries[0];
+
+			// Keep the old folder-only id for the common single-book folder so a
+			// rescan updates in place; only album-split folders key on album too.
+			string idInput = folderRelative;
+			if (multipleBooks)
+			{
+				idInput = folderRelative + "|" + AlbumKey(firstEntry.Tags.Album);
+			}
+			string seriesId = StableId("ab", idInput);
+
+			// When a folder yields several books it is acting as an author folder,
+			// so its name is the author fallback; a single-book folder is the book
+			// folder, so the parent is the author fallback.
+			string folderAuthorFallback;
+			if (multipleBooks)
+			{
+				folderAuthorFallback = Path.GetFileName(folder);
+			}
+			else
+			{
+				folderAuthorFallback = DeriveAuthorFromFolder(folder);
+			}
+
 			SeriesInfo series = new SeriesInfo();
 			series.Id = seriesId;
 			series.Type = eSeriesType.Audiobook;
 			series.Title = FirstNonEmpty(firstEntry.Tags.Album, Path.GetFileName(folder));
-			// Author from the artist tag, falling back to the parent folder name
-			// (AudiobooksPath/<Author>/<Book>/...). Books loose under the root with
-			// no artist tag stay blank so the misorganised ones stand out.
-			series.Author = FirstNonEmpty(firstEntry.Tags.Author, DeriveAuthorFromFolder(folder));
+			series.Author = FirstNonEmpty(firstEntry.Tags.Author, folderAuthorFallback);
 			series.Narrator = "";
 			series.Description = "";
 			series.ArtworkPath = ResolveCoverArt(folder, entries, seriesId);
@@ -196,6 +241,15 @@ namespace Pulse.Series
 				items.Add(item);
 			}
 			m_db.UpsertItems(items);
+		}
+
+		private static string AlbumKey(string album)
+		{
+			if (string.IsNullOrWhiteSpace(album))
+			{
+				return "";
+			}
+			return album.Trim().ToLowerInvariant();
 		}
 
 		/// <summary>All catalogued audiobooks (every series of type Audiobook).</summary>
