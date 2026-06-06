@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using PulseAPI.CSharp;
@@ -18,6 +19,11 @@ namespace Thump.Views
 		private CollectionView m_popularArtists;
 		private CollectionView m_favorites;
 
+		private ObservableCollection<PulseObject> m_recentlyPlayedItems = new ObservableCollection<PulseObject>();
+		private ObservableCollection<PulsePlaylist> m_yourPlaylistsItems = new ObservableCollection<PulsePlaylist>();
+		private ObservableCollection<PulseArtist> m_popularArtistsItems = new ObservableCollection<PulseArtist>();
+		private ObservableCollection<PulseTrack> m_favoritesItems = new ObservableCollection<PulseTrack>();
+
 		public HomeView(MainView mainView) : base(mainView)
 		{
 
@@ -33,9 +39,13 @@ namespace Thump.Views
 
 			stack.Children.Add(BuildTopPanel());
 			m_recentlyPlayed = BuildShelf(stack, "Recently Played");
+			m_recentlyPlayed.ItemsSource = m_recentlyPlayedItems;
 			m_yourPlaylists = BuildShelf(stack, "Your Playlists");
+			m_yourPlaylists.ItemsSource = m_yourPlaylistsItems;
 			m_popularArtists = BuildShelf(stack, "Popular Artists");
+			m_popularArtists.ItemsSource = m_popularArtistsItems;
 			m_favorites = BuildShelf(stack, "Favorites");
+			m_favorites.ItemsSource = m_favoritesItems;
 
 			ScrollView scroll = new ScrollView();
 			scroll.Content = stack;
@@ -141,22 +151,38 @@ namespace Thump.Views
 
 		private void OnRecentlyPlayedLoaded(List<PulseObject> items)
 		{
-			m_recentlyPlayed.ItemsSource = items;
+			if (items == null)
+			{
+				return;
+			}
+			SyncFromOrdered<PulseObject>(m_recentlyPlayedItems, items);
 		}
 
 		private void OnYourPlaylistsLoaded(List<PulsePlaylist> items)
 		{
-			m_yourPlaylists.ItemsSource = items;
+			if (items == null)
+			{
+				return;
+			}
+			SyncFromOrdered<PulsePlaylist>(m_yourPlaylistsItems, items);
 		}
 
 		private void OnPopularArtistsLoaded(List<PulseArtist> items)
 		{
-			m_popularArtists.ItemsSource = items;
+			if (items == null)
+			{
+				return;
+			}
+			SyncFromOrdered<PulseArtist>(m_popularArtistsItems, items);
 		}
 
 		private void OnFavoritesLoaded(List<PulseTrack> tracks)
 		{
-			m_favorites.ItemsSource = tracks;
+			if (tracks == null)
+			{
+				return;
+			}
+			SyncFromOrdered<PulseTrack>(m_favoritesItems, tracks);
 		}
 	}
 }

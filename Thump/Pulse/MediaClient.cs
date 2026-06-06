@@ -63,7 +63,7 @@ namespace Thump.Pulse
 		private object m_httpClientLock = new object();
 
 		private bool m_bInitialized = false;
-		private volatile bool m_bIsOnline = true;
+		private volatile bool m_bIsOnline = false;
 		private int m_pingFailureCount = 0;
 
 		/// <summary>
@@ -180,7 +180,7 @@ namespace Thump.Pulse
 			}
 
 			m_bInitialized = true;
-			Ping(out JsonElement discard);
+			//Ping(out JsonElement discard);
 		}
 
 		
@@ -344,12 +344,14 @@ namespace Thump.Pulse
 
 		public byte[] HttpGetBinary(string url, eMediaCacheStrategy cacheStrategy, CancellationToken token)
 		{
+			bool tryCacheFirst = !IsOnline() || cacheStrategy == eMediaCacheStrategy.CacheFirst;
+
 			byte[] retVal = null;
-			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedResults(url, out retVal))
+			if (tryCacheFirst && GetCachedResults(url, out retVal))
 			{
 				return retVal;
 			}
-			HttpResponseMessage response = HttpGet_Internal(url, true, token, false);
+			HttpResponseMessage response = HttpGet_Internal(url, true, token, false, 120);
 			if (cacheStrategy != eMediaCacheStrategy.NetworkOnly && !response.IsSuccessStatusCode)
 			{
 				//try our offline cache
@@ -377,14 +379,20 @@ namespace Thump.Pulse
 			return retVal;
 		}
 
-		public string HttpGet(string url, eMediaCacheStrategy cacheStrategy, bool logPerf, bool ignoreOnline)
+		public string HttpGet(string url, eMediaCacheStrategy cacheStrategy, bool logPerf, bool ignoreOnline, float timeoutSeconds = 8)
 		{
+			bool tryCacheFirst = !IsOnline() || cacheStrategy == eMediaCacheStrategy.CacheFirst;
+			
+			//never permit cache reads for network only calls (ping is impacted)
+			if (cacheStrategy == eMediaCacheStrategy.NetworkOnly)
+				tryCacheFirst = false;
+
 			string retVal = null;
-			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedResults(url, out retVal))
+			if (tryCacheFirst && GetCachedResults(url, out retVal))
 			{
 				return retVal;
 			}
-			HttpResponseMessage response = HttpGet_Internal(url, logPerf, CancellationToken.None, ignoreOnline);
+			HttpResponseMessage response = HttpGet_Internal(url, logPerf, CancellationToken.None, ignoreOnline, timeoutSeconds);
 			if (!response.IsSuccessStatusCode)
 			{
 				//try our offline cache
@@ -415,7 +423,7 @@ namespace Thump.Pulse
 			return retVal;
 		}
 
-		private HttpResponseMessage HttpGet_Internal(string url, bool logPerf, CancellationToken token, bool ignoreOnline)
+		private HttpResponseMessage HttpGet_Internal(string url, bool logPerf, CancellationToken token, bool ignoreOnline, float timeoutSeconds)
 		{
 			if (!ignoreOnline && !IsOnline())
 				return new HttpResponseMessage(System.Net.HttpStatusCode.GatewayTimeout);
@@ -430,6 +438,7 @@ namespace Thump.Pulse
 				return new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed);
 			}
 
+
 			int requestId = Interlocked.Increment(ref s_requestCounter);
 			Stopwatch stopwatch = Stopwatch.StartNew();
 			Log.Perf("#" + requestId + " start GET " + url);
@@ -443,7 +452,10 @@ namespace Thump.Pulse
 				transportFailure = false;
 				try
 				{
-					Task<HttpResponseMessage> fetch = client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url), HttpCompletionOption.ResponseHeadersRead, token);
+					using CancellationTokenSource timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+					using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
+
+					Task<HttpResponseMessage> fetch = client.SendAsync(new HttpRequestMessage(HttpMethod.Get, url), HttpCompletionOption.ResponseHeadersRead, linked.Token);
 					response = fetch.Result;
 				}
 				catch (Exception ex)
@@ -531,9 +543,16 @@ namespace Thump.Pulse
 			using CancellationTokenSource stallCts = new CancellationTokenSource(stallWindow);
 			using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(external, stallCts.Token);
 			using Stream stream = response.Content.ReadAsStreamAsync().Result;
-			using MemoryStream buffer = new MemoryStream();
-
 			
+			int capacity = 64 * 1024;
+			long? contentLength = response.Content.Headers.ContentLength;
+			if (contentLength.HasValue && contentLength.Value > 0)
+			{
+				capacity = (int)contentLength.Value;
+			}
+
+			using MemoryStream buffer = new MemoryStream(capacity);
+
 			byte[] chunk = new byte[64 * 1024];
 			int safeLoop = 99999;
 			while (safeLoop > 0)
@@ -547,6 +566,10 @@ namespace Thump.Pulse
 				}
 				buffer.Write(chunk, 0, read);
 				stallCts.CancelAfter(stallWindow);
+			}
+			if (buffer.Length == buffer.Capacity)
+			{
+				return buffer.GetBuffer();
 			}
 			return buffer.ToArray();
 		}
@@ -600,15 +623,13 @@ namespace Thump.Pulse
 
 		/// <summary>
 		/// used for direct streaming audio
+		/// always tries to fetch even if we're "offline"
 		/// </summary>
 		/// <param name="url"></param>
 		/// <param name="position"></param>
 		/// <returns></returns>
 		public HttpResponseMessage HttpGetStream(string url, long position)
 		{
-			if (!IsOnline())
-				return null;
-
 			HttpClient client;
 			lock (m_httpClientLock) { client = m_httpClient; }
 			if (client == null) { return null; }
@@ -716,6 +737,18 @@ namespace Thump.Pulse
 		public bool GetCachedResults(string url, out string data)
 		{
 			return m_cache.GetCachedResults(url, out data);
+		}
+
+		protected void CompleteOnMain<T>(Action<T> onComplete, T value)
+		{
+			if (onComplete == null)
+			{
+				return;
+			}
+			MainThread.BeginInvokeOnMainThread(() =>
+			{
+				onComplete(value);
+			});
 		}
 	}
 }
