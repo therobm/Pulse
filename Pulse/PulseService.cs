@@ -82,6 +82,7 @@ namespace Pulse
 		private MusicManager m_musicManager;
 		private AnalyticsDB m_analyticsDB;
 		private PodcastManager m_podcastManager;
+		private AudiobookManager m_audiobookManager;
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 		private object m_spotifySyncsLock = new object();
 		// Pending Spotify OAuth attempts, keyed by a server-issued random state
@@ -107,7 +108,10 @@ namespace Pulse
 			m_podcastManager = new PodcastManager(config);
 			m_podcastManager.Run();
 
-			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_analyticsDB, m_podcastManager);
+			m_audiobookManager = new AudiobookManager(config);
+			m_audiobookManager.Run();
+
+			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_analyticsDB, m_podcastManager, m_audiobookManager);
 			m_legacyPulse = new global::Pulse.Protocols.LegacyPulse.LegacyPulseAPI(this, m_musicManager);
 			m_subsonic = new Subsonic(m_legacyPulse);
 
