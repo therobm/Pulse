@@ -1939,16 +1939,31 @@
 				return;
 			}
 			let sorted = cachedAudiobooks.slice();
-			if (leftSort === 'recent') { sorted.sort(function (left, right) { return (right.lastPlayed || '').localeCompare(left.lastPlayed || ''); }); } else { sorted.sort(function (left, right) { return left.title.localeCompare(right.title); }); }
+			// Group by author; books are sorted by author then title within.
+			sorted.sort(function (left, right) {
+				let la = (left.author || 'Unknown Author').toLowerCase();
+				let ra = (right.author || 'Unknown Author').toLowerCase();
+				if (la !== ra) { return la.localeCompare(ra); }
+				return left.title.localeCompare(right.title);
+			});
 			container.innerHTML = '';
 			if (sorted.length === 0) { container.innerHTML = '<div class="loading-text">No audiobooks found. Set AudiobooksPath on the server.</div>'; return; }
+			let currentAuthor = null;
 			for (let idx = 0; idx < sorted.length; idx++) {
 				let book = sorted[idx];
+				let author = book.author || 'Unknown Author';
+				if (author !== currentAuthor) {
+					currentAuthor = author;
+					let header = document.createElement('div');
+					header.className = 'left-section-header';
+					header.style.cssText = 'padding:10px 12px 4px 12px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);';
+					header.textContent = author;
+					container.appendChild(header);
+				}
 				let item = document.createElement('div');
 				item.className = 'left-item';
 				item.onclick = (function (bid) { return function () { navStack = []; openAudiobook(bid); }; })(book.id);
 				let sub = book.chapterCount + ' chapters';
-				if (book.author) { sub = escapeHtml(book.author) + ' · ' + sub; }
 				item.innerHTML = '<div class="left-item-art">' + artHtml(book.coverArt, 80) + '</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(book.title) + '</div><div class="left-item-sub">' + sub + '</div></div>';
 				container.appendChild(item);
 			}

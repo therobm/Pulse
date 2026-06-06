@@ -24,6 +24,7 @@ namespace Pulse.Series
 		private SeriesDBConnector m_connector;
 		private SeriesDB m_db;
 		private string m_audiobooksPath;
+		private string m_artCacheRoot;
 		private Thread m_scanThread;
 
 		private static readonly string[] s_audioExtensions = new string[] { ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".wav", ".wma", ".aac", ".opus" };
@@ -51,6 +52,10 @@ namespace Pulse.Series
 			{
 				Directory.CreateDirectory(pulseDataRoot);
 			}
+
+			// Cover art embedded in audio tags is extracted to here (the source
+			// library may be read-only and we don't want to litter it).
+			m_artCacheRoot = Path.Combine(pulseDataRoot, "AudiobookArt");
 
 			string sqliteFileName = "pulse_series_" + environmentName.ToLowerInvariant() + ".db";
 			string sqlitePath = Path.Combine(pulseDataRoot, sqliteFileName);
@@ -168,7 +173,7 @@ namespace Pulse.Series
 			series.Author = firstEntry.Tags.Author;
 			series.Narrator = "";
 			series.Description = "";
-			series.ArtworkPath = FindCoverArt(folder);
+			series.ArtworkPath = ResolveCoverArt(folder, entries, seriesId);
 			series.DateAdded = DateTime.UtcNow.ToString("o");
 			m_db.UpsertSeries(series);
 
@@ -259,7 +264,27 @@ namespace Pulse.Series
 			return relative.Replace('\\', '/');
 		}
 
-		private static string FindCoverArt(string folder)
+		// Cover art, in priority order: an explicit folder image, else a picture
+		// embedded in one of the audio files (extracted to the art cache).
+		private string ResolveCoverArt(string folder, List<AudiobookFileEntry> entries, string seriesId)
+		{
+			string folderArt = FindFolderCoverArt(folder);
+			if (!string.IsNullOrEmpty(folderArt))
+			{
+				return folderArt;
+			}
+			for (int index = 0; index < entries.Count; index++)
+			{
+				string extracted = ExtractEmbeddedCover(entries[index].Path, seriesId);
+				if (!string.IsNullOrEmpty(extracted))
+				{
+					return extracted;
+				}
+			}
+			return "";
+		}
+
+		private static string FindFolderCoverArt(string folder)
 		{
 			for (int index = 0; index < s_coverNames.Length; index++)
 			{
@@ -270,6 +295,53 @@ namespace Pulse.Series
 				}
 			}
 			return "";
+		}
+
+		// Pulls the first embedded picture from an audio file's tags and writes it
+		// to AudiobookArt/{seriesId}/cover.{ext}. Returns the written path, or ""
+		// when the file has no embedded art. This is what VLC shows for files with
+		// no sidecar image.
+		private string ExtractEmbeddedCover(string path, string seriesId)
+		{
+			try
+			{
+				TagLib.File tagFile = TagLib.File.Create(path);
+				try
+				{
+					if (tagFile.Tag == null || tagFile.Tag.Pictures == null || tagFile.Tag.Pictures.Length == 0)
+					{
+						return "";
+					}
+					TagLib.IPicture picture = tagFile.Tag.Pictures[0];
+					if (picture.Data == null || picture.Data.Data == null || picture.Data.Data.Length == 0)
+					{
+						return "";
+					}
+
+					string extension = ".jpg";
+					if (picture.MimeType != null && picture.MimeType.ToLowerInvariant().Contains("png"))
+					{
+						extension = ".png";
+					}
+					string dir = Path.Combine(m_artCacheRoot, seriesId);
+					if (!Directory.Exists(dir))
+					{
+						Directory.CreateDirectory(dir);
+					}
+					string outPath = Path.Combine(dir, "cover" + extension);
+					File.WriteAllBytes(outPath, picture.Data.Data);
+					return outPath;
+				}
+				finally
+				{
+					tagFile.Dispose();
+				}
+			}
+			catch (Exception ex)
+			{
+				Log.Warning(-1, "Audiobook cover extract failed for " + path + ": " + ex.Message);
+				return "";
+			}
 		}
 
 		private AudiobookTags ReadFileTags(string path)
