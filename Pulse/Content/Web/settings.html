@@ -324,6 +324,82 @@
 				color: var(--danger);
 			}
 
+		.login-form {
+			margin-top: 8px;
+			padding: 14px;
+			border: 1px dashed var(--border);
+			border-radius: 6px;
+		}
+
+			.login-form .form-row {
+				display: grid;
+				grid-template-columns: 1fr 1fr auto auto auto;
+				gap: 10px;
+				align-items: center;
+			}
+
+			.login-form label {
+				font-size: 11px;
+				color: var(--text-secondary);
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				display: block;
+				margin-bottom: 4px;
+			}
+
+			.login-form .checkbox-label {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 12px;
+				color: var(--text-secondary);
+			}
+
+			.login-form .form-error {
+				color: var(--danger);
+				font-size: 12px;
+				margin-top: 8px;
+				min-height: 16px;
+			}
+
+		.login-state {
+			font-size: 12px;
+			color: var(--text-secondary);
+		}
+
+			.login-state.signed-in {
+				color: var(--success);
+			}
+
+		.password-row {
+			padding: 10px 12px;
+			border-bottom: 1px solid var(--border);
+			background: rgba(108, 92, 231, 0.05);
+		}
+
+			.password-row .form-row {
+				display: grid;
+				grid-template-columns: 1fr 1fr auto auto;
+				gap: 10px;
+				align-items: center;
+			}
+
+			.password-row label {
+				font-size: 11px;
+				color: var(--text-secondary);
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				display: block;
+				margin-bottom: 4px;
+			}
+
+			.password-row .form-error {
+				color: var(--danger);
+				font-size: 12px;
+				margin-top: 8px;
+				min-height: 16px;
+			}
+
 		.version-tag {
 			position: fixed;
 			right: 8px;
@@ -343,6 +419,31 @@
 		<div class="header">
 			<h1>Pulse<span>/</span>Settings</h1>
 			<div class="subtitle">administer the server</div>
+		</div>
+
+		<div class="section">
+			<div class="section-head">
+				<h2>Sign in</h2>
+				<div id="login-state" class="login-state"></div>
+			</div>
+			<div class="section-hint">Password login is additive in P1: existing routes are not gated yet. Sign in here to be able to set passwords for other users once the first password exists.</div>
+
+			<div id="login-form" class="login-form">
+				<div class="form-row">
+					<div>
+						<label for="login-username">Username</label>
+						<input type="text" class="input" id="login-username" maxlength="120" autocomplete="username" />
+					</div>
+					<div>
+						<label for="login-password">Password</label>
+						<input type="password" class="input" id="login-password" maxlength="200" autocomplete="current-password" />
+					</div>
+					<label class="checkbox-label"><input type="checkbox" id="login-remember" /> Remember me</label>
+					<button class="btn btn-primary" id="login-submit">Sign in</button>
+					<button class="btn" id="logout-btn">Sign out</button>
+				</div>
+				<div class="form-error" id="login-error"></div>
+			</div>
 		</div>
 
 		<div class="section">
@@ -507,6 +608,12 @@
 				editBtn.textContent = 'Edit';
 				editBtn.addEventListener('click', function () { showEditRow(user); });
 				wrapper.appendChild(editBtn);
+
+				let passwordBtn = document.createElement('button');
+				passwordBtn.className = 'btn';
+				passwordBtn.textContent = 'Set password';
+				passwordBtn.addEventListener('click', function () { showPasswordRow(user.name); });
+				wrapper.appendChild(passwordBtn);
 			}
 
 			let deleteBtn = document.createElement('button');
@@ -516,6 +623,208 @@
 			wrapper.appendChild(deleteBtn);
 
 			actionsCell.appendChild(wrapper);
+		}
+
+		function showPasswordRow(userName) {
+			let row = document.querySelector('tr[data-user-name="' + cssEscape(userName) + '"]');
+			if (!row) { return; }
+			let existing = row.nextElementSibling;
+			if (existing && existing.classList.contains('password-row')) {
+				existing.parentNode.removeChild(existing);
+				return;
+			}
+
+			let passwordRow = document.createElement('tr');
+			passwordRow.className = 'password-row';
+			let cell = document.createElement('td');
+			cell.colSpan = 6;
+
+			let formRow = document.createElement('div');
+			formRow.className = 'form-row';
+
+			let pwWrap = document.createElement('div');
+			let pwLabel = document.createElement('label');
+			pwLabel.textContent = 'New password';
+			pwLabel.setAttribute('for', 'password-input-' + userName);
+			let pwInput = document.createElement('input');
+			pwInput.type = 'password';
+			pwInput.className = 'input';
+			pwInput.id = 'password-input-' + userName;
+			pwInput.maxLength = 200;
+			pwInput.autocomplete = 'new-password';
+			pwWrap.appendChild(pwLabel);
+			pwWrap.appendChild(pwInput);
+
+			let confirmWrap = document.createElement('div');
+			let confirmLabel = document.createElement('label');
+			confirmLabel.textContent = 'Confirm';
+			confirmLabel.setAttribute('for', 'password-confirm-' + userName);
+			let confirmInput = document.createElement('input');
+			confirmInput.type = 'password';
+			confirmInput.className = 'input';
+			confirmInput.id = 'password-confirm-' + userName;
+			confirmInput.maxLength = 200;
+			confirmInput.autocomplete = 'new-password';
+			confirmWrap.appendChild(confirmLabel);
+			confirmWrap.appendChild(confirmInput);
+
+			let saveBtn = document.createElement('button');
+			saveBtn.className = 'btn btn-primary';
+			saveBtn.textContent = 'Save password';
+
+			let cancelBtn = document.createElement('button');
+			cancelBtn.className = 'btn';
+			cancelBtn.textContent = 'Cancel';
+
+			let errorDiv = document.createElement('div');
+			errorDiv.className = 'form-error';
+
+			function submitPassword() {
+				errorDiv.textContent = '';
+				let pw = pwInput.value;
+				let confirm = confirmInput.value;
+				if (!pw || pw.length < 8) {
+					errorDiv.textContent = 'Password must be at least 8 characters.';
+					return;
+				}
+				if (pw !== confirm) {
+					errorDiv.textContent = 'Passwords do not match.';
+					return;
+				}
+				runSetPassword(userName, pw, function (ok, message) {
+					if (ok) {
+						showToast('Password set for ' + userName);
+						passwordRow.parentNode.removeChild(passwordRow);
+					}
+					else {
+						errorDiv.textContent = message;
+					}
+				});
+			}
+
+			function cancelPassword() {
+				passwordRow.parentNode.removeChild(passwordRow);
+			}
+
+			saveBtn.addEventListener('click', submitPassword);
+			cancelBtn.addEventListener('click', cancelPassword);
+			confirmInput.addEventListener('keydown', function (event) {
+				if (event.key === 'Enter') { submitPassword(); }
+				else if (event.key === 'Escape') { cancelPassword(); }
+			});
+			pwInput.addEventListener('keydown', function (event) {
+				if (event.key === 'Escape') { cancelPassword(); }
+			});
+
+			formRow.appendChild(pwWrap);
+			formRow.appendChild(confirmWrap);
+			formRow.appendChild(saveBtn);
+			formRow.appendChild(cancelBtn);
+			cell.appendChild(formRow);
+			cell.appendChild(errorDiv);
+			passwordRow.appendChild(cell);
+
+			row.parentNode.insertBefore(passwordRow, row.nextSibling);
+			pwInput.focus();
+		}
+
+		function runSetPassword(userName, password, callback) {
+			let xhr = new XMLHttpRequest();
+			xhr.open('POST', '/pulse/setPassword');
+			xhr.withCredentials = true;
+			xhr.setRequestHeader('Content-Type', 'application/json');
+			xhr.onload = function () {
+				let message = 'Set-password failed (HTTP ' + xhr.status + ')';
+				let parsed = null;
+				try { parsed = JSON.parse(xhr.responseText); } catch (e) { parsed = null; }
+				if (xhr.status === 200) {
+					callback(true, '');
+					return;
+				}
+				if (parsed && parsed.error) { message = parsed.error; }
+				callback(false, message);
+			};
+			xhr.onerror = function () { callback(false, 'Network error'); };
+			let payload = JSON.stringify({ username: userName, password: password });
+			xhr.send(payload);
+		}
+
+		function runLogin(username, password, rememberMe, callback) {
+			let xhr = new XMLHttpRequest();
+			xhr.open('POST', '/pulse/login');
+			xhr.withCredentials = true;
+			xhr.setRequestHeader('Content-Type', 'application/json');
+			xhr.onload = function () {
+				let parsed = null;
+				try { parsed = JSON.parse(xhr.responseText); } catch (e) { parsed = null; }
+				if (xhr.status === 200 && parsed && parsed.username) {
+					callback(true, parsed, '');
+					return;
+				}
+				let message = 'Invalid credentials';
+				if (parsed && parsed.error) { message = parsed.error; }
+				callback(false, null, message);
+			};
+			xhr.onerror = function () { callback(false, null, 'Network error'); };
+			let payload = JSON.stringify({ username: username, password: password, rememberMe: rememberMe });
+			xhr.send(payload);
+		}
+
+		function runLogout(callback) {
+			let xhr = new XMLHttpRequest();
+			xhr.open('POST', '/pulse/logout');
+			xhr.withCredentials = true;
+			xhr.onload = function () { callback(xhr.status === 200); };
+			xhr.onerror = function () { callback(false); };
+			xhr.send();
+		}
+
+		function submitLogin() {
+			let username = document.getElementById('login-username').value.trim();
+			let password = document.getElementById('login-password').value;
+			let rememberMe = document.getElementById('login-remember').checked;
+			let errEl = document.getElementById('login-error');
+			errEl.textContent = '';
+			if (!username || !password) {
+				errEl.textContent = 'Username and password are required.';
+				return;
+			}
+			runLogin(username, password, rememberMe, function (ok, data, message) {
+				if (ok) {
+					document.getElementById('login-password').value = '';
+					setLoginState(data.username, data.isAdmin);
+					showToast('Signed in as ' + data.username);
+				}
+				else {
+					errEl.textContent = message;
+				}
+			});
+		}
+
+		function submitLogout() {
+			runLogout(function (ok) {
+				if (ok) {
+					setLoginState('', false);
+					showToast('Signed out');
+				}
+				else {
+					showToast('Sign out failed', true);
+				}
+			});
+		}
+
+		function setLoginState(userName, isAdmin) {
+			let stateEl = document.getElementById('login-state');
+			if (userName) {
+				let suffix = '';
+				if (isAdmin) { suffix = ' (admin)'; }
+				stateEl.textContent = 'Signed in as ' + userName + suffix;
+				stateEl.classList.add('signed-in');
+			}
+			else {
+				stateEl.textContent = 'Not signed in';
+				stateEl.classList.remove('signed-in');
+			}
 		}
 
 		function showDeleteConfirm(actionsCell, userName) {
@@ -691,6 +1000,16 @@
 				if (event.key === 'Enter') { submitCreate(); }
 				else if (event.key === 'Escape') { hideCreateForm(); }
 			});
+
+			document.getElementById('login-submit').addEventListener('click', submitLogin);
+			document.getElementById('logout-btn').addEventListener('click', submitLogout);
+			document.getElementById('login-username').addEventListener('keydown', function (event) {
+				if (event.key === 'Enter') { submitLogin(); }
+			});
+			document.getElementById('login-password').addEventListener('keydown', function (event) {
+				if (event.key === 'Enter') { submitLogin(); }
+			});
+			setLoginState('', false);
 		}
 
 		function loadVersionTag() {
