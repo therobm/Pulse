@@ -23,7 +23,8 @@ namespace Pulse.Series
 	{
 		KeepAll,
 		KeepN,
-		KeepDays
+		KeepDays,
+		KeepExisting, //no new downloads but don't evict old ones
 	}
 
 	/// <summary>

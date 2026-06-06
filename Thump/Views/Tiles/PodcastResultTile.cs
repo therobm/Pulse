@@ -7,14 +7,21 @@ using Thump.Views;
 
 namespace Thump.Views.Tiles
 {
-	public class PodcastRowTile : ThumpView
+	/// <summary>
+	/// A single podcast discovery hit (see PulseClient.SearchPodcasts): art,
+	/// title, author, and a Subscribe button that adds the feed by its FeedUrl.
+	/// Unlike PodcastRowTile these rows are not catalogued (no Id), so there is
+	/// no tap-to-open - the only action is Subscribe.
+	/// </summary>
+	public class PodcastResultTile : ThumpView
 	{
 		private ArtImage m_art;
 		private Label m_nameLabel;
 		private Label m_subtitleLabel;
+		private Button m_subscribeButton;
 		private PulsePodcast m_podcast;
 
-		public PodcastRowTile() : base(MainView.Self)
+		public PodcastResultTile() : base(MainView.Self)
 		{
 
 		}
@@ -28,15 +35,15 @@ namespace Thump.Views.Tiles
 			artColumn.Width = new GridLength(56);
 			ColumnDefinition textColumn = new ColumnDefinition();
 			textColumn.Width = GridLength.Star;
+			ColumnDefinition buttonColumn = new ColumnDefinition();
+			buttonColumn.Width = GridLength.Auto;
 			grid.ColumnDefinitions.Add(artColumn);
 			grid.ColumnDefinitions.Add(textColumn);
+			grid.ColumnDefinitions.Add(buttonColumn);
 
 			grid.Children.Add(BuildArt());
 			grid.Children.Add(BuildText());
-
-			TapGestureRecognizer tap = new TapGestureRecognizer();
-			tap.Tapped += OnTapped;
-			grid.GestureRecognizers.Add(tap);
+			grid.Children.Add(BuildButton());
 
 			Content = grid;
 		}
@@ -57,7 +64,7 @@ namespace Thump.Views.Tiles
 			StackLayout textStack = new StackLayout();
 			textStack.VerticalOptions = LayoutOptions.Center;
 			textStack.Spacing = 2;
-			textStack.Padding = new Thickness(12, 0, 0, 0);
+			textStack.Padding = new Thickness(12, 0, 8, 0);
 
 			m_nameLabel = new Label();
 			m_nameLabel.Text = "Podcast title";
@@ -67,7 +74,7 @@ namespace Thump.Views.Tiles
 			textStack.Children.Add(m_nameLabel);
 
 			m_subtitleLabel = new Label();
-			m_subtitleLabel.Text = "0 episodes";
+			m_subtitleLabel.Text = "";
 			m_subtitleLabel.TextColor = ThumpColors.TextSecondary;
 			m_subtitleLabel.FontSize = 12;
 			m_subtitleLabel.LineBreakMode = LineBreakMode.TailTruncation;
@@ -75,6 +82,22 @@ namespace Thump.Views.Tiles
 
 			Grid.SetColumn(textStack, 1);
 			return textStack;
+		}
+
+		private View BuildButton()
+		{
+			m_subscribeButton = new Button();
+			m_subscribeButton.Text = "Subscribe";
+			m_subscribeButton.TextColor = ThumpColors.OnBackground;
+			m_subscribeButton.BackgroundColor = ThumpColors.Surface;
+			m_subscribeButton.CornerRadius = 8;
+			m_subscribeButton.FontSize = 13;
+			m_subscribeButton.Padding = new Thickness(16, 6);
+			m_subscribeButton.VerticalOptions = LayoutOptions.Center;
+			m_subscribeButton.Clicked += OnSubscribeClicked;
+
+			Grid.SetColumn(m_subscribeButton, 2);
+			return m_subscribeButton;
 		}
 
 		protected override void OnBindingContextChanged()
@@ -87,17 +110,31 @@ namespace Thump.Views.Tiles
 			}
 			m_podcast = podcast;
 			m_nameLabel.Text = podcast.Title;
-			m_subtitleLabel.Text = podcast.EpisodeCount + " episodes";
+			m_subtitleLabel.Text = podcast.Author;
 			m_art.SetCoverArt(podcast.CoverArt);
+			// Tiles are recycled across binds; reset the button for the new item.
+			m_subscribeButton.Text = "Subscribe";
+			m_subscribeButton.IsEnabled = true;
 		}
 
-		private void OnTapped(object sender, EventArgs e)
+		private void OnSubscribeClicked(object sender, EventArgs e)
 		{
-			if (m_podcast == null)
+			if (m_podcast == null || string.IsNullOrEmpty(m_podcast.FeedUrl))
 			{
 				return;
 			}
-			m_mainView.OnPodcastSelected(m_podcast);
+			m_subscribeButton.IsEnabled = false;
+			m_subscribeButton.Text = "Adding…";
+			MainView.MediaClient.AddPodcast(m_podcast.FeedUrl, true, (added) =>
+			{
+				if (added == null)
+				{
+					m_subscribeButton.IsEnabled = true;
+					m_subscribeButton.Text = "Subscribe";
+					return;
+				}
+				m_subscribeButton.Text = "Subscribed ✓";
+			});
 		}
 	}
 }

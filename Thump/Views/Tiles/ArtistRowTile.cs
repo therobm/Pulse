@@ -79,10 +79,6 @@ namespace Thump.Views.Tiles
 			return textStack;
 		}
 
-		public override void Initialize()
-		{
-			base.Initialize();
-		}
 
 		protected override void OnBindingContextChanged()
 		{

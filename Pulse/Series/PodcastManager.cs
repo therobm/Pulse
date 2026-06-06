@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using Pulse.Database;
 using Pulse.MusicLibrary;
@@ -27,6 +28,7 @@ namespace Pulse.Series
 		private SeriesDBConnector m_connector;
 		private SeriesDB m_db;
 		private string m_musicPath;
+		private string m_podcastSearchUrl;
 		private Thread m_pollThread;
 
 		public PodcastManager(PulseConfig config)
@@ -45,6 +47,7 @@ namespace Pulse.Series
 #endif
 
 			m_musicPath = config.MusicPath;
+			m_podcastSearchUrl = config.PodcastSearchUrl;
 
 			string pulseDataRoot = Path.Combine(config.MusicPath, "PulseData");
 			if (!Directory.Exists(pulseDataRoot))
@@ -361,7 +364,7 @@ namespace Pulse.Series
 			string seriesId = (string)seriesIdObject;
 			try
 			{
-				DownloadPendingForFeed(seriesId);
+				EnforceRetention(seriesId);
 			}
 			catch (Exception ex)
 			{
@@ -482,40 +485,7 @@ namespace Pulse.Series
 			}
 		}
 
-		/// <summary>
-		/// Walks the keep set produced by the series' retention policy and
-		/// invokes DownloadItem for any keep-set item that isn't already
-		/// Downloaded (or whose LocalPath no longer points at a real file).
-		/// Honors AutoDownload: if the user turned auto-download off, this
-		/// is a no-op even when retention selects items.
-		/// </summary>
-		public void DownloadPendingForFeed(string seriesId)
-		{
-			SeriesInfo series = m_db.LoadSeries(seriesId);
-			if (series == null)
-			{
-				return;
-			}
-			if (!series.AutoDownload)
-			{
-				return;
-			}
-
-			List<SeriesItemInfo> items = m_db.LoadItemsForSeries(seriesId);
-			List<SeriesItemInfo> keepSet = ComputeKeepSet(items, series);
-
-			int keepCount = keepSet.Count;
-			for (int keepIndex = 0; keepIndex < keepCount; keepIndex++)
-			{
-				SeriesItemInfo candidate = keepSet[keepIndex];
-				bool fileMissing = string.IsNullOrEmpty(candidate.LocalPath) || !File.Exists(candidate.LocalPath);
-				bool needsDownload = candidate.DownloadState != eDownloadState.Downloaded || fileMissing;
-				if (needsDownload)
-				{
-					DownloadItem(candidate);
-				}
-			}
-		}
+	
 
 		/// <summary>
 		/// Best-effort duration probe via TagLib. Returns 0 when the file
@@ -546,25 +516,20 @@ namespace Pulse.Series
 			}
 		}
 
+		
 		/// <summary>
-		/// Applies the series' retention policy: items not in the keep set
-		/// have their local file deleted and their row reset to
-		/// Discovered / LocalPath="" (the metadata row is preserved so the
-		/// item can be re-downloaded later without re-ingesting the feed).
-		/// KeepAll culls nothing; KeepN keeps the newest N by
-		/// PublishedDate; KeepDays keeps anything within the last N days.
+		/// Ensures the requested retention policy is being applied
+		/// Downloads and Evicts according to the policy
 		/// </summary>
-		public void ApplyRetention(string seriesId)
+		/// <param name="seriesId"></param>
+		public void EnforceRetention(string seriesId)
 		{
 			SeriesInfo series = m_db.LoadSeries(seriesId);
-			if (series == null)
+			if (series == null || series.Retention == eRetentionPolicy.KeepExisting)
 			{
 				return;
 			}
-			if (series.Retention == eRetentionPolicy.KeepAll)
-			{
-				return;
-			}
+	
 
 			List<SeriesItemInfo> items = m_db.LoadItemsForSeries(seriesId);
 			List<SeriesItemInfo> keepSet = ComputeKeepSet(items, series);
@@ -579,33 +544,45 @@ namespace Pulse.Series
 			for (int itemIndex = 0; itemIndex < itemCount; itemIndex++)
 			{
 				SeriesItemInfo item = items[itemIndex];
-				if (item.DownloadState != eDownloadState.Downloaded)
-				{
-					continue;
-				}
+
 				bool kept = keepIds.Contains(item.Id);
+
+				//We want this item 
 				if (kept)
 				{
-					continue;
+					//we're missing this item and we should download it
+					if (item.NeedsDownload())
+					{
+						DownloadItem(item);
+					}
 				}
-
-				if (!string.IsNullOrEmpty(item.LocalPath) && File.Exists(item.LocalPath))
+				else
 				{
-					try
+					//we don't want this item but we have it, remove
+					if (!kept && item.DownloadState == eDownloadState.Downloaded)
 					{
-						File.Delete(item.LocalPath);
-					}
-					catch (Exception ex)
-					{
-						Log.Warning(-1, "Podcast retention delete failed: " + item.LocalPath + " -- " + ex.Message);
+						UncacheItem(item);
 					}
 				}
-				item.LocalPath = "";
-				item.DownloadState = eDownloadState.Discovered;
-				m_db.UpsertItem(item);
 			}
 		}
-
+		private void UncacheItem(SeriesItemInfo item)
+		{
+			if (!string.IsNullOrEmpty(item.LocalPath) && File.Exists(item.LocalPath))
+			{
+				try
+				{
+					File.Delete(item.LocalPath);
+				}
+				catch (Exception ex)
+				{
+					Log.Warning(-1, "Podcast retention delete failed: " + item.LocalPath + " -- " + ex.Message);
+				}
+			}
+			item.LocalPath = "";
+			item.DownloadState = eDownloadState.Discovered;
+			m_db.UpsertItem(item);
+		}
 		/// <summary>
 		/// Localises a series' artwork: if ArtworkPath is still a remote
 		/// URL, downloads it to {seriesDir}/folder.jpg (the convention
@@ -734,8 +711,7 @@ namespace Pulse.Series
 				{
 					CacheArtwork(storedSeries);
 				}
-				DownloadPendingForFeed(seriesId);
-				ApplyRetention(seriesId);
+				EnforceRetention(seriesId);
 			}
 			catch (Exception ex)
 			{
@@ -910,6 +886,99 @@ namespace Pulse.Series
 		}
 
 		/// <summary>
+		/// Discover podcasts by name through the configured search service
+		/// (PulseConfig.PodcastSearchUrl). Returns remote candidates the user
+		/// can add by FeedUrl; hits without a feed URL are dropped since they
+		/// cannot be subscribed. The server owns this entirely so swapping the
+		/// provider is a config change. Network/parse failures return an empty
+		/// list rather than throwing.
+		/// </summary>
+		public List<PodcastSearchResult> SearchPodcasts(string query)
+		{
+			List<PodcastSearchResult> results = new List<PodcastSearchResult>();
+			if (string.IsNullOrWhiteSpace(query))
+			{
+				return results;
+			}
+			if (string.IsNullOrWhiteSpace(m_podcastSearchUrl))
+			{
+				return results;
+			}
+
+			string url = m_podcastSearchUrl.Replace("{query}", Uri.EscapeDataString(query));
+			try
+			{
+				HttpResponseMessage response = s_httpClient.GetAsync(url).GetAwaiter().GetResult();
+				if (!response.IsSuccessStatusCode)
+				{
+					Log.Warning(-1, "Podcast search failed (" + ((int)response.StatusCode).ToString() + ") for query '" + query + "'");
+					return results;
+				}
+
+				string body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+				JsonDocument document = JsonDocument.Parse(body);
+				try
+				{
+					JsonElement root = document.RootElement;
+					JsonElement resultsElement;
+					bool hasResults = root.TryGetProperty("results", out resultsElement);
+					if (!hasResults || resultsElement.ValueKind != JsonValueKind.Array)
+					{
+						return results;
+					}
+
+					foreach (JsonElement entry in resultsElement.EnumerateArray())
+					{
+						string feedUrl = ReadJsonString(entry, "feedUrl");
+						if (string.IsNullOrWhiteSpace(feedUrl))
+						{
+							continue;
+						}
+						PodcastSearchResult result = new PodcastSearchResult();
+						result.Title = ReadJsonString(entry, "collectionName");
+						result.Author = ReadJsonString(entry, "artistName");
+						result.FeedUrl = feedUrl;
+						string artwork = ReadJsonString(entry, "artworkUrl600");
+						if (string.IsNullOrEmpty(artwork))
+						{
+							artwork = ReadJsonString(entry, "artworkUrl100");
+						}
+						result.ArtworkUrl = artwork;
+						results.Add(result);
+					}
+				}
+				finally
+				{
+					document.Dispose();
+				}
+			}
+			catch (Exception ex)
+			{
+				Log.Error(-1, "Podcast search error for query '" + query + "': " + ex.Message);
+			}
+			return results;
+		}
+
+		/// <summary>
+		/// Reads a string property from a JSON object, returning "" when the
+		/// property is missing or not a string. Keeps SearchPodcasts terse.
+		/// </summary>
+		private static string ReadJsonString(JsonElement element, string propertyName)
+		{
+			JsonElement value;
+			bool found = element.TryGetProperty(propertyName, out value);
+			if (!found)
+			{
+				return "";
+			}
+			if (value.ValueKind != JsonValueKind.String)
+			{
+				return "";
+			}
+			return value.GetString();
+		}
+
+		/// <summary>
 		/// Items presented to clients: only episodes whose media is on disk
 		/// are returned, sorted newest-first by PublishedDate so the UI
 		/// reads chronologically without re-sorting.
@@ -972,6 +1041,39 @@ namespace Pulse.Series
 				}
 			}
 			return unplayed;
+		}
+
+		/// <summary>
+		/// Writes the four backlog settings (PollIntervalMinutes,
+		/// Retention, RetentionValue, AutoDownload) for one series via
+		/// SeriesDB.UpdateFeedSettings, then kicks a background thread
+		/// that runs ApplyRetention + DownloadPendingForFeed against the
+		/// new settings so the change takes effect immediately rather
+		/// than waiting for the next poll cycle. Mirrors the
+		/// guarded-thread pattern used by AddPodcast for the same
+		/// reason: a settings change can imply hundreds of MB of media
+		/// movement and must not block the request thread.
+		/// </summary>
+		public void UpdatePodcastSettings(string seriesId, int pollIntervalMinutes, eRetentionPolicy retention, int retentionValue, bool autoDownload)
+		{
+			m_db.UpdateFeedSettings(seriesId, pollIntervalMinutes, retention, retentionValue, autoDownload);
+			Thread settingsThread = new Thread(RunSettingsApply);
+			settingsThread.IsBackground = true;
+			settingsThread.Name = "Pulse.PodcastSettingsApply";
+			settingsThread.Start(seriesId);
+		}
+
+		private void RunSettingsApply(object seriesIdObject)
+		{
+			string seriesId = (string)seriesIdObject;
+			try
+			{
+				EnforceRetention(seriesId);
+			}
+			catch (Exception ex)
+			{
+				Log.Error(-1, "Podcast settings apply failed for " + seriesId + ": " + ex.Message);
+			}
 		}
 
 		/// <summary>

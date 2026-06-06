@@ -178,16 +178,19 @@ namespace Thump.Views
 
 		public override void Initialize()
 		{
-			base.Initialize();
 			m_titleLabel.Text = m_playlist.Name;
 			m_metaLabel.Text = m_playlist.TrackCount + " tracks";
 			m_art.SetCoverArt(m_playlist.CoverArt);
+			base.Initialize();
 
+		}
+		protected override void RefreshData()
+		{
 			// The playlist from the list endpoint carries no tracks; fetch the full
 			// playlist (getPlaylist) which includes its songs.
 			MainView.MediaClient.GetPlaylist(m_playlist.Id, OnPlaylistLoaded);
+			base.RefreshData();
 		}
-
 		private void OnPlaylistLoaded(PulsePlaylistDetails playlistDetails)
 		{
 			if (playlistDetails == null)

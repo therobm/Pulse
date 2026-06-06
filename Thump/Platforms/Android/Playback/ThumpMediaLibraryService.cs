@@ -131,7 +131,12 @@ namespace Thump.Playback.AndroidOS
 			library.m_onGetSearchResult = OnGetSearchResult;
 
 
-			MediaLibrarySession.Builder sessionBuilder = new MediaLibrarySession.Builder(this, m_player, library);
+			// Wrap m_player so both the in-app MediaController and Android Auto
+			// route next/prev through ThumpForwardingPlayer, which rewrites
+			// those into 10s seeks for series items. m_player stays as-is for
+			// the service's own direct uses (ticker, error handling).
+			ThumpForwardingPlayer sessionPlayer = new ThumpForwardingPlayer(m_player);
+			MediaLibrarySession.Builder sessionBuilder = new MediaLibrarySession.Builder(this, sessionPlayer, library);
 			PendingIntent sessionActivity = BuildSessionActivity();
 			if (sessionActivity != null)
 			{
@@ -591,6 +596,7 @@ namespace Thump.Playback.AndroidOS
 					track.CoverArt = episode.CoverArt;
 				}
 				track.Duration = episode.Duration;
+				track.IsSeries = true;
 				tracks.Add(track);
 			}
 			return tracks;

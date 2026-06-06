@@ -174,10 +174,6 @@ namespace Thump.Views
 			return stack;
 		}
 
-		public override void Initialize()
-		{
-			base.Initialize();
-		}
 
 		public void SetActiveTab(eTab tab)
 		{

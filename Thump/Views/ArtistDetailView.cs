@@ -153,16 +153,20 @@ namespace Thump.Views
 
 		public override void Initialize()
 		{
-			base.Initialize();
 			m_titleLabel.Text = m_artist.Name;
 			m_metaLabel.Text = m_artist.AlbumCount + " albums";
 			m_art.SetCoverArt(m_artist.CoverArt);
-			MainView.MediaClient.GetArtistAlbums(m_artist.Id, (albums)=>
+			base.Initialize();
+
+		}
+		protected override void RefreshData()
+		{
+			MainView.MediaClient.GetArtistAlbums(m_artist.Id, (albums) =>
 			{
 				OnAlbumsLoaded(albums);
 			});
+			base.RefreshData();
 		}
-
 		private void OnAlbumsLoaded(List<PulseAlbum> albums)
 		{
 			m_albums = albums;

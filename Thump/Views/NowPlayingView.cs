@@ -308,12 +308,12 @@ namespace Thump.Views
 
 		public override void Initialize()
 		{
-			base.Initialize();
 			PulseTrack song = m_mainView.GetCurrentTrack();
 			SetTrack(song);
 			SetShuffleState(m_mainView.GetShuffleEnabled());
 			SetRepeatState(m_mainView.GetRepeatMode());
 			SetSleepTimerDisplay(m_mainView.GetSleepTimerActive(), m_mainView.GetSleepTimerRemainingSeconds());
+			base.Initialize();
 		}
 
 		public void SetTrack(PulseTrack song)

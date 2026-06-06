@@ -156,12 +156,16 @@ namespace Thump.Views
 
 		public override void Initialize()
 		{
-			base.Initialize();
 			m_titleLabel.Text = m_genre.Name;
 			m_metaLabel.Text = m_genre.TrackCount + " songs  ·  " + m_genre.AlbumCount + " albums";
-			MainView.MediaClient.GetTracksForGenre(m_genre.Id, OnTracksLoaded);
-		}
 
+			base.Initialize();
+		}
+		protected override void RefreshData()
+		{
+			MainView.MediaClient.GetTracksForGenre(m_genre.Id, OnTracksLoaded);
+			base.RefreshData();
+		}
 		private void OnTracksLoaded(List<PulseTrack> tracks)
 		{
 			m_tracks = tracks;

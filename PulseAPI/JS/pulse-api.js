@@ -171,6 +171,9 @@
 
 	PulseClient.prototype.coverArtUrl = function (id, size) {
 		if (!id) { return ''; }
+		// Podcast discovery hits carry a remote artwork URL in place of a server
+		// cover id (see searchPodcasts); load those directly.
+		if (id.indexOf('http://') === 0 || id.indexOf('https://') === 0) { return id; }
 		return this.url('coverArt', { id: id, size: size });
 	};
 
@@ -315,6 +318,14 @@
 		return this._contents('podcasts');
 	};
 
+	// Discover podcasts by name through the server's configured search provider.
+	// Resolves to an array of PulsePodcast hits: each has Title/Author/FeedUrl
+	// and a remote artwork URL in CoverArt, but no Id (not catalogued yet). Add
+	// one via addPodcast(feedUrl, true).
+	PulseClient.prototype.searchPodcasts = function (query) {
+		return this._contents('searchPodcasts', { query: query });
+	};
+
 	// The full podcast catalogue on the server, regardless of subscription.
 	PulseClient.prototype.allPodcasts = function () {
 		return this._contents('allPodcasts');
@@ -341,6 +352,21 @@
 
 	PulseClient.prototype.unsubscribePodcast = function (id) {
 		return this.request('unsubscribePodcast', { id: id });
+	};
+
+	// Change a podcast's backlog settings. settings may include retentionPolicy
+	// ('KeepAll'|'KeepN'|'KeepDays'), retentionValue (int), autoDownload (bool),
+	// and pollIntervalMinutes (int). Resolves to the updated PulsePodcast.
+	PulseClient.prototype.updatePodcast = function (id, settings) {
+		var options = settings || {};
+		var params = { id: id };
+		if (options.retentionPolicy !== undefined) { params.retentionPolicy = options.retentionPolicy; }
+		if (options.retentionValue !== undefined) { params.retentionValue = options.retentionValue; }
+		if (options.pollIntervalMinutes !== undefined) { params.pollIntervalMinutes = options.pollIntervalMinutes; }
+		if (options.autoDownload !== undefined) {
+			if (options.autoDownload) { params.autoDownload = '1'; } else { params.autoDownload = '0'; }
+		}
+		return this._contents('updatePodcast', params);
 	};
 
 	// Save this user's playback position (seconds) for an episode/chapter.

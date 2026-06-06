@@ -143,11 +143,6 @@ namespace Thump.Views
 			return controlsStack;
 		}
 
-		public override void Initialize()
-		{
-			base.Initialize();
-		}
-
 		public void SetTrack(PulseTrack track)
 		{
 			if (track == null)

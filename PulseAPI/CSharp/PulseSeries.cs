@@ -28,6 +28,14 @@ namespace PulseAPI.CSharp
 		public int EpisodeCount;
 		public bool AutoDownload;
 		public string FeedUrl;
+		/// <summary>
+		/// Server-side eRetentionPolicy name on the wire ("KeepAll" |
+		/// "KeepN" | "KeepDays"). String-typed because the enum is
+		/// server-only and not visible to PulseAPI.
+		/// </summary>
+		public string RetentionPolicy;
+		public int RetentionValue;
+		public int PollIntervalMinutes;
 
 		public PulsePodcast()
 		{

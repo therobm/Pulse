@@ -292,6 +292,37 @@ namespace Pulse.Database
 		}
 
 		/// <summary>
+		/// Targeted UPDATE for the four user-editable backlog settings
+		/// (poll_interval_minutes, retention_policy, retention_value,
+		/// auto_download) on one series row. Leaves feed_url, last_polled,
+		/// and every metadata column untouched so an updatePodcast call
+		/// from the client cannot disturb the feed identity or the poll
+		/// clock.
+		/// </summary>
+		public void UpdateFeedSettings(string seriesId, int pollIntervalMinutes, eRetentionPolicy retention, int retentionValue, bool autoDownload)
+		{
+			if (string.IsNullOrEmpty(seriesId)) { return; }
+			int autoInt = 0;
+			if (autoDownload) { autoInt = 1; }
+			SqliteConnection connection = m_connector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = @"UPDATE series SET poll_interval_minutes = $poll, retention_policy = $policy, retention_value = $value, auto_download = $auto WHERE id = $id;";
+				command.Parameters.AddWithValue("$poll", pollIntervalMinutes);
+				command.Parameters.AddWithValue("$policy", retention.ToString());
+				command.Parameters.AddWithValue("$value", retentionValue);
+				command.Parameters.AddWithValue("$auto", autoInt);
+				command.Parameters.AddWithValue("$id", seriesId);
+				command.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		/// <summary>
 		/// Targeted UPDATE that touches only the last_polled column for one
 		/// series. Used by the poll-refresh path so re-ingesting a feed does
 		/// not clobber user-set fields (PollIntervalMinutes, Retention,

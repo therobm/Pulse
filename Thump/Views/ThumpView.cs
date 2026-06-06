@@ -1,6 +1,9 @@
+using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
+using PulseAPI.CSharp;
 
 namespace Thump.Views
 {
@@ -23,11 +26,16 @@ namespace Thump.Views
 		{
 		}
 
+		protected virtual void RefreshData()
+		{
+
+		}
 		// Fired when this view becomes the active content (or its parent passes
 		// the signal down). The base implementation forwards to child ThumpViews;
 		// overrides that do their own work should call base to keep it flowing.
 		public virtual void OnNavigatedTo()
 		{
+			RefreshData();
 			ForwardNavigatedToChildren(this);
 		}
 
@@ -50,6 +58,79 @@ namespace Thump.Views
 				else
 				{
 					ForwardNavigatedToChildren(children[index]);
+				}
+			}
+		}
+
+		protected void Sort<T>(ObservableCollection<T> collection, Comparison<T> comparison)
+		{
+			List<T> sorted = new List<T>(collection);
+			sorted.Sort(comparison);
+
+			for (int i = 0; i < sorted.Count; i++)
+			{
+				int current = -1;
+				for (int j = i; j < collection.Count; j++)
+				{
+					if (ReferenceEquals(collection[j], sorted[i]))
+					{
+						current = j;
+						break;
+					}
+				}
+
+				if (current != i)
+				{
+					collection.Move(current, i);
+				}
+			}
+		}
+
+		protected void SyncFrom<T>(ObservableCollection<T> collection, List<T> incoming) where T : PulseObject
+		{
+			SyncFrom<T>(collection, incoming, e => e.Id);
+		}
+		protected void SyncFrom<T>(ObservableCollection<T> collection, List<T> incoming, Func<T, string> getId)
+		{
+			HashSet<string> incomingIds = new HashSet<string>();
+			for (int i = 0; i < incoming.Count; i++)
+			{
+				incomingIds.Add(getId(incoming[i]));
+			}
+
+			// Update existing / add new
+			for (int i = 0; i < incoming.Count; i++)
+			{
+				string id = getId(incoming[i]);
+				int existing = -1;
+				for (int j = 0; j < collection.Count; j++)
+				{
+					if (getId(collection[j]) == id)
+					{
+						existing = j;
+						break;
+					}
+				}
+
+				if (existing >= 0)
+				{
+					if (!collection[existing].Equals(incoming[i]))
+					{
+						collection[existing] = incoming[i];
+					}
+				}
+				else
+				{
+					collection.Add(incoming[i]);
+				}
+			}
+
+			// Remove stale
+			for (int i = collection.Count - 1; i >= 0; i--)
+			{
+				if (!incomingIds.Contains(getId(collection[i])))
+				{
+					collection.RemoveAt(i);
 				}
 			}
 		}

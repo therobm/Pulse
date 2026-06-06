@@ -16,6 +16,12 @@ using Thump.Views.Tiles;
 namespace Thump.Pulse
 {
 	
+	public enum eMediaCacheStrategy
+	{
+		NetworkFirst,	// always use for metadata, cache is for offline only
+		CacheFirst,		// prefer cached data (useful for tracks, art, etc..)
+		NetworkOnly,	// no caching ever
+	}
 
 	public interface IMediaClientHost
 	{
@@ -243,10 +249,12 @@ namespace Thump.Pulse
 		public abstract void GetArtist(string artistId, Action<PulseArtistDetails> onComplete);
 		public abstract void GetPodcasts(Action<List<PulsePodcast>> onComplete);
 		public abstract void GetAllPodcasts(Action<List<PulsePodcast>> onComplete);
+		public abstract void SearchPodcasts(string query, Action<List<PulsePodcast>> onComplete);
 		public abstract void GetPodcast(string podcastId, Action<PulsePodcastDetails> onComplete);
 		public abstract void AddPodcast(string feedUrl, bool subscribe, Action<PulsePodcast> onComplete);
 		public abstract void SubscribePodcast(string podcastId, Action<bool> onComplete);
 		public abstract void UnsubscribePodcast(string podcastId, Action<bool> onComplete);
+		public abstract void UpdatePodcast(string podcastId, string retentionPolicy, int retentionValue, int pollIntervalMinutes, bool autoDownload, Action<PulsePodcast> onComplete);
 		public abstract void SaveEpisodeProgress(string episodeId, int positionSeconds);
 		public abstract void Search(string query, Action<PulseSearchData> onComplete);
 		public abstract void GetArtistAlbums(string artistId, Action<List<PulseAlbum>> onComplete);
@@ -321,31 +329,39 @@ namespace Thump.Pulse
 			return trackData;
 		}
 
-		public void GetHTTPAudio(string url, Action<byte[]> onComplete, bool bCacheAllowed)
+		public void GetHTTPAudio(string url, Action<byte[]> onComplete, eMediaCacheStrategy cacheStrategy)
 		{
-			m_audioData.QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, true));
+			m_audioData.QueueRequest(new HttpReq(url, onComplete, cacheStrategy, true));
 		}
-		public void GetHTTPImage(string url, Action<byte[]> onComplete, bool bCacheAllowed)
+		public void GetHTTPImage(string url, Action<byte[]> onComplete, eMediaCacheStrategy cacheStrategy)
 		{
-			m_imageData.QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, true));
+			m_imageData.QueueRequest(new HttpReq(url, onComplete, cacheStrategy, true));
 		}
-		public void GetHTTP(string url, Action<string> onComplete, bool bCacheAllowed, bool logPerf)
+		public void GetHTTP(string url, Action<string> onComplete, eMediaCacheStrategy cacheStrategy, bool logPerf)
 		{
-			m_metaData.QueueRequest(new HttpReq(url, onComplete, bCacheAllowed, logPerf));
+			m_metaData.QueueRequest(new HttpReq(url, onComplete, cacheStrategy, logPerf));
 		}
 
-		public byte[] HttpGetBinary(string url, bool bCacheAllowed, CancellationToken token)
+		public byte[] HttpGetBinary(string url, eMediaCacheStrategy cacheStrategy, CancellationToken token)
 		{
 			byte[] retVal = null;
-			if (bCacheAllowed && GetCachedResults(url, out retVal))
+			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedResults(url, out retVal))
 			{
 				return retVal;
 			}
 			HttpResponseMessage response = HttpGet_Internal(url, true, token, false);
-			if (!response.IsSuccessStatusCode)
+			if (cacheStrategy != eMediaCacheStrategy.NetworkOnly && !response.IsSuccessStatusCode)
 			{
-				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
-				return null;
+				//try our offline cache
+				if (!GetCachedResults(url, out retVal))
+				{ 
+					Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
+					return null;
+				}
+				else
+				{
+					return retVal;
+				}
 			}
 			try
 			{
@@ -353,6 +369,7 @@ namespace Thump.Pulse
 			}
 			catch (Exception ex)
 			{
+				//todo this should log exceptions that are unexpected
 				// suspend cancel arrives here as AggregateException(OperationCanceled); not a real error
 				return null;
 			}
@@ -360,28 +377,38 @@ namespace Thump.Pulse
 			return retVal;
 		}
 
-		public string HttpGet(string url, bool bCacheAllowed, bool logPerf, bool ignoreOnline)
+		public string HttpGet(string url, eMediaCacheStrategy cacheStrategy, bool logPerf, bool ignoreOnline)
 		{
 			string retVal = null;
-			if (bCacheAllowed && GetCachedResults(url, out retVal))
+			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedResults(url, out retVal))
 			{
 				return retVal;
 			}
 			HttpResponseMessage response = HttpGet_Internal(url, logPerf, CancellationToken.None, ignoreOnline);
 			if (!response.IsSuccessStatusCode)
 			{
-				Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
-				return null;
+				//try our offline cache
+				if (cacheStrategy != eMediaCacheStrategy.NetworkOnly && !GetCachedResults(url, out retVal))
+				{
+					Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
+					return null;
+				}
+				else
+				{
+					return retVal;
+				}
 			}
-
-			try
-			{
-				retVal = ReadStringBodyWithStallTimeout(response, 30);
-			}
-			catch (Exception ex)
-			{
-				Log.Exception(ex);
-				return null;
+			else 
+			{ 
+				try
+				{
+					retVal = ReadStringBodyWithStallTimeout(response, 30);
+				}
+				catch (Exception ex)
+				{
+					Log.Exception(ex);
+					return null;
+				}
 			}
 
 			CacheQueryResults(url, retVal);

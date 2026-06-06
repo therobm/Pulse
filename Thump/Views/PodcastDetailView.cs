@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -15,7 +16,14 @@ namespace Thump.Views
 		private Label m_titleLabel;
 		private Label m_metaLabel;
 		private Button m_subscribeButton;
+		private Picker m_retentionPicker;
+		private Entry m_retentionValueEntry;
+		private Switch m_autoDownloadSwitch;
+		private Label m_settingsStatusLabel;
 		private CollectionView m_episodeList;
+		// Retention policy names in the order they appear in m_retentionPicker;
+		// the picker's SelectedIndex maps to one of these wire-side enum names.
+		private static readonly string[] s_retentionPolicies = new string[] { "KeepAll", "KeepN", "KeepDays" };
 		private PulsePodcast m_podcast;
 		private List<PulsePodcastEpisode> m_episodes;
 		// Episodes adapted to PulseTrack so the existing playback path can
@@ -45,18 +53,22 @@ namespace Thump.Views
 			titleRow.Height = GridLength.Auto;
 			RowDefinition buttonRow = new RowDefinition();
 			buttonRow.Height = GridLength.Auto;
+			RowDefinition settingsRow = new RowDefinition();
+			settingsRow.Height = GridLength.Auto;
 			RowDefinition listRow = new RowDefinition();
 			listRow.Height = GridLength.Star;
 			grid.RowDefinitions.Add(headerRow);
 			grid.RowDefinitions.Add(artRow);
 			grid.RowDefinitions.Add(titleRow);
 			grid.RowDefinitions.Add(buttonRow);
+			grid.RowDefinitions.Add(settingsRow);
 			grid.RowDefinitions.Add(listRow);
 
 			grid.Children.Add(BuildHeader());
 			grid.Children.Add(BuildArt());
 			grid.Children.Add(BuildTitle());
 			grid.Children.Add(BuildButtons());
+			grid.Children.Add(BuildSettings());
 			grid.Children.Add(BuildEpisodeList());
 
 			Content = grid;
@@ -158,23 +170,95 @@ namespace Thump.Views
 			m_episodeList.SelectionMode = SelectionMode.Single;
 			m_episodeList.SelectionChanged += OnEpisodeSelectionChanged;
 
-			Grid.SetRow(m_episodeList, 4);
+			Grid.SetRow(m_episodeList, 5);
 			return m_episodeList;
+		}
+
+		// Backlog (retention) settings row: how many episodes the server keeps
+		// downloaded for this feed, plus whether new episodes auto-download.
+		// Mirrors the web podcast detail's "Backlog" controls (TMP147).
+		private View BuildSettings()
+		{
+			StackLayout settingsStack = new StackLayout();
+			settingsStack.Spacing = 8;
+			settingsStack.Padding = new Thickness(16, 0, 16, 12);
+
+			Label heading = new Label();
+			heading.Text = "Backlog";
+			heading.FontSize = 12;
+			heading.TextColor = ThumpColors.TextDim;
+			settingsStack.Children.Add(heading);
+
+			m_retentionPicker = new Picker();
+			m_retentionPicker.TextColor = ThumpColors.OnBackground;
+			m_retentionPicker.TitleColor = ThumpColors.TextDim;
+			m_retentionPicker.Items.Add("Keep all episodes");
+			m_retentionPicker.Items.Add("Keep newest");
+			m_retentionPicker.Items.Add("Keep last (days)");
+			m_retentionPicker.SelectedIndex = 0;
+			m_retentionPicker.SelectedIndexChanged += OnRetentionChanged;
+			settingsStack.Children.Add(m_retentionPicker);
+
+			m_retentionValueEntry = new Entry();
+			m_retentionValueEntry.Keyboard = Keyboard.Numeric;
+			m_retentionValueEntry.Placeholder = "Count";
+			m_retentionValueEntry.TextColor = ThumpColors.OnBackground;
+			m_retentionValueEntry.PlaceholderColor = ThumpColors.TextDim;
+			m_retentionValueEntry.IsVisible = false;
+			settingsStack.Children.Add(m_retentionValueEntry);
+
+			HorizontalStackLayout autoRow = new HorizontalStackLayout();
+			autoRow.Spacing = 8;
+			m_autoDownloadSwitch = new Switch();
+			autoRow.Children.Add(m_autoDownloadSwitch);
+			Label autoLabel = new Label();
+			autoLabel.Text = "Auto-download new episodes";
+			autoLabel.FontSize = 14;
+			autoLabel.TextColor = ThumpColors.OnBackground;
+			autoLabel.VerticalOptions = LayoutOptions.Center;
+			autoRow.Children.Add(autoLabel);
+			settingsStack.Children.Add(autoRow);
+
+			HorizontalStackLayout saveRow = new HorizontalStackLayout();
+			saveRow.Spacing = 12;
+			Button saveButton = new Button();
+			saveButton.Text = "Save";
+			saveButton.TextColor = ThumpColors.OnBackground;
+			saveButton.BackgroundColor = ThumpColors.Surface;
+			saveButton.CornerRadius = 8;
+			saveButton.FontSize = 14;
+			saveButton.Padding = new Thickness(20, 8);
+			saveButton.Clicked += OnSaveSettingsClicked;
+			saveRow.Children.Add(saveButton);
+
+			m_settingsStatusLabel = new Label();
+			m_settingsStatusLabel.Text = "";
+			m_settingsStatusLabel.FontSize = 12;
+			m_settingsStatusLabel.TextColor = ThumpColors.TextDim;
+			m_settingsStatusLabel.VerticalOptions = LayoutOptions.Center;
+			saveRow.Children.Add(m_settingsStatusLabel);
+			settingsStack.Children.Add(saveRow);
+
+			Grid.SetRow(settingsStack, 4);
+			return settingsStack;
 		}
 
 		public override void Initialize()
 		{
-			base.Initialize();
 			m_titleLabel.Text = m_podcast.Title;
 			m_metaLabel.Text = m_podcast.EpisodeCount + " episodes";
 			m_art.SetCoverArt(m_podcast.CoverArt);
 			UpdateSubscribeButtonLabel();
+			base.Initialize();
 
+		}
+		protected override void RefreshData()
+		{
 			// The podcast from the list endpoint carries no episodes; fetch the
 			// full podcast (GetPodcast) which includes its episodes.
 			MainView.MediaClient.GetPodcast(m_podcast.Id, OnPodcastLoaded);
+			base.RefreshData();
 		}
-
 		private void OnPodcastLoaded(PulsePodcastDetails podcastDetails)
 		{
 			if (podcastDetails == null)
@@ -191,6 +275,7 @@ namespace Thump.Views
 				m_metaLabel.Text = m_podcast.EpisodeCount + " episodes";
 				m_art.SetCoverArt(m_podcast.CoverArt);
 				UpdateSubscribeButtonLabel();
+				PopulateSettings();
 			}
 
 			m_episodes = podcastDetails.Episodes;
@@ -208,6 +293,79 @@ namespace Thump.Views
 			{
 				m_subscribeButton.Text = "Subscribe";
 			}
+		}
+
+		private void PopulateSettings()
+		{
+			int policyIndex = RetentionPolicyToIndex(m_podcast.RetentionPolicy);
+			m_retentionPicker.SelectedIndex = policyIndex;
+			if (m_podcast.RetentionValue > 0)
+			{
+				m_retentionValueEntry.Text = m_podcast.RetentionValue.ToString();
+			}
+			else
+			{
+				m_retentionValueEntry.Text = "";
+			}
+			m_autoDownloadSwitch.IsToggled = m_podcast.AutoDownload;
+			m_settingsStatusLabel.Text = "";
+			UpdateRetentionValueVisibility();
+		}
+
+		private int RetentionPolicyToIndex(string policy)
+		{
+			for (int index = 0; index < s_retentionPolicies.Length; index++)
+			{
+				if (s_retentionPolicies[index] == policy)
+				{
+					return index;
+				}
+			}
+			return 0;
+		}
+
+		private string IndexToRetentionPolicy(int index)
+		{
+			if (index >= 0 && index < s_retentionPolicies.Length)
+			{
+				return s_retentionPolicies[index];
+			}
+			return "KeepAll";
+		}
+
+		// "Keep all" has no count; the value entry only applies to KeepN/KeepDays.
+		private void UpdateRetentionValueVisibility()
+		{
+			m_retentionValueEntry.IsVisible = m_retentionPicker.SelectedIndex != 0;
+		}
+
+		private void OnRetentionChanged(object sender, EventArgs e)
+		{
+			UpdateRetentionValueVisibility();
+		}
+
+		private void OnSaveSettingsClicked(object sender, EventArgs e)
+		{
+			string policy = IndexToRetentionPolicy(m_retentionPicker.SelectedIndex);
+			int retentionValue = 0;
+			int.TryParse(m_retentionValueEntry.Text, out retentionValue);
+			if (retentionValue < 0)
+			{
+				retentionValue = 0;
+			}
+			bool autoDownload = m_autoDownloadSwitch.IsToggled;
+			m_settingsStatusLabel.Text = "Saving…";
+			MainView.MediaClient.UpdatePodcast(m_podcast.Id, policy, retentionValue, m_podcast.PollIntervalMinutes, autoDownload, (updated) =>
+			{
+				if (updated == null)
+				{
+					m_settingsStatusLabel.Text = "Save failed";
+					return;
+				}
+				m_podcast = updated;
+				PopulateSettings();
+				m_settingsStatusLabel.Text = "Saved";
+			});
 		}
 
 		private List<PulseTrack> BuildEpisodeTracks(List<PulsePodcastEpisode> episodes)
@@ -245,6 +403,7 @@ namespace Thump.Views
 				track.CoverArt = episode.CoverArt;
 			}
 			track.Duration = episode.Duration;
+			track.IsSeries = true;
 			return track;
 		}
 
