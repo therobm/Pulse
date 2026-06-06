@@ -634,6 +634,21 @@ namespace Pulse.Data
 			Save("delete-user");
 		}
 
+		public string GetUserPasswordHash(string name)
+		{
+			return m_db.ReadUserPasswordHash(name);
+		}
+
+		public void SetUserPassword(string name, string passwordHash)
+		{
+			m_db.SetUserPassword(name, passwordHash);
+		}
+
+		public bool AnyUserHasPassword()
+		{
+			return m_db.AnyUserHasPassword();
+		}
+
 		// Walks the in-memory stores and bumps ScoredTrackCount / StarredCount /
 		// PlaylistLastPlayedCount on the matching record. When `createMissing` is
 		// true a record is materialized for any name that doesn't already have

@@ -329,6 +329,17 @@ namespace Pulse.Database
 			";
 			steps.Add(v7);
 
+			// v8: password column on users for the cookie-session auth path
+			// (PLS132 / parent epic PLS129). Default '' means "no password set
+			// yet"; ReadUserPasswordHash treats that as "unauthenticatable" and
+			// the new setPassword route is the only writer.
+			MigrationStep v8 = new MigrationStep();
+			v8.Version = 8;
+			v8.Sql = @"
+				ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT '';
+			";
+			steps.Add(v8);
+
 			return steps;
 		}
 	}

@@ -160,6 +160,21 @@ namespace Pulse.MusicLibrary
 			m_database.DeleteUser(userName);
 		}
 
+		public string GetUserPasswordHash(string name)
+		{
+			return m_database.GetUserPasswordHash(name);
+		}
+
+		public void SetUserPassword(string name, string passwordHash)
+		{
+			m_database.SetUserPassword(name, passwordHash);
+		}
+
+		public bool AnyUserHasPassword()
+		{
+			return m_database.AnyUserHasPassword();
+		}
+
 		public bool GetAlbumCover(AlbumInfo album, out byte[] bytes, out string contentType)
 		{
 			bytes = null;
