@@ -25,6 +25,7 @@ namespace Thump
 		Playlist,
 		Genre,
 		Podcast,
+		Audiobook,
 	}
 	public enum eTab
 	{
@@ -306,6 +307,13 @@ namespace Thump
 		public void OnPodcastSelected(PulsePodcast podcast)
 		{
 			PodcastDetailView detail = new PodcastDetailView(this, podcast);
+			detail.Initialize();
+			PushDetail(detail);
+		}
+
+		public void OnAudiobookSelected(PulseAudiobook audiobook)
+		{
+			AudiobookDetailView detail = new AudiobookDetailView(this, audiobook);
 			detail.Initialize();
 			PushDetail(detail);
 		}
