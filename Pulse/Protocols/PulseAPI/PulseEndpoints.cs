@@ -1595,7 +1595,7 @@ namespace Pulse.Protocols.PulseAPI
 			return book;
 		}
 
-		private PulseChapter BuildPulseChapter(SeriesItemInfo item, string user)
+		private PulseChapter BuildPulseChapter(SeriesItemInfo item, string user, string streamId)
 		{
 			PulseChapter chapter = new PulseChapter();
 			chapter.Id = item.Id;
@@ -1606,6 +1606,7 @@ namespace Pulse.Protocols.PulseAPI
 			chapter.Duration = item.DurationSeconds;
 			chapter.StartMs = item.StartMs;
 			chapter.EndMs = item.EndMs;
+			chapter.StreamId = streamId;
 			chapter.CoverArt = "se-" + item.SeriesId;
 
 			SeriesItemUserDataInfo progress = m_audiobookManager.GetProgress(item.Id, user);
@@ -1653,9 +1654,52 @@ namespace Pulse.Protocols.PulseAPI
 			details.Book = BuildPulseAudiobook(series, user);
 
 			List<SeriesItemInfo> chapters = m_audiobookManager.GetItems(id);
+
+			// Group chapters by their underlying LocalPath and pick a canonical
+			// stream id per group: the Id of the chapter with the lowest
+			// OrderIndex in that group. Chapters that share a single file
+			// (single-file audiobooks with embedded chapters) all resolve to
+			// one StreamId so the client streams/caches the file under one key.
+			// A whole-file chapter (its group has size 1 and EndMs == 0)
+			// naturally ends up with its own Id as StreamId.
+			Dictionary<string, string> canonicalStreamIdByPath = new Dictionary<string, string>();
+			Dictionary<string, int> lowestOrderIndexByPath = new Dictionary<string, int>();
 			for (int index = 0; index < chapters.Count; index++)
 			{
-				details.Chapters.Add(BuildPulseChapter(chapters[index], user));
+				SeriesItemInfo chapter = chapters[index];
+				string localPath = chapter.LocalPath;
+				if (string.IsNullOrEmpty(localPath))
+				{
+					continue;
+				}
+				bool alreadySeen = canonicalStreamIdByPath.ContainsKey(localPath);
+				if (!alreadySeen)
+				{
+					canonicalStreamIdByPath[localPath] = chapter.Id;
+					lowestOrderIndexByPath[localPath] = chapter.OrderIndex;
+					continue;
+				}
+				if (chapter.OrderIndex < lowestOrderIndexByPath[localPath])
+				{
+					canonicalStreamIdByPath[localPath] = chapter.Id;
+					lowestOrderIndexByPath[localPath] = chapter.OrderIndex;
+				}
+			}
+
+			for (int index = 0; index < chapters.Count; index++)
+			{
+				SeriesItemInfo chapter = chapters[index];
+				string streamId = chapter.Id;
+				if (!string.IsNullOrEmpty(chapter.LocalPath))
+				{
+					string resolved;
+					bool found = canonicalStreamIdByPath.TryGetValue(chapter.LocalPath, out resolved);
+					if (found)
+					{
+						streamId = resolved;
+					}
+				}
+				details.Chapters.Add(BuildPulseChapter(chapter, user, streamId));
 			}
 			return RespondObject(context, details);
 		}
