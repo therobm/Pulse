@@ -318,6 +318,13 @@ namespace Thump
 			PushDetail(detail);
 		}
 
+		public void OnAudiobookAuthorSelected(AudiobookAuthor author)
+		{
+			AudiobookAuthorView view = new AudiobookAuthorView(this, author.Name);
+			view.Initialize();
+			PushDetail(view);
+		}
+
 		public void OnGenreSelected(PulseGenre genre)
 		{
 			GenreDetailView detail = new GenreDetailView(this, genre);
@@ -652,6 +659,22 @@ namespace Thump
 		public int GetQueueIndex()
 		{
 			return m_currentQueueIndex;
+		}
+
+		// True when the currently-playing queue item is series content (podcast or
+		// audiobook). The in-app skip buttons use this to stay enabled even on a
+		// one-item queue, since prev/next become a +/-10s seek for series.
+		public bool CurrentTrackIsSeries()
+		{
+			if (m_currentQueue == null)
+			{
+				return false;
+			}
+			if (m_currentQueueIndex < 0 || m_currentQueueIndex >= m_currentQueue.Count)
+			{
+				return false;
+			}
+			return m_currentQueue[m_currentQueueIndex].IsSeries;
 		}
 
 		public void OnQueueTrackSelected(PulseTrack track)

@@ -73,6 +73,7 @@ namespace Thump.Views
 		private ObservableCollection<PulsePlaylist> m_playlists;
 		private ObservableCollection<PulsePodcast> m_podcasts;
 		private ObservableCollection<PulseAudiobook> m_audiobooks;
+		private ObservableCollection<AudiobookAuthor> m_audiobookAuthors;
 		private ObservableCollection<PulseGenre> m_genres;
 
 		public LibraryView(MainView mainView) : base(mainView)
@@ -406,6 +407,7 @@ namespace Thump.Views
 			m_playlists = new ObservableCollection<PulsePlaylist>();
 			m_podcasts = new ObservableCollection<PulsePodcast>();
 			m_audiobooks = new ObservableCollection<PulseAudiobook>();
+			m_audiobookAuthors = new ObservableCollection<AudiobookAuthor>();
 			m_genres = new ObservableCollection<PulseGenre>();
 			base.Initialize();
 		}
@@ -448,7 +450,43 @@ namespace Thump.Views
 		private void OnAudiobooksLoaded(List<PulseAudiobook> audiobooks)
 		{
 			SyncFrom<PulseAudiobook>(m_audiobooks, audiobooks);
+			RebuildAuthors();
 			BindAudiobooks();
+		}
+
+		// Derive the author list client-side from the books already fetched: one
+		// AudiobookAuthor per distinct Author, with a book count and the first
+		// book's cover. Reconciled by name so the tiles don't churn.
+		private void RebuildAuthors()
+		{
+			Dictionary<string, AudiobookAuthor> byName = new Dictionary<string, AudiobookAuthor>();
+			List<AudiobookAuthor> ordered = new List<AudiobookAuthor>();
+			for (int index = 0; index < m_audiobooks.Count; index++)
+			{
+				PulseAudiobook book = m_audiobooks[index];
+				string name = book.Author;
+				if (string.IsNullOrEmpty(name))
+				{
+					name = "Unknown Author";
+				}
+				AudiobookAuthor author;
+				bool found = byName.TryGetValue(name, out author);
+				if (!found)
+				{
+					author = new AudiobookAuthor();
+					author.Name = name;
+					author.CoverArt = book.CoverArt;
+					byName[name] = author;
+					ordered.Add(author);
+				}
+				author.BookCount = author.BookCount + 1;
+			}
+			SyncFrom<AudiobookAuthor>(m_audiobookAuthors, ordered, GetAuthorId);
+		}
+
+		private static string GetAuthorId(AudiobookAuthor author)
+		{
+			return author.Name;
 		}
 
 		private void OnGenresLoaded(List<PulseGenre> genres)
@@ -508,12 +546,17 @@ namespace Thump.Views
 
 		private void BindAudiobooks()
 		{
-			if (m_audiobooks == null)
+			if (m_audiobookAuthors == null)
 			{
 				return;
 			}
-			Sort<PulseAudiobook>(m_audiobooks, CompareAudiobookByTitle);
-			m_audiobooksList.ItemsSource = m_audiobooks;
+			Sort<AudiobookAuthor>(m_audiobookAuthors, CompareAuthorByName);
+			m_audiobooksList.ItemsSource = m_audiobookAuthors;
+		}
+
+		private static int CompareAuthorByName(AudiobookAuthor first, AudiobookAuthor second)
+		{
+			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}
 
 		private void BindGenres()
@@ -552,16 +595,6 @@ namespace Thump.Views
 
 		private static int ComparePodcastByTitle(PulsePodcast first, PulsePodcast second)
 		{
-			return string.Compare(first.Title, second.Title, StringComparison.OrdinalIgnoreCase);
-		}
-
-		private static int CompareAudiobookByTitle(PulseAudiobook first, PulseAudiobook second)
-		{
-			int byAuthor = string.Compare(first.Author, second.Author, StringComparison.OrdinalIgnoreCase);
-			if (byAuthor != 0)
-			{
-				return byAuthor;
-			}
 			return string.Compare(first.Title, second.Title, StringComparison.OrdinalIgnoreCase);
 		}
 
@@ -686,7 +719,7 @@ namespace Thump.Views
 			ApplyLayoutToList(m_albumsList, typeof(AlbumRowTile));
 			ApplyLayoutToList(m_playlistsList, typeof(PlaylistRowTile));
 			ApplyLayoutToList(m_podcastsList, typeof(PodcastRowTile));
-			ApplyLayoutToList(m_audiobooksList, typeof(AudiobookRowTile));
+			ApplyLayoutToList(m_audiobooksList, typeof(AudiobookAuthorRowTile));
 			ApplyLayoutToList(m_genresList, typeof(GenreRowTile));
 		}
 
