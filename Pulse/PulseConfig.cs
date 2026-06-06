@@ -29,6 +29,11 @@ namespace Pulse
 		// search term. Default is Apple's keyless iTunes Search API.
 		public string PodcastSearchUrl { get; set; } = "https://itunes.apple.com/search?term={query}&entity=podcast";
 
+		// Root folder scanned for audiobooks. Each folder that directly contains
+		// audio files is one audiobook; each file is one chapter (a single file is
+		// a one-chapter book). Empty disables audiobook scanning.
+		public string AudiobooksPath { get; set; } = "";
+
 
 		public static string GetConfigPath()
 		{

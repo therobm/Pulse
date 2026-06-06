@@ -27,15 +27,17 @@ namespace Pulse.Protocols.PulseAPI
 		MusicManager m_musicManager;
 		AnalyticsDB m_analyticsDB;
 		PodcastManager m_podcastManager;
+		AudiobookManager m_audiobookManager;
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB, PodcastManager podcastManager)
+		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB, PodcastManager podcastManager, AudiobookManager audiobookManager)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
 			m_analyticsDB = analyticsDB;
 			m_podcastManager = podcastManager;
+			m_audiobookManager = audiobookManager;
 			m_defaultCoverArt = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png"));
 		}
 
@@ -85,6 +87,9 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("unsubscribePodcast", UnsubscribePodcast);
 			RegisterRoute("searchPodcasts", SearchPodcasts);
 			RegisterRoute("episodeProgress", EpisodeProgress);
+
+			RegisterRoute("audiobooks", GetAudiobooks);
+			RegisterRoute("audiobook", GetAudiobook);
 		}
 
 		private void RegisterRoute(string route, Func<HttpContext, IResult> handler)
@@ -1553,6 +1558,102 @@ namespace Pulse.Protocols.PulseAPI
 			for (int index = 0; index < downloaded.Count; index++)
 			{
 				details.Episodes.Add(BuildPulsePodcastEpisode(downloaded[index], user));
+			}
+			return RespondObject(context, details);
+		}
+
+		private PulseAudiobook BuildPulseAudiobook(SeriesInfo series, string user)
+		{
+			PulseAudiobook book = new PulseAudiobook();
+			book.Id = series.Id;
+			book.Title = series.Title;
+			book.Author = series.Author;
+			book.Narrator = series.Narrator;
+			book.Description = series.Description;
+			book.Collection = series.Collection;
+			book.CollectionIndex = series.CollectionIndex;
+			book.CoverArt = "se-" + series.Id;
+
+			List<SeriesItemInfo> chapters = m_audiobookManager.GetItems(series.Id);
+			book.ItemCount = chapters.Count;
+			int totalDuration = 0;
+			for (int index = 0; index < chapters.Count; index++)
+			{
+				totalDuration = totalDuration + chapters[index].DurationSeconds;
+			}
+			book.TotalDuration = totalDuration;
+			// Audiobooks don't track an unplayed badge in v1.
+			book.UnplayedCount = 0;
+
+			SeriesUserDataInfo userSeries = m_audiobookManager.GetUserSeries(series.Id, user);
+			if (userSeries != null)
+			{
+				book.Subscribed = userSeries.Subscribed;
+				book.LastItemId = userSeries.LastItemId;
+				book.LastPlayed = userSeries.LastPlayed;
+			}
+			return book;
+		}
+
+		private PulseChapter BuildPulseChapter(SeriesItemInfo item, string user)
+		{
+			PulseChapter chapter = new PulseChapter();
+			chapter.Id = item.Id;
+			chapter.SeriesId = item.SeriesId;
+			chapter.Title = item.Title;
+			chapter.Description = item.Description;
+			chapter.OrderIndex = item.OrderIndex;
+			chapter.Duration = item.DurationSeconds;
+			chapter.CoverArt = "se-" + item.SeriesId;
+
+			SeriesItemUserDataInfo progress = m_audiobookManager.GetProgress(item.Id, user);
+			if (progress != null)
+			{
+				chapter.PositionSeconds = progress.PositionSeconds;
+				chapter.Completed = progress.Completed;
+			}
+			return chapter;
+		}
+
+		public IResult GetAudiobooks(HttpContext context)
+		{
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null)
+			{
+				user = "";
+			}
+
+			List<SeriesInfo> allBooks = m_audiobookManager.GetAllAudiobooks();
+			List<PulseAudiobook> pulseBooks = new List<PulseAudiobook>();
+			for (int index = 0; index < allBooks.Count; index++)
+			{
+				pulseBooks.Add(BuildPulseAudiobook(allBooks[index], user));
+			}
+			return RespondList(context, pulseBooks);
+		}
+
+		public IResult GetAudiobook(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null)
+			{
+				user = "";
+			}
+
+			SeriesInfo series = m_audiobookManager.GetSeries(id);
+			if (series == null)
+			{
+				return RespondStatus(context, "not_found");
+			}
+
+			PulseAudiobookDetails details = new PulseAudiobookDetails();
+			details.Book = BuildPulseAudiobook(series, user);
+
+			List<SeriesItemInfo> chapters = m_audiobookManager.GetItems(id);
+			for (int index = 0; index < chapters.Count; index++)
+			{
+				details.Chapters.Add(BuildPulseChapter(chapters[index], user));
 			}
 			return RespondObject(context, details);
 		}
