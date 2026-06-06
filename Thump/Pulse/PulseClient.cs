@@ -18,6 +18,12 @@ namespace Thump.Pulse
 	// the payload (a single PulseObject or a list of them).
 	public class PulseClient : MediaClient
 	{
+		// In-memory hot cache (L1) for cover art, in front of the on-disk cache
+		// (L2, via ThumpCache). Keyed by the resolved cover-art URL so repeated
+		// requests for visible tiles return instantly without a queue hop or a
+		// SQLite read.
+		private ConcurrentDictionary<string, byte[]> m_imageCache = new ConcurrentDictionary<string, byte[]>();
+
 		public PulseClient(ThumpCache cache, IMediaClientHost host) : base(cache, host)
 		{
 		}
@@ -573,6 +579,12 @@ namespace Thump.Pulse
 				return;
 			}
 			string url = BuildCoverArtUrl(coverArtId);
+			byte[] hot;
+			if (m_imageCache.TryGetValue(url, out hot))
+			{
+				CompleteOnMain(onComplete, hot);
+				return;
+			}
 			GetHTTPImage(url, (data) =>
 			{
 				try
@@ -583,6 +595,7 @@ namespace Thump.Pulse
 						CompleteOnMain(onComplete, null);
 						return;
 					}
+					m_imageCache[url] = data;
 					CompleteOnMain(onComplete, data);
 				}
 				catch (Exception ex)
@@ -599,8 +612,10 @@ namespace Thump.Pulse
 				return null;
 			}
 			string url = BuildCoverArtUrl(coverArtId);
-			
+
 			byte[] cached;
+			if (m_imageCache.TryGetValue(url, out cached))
+				return cached;
 			if (GetCachedResults(url, out cached))
 				return cached;
 			return null;
