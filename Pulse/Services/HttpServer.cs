@@ -104,6 +104,7 @@ namespace Assistant.Services
 			options.ListenAnyIP(config.HttpPort);
 			options.ListenAnyIP(config.HttpsPort, ConfigureHttpsListener);
 			options.AllowSynchronousIO = true;
+			options.Limits.MinResponseDataRate = null;
 		}
 
 		private void ConfigureHttpsListener(Microsoft.AspNetCore.Server.Kestrel.Core.ListenOptions listenOptions)
