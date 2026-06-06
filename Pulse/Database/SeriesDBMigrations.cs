@@ -171,6 +171,18 @@ namespace Pulse.Database
 			";
 			steps.Add(v1);
 
+			// v2: audiobook chapter offsets. For a single-file book with embedded
+			// chapters, every chapter shares the file's local_path and is a time
+			// window [start_ms, end_ms) into it. 0/0 means "the whole file" (the
+			// default for podcast episodes and one-file-per-chapter audiobooks).
+			SeriesMigrationStep v2 = new SeriesMigrationStep();
+			v2.Version = 2;
+			v2.Sql = @"
+				ALTER TABLE series_items ADD COLUMN start_ms INTEGER NOT NULL DEFAULT 0;
+				ALTER TABLE series_items ADD COLUMN end_ms INTEGER NOT NULL DEFAULT 0;
+			";
+			steps.Add(v2);
+
 			return steps;
 		}
 	}
