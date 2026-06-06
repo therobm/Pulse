@@ -35,6 +35,13 @@ namespace PulseAPI.CSharp
 	/// </summary>
 	public class PulseChapter : PulseSeriesItem
 	{
+		// Chapter offsets into the underlying file, in milliseconds. EndMs == 0
+		// means "the whole file" (one-file-per-chapter audiobooks). When EndMs >
+		// StartMs the chapter is a window into a shared single file and the client
+		// clips playback to [StartMs, EndMs).
+		public int StartMs;
+		public int EndMs;
+
 		public PulseChapter()
 		{
 			Kind = eDataType.Chapter;

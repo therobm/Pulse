@@ -385,7 +385,7 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT id, series_id, guid, title, description, duration_seconds, order_index, published_date, media_source_url, local_path, file_size_bytes, download_state FROM series_items WHERE series_id = $series_id ORDER BY order_index ASC;";
+				command.CommandText = "SELECT id, series_id, guid, title, description, duration_seconds, order_index, published_date, media_source_url, local_path, file_size_bytes, download_state, start_ms, end_ms FROM series_items WHERE series_id = $series_id ORDER BY order_index ASC;";
 				command.Parameters.AddWithValue("$series_id", seriesId);
 
 				SqliteDataReader reader = command.ExecuteReader();
@@ -421,7 +421,7 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT id, series_id, guid, title, description, duration_seconds, order_index, published_date, media_source_url, local_path, file_size_bytes, download_state FROM series_items WHERE series_id = $series_id AND local_path IS NOT NULL AND local_path <> '' ORDER BY order_index ASC;";
+				command.CommandText = "SELECT id, series_id, guid, title, description, duration_seconds, order_index, published_date, media_source_url, local_path, file_size_bytes, download_state, start_ms, end_ms FROM series_items WHERE series_id = $series_id AND local_path IS NOT NULL AND local_path <> '' ORDER BY order_index ASC;";
 				command.Parameters.AddWithValue("$series_id", seriesId);
 
 				SqliteDataReader reader = command.ExecuteReader();
@@ -457,7 +457,7 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT id, series_id, guid, title, description, duration_seconds, order_index, published_date, media_source_url, local_path, file_size_bytes, download_state FROM series_items WHERE id = $id;";
+				command.CommandText = "SELECT id, series_id, guid, title, description, duration_seconds, order_index, published_date, media_source_url, local_path, file_size_bytes, download_state, start_ms, end_ms FROM series_items WHERE id = $id;";
 				command.Parameters.AddWithValue("$id", id);
 
 				SqliteDataReader reader = command.ExecuteReader();
@@ -491,8 +491,8 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = @"INSERT INTO series_items (id, series_id, guid, title, description, duration_seconds, order_index, published_date, media_source_url, local_path, file_size_bytes, download_state)
-					VALUES ($id, $series_id, $guid, $title, $description, $duration_seconds, $order_index, $published_date, $media_source_url, $local_path, $file_size_bytes, $download_state)
+				command.CommandText = @"INSERT INTO series_items (id, series_id, guid, title, description, duration_seconds, order_index, published_date, media_source_url, local_path, file_size_bytes, download_state, start_ms, end_ms)
+					VALUES ($id, $series_id, $guid, $title, $description, $duration_seconds, $order_index, $published_date, $media_source_url, $local_path, $file_size_bytes, $download_state, $start_ms, $end_ms)
 					ON CONFLICT(id) DO UPDATE SET
 						series_id = excluded.series_id,
 						guid = excluded.guid,
@@ -504,7 +504,9 @@ namespace Pulse.Database
 						media_source_url = excluded.media_source_url,
 						local_path = excluded.local_path,
 						file_size_bytes = excluded.file_size_bytes,
-						download_state = excluded.download_state;";
+						download_state = excluded.download_state,
+						start_ms = excluded.start_ms,
+						end_ms = excluded.end_ms;";
 				command.Parameters.AddWithValue("$id", item.Id);
 				command.Parameters.AddWithValue("$series_id", item.SeriesId);
 				command.Parameters.AddWithValue("$guid", item.Guid);
@@ -517,6 +519,8 @@ namespace Pulse.Database
 				command.Parameters.AddWithValue("$local_path", item.LocalPath);
 				command.Parameters.AddWithValue("$file_size_bytes", item.FileSizeBytes);
 				command.Parameters.AddWithValue("$download_state", item.DownloadState.ToString());
+				command.Parameters.AddWithValue("$start_ms", item.StartMs);
+				command.Parameters.AddWithValue("$end_ms", item.EndMs);
 				command.ExecuteNonQuery();
 			}
 			finally
@@ -576,8 +580,8 @@ namespace Pulse.Database
 						SeriesItemInfo item = items[itemIndex];
 						SqliteCommand command = connection.CreateCommand();
 						command.Transaction = transaction;
-						command.CommandText = @"INSERT INTO series_items (id, series_id, guid, title, description, duration_seconds, order_index, published_date, media_source_url, local_path, file_size_bytes, download_state)
-							VALUES ($id, $series_id, $guid, $title, $description, $duration_seconds, $order_index, $published_date, $media_source_url, $local_path, $file_size_bytes, $download_state)
+						command.CommandText = @"INSERT INTO series_items (id, series_id, guid, title, description, duration_seconds, order_index, published_date, media_source_url, local_path, file_size_bytes, download_state, start_ms, end_ms)
+							VALUES ($id, $series_id, $guid, $title, $description, $duration_seconds, $order_index, $published_date, $media_source_url, $local_path, $file_size_bytes, $download_state, $start_ms, $end_ms)
 							ON CONFLICT(id) DO UPDATE SET
 								series_id = excluded.series_id,
 								guid = excluded.guid,
@@ -589,7 +593,9 @@ namespace Pulse.Database
 								media_source_url = excluded.media_source_url,
 								local_path = excluded.local_path,
 								file_size_bytes = excluded.file_size_bytes,
-								download_state = excluded.download_state;";
+								download_state = excluded.download_state,
+						start_ms = excluded.start_ms,
+						end_ms = excluded.end_ms;";
 						command.Parameters.AddWithValue("$id", item.Id);
 						command.Parameters.AddWithValue("$series_id", item.SeriesId);
 						command.Parameters.AddWithValue("$guid", item.Guid);
@@ -602,6 +608,8 @@ namespace Pulse.Database
 						command.Parameters.AddWithValue("$local_path", item.LocalPath);
 						command.Parameters.AddWithValue("$file_size_bytes", item.FileSizeBytes);
 						command.Parameters.AddWithValue("$download_state", item.DownloadState.ToString());
+						command.Parameters.AddWithValue("$start_ms", item.StartMs);
+						command.Parameters.AddWithValue("$end_ms", item.EndMs);
 						command.ExecuteNonQuery();
 					}
 					transaction.Commit();
@@ -1168,6 +1176,8 @@ namespace Pulse.Database
 			{
 				item.DownloadState = parsedState;
 			}
+			item.StartMs = ReadInt(reader, 12, 0);
+			item.EndMs = ReadInt(reader, 13, 0);
 			return item;
 		}
 

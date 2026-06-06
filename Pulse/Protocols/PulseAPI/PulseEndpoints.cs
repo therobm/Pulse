@@ -1604,6 +1604,8 @@ namespace Pulse.Protocols.PulseAPI
 			chapter.Description = item.Description;
 			chapter.OrderIndex = item.OrderIndex;
 			chapter.Duration = item.DurationSeconds;
+			chapter.StartMs = item.StartMs;
+			chapter.EndMs = item.EndMs;
 			chapter.CoverArt = "se-" + item.SeriesId;
 
 			SeriesItemUserDataInfo progress = m_audiobookManager.GetProgress(item.Id, user);

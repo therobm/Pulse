@@ -271,23 +271,84 @@ namespace Pulse.Series
 			series.DateAdded = DateTime.UtcNow.ToString("o");
 			m_db.UpsertSeries(series);
 
-			List<SeriesItemInfo> items = new List<SeriesItemInfo>();
-			for (int index = 0; index < entries.Count; index++)
+			List<SeriesItemInfo> items;
+			if (entries.Count == 1)
 			{
-				AudiobookFileEntry entry = entries[index];
+				// A single file may carry embedded chapters; split it into one item
+				// per chapter (each a [start,end) window into the shared file).
+				items = BuildSingleFileItems(seriesId, entries[0], liveItemIds);
+			}
+			else
+			{
+				// Multi-file book: one item per file, whole-file (no offsets).
+				items = new List<SeriesItemInfo>();
+				for (int index = 0; index < entries.Count; index++)
+				{
+					AudiobookFileEntry entry = entries[index];
+					SeriesItemInfo item = new SeriesItemInfo();
+					item.Id = StableId("ch", MakeRelative(entry.Path));
+					item.SeriesId = seriesId;
+					item.Title = FirstNonEmpty(entry.Tags.Title, "Chapter " + (index + 1).ToString());
+					item.OrderIndex = index;
+					item.DurationSeconds = entry.Tags.DurationSeconds;
+					item.LocalPath = entry.Path;
+					item.FileSizeBytes = FileSize(entry.Path);
+					item.DownloadState = eDownloadState.Downloaded;
+					items.Add(item);
+					liveItemIds.Add(item.Id);
+				}
+			}
+			m_db.UpsertItems(items);
+		}
+
+		private List<SeriesItemInfo> BuildSingleFileItems(string seriesId, AudiobookFileEntry entry, HashSet<string> liveItemIds)
+		{
+			List<SeriesItemInfo> items = new List<SeriesItemInfo>();
+			string relFile = MakeRelative(entry.Path);
+			long fileSize = FileSize(entry.Path);
+
+			List<ChapterMarker> chapters = ExtractChapters(entry.Path, entry.Tags.DurationSeconds);
+			if (chapters.Count == 0)
+			{
+				// No embedded chapters: the whole file is one item (whole-file id is
+				// kept stable so a rescan updates in place).
+				SeriesItemInfo whole = new SeriesItemInfo();
+				whole.Id = StableId("ch", relFile);
+				whole.SeriesId = seriesId;
+				whole.Title = FirstNonEmpty(entry.Tags.Title, "Chapter 1");
+				whole.OrderIndex = 0;
+				whole.DurationSeconds = entry.Tags.DurationSeconds;
+				whole.LocalPath = entry.Path;
+				whole.FileSizeBytes = fileSize;
+				whole.DownloadState = eDownloadState.Downloaded;
+				items.Add(whole);
+				liveItemIds.Add(whole.Id);
+				return items;
+			}
+
+			for (int index = 0; index < chapters.Count; index++)
+			{
+				ChapterMarker marker = chapters[index];
 				SeriesItemInfo item = new SeriesItemInfo();
-				item.Id = StableId("ch", MakeRelative(entry.Path));
+				item.Id = StableId("ch", relFile + "|" + index.ToString());
 				item.SeriesId = seriesId;
-				item.Title = FirstNonEmpty(entry.Tags.Title, "Chapter " + (index + 1).ToString());
+				item.Title = FirstNonEmpty(marker.Title, "Chapter " + (index + 1).ToString());
 				item.OrderIndex = index;
-				item.DurationSeconds = entry.Tags.DurationSeconds;
+				int durationMs = marker.EndMs - marker.StartMs;
+				if (durationMs < 0)
+				{
+					durationMs = 0;
+				}
+				item.DurationSeconds = durationMs / 1000;
 				item.LocalPath = entry.Path;
-				item.FileSizeBytes = FileSize(entry.Path);
+				item.FileSizeBytes = fileSize;
 				item.DownloadState = eDownloadState.Downloaded;
+				item.StartMs = marker.StartMs;
+				item.EndMs = marker.EndMs;
 				items.Add(item);
 				liveItemIds.Add(item.Id);
 			}
-			m_db.UpsertItems(items);
+			return items;
 		}
 
 		private static string AlbumKey(string album)
@@ -560,6 +621,277 @@ namespace Pulse.Series
 			{
 				sha.Dispose();
 			}
+		}
+
+		// Embedded chapter markers for a single file. Tries ID3v2 CHAP frames (MP3)
+		// then the Nero 'chpl' atom (m4b/mp4); ends are normalised from the next
+		// chapter's start (or the file duration for the last). Empty list = no
+		// embedded chapters, so the caller treats the file as a single chapter.
+		private List<ChapterMarker> ExtractChapters(string path, int fileDurationSeconds)
+		{
+			List<ChapterMarker> markers = new List<ChapterMarker>();
+			try
+			{
+				markers = ExtractId3Chapters(path);
+				if (markers.Count == 0)
+				{
+					markers = ExtractNeroChapters(path);
+				}
+			}
+			catch (Exception ex)
+			{
+				Log.Warning(-1, "Audiobook chapter extract failed for " + path + ": " + ex.Message);
+				markers = new List<ChapterMarker>();
+			}
+			if (markers.Count > 0)
+			{
+				NormalizeChapterEnds(markers, fileDurationSeconds * 1000);
+			}
+			return markers;
+		}
+
+		private void NormalizeChapterEnds(List<ChapterMarker> markers, int fileDurationMs)
+		{
+			markers.Sort(CompareMarkerByStart);
+			for (int index = 0; index < markers.Count; index++)
+			{
+				if (markers[index].EndMs > markers[index].StartMs)
+				{
+					continue;
+				}
+				if (index + 1 < markers.Count)
+				{
+					markers[index].EndMs = markers[index + 1].StartMs;
+				}
+				else
+				{
+					markers[index].EndMs = fileDurationMs;
+				}
+			}
+		}
+
+		private static int CompareMarkerByStart(ChapterMarker left, ChapterMarker right)
+		{
+			return left.StartMs.CompareTo(right.StartMs);
+		}
+
+		private List<ChapterMarker> ExtractId3Chapters(string path)
+		{
+			List<ChapterMarker> markers = new List<ChapterMarker>();
+			TagLib.File tagFile = TagLib.File.Create(path);
+			try
+			{
+				TagLib.Id3v2.Tag id3 = tagFile.GetTag(TagLib.TagTypes.Id3v2, false) as TagLib.Id3v2.Tag;
+				if (id3 == null)
+				{
+					return markers;
+				}
+				foreach (TagLib.Id3v2.Frame frame in id3.GetFrames())
+				{
+					TagLib.Id3v2.ChapterFrame chapter = frame as TagLib.Id3v2.ChapterFrame;
+					if (chapter == null)
+					{
+						continue;
+					}
+					ChapterMarker marker = new ChapterMarker();
+					marker.StartMs = (int)chapter.StartMilliseconds;
+					marker.EndMs = (int)chapter.EndMilliseconds;
+					marker.Title = ReadId3ChapterTitle(chapter);
+					markers.Add(marker);
+				}
+			}
+			finally
+			{
+				tagFile.Dispose();
+			}
+			return markers;
+		}
+
+		private static string ReadId3ChapterTitle(TagLib.Id3v2.ChapterFrame chapter)
+		{
+			foreach (TagLib.Id3v2.Frame sub in chapter.SubFrames)
+			{
+				TagLib.Id3v2.TextInformationFrame text = sub as TagLib.Id3v2.TextInformationFrame;
+				if (text != null && text.Text != null && text.Text.Length > 0)
+				{
+					return text.Text[0];
+				}
+			}
+			return "";
+		}
+
+		// Nero 'chpl' atom (moov.udta.chpl): the most common chapter store in m4b
+		// audiobooks. Layout: FullBox header (4) + reserved (1) + count (1), then
+		// per chapter a u64 start in 100ns units + u8 title length + UTF-8 title.
+		// Best-effort - validate against real files; degrades to no-chapters.
+		private List<ChapterMarker> ExtractNeroChapters(string path)
+		{
+			List<ChapterMarker> markers = new List<ChapterMarker>();
+			FileStream stream = File.OpenRead(path);
+			try
+			{
+				long fileLength = stream.Length;
+				BoxLocation moov = FindBox(stream, 0, fileLength, "moov");
+				if (moov == null)
+				{
+					return markers;
+				}
+				BoxLocation udta = FindBox(stream, moov.PayloadStart, moov.End, "udta");
+				if (udta == null)
+				{
+					return markers;
+				}
+				BoxLocation chpl = FindBox(stream, udta.PayloadStart, udta.End, "chpl");
+				if (chpl == null)
+				{
+					return markers;
+				}
+
+				long payloadLength = chpl.End - chpl.PayloadStart;
+				if (payloadLength < 6 || payloadLength > 1000000)
+				{
+					return markers;
+				}
+				byte[] payload = new byte[payloadLength];
+				stream.Seek(chpl.PayloadStart, SeekOrigin.Begin);
+				if (!ReadFully(stream, payload, 0, payload.Length))
+				{
+					return markers;
+				}
+
+				int count = payload[5];
+				int position = 6;
+				for (int chapterIndex = 0; chapterIndex < count; chapterIndex++)
+				{
+					if (position + 9 > payload.Length)
+					{
+						break;
+					}
+					long start100ns = ReadUInt64BE(payload, position);
+					position = position + 8;
+					int titleLength = payload[position];
+					position = position + 1;
+					if (position + titleLength > payload.Length)
+					{
+						break;
+					}
+					string title = Encoding.UTF8.GetString(payload, position, titleLength);
+					position = position + titleLength;
+
+					ChapterMarker marker = new ChapterMarker();
+					marker.StartMs = (int)(start100ns / 10000L);
+					marker.EndMs = 0;
+					marker.Title = title;
+					markers.Add(marker);
+				}
+			}
+			finally
+			{
+				stream.Close();
+			}
+			return markers;
+		}
+
+		// Find a top-level box of the given 4-char type within [start, end). Returns
+		// the box's payload start and end offsets, or null if not found.
+		private static BoxLocation FindBox(FileStream stream, long start, long end, string type)
+		{
+			long position = start;
+			while (position + 8 <= end)
+			{
+				stream.Seek(position, SeekOrigin.Begin);
+				byte[] header = new byte[8];
+				if (!ReadFully(stream, header, 0, 8))
+				{
+					break;
+				}
+				long size = ReadUInt32BE(header, 0);
+				string boxType = Encoding.ASCII.GetString(header, 4, 4);
+				long payloadStart = position + 8;
+				long boxEnd;
+				if (size == 1)
+				{
+					byte[] extended = new byte[8];
+					if (!ReadFully(stream, extended, 0, 8))
+					{
+						break;
+					}
+					long bigSize = ReadUInt64BE(extended, 0);
+					payloadStart = position + 16;
+					boxEnd = position + bigSize;
+				}
+				else if (size == 0)
+				{
+					boxEnd = end;
+				}
+				else
+				{
+					boxEnd = position + size;
+				}
+				if (boxEnd <= position || boxEnd > end)
+				{
+					break;
+				}
+				if (boxType == type)
+				{
+					BoxLocation location = new BoxLocation();
+					location.PayloadStart = payloadStart;
+					location.End = boxEnd;
+					return location;
+				}
+				position = boxEnd;
+			}
+			return null;
+		}
+
+		private static bool ReadFully(FileStream stream, byte[] buffer, int offset, int count)
+		{
+			int read = 0;
+			while (read < count)
+			{
+				int got = stream.Read(buffer, offset + read, count - read);
+				if (got <= 0)
+				{
+					return false;
+				}
+				read = read + got;
+			}
+			return true;
+		}
+
+		private static long ReadUInt32BE(byte[] data, int offset)
+		{
+			long value = 0;
+			for (int index = 0; index < 4; index++)
+			{
+				value = (value << 8) | (long)data[offset + index];
+			}
+			return value;
+		}
+
+		private static long ReadUInt64BE(byte[] data, int offset)
+		{
+			long value = 0;
+			for (int index = 0; index < 8; index++)
+			{
+				value = (value << 8) | (long)data[offset + index];
+			}
+			return value;
+		}
+
+		/// <summary>A single chapter window pulled from a file's embedded markers.</summary>
+		private class ChapterMarker
+		{
+			public int StartMs = 0;
+			public int EndMs = 0;
+			public string Title = "";
+		}
+
+		/// <summary>Payload bounds of an MP4 box located by FindBox.</summary>
+		private class BoxLocation
+		{
+			public long PayloadStart = 0;
+			public long End = 0;
 		}
 
 		/// <summary>One scanned audio file plus its parsed tags, before ordering.</summary>
