@@ -170,7 +170,10 @@ namespace Pulse.Series
 			series.Id = seriesId;
 			series.Type = eSeriesType.Audiobook;
 			series.Title = FirstNonEmpty(firstEntry.Tags.Album, Path.GetFileName(folder));
-			series.Author = firstEntry.Tags.Author;
+			// Author from the artist tag, falling back to the parent folder name
+			// (AudiobooksPath/<Author>/<Book>/...). Books loose under the root with
+			// no artist tag stay blank so the misorganised ones stand out.
+			series.Author = FirstNonEmpty(firstEntry.Tags.Author, DeriveAuthorFromFolder(folder));
 			series.Narrator = "";
 			series.Description = "";
 			series.ArtworkPath = ResolveCoverArt(folder, entries, seriesId);
@@ -282,6 +285,31 @@ namespace Pulse.Series
 				}
 			}
 			return "";
+		}
+
+		// Parent folder name as the author, but only when the book folder is nested
+		// under a subfolder (AudiobooksPath/Author/Book). A book directly under the
+		// root has no author folder, so this returns "".
+		private string DeriveAuthorFromFolder(string bookFolder)
+		{
+			string parent = Path.GetDirectoryName(bookFolder);
+			if (string.IsNullOrEmpty(parent))
+			{
+				return "";
+			}
+			string parentNormalized = NormalizePath(parent);
+			string rootNormalized = NormalizePath(m_audiobooksPath);
+			if (string.Equals(parentNormalized, rootNormalized, StringComparison.OrdinalIgnoreCase))
+			{
+				return "";
+			}
+			return Path.GetFileName(parent);
+		}
+
+		private static string NormalizePath(string path)
+		{
+			string full = Path.GetFullPath(path);
+			return full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 		}
 
 		private static string FindFolderCoverArt(string folder)
