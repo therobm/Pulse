@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -16,7 +17,9 @@ namespace Thump.Views
 		private Label m_metaLabel;
 		private CollectionView m_albumList;
 		private PulseArtist m_artist;
-		private List<PulseAlbum> m_albums;
+		// Bound to m_albumList once; OnAlbumsLoaded reconciles in place so a
+		// back-nav refresh only touches changed rows.
+		private ObservableCollection<PulseAlbum> m_albums = new ObservableCollection<PulseAlbum>();
 
 		public ArtistDetailView(MainView mainView, PulseArtist artist) : base(mainView)
 		{
@@ -146,6 +149,7 @@ namespace Thump.Views
 		{
 			m_albumList = new CollectionView();
 			m_albumList.ItemTemplate = new DataTemplate(typeof(AlbumRowTile));
+			m_albumList.ItemsSource = m_albums;
 
 			Grid.SetRow(m_albumList, 4);
 			return m_albumList;
@@ -169,8 +173,9 @@ namespace Thump.Views
 		}
 		private void OnAlbumsLoaded(List<PulseAlbum> albums)
 		{
-			m_albums = albums;
-			m_albumList.ItemsSource = albums;
+			// Server order is stable for an artist's albums, so reconcile by Id
+			// and leave ordering as-is (no client sort needed).
+			SyncFrom<PulseAlbum>(m_albums, albums);
 		}
 
 		private void OnBackClicked(object sender, EventArgs e)

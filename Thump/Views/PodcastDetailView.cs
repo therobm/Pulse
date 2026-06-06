@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Security.Cryptography;
+using System.Collections.ObjectModel;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -25,9 +25,11 @@ namespace Thump.Views
 		// the picker's SelectedIndex maps to one of these wire-side enum names.
 		private static readonly string[] s_retentionPolicies = new string[] { "KeepAll", "KeepN", "KeepDays" };
 		private PulsePodcast m_podcast;
-		private List<PulsePodcastEpisode> m_episodes;
+		// Bound to m_episodeList once; OnPodcastLoaded reconciles it in place then
+		// sorts newest-first, so a back-nav refresh only touches changed rows.
+		private ObservableCollection<PulsePodcastEpisode> m_episodes = new ObservableCollection<PulsePodcastEpisode>();
 		// Episodes adapted to PulseTrack so the existing playback path can
-		// queue them. Kept in lockstep with m_episodes so SelectionChanged's
+		// queue them. Rebuilt from m_episodes after each sync so SelectionChanged's
 		// index maps cleanly between the two lists.
 		private List<PulseTrack> m_episodeTracks;
 
@@ -169,6 +171,7 @@ namespace Thump.Views
 			m_episodeList.ItemTemplate = new DataTemplate(typeof(EpisodeRowTile));
 			m_episodeList.SelectionMode = SelectionMode.Single;
 			m_episodeList.SelectionChanged += OnEpisodeSelectionChanged;
+			m_episodeList.ItemsSource = m_episodes;
 
 			Grid.SetRow(m_episodeList, 5);
 			return m_episodeList;
@@ -278,9 +281,22 @@ namespace Thump.Views
 				PopulateSettings();
 			}
 
-			m_episodes = podcastDetails.Episodes;
-			m_episodeTracks = BuildEpisodeTracks(m_episodes);
-			m_episodeList.ItemsSource = m_episodes;
+			// Reconcile the episode list in place, then sort newest-first (new
+			// episodes arrive at the top, but SyncFrom appends them at the end).
+			List<PulsePodcastEpisode> incoming = podcastDetails.Episodes;
+			if (incoming == null)
+			{
+				incoming = new List<PulsePodcastEpisode>();
+			}
+			SyncFrom<PulsePodcastEpisode>(m_episodes, incoming);
+			Sort<PulsePodcastEpisode>(m_episodes, CompareEpisodeByPublishedDescending);
+			// Keep the parallel playback list aligned with the displayed order.
+			m_episodeTracks = BuildEpisodeTracks(new List<PulsePodcastEpisode>(m_episodes));
+		}
+
+		private static int CompareEpisodeByPublishedDescending(PulsePodcastEpisode first, PulsePodcastEpisode second)
+		{
+			return string.CompareOrdinal(second.PublishedDate, first.PublishedDate);
 		}
 
 		private void UpdateSubscribeButtonLabel()
