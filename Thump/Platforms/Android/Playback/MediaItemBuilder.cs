@@ -540,11 +540,35 @@ namespace Thump.Playback.AndroidOS
 				metadata.SetExtras(extras);
 			}
 
-			Android.Net.Uri uri = GetURI(track.Id);
+			// MediaId stays the chapter id; the playback URI uses the shared StreamId
+			// so all chapters of one single-file audiobook collapse to one URL (and
+			// one cached file) downstream.
+			string streamKey;
+			if (string.IsNullOrEmpty(track.StreamId))
+			{
+				streamKey = track.Id;
+			}
+			else
+			{
+				streamKey = track.StreamId;
+			}
+			Android.Net.Uri uri = GetURI(streamKey);
 			MediaItem.Builder builder = new MediaItem.Builder();
 			builder.SetMediaId(track.Id);
 			builder.SetUri(uri);
 			builder.SetMediaMetadata(metadata.Build());
+			// Clipping confines playback to the chapter window for a single-file
+			// audiobook. Note: AndroidMediaDataSource only commits a cached blob on a
+			// full-length read, so a clipped chapter never produces a cached file -
+			// "download the whole book once" is a separate follow-up out of scope here.
+			if (track.EndMs > track.StartMs)
+			{
+				MediaItem.ClippingConfiguration.Builder clippingBuilder = new MediaItem.ClippingConfiguration.Builder();
+				clippingBuilder.SetStartPositionMs((long)track.StartMs);
+				clippingBuilder.SetEndPositionMs((long)track.EndMs);
+				MediaItem.ClippingConfiguration clipping = clippingBuilder.Build();
+				builder.SetClippingConfiguration(clipping);
+			}
 			return builder.Build();
 		}
 

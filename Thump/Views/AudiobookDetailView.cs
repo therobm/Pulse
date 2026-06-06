@@ -257,6 +257,9 @@ namespace Thump.Views
 			}
 			track.Duration = chapter.Duration;
 			track.IsSeries = true;
+			track.StartMs = chapter.StartMs;
+			track.EndMs = chapter.EndMs;
+			track.StreamId = chapter.StreamId;
 			return track;
 		}
 
