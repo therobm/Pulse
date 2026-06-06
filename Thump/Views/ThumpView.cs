@@ -135,6 +135,59 @@ namespace Thump.Views
 			}
 		}
 
+		protected void SyncFromOrdered<T>(ObservableCollection<T> collection, List<T> incoming) where T : PulseObject
+		{
+			SyncFromOrdered<T>(collection, incoming, e => e.Id);
+		}
+		protected void SyncFromOrdered<T>(ObservableCollection<T> collection, List<T> incoming, Func<T, string> getId)
+		{
+			// Remove items no longer present.
+			HashSet<string> incomingIds = new HashSet<string>();
+			for (int i = 0; i < incoming.Count; i++)
+			{
+				incomingIds.Add(getId(incoming[i]));
+			}
+			for (int i = collection.Count - 1; i >= 0; i--)
+			{
+				if (!incomingIds.Contains(getId(collection[i])))
+				{
+					collection.RemoveAt(i);
+				}
+			}
+
+			// Walk incoming order; reuse the existing instance for a matched Id
+			// (moving it into position) or insert a new one, so the collection ends
+			// up in exactly the incoming order with unchanged rows left intact.
+			for (int i = 0; i < incoming.Count; i++)
+			{
+				string id = getId(incoming[i]);
+				int found = -1;
+				for (int j = i; j < collection.Count; j++)
+				{
+					if (getId(collection[j]) == id)
+					{
+						found = j;
+						break;
+					}
+				}
+				if (found < 0)
+				{
+					collection.Insert(i, incoming[i]);
+				}
+				else
+				{
+					if (found != i)
+					{
+						collection.Move(found, i);
+					}
+					if (!collection[i].Equals(incoming[i]))
+					{
+						collection[i] = incoming[i];
+					}
+				}
+			}
+		}
+
 		private static void CollectChildViews(IView element, List<IView> children)
 		{
 			Layout layout = element as Layout;
