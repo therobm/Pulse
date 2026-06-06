@@ -71,11 +71,6 @@ namespace Thump.Views.Tiles
 			return labelStack;
 		}
 
-		public override void Initialize()
-		{
-			base.Initialize();
-		}
-
 		protected override void OnBindingContextChanged()
 		{
 			base.OnBindingContextChanged();

@@ -184,18 +184,22 @@ namespace Thump.Views
 
 		public override void Initialize()
 		{
-			base.Initialize();
 			m_titleLabel.Text = m_album.Name;
 			m_artistLabel.Text = m_album.Artist;
 			m_metaLabel.Text = m_album.Year + "  ·  " + m_album.TrackCount + " tracks";
 			m_art.SetCoverArt(m_album.CoverArt);
-			MainView.MediaClient.GetAlbum(m_album.Id, (album)=>
+			base.Initialize();
+
+		}
+		protected override void RefreshData()
+		{
+			MainView.MediaClient.GetAlbum(m_album.Id, (album) =>
 			{
 				if (album != null)
 					OnTracksLoaded(album.Tracks);
 			});
+			base.RefreshData();
 		}
-
 		private void OnTracksLoaded(List<PulseTrack> tracks)
 		{
 			Log.Info("OnTracksLoaded");

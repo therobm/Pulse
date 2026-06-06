@@ -164,11 +164,6 @@ namespace Thump.Views
 			return scroll;
 		}
 
-		public override void Initialize()
-		{
-			base.Initialize();
-		}
-
 		private void OnSearchCompleted(object sender, EventArgs e)
 		{
 			string query = m_searchEntry.Text;

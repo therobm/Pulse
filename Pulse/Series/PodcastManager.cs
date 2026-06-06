@@ -364,7 +364,7 @@ namespace Pulse.Series
 			string seriesId = (string)seriesIdObject;
 			try
 			{
-				DownloadPendingForFeed(seriesId);
+				EnforceRetention(seriesId);
 			}
 			catch (Exception ex)
 			{
@@ -485,40 +485,7 @@ namespace Pulse.Series
 			}
 		}
 
-		/// <summary>
-		/// Walks the keep set produced by the series' retention policy and
-		/// invokes DownloadItem for any keep-set item that isn't already
-		/// Downloaded (or whose LocalPath no longer points at a real file).
-		/// Honors AutoDownload: if the user turned auto-download off, this
-		/// is a no-op even when retention selects items.
-		/// </summary>
-		public void DownloadPendingForFeed(string seriesId)
-		{
-			SeriesInfo series = m_db.LoadSeries(seriesId);
-			if (series == null)
-			{
-				return;
-			}
-			if (!series.AutoDownload)
-			{
-				return;
-			}
-
-			List<SeriesItemInfo> items = m_db.LoadItemsForSeries(seriesId);
-			List<SeriesItemInfo> keepSet = ComputeKeepSet(items, series);
-
-			int keepCount = keepSet.Count;
-			for (int keepIndex = 0; keepIndex < keepCount; keepIndex++)
-			{
-				SeriesItemInfo candidate = keepSet[keepIndex];
-				bool fileMissing = string.IsNullOrEmpty(candidate.LocalPath) || !File.Exists(candidate.LocalPath);
-				bool needsDownload = candidate.DownloadState != eDownloadState.Downloaded || fileMissing;
-				if (needsDownload)
-				{
-					DownloadItem(candidate);
-				}
-			}
-		}
+	
 
 		/// <summary>
 		/// Best-effort duration probe via TagLib. Returns 0 when the file
@@ -549,25 +516,20 @@ namespace Pulse.Series
 			}
 		}
 
+		
 		/// <summary>
-		/// Applies the series' retention policy: items not in the keep set
-		/// have their local file deleted and their row reset to
-		/// Discovered / LocalPath="" (the metadata row is preserved so the
-		/// item can be re-downloaded later without re-ingesting the feed).
-		/// KeepAll culls nothing; KeepN keeps the newest N by
-		/// PublishedDate; KeepDays keeps anything within the last N days.
+		/// Ensures the requested retention policy is being applied
+		/// Downloads and Evicts according to the policy
 		/// </summary>
-		public void ApplyRetention(string seriesId)
+		/// <param name="seriesId"></param>
+		public void EnforceRetention(string seriesId)
 		{
 			SeriesInfo series = m_db.LoadSeries(seriesId);
-			if (series == null)
+			if (series == null || series.Retention == eRetentionPolicy.KeepExisting)
 			{
 				return;
 			}
-			if (series.Retention == eRetentionPolicy.KeepAll)
-			{
-				return;
-			}
+	
 
 			List<SeriesItemInfo> items = m_db.LoadItemsForSeries(seriesId);
 			List<SeriesItemInfo> keepSet = ComputeKeepSet(items, series);
@@ -582,33 +544,45 @@ namespace Pulse.Series
 			for (int itemIndex = 0; itemIndex < itemCount; itemIndex++)
 			{
 				SeriesItemInfo item = items[itemIndex];
-				if (item.DownloadState != eDownloadState.Downloaded)
-				{
-					continue;
-				}
+
 				bool kept = keepIds.Contains(item.Id);
+
+				//We want this item 
 				if (kept)
 				{
-					continue;
+					//we're missing this item and we should download it
+					if (item.NeedsDownload())
+					{
+						DownloadItem(item);
+					}
 				}
-
-				if (!string.IsNullOrEmpty(item.LocalPath) && File.Exists(item.LocalPath))
+				else
 				{
-					try
+					//we don't want this item but we have it, remove
+					if (!kept && item.DownloadState == eDownloadState.Downloaded)
 					{
-						File.Delete(item.LocalPath);
-					}
-					catch (Exception ex)
-					{
-						Log.Warning(-1, "Podcast retention delete failed: " + item.LocalPath + " -- " + ex.Message);
+						UncacheItem(item);
 					}
 				}
-				item.LocalPath = "";
-				item.DownloadState = eDownloadState.Discovered;
-				m_db.UpsertItem(item);
 			}
 		}
-
+		private void UncacheItem(SeriesItemInfo item)
+		{
+			if (!string.IsNullOrEmpty(item.LocalPath) && File.Exists(item.LocalPath))
+			{
+				try
+				{
+					File.Delete(item.LocalPath);
+				}
+				catch (Exception ex)
+				{
+					Log.Warning(-1, "Podcast retention delete failed: " + item.LocalPath + " -- " + ex.Message);
+				}
+			}
+			item.LocalPath = "";
+			item.DownloadState = eDownloadState.Discovered;
+			m_db.UpsertItem(item);
+		}
 		/// <summary>
 		/// Localises a series' artwork: if ArtworkPath is still a remote
 		/// URL, downloads it to {seriesDir}/folder.jpg (the convention
@@ -737,8 +711,7 @@ namespace Pulse.Series
 				{
 					CacheArtwork(storedSeries);
 				}
-				DownloadPendingForFeed(seriesId);
-				ApplyRetention(seriesId);
+				EnforceRetention(seriesId);
 			}
 			catch (Exception ex)
 			{
@@ -1095,8 +1068,7 @@ namespace Pulse.Series
 			string seriesId = (string)seriesIdObject;
 			try
 			{
-				ApplyRetention(seriesId);
-				DownloadPendingForFeed(seriesId);
+				EnforceRetention(seriesId);
 			}
 			catch (Exception ex)
 			{

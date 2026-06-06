@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
@@ -64,11 +65,11 @@ namespace Thump.Views
 		private CollectionView m_genresList;
 		private Grid m_letterOverlay;
 
-		private List<PulseArtist> m_artists;
-		private List<PulseAlbum> m_albums;
-		private List<PulsePlaylist> m_playlists;
-		private List<PulsePodcast> m_podcasts;
-		private List<PulseGenre> m_genres;
+		private ObservableCollection<PulseArtist> m_artists;
+		private ObservableCollection<PulseAlbum> m_albums;
+		private ObservableCollection<PulsePlaylist> m_playlists;
+		private ObservableCollection<PulsePodcast> m_podcasts;
+		private ObservableCollection<PulseGenre> m_genres;
 
 		public LibraryView(MainView mainView) : base(mainView)
 		{
@@ -384,44 +385,54 @@ namespace Thump.Views
 
 		public override void Initialize()
 		{
-			base.Initialize();
 			ApplyLayout();
 			SetActiveButton(eLibraryButton.Artists);
 			SetActiveSort(eLibrarySort.Alphabetical);
+			m_artists = new ObservableCollection<PulseArtist>();
+			m_albums = new ObservableCollection<PulseAlbum>();
+			m_playlists = new ObservableCollection<PulsePlaylist>();
+			m_podcasts = new ObservableCollection<PulsePodcast>();
+			m_genres = new ObservableCollection<PulseGenre>();
+			base.Initialize();
+		}
+		
+		protected override void RefreshData()
+		{
 			MainView.MediaClient.GetArtists(OnArtistsLoaded);
 			MainView.MediaClient.GetAlbums(OnAlbumsLoaded);
 			MainView.MediaClient.GetPlaylists(OnPlaylistsLoaded);
 			MainView.MediaClient.GetPodcasts(OnPodcastsLoaded);
 			MainView.MediaClient.GetGenres(OnGenresLoaded);
+			base.RefreshData();
 		}
 
 		private void OnArtistsLoaded(List<PulseArtist> artists)
 		{
-			m_artists = artists;
+			SyncFrom<PulseArtist>(m_artists, artists);
 			BindArtists();
 		}
 
 		private void OnAlbumsLoaded(List<PulseAlbum> albums)
 		{
-			m_albums = albums;
+			SyncFrom<PulseAlbum>(m_albums, albums);
 			BindAlbums();
 		}
 
 		private void OnPlaylistsLoaded(List<PulsePlaylist> playlists)
 		{
-			m_playlists = playlists;
+			SyncFrom<PulsePlaylist>(m_playlists, playlists);
 			BindPlaylists();
 		}
 
 		private void OnPodcastsLoaded(List<PulsePodcast> podcasts)
 		{
-			m_podcasts = podcasts;
+			SyncFrom<PulsePodcast>(m_podcasts, podcasts);
 			BindPodcasts();
 		}
 
 		private void OnGenresLoaded(List<PulseGenre> genres)
 		{
-			m_genres = genres;
+			SyncFrom<PulseGenre>(m_genres, genres);
 			BindGenres();
 		}
 
@@ -431,8 +442,9 @@ namespace Thump.Views
 			{
 				return;
 			}
-			m_artists.Sort(CompareArtistByName);
-			m_artistsList.ItemsSource = new List<PulseArtist>(m_artists);
+
+			Sort<PulseArtist>(m_artists, CompareArtistByName);
+			m_artistsList.ItemsSource = m_artists;
 		}
 
 		private void BindAlbums()
@@ -443,13 +455,13 @@ namespace Thump.Views
 			}
 			if (m_activeSort == eLibrarySort.DateReleased)
 			{
-				m_albums.Sort(CompareAlbumByYear);
+				Sort<PulseAlbum>(m_albums, CompareAlbumByYear);
 			}
 			else
 			{
-				m_albums.Sort(CompareAlbumByName);
+				Sort<PulseAlbum>(m_albums, CompareAlbumByName);
 			}
-			m_albumsList.ItemsSource = new List<PulseAlbum>(m_albums);
+			m_albumsList.ItemsSource = m_albums;
 		}
 
 		private void BindPlaylists()
@@ -458,8 +470,9 @@ namespace Thump.Views
 			{
 				return;
 			}
-			m_playlists.Sort(ComparePlaylistByName);
-			m_playlistsList.ItemsSource = new List<PulsePlaylist>(m_playlists);
+
+			Sort<PulsePlaylist>(m_playlists, ComparePlaylistByName);
+			m_playlistsList.ItemsSource = m_playlists;
 		}
 
 		private void BindPodcasts()
@@ -468,8 +481,8 @@ namespace Thump.Views
 			{
 				return;
 			}
-			m_podcasts.Sort(ComparePodcastByTitle);
-			m_podcastsList.ItemsSource = new List<PulsePodcast>(m_podcasts);
+			Sort<PulsePodcast>(m_podcasts, ComparePodcastByTitle);
+			m_podcastsList.ItemsSource = m_podcasts;
 		}
 
 		private void BindGenres()
@@ -478,8 +491,8 @@ namespace Thump.Views
 			{
 				return;
 			}
-			m_genres.Sort(CompareGenreByName);
-			m_genresList.ItemsSource = new List<PulseGenre>(m_genres);
+			Sort<PulseGenre>(m_genres, CompareGenreByName);
+			m_genresList.ItemsSource = m_genres;
 		}
 
 		private static int CompareArtistByName(PulseArtist first, PulseArtist second)
@@ -518,6 +531,8 @@ namespace Thump.Views
 
 		private void SetActiveButton(eLibraryButton button)
 		{
+			//todo this should refresh on change, http caching will cover the user thrashing concern soon
+
 			m_activeButton = button;
 
 			m_buttonArtists.BackgroundColor = s_buttonInactiveBackground;

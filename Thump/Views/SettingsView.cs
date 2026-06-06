@@ -333,7 +333,6 @@ namespace Thump.Views
 			Stopwatch stopwatch = Stopwatch.StartNew();
 			Log.Perf("SettingsView.Initialize start");
 
-			base.Initialize();
 
 			SetNormalize(ThumpSettings.GetNormalizeVolume());
 
@@ -353,11 +352,7 @@ namespace Thump.Views
 			m_passwordEntry.Text = ThumpSettings.GetPassword();
 			SetUseHttps(ThumpSettings.GetUseHttps());
 
-			Log.Perf("SettingsView.Initialize settings applied " + stopwatch.ElapsedMilliseconds + "ms");
-
-			//RefreshCacheStats();
-
-			Log.Perf("SettingsView.Initialize end " + stopwatch.ElapsedMilliseconds + "ms");
+			base.Initialize();
 		}
 
 		public override void OnNavigatedTo()

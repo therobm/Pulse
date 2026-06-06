@@ -214,7 +214,7 @@ namespace Thump.Data
 					else 
 					{ 
 						retData = result as byte[];
-						if (retData == null)
+						if (retData == null || retData.Length <= 0)
 						{
 							Log.Error("Invalid data cached for " + url);
 							using (SqliteCommand deleteCmd = m_connection.CreateCommand())
@@ -229,7 +229,7 @@ namespace Thump.Data
 			});
 
 			data = retData;
-			return data != null;
+			return data != null && data.Length > 0;
 		}
 
 

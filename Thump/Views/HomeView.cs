@@ -108,16 +108,15 @@ namespace Thump.Views
 			return collectionView;
 		}
 
-		public override void Initialize()
+		protected override void RefreshData()
 		{
-			base.Initialize();
 			MainView.MediaClient.GetTopItems(OnTopItemsLoaded);
 			MainView.MediaClient.GetRecentlyPlayed(OnRecentlyPlayedLoaded);
 			MainView.MediaClient.GetTopPlaylists(OnYourPlaylistsLoaded);
 			MainView.MediaClient.GetPopularArtists(OnPopularArtistsLoaded);
 			MainView.MediaClient.GetFavorites(OnFavoritesLoaded);
+			base.RefreshData();
 		}
-
 		private void OnTopItemsLoaded(List<PulseObject> items)
 		{
 			if (items == null)

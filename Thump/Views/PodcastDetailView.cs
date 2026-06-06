@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -244,17 +245,20 @@ namespace Thump.Views
 
 		public override void Initialize()
 		{
-			base.Initialize();
 			m_titleLabel.Text = m_podcast.Title;
 			m_metaLabel.Text = m_podcast.EpisodeCount + " episodes";
 			m_art.SetCoverArt(m_podcast.CoverArt);
 			UpdateSubscribeButtonLabel();
+			base.Initialize();
 
+		}
+		protected override void RefreshData()
+		{
 			// The podcast from the list endpoint carries no episodes; fetch the
 			// full podcast (GetPodcast) which includes its episodes.
 			MainView.MediaClient.GetPodcast(m_podcast.Id, OnPodcastLoaded);
+			base.RefreshData();
 		}
-
 		private void OnPodcastLoaded(PulsePodcastDetails podcastDetails)
 		{
 			if (podcastDetails == null)

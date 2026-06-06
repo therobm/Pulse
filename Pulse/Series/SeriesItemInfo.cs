@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Connections.Features;
+using System.IO;
+
 namespace Pulse.Series
 {
 	/// <summary>
@@ -36,5 +39,20 @@ namespace Pulse.Series
 		public string LocalPath = "";
 		public long FileSizeBytes = 0;
 		public eDownloadState DownloadState = eDownloadState.Discovered;
+
+		public bool NeedsDownload()
+		{
+			if (DownloadState == eDownloadState.Downloading)
+				return false;
+
+			if (DownloadState != eDownloadState.Downloaded)
+				return true;
+
+			//if our on disk is missing, we want to download again
+			if (string.IsNullOrEmpty(LocalPath) || !File.Exists(LocalPath))
+				return true;
+
+			return false;
+		}
 	}
 }

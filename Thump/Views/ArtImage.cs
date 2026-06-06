@@ -46,11 +46,7 @@ namespace Thump.Views
 			ApplyShape();
 		}
 
-		public override void Initialize()
-		{
-			base.Initialize();
-		}
-
+	
 		public void SetShape(eArtShape shape)
 		{
 			m_shape = shape;

@@ -77,11 +77,6 @@ namespace Thump.Views.Tiles
 			return m_titleLabel;
 		}
 
-		public override void Initialize()
-		{
-			base.Initialize();
-		}
-
 		protected override void OnBindingContextChanged()
 		{
 			base.OnBindingContextChanged();
