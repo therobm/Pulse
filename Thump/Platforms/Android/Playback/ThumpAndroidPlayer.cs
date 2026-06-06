@@ -211,6 +211,29 @@ namespace Thump.Playback.AndroidOS
 			m_controller.SeekTo(positionMilliseconds);
 		}
 
+		// Seek relative to the current position, clamped to [0, duration]. Used by
+		// the in-app series skip buttons: SeekTo is an always-available command, so
+		// this avoids the controller-command authorization that blocks
+		// SeekToNextMediaItem on a one-item queue.
+		public void SeekRelative(long deltaMilliseconds)
+		{
+			if (m_controller == null)
+			{
+				return;
+			}
+			long position = m_controller.CurrentPosition + deltaMilliseconds;
+			if (position < 0)
+			{
+				position = 0;
+			}
+			long duration = m_controller.Duration;
+			if (duration > 0 && position > duration)
+			{
+				position = duration;
+			}
+			m_controller.SeekTo(position);
+		}
+
 		public void Next()
 		{
 			if (m_controller == null)

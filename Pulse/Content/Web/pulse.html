@@ -1542,7 +1542,7 @@
 		<div id="left-panel">
 			<div id="left-tabs">
 				<button class="left-tab active" data-left-tab="playlists">Playlists</button>
-				<button class="left-tab" data-left-tab="artists">Artists</button>
+				<button class="left-tab" data-left-tab="audiobooks">Audiobooks</button>
 				<button class="left-tab" data-left-tab="podcasts">Podcasts</button>
 			</div>
 			<div id="left-sort">
@@ -1666,8 +1666,27 @@
 				<div class="track-list-header"><span>#</span><span>Episode</span><span>Published</span><span style="text-align:right">Time</span><span></span></div>
 				<div id="podcast-episodes"></div>
 			</div>
+			<div id="view-audiobook-detail" class="center-view">
+				<div class="detail-header">
+					<div class="detail-art" id="audiobook-detail-art">&#127911;</div>
+					<div class="detail-info">
+						<div class="detail-label">Audiobook</div>
+						<div class="detail-name" id="audiobook-detail-name"></div>
+						<div class="detail-meta" id="audiobook-detail-meta"></div>
+						<div class="detail-actions">
+							<button class="btn btn-primary" id="audiobook-play-btn">Play</button>
+						</div>
+					</div>
+				</div>
+				<div class="track-list-header"><span>#</span><span>Chapter</span><span></span><span style="text-align:right">Time</span><span></span></div>
+				<div id="audiobook-chapters"></div>
+			</div>
 			<div id="view-search" class="center-view">
 				<div class="view-heading">Search Results</div>
+				<div id="search-mode-toggle" style="display:flex;gap:8px;margin:0 0 12px 0;">
+					<button id="search-mode-media" class="btn btn-primary" type="button">Pulse</button>
+					<button id="search-mode-podcasts" class="btn btn-ghost" type="button">Podcasts</button>
+				</div>
 				<div class="view-subheading" id="search-result-count"></div>
 				<div id="search-results"></div>
 			</div>
@@ -1783,6 +1802,16 @@
 			return { id: episode.Id, seriesId: episode.SeriesId, title: episode.Title, description: episode.Description || '', coverArt: episode.CoverArt || null, duration: episode.Duration || 0, publishedDate: episode.PublishedDate || '', position: episode.PositionSeconds || 0, completed: !!episode.Completed };
 		}
 		function adaptEpisodes(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptEpisode(list[idx])); } } return out; }
+		function adaptAudiobook(book) {
+			if (!book) { return null; }
+			return { id: book.Id, title: book.Title, author: book.Author || '', narrator: book.Narrator || '', coverArt: book.CoverArt || null, description: book.Description || '', chapterCount: book.ItemCount || 0, totalDuration: book.TotalDuration || 0, lastItemId: book.LastItemId || '', lastPlayed: normalizeLastPlayed(book.LastPlayed) };
+		}
+		function adaptAudiobooks(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptAudiobook(list[idx])); } } return out; }
+		function adaptChapter(chapter) {
+			if (!chapter) { return null; }
+			return { id: chapter.Id, seriesId: chapter.SeriesId, title: chapter.Title, coverArt: chapter.CoverArt || null, duration: chapter.Duration || 0, orderIndex: chapter.OrderIndex || 0, position: chapter.PositionSeconds || 0, completed: !!chapter.Completed };
+		}
+		function adaptChapters(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptChapter(list[idx])); } } return out; }
 		/* Map an envelope status code onto a user-facing message. */
 		function apiErrorMessage(err) { let status = (err && err.status) || ''; if (status === 'name_taken') { return 'A playlist with that name already exists.'; } if (status === 'missing_name') { return 'Please enter a name.'; } return 'Request failed'; }
 		function logApiError(label, err) { console.error(label, (err && err.status) || err); }
@@ -1792,6 +1821,7 @@
 
 		let currentView = 'home'; let navStack = []; let searchTimeout = null;
 		let cachedArtists = null; let cachedPlaylists = null; let cachedPodcasts = null; let currentPodcastDetail = null;
+		let cachedAudiobooks = null; let currentAudiobookDetail = null;
 		let currentAlbumDetail = null; let currentPlaylistDetail = null; let currentArtistId = null;
 		let leftTab = 'playlists'; let leftSort = 'alpha';
 		let audioElement = new Audio(); let playQueue = []; let playQueueIndex = -1;
@@ -1880,7 +1910,7 @@
 		/* Left Panel */
 		function switchLeftTab(tab) { leftTab = tab; let tabs = document.querySelectorAll('.left-tab'); for (let idx = 0; idx < tabs.length; idx++) { if (tabs[idx].getAttribute('data-left-tab') === tab) { tabs[idx].classList.add('active'); } else { tabs[idx].classList.remove('active'); } } document.getElementById('left-new-playlist-bar').style.display = (tab === 'playlists') ? 'flex' : 'none'; document.getElementById('left-new-podcast-bar').style.display = (tab === 'podcasts') ? 'flex' : 'none'; if (tab !== 'playlists') { hideNewPlaylistForm(); } if (tab !== 'podcasts') { hideNewPodcastForm(); } renderLeftList(); }
 		function setLeftSort(sort) { leftSort = sort; let btns = document.querySelectorAll('.sort-btn'); for (let idx = 0; idx < btns.length; idx++) { btns[idx].classList.remove('active'); if (btns[idx].getAttribute('data-sort') === sort) { btns[idx].classList.add('active'); } } renderLeftList(); }
-		function renderLeftList() { let container = document.getElementById('left-list'); container.innerHTML = ''; if (leftTab === 'playlists') { renderLeftPlaylists(container); } else if (leftTab === 'podcasts') { renderLeftPodcasts(container); } else { renderLeftArtists(container); } }
+		function renderLeftList() { let container = document.getElementById('left-list'); container.innerHTML = ''; if (leftTab === 'playlists') { renderLeftPlaylists(container); } else if (leftTab === 'podcasts') { renderLeftPodcasts(container); } else if (leftTab === 'audiobooks') { renderLeftAudiobooks(container); } else { renderLeftArtists(container); } }
 		function renderLeftPodcasts(container) {
 			if (!cachedPodcasts) {
 				container.innerHTML = '<div class="loading-text">Loading...</div>';
@@ -1899,6 +1929,42 @@
 				let sub = podcast.episodeCount + ' episodes';
 				if (podcast.unplayedCount > 0) { sub = podcast.unplayedCount + ' new · ' + sub; }
 				item.innerHTML = '<div class="left-item-art">' + artHtml(podcast.coverArt, 80) + '</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(podcast.title) + '</div><div class="left-item-sub">' + escapeHtml(sub) + '</div></div>';
+				container.appendChild(item);
+			}
+		}
+		function renderLeftAudiobooks(container) {
+			if (!cachedAudiobooks) {
+				container.innerHTML = '<div class="loading-text">Loading...</div>';
+				pulse.audiobooks().then(function (list) { cachedAudiobooks = adaptAudiobooks(list); renderLeftAudiobooks(container); }).catch(function (err) { logApiError('audiobooks', err); container.innerHTML = '<div class="loading-text">Failed to load</div>'; });
+				return;
+			}
+			let sorted = cachedAudiobooks.slice();
+			// Group by author; books are sorted by author then title within.
+			sorted.sort(function (left, right) {
+				let la = (left.author || 'Unknown Author').toLowerCase();
+				let ra = (right.author || 'Unknown Author').toLowerCase();
+				if (la !== ra) { return la.localeCompare(ra); }
+				return left.title.localeCompare(right.title);
+			});
+			container.innerHTML = '';
+			if (sorted.length === 0) { container.innerHTML = '<div class="loading-text">No audiobooks found. Set AudiobooksPath on the server.</div>'; return; }
+			let currentAuthor = null;
+			for (let idx = 0; idx < sorted.length; idx++) {
+				let book = sorted[idx];
+				let author = book.author || 'Unknown Author';
+				if (author !== currentAuthor) {
+					currentAuthor = author;
+					let header = document.createElement('div');
+					header.className = 'left-section-header';
+					header.style.cssText = 'padding:10px 12px 4px 12px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);';
+					header.textContent = author;
+					container.appendChild(header);
+				}
+				let item = document.createElement('div');
+				item.className = 'left-item';
+				item.onclick = (function (bid) { return function () { navStack = []; openAudiobook(bid); }; })(book.id);
+				let sub = book.chapterCount + ' chapters';
+				item.innerHTML = '<div class="left-item-art">' + artHtml(book.coverArt, 80) + '</div><div class="left-item-text"><div class="left-item-name">' + escapeHtml(book.title) + '</div><div class="left-item-sub">' + sub + '</div></div>';
 				container.appendChild(item);
 			}
 		}
@@ -2207,6 +2273,64 @@
 			playTrackList(songs, startIndex);
 		}
 		function playPodcastLatest() { playPodcastFrom(0); }
+		function openAudiobook(bookId) {
+			pulse.audiobook(bookId).then(function (details) {
+				let book = adaptAudiobook(details.Book);
+				currentAudiobookDetail = { book: book, chapters: adaptChapters(details.Chapters) };
+				document.getElementById('audiobook-detail-name').textContent = book.title;
+				let meta = book.chapterCount + ' chapters';
+				if (book.totalDuration > 0) { meta = meta + ' · ' + formatDuration(book.totalDuration); }
+				if (book.author) { meta = book.author + ' · ' + meta; }
+				document.getElementById('audiobook-detail-meta').textContent = meta;
+				document.getElementById('audiobook-detail-art').innerHTML = artHtml(book.coverArt, 400);
+				renderAudiobookChapters();
+				navigateWithHistory('audiobook-detail');
+			}).catch(function (err) { logApiError('audiobook', err); });
+		}
+		function renderAudiobookChapters() {
+			let chaptersEl = document.getElementById('audiobook-chapters');
+			chaptersEl.innerHTML = '';
+			if (!currentAudiobookDetail) { return; }
+			let chapters = currentAudiobookDetail.chapters || [];
+			if (chapters.length === 0) { chaptersEl.innerHTML = '<div class="loading-text">No chapters found.</div>'; return; }
+			for (let idx = 0; idx < chapters.length; idx++) {
+				let row = buildChapterRow(chapters[idx], idx + 1, (function (startIndex) { return function () { playAudiobookFrom(startIndex); }; })(idx));
+				chaptersEl.appendChild(row);
+			}
+		}
+		function buildChapterRow(chapter, rowNumber, onClickFn) {
+			let row = document.createElement('div');
+			row.className = 'track-row';
+			row.setAttribute('data-track-id', chapter.id);
+			row.onclick = onClickFn;
+			let statusSub = '';
+			if (chapter.completed) { statusSub = 'Finished'; } else if (chapter.position > 0) { statusSub = 'In progress'; }
+			row.innerHTML = '<span class="track-num">' + rowNumber + '</span><div class="track-title-col"><span class="track-title">' + escapeHtml(chapter.title) + '</span><span class="track-artist-sub">' + escapeHtml(statusSub) + '</span></div><span class="track-album"></span><span class="track-duration">' + formatDuration(chapter.duration) + '</span><span></span>';
+			return row;
+		}
+		function chapterToSong(chapter) {
+			let book = currentAudiobookDetail ? currentAudiobookDetail.book : null;
+			let bookTitle = book ? book.title : '';
+			let bookAuthor = book ? book.author : '';
+			let art = chapter.coverArt;
+			if (!art && book) { art = book.coverArt; }
+			return { id: chapter.id, title: chapter.title, artist: bookAuthor, album: bookTitle, coverArt: art, duration: chapter.duration };
+		}
+		function playAudiobookFrom(startIndex) {
+			if (!currentAudiobookDetail) { return; }
+			let chapters = currentAudiobookDetail.chapters || [];
+			let songs = [];
+			for (let idx = 0; idx < chapters.length; idx++) { songs.push(chapterToSong(chapters[idx])); }
+			playTrackList(songs, startIndex);
+		}
+		function playAudiobook() {
+			if (!currentAudiobookDetail) { return; }
+			let chapters = currentAudiobookDetail.chapters || [];
+			let lastItemId = currentAudiobookDetail.book ? currentAudiobookDetail.book.lastItemId : '';
+			let startIndex = 0;
+			if (lastItemId) { for (let idx = 0; idx < chapters.length; idx++) { if (chapters[idx].id === lastItemId) { startIndex = idx; break; } } }
+			playAudiobookFrom(startIndex);
+		}
 		function togglePodcastSubscription() {
 			if (!currentPodcastDetail) { return; }
 			let podcast = currentPodcastDetail.podcast;
@@ -2254,17 +2378,43 @@
 
 		/* Search */
 		function onSearchInput(value) { if (searchTimeout) { clearTimeout(searchTimeout); } if (value.length === 0) { if (currentView === 'search') { navStack = []; showView('home'); } return; } searchTimeout = setTimeout(function () { performSearch(value); }, 300); }
-		function performSearch(query) { if (currentView !== 'search') { navStack.push(currentView); } showView('search'); document.getElementById('search-input').value = query; document.getElementById('search-result-count').textContent = 'Searching...'; document.getElementById('search-results').innerHTML = ''; pulse.search(query, { artistCount: 10, albumCount: 20, songCount: 30 }).then(function (data) { let container = document.getElementById('search-results'); container.innerHTML = ''; let artists = adaptArtists(data.Artists); let albums = adaptAlbums(data.Albums); let songs = adaptTracks(data.Tracks); let totalHits = artists.length + albums.length + songs.length; document.getElementById('search-result-count').textContent = totalHits + ' results for "' + query + '"'; if (artists.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Artists'; container.appendChild(heading); let scroll = document.createElement('div'); scroll.className = 'carousel-scroll'; for (let idx = 0; idx < artists.length; idx++) { let card = buildCarouselCard(artists[idx].coverArt || null, artists[idx].name, artists[idx].albumCount + ' albums', (function (aid) { return function () { openArtist(aid); }; })(artists[idx].id), true); scroll.appendChild(card); } container.appendChild(scroll); } if (albums.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Albums'; container.appendChild(heading); let scroll = document.createElement('div'); scroll.className = 'carousel-scroll'; for (let idx = 0; idx < albums.length; idx++) { let card = buildCarouselCard(albums[idx].coverArt, albums[idx].name, albums[idx].artist, (function (aid) { return function () { openAlbum(aid); }; })(albums[idx].id), false); scroll.appendChild(card); } container.appendChild(scroll); } if (songs.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Songs'; container.appendChild(heading); for (let idx = 0; idx < songs.length; idx++) { let row = buildTrackRow(songs[idx], idx + 1, (function (sl, si) { return function () { playTrackList(sl, si); }; })(songs, idx)); container.appendChild(row); } } if (totalHits === 0) { let empty = document.createElement('div'); empty.id = 'search-empty'; empty.className = 'empty-state'; empty.innerHTML = '<div class="empty-state-text">No results found</div>'; container.appendChild(empty); } renderPodcastSearchResults(container, query); }).catch(function (err) { logApiError('search', err); }); }
-		function renderPodcastSearchResults(container, query) {
+		function performSearch(query) { if (currentView !== 'search') { navStack.push(currentView); } showView('search'); document.getElementById('search-input').value = query; if (searchMode === 'podcasts') { performPodcastSearch(query); return; } document.getElementById('search-result-count').textContent = 'Searching...'; document.getElementById('search-results').innerHTML = ''; pulse.search(query, { artistCount: 10, albumCount: 20, songCount: 30 }).then(function (data) { let container = document.getElementById('search-results'); container.innerHTML = ''; let artists = adaptArtists(data.Artists); let albums = adaptAlbums(data.Albums); let songs = adaptTracks(data.Tracks); let totalHits = artists.length + albums.length + songs.length; document.getElementById('search-result-count').textContent = totalHits + ' results for "' + query + '"'; if (artists.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Artists'; container.appendChild(heading); let scroll = document.createElement('div'); scroll.className = 'carousel-scroll'; for (let idx = 0; idx < artists.length; idx++) { let card = buildCarouselCard(artists[idx].coverArt || null, artists[idx].name, artists[idx].albumCount + ' albums', (function (aid) { return function () { openArtist(aid); }; })(artists[idx].id), true); scroll.appendChild(card); } container.appendChild(scroll); } if (albums.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Albums'; container.appendChild(heading); let scroll = document.createElement('div'); scroll.className = 'carousel-scroll'; for (let idx = 0; idx < albums.length; idx++) { let card = buildCarouselCard(albums[idx].coverArt, albums[idx].name, albums[idx].artist, (function (aid) { return function () { openAlbum(aid); }; })(albums[idx].id), false); scroll.appendChild(card); } container.appendChild(scroll); } if (songs.length > 0) { let heading = document.createElement('div'); heading.className = 'search-section-title'; heading.textContent = 'Songs'; container.appendChild(heading); for (let idx = 0; idx < songs.length; idx++) { let row = buildTrackRow(songs[idx], idx + 1, (function (sl, si) { return function () { playTrackList(sl, si); }; })(songs, idx)); container.appendChild(row); } } if (totalHits === 0) { let empty = document.createElement('div'); empty.id = 'search-empty'; empty.className = 'empty-state'; empty.innerHTML = '<div class="empty-state-text">No results found</div>'; container.appendChild(empty); } }).catch(function (err) { logApiError('search', err); }); }
+		let searchMode = 'media';
+		function setSearchMode(mode) {
+			if (searchMode === mode) { return; }
+			searchMode = mode;
+			updateSearchModeButtons();
+			let query = document.getElementById('search-input').value;
+			if (query && query.length > 0) {
+				performSearch(query);
+			} else {
+				document.getElementById('search-results').innerHTML = '';
+				document.getElementById('search-result-count').textContent = '';
+			}
+		}
+		function updateSearchModeButtons() {
+			let mediaBtn = document.getElementById('search-mode-media');
+			let podBtn = document.getElementById('search-mode-podcasts');
+			if (searchMode === 'podcasts') {
+				mediaBtn.className = 'btn btn-ghost';
+				podBtn.className = 'btn btn-primary';
+			} else {
+				mediaBtn.className = 'btn btn-primary';
+				podBtn.className = 'btn btn-ghost';
+			}
+		}
+		function performPodcastSearch(query) {
+			let container = document.getElementById('search-results');
+			document.getElementById('search-result-count').textContent = 'Searching...';
+			container.innerHTML = '';
 			pulse.searchPodcasts(query).then(function (list) {
 				let podcasts = adaptPodcasts(list);
-				if (!podcasts || podcasts.length === 0) { return; }
-				let empty = document.getElementById('search-empty');
-				if (empty) { empty.parentNode.removeChild(empty); }
-				let heading = document.createElement('div');
-				heading.className = 'search-section-title';
-				heading.textContent = 'Podcasts';
-				container.appendChild(heading);
+				container.innerHTML = '';
+				document.getElementById('search-result-count').textContent = podcasts.length + ' podcasts for "' + query + '"';
+				if (!podcasts || podcasts.length === 0) {
+					container.innerHTML = '<div class="empty-state"><div class="empty-state-text">No podcasts found</div></div>';
+					return;
+				}
 				for (let idx = 0; idx < podcasts.length; idx++) {
 					container.appendChild(buildPodcastResultRow(podcasts[idx]));
 				}
@@ -2570,6 +2720,8 @@
 		function wireUpStaticHandlers() {
 			document.getElementById('back-btn').addEventListener('click', goBack);
 			document.getElementById('search-input').addEventListener('input', function (event) { onSearchInput(event.target.value); });
+			document.getElementById('search-mode-media').addEventListener('click', function () { setSearchMode('media'); });
+			document.getElementById('search-mode-podcasts').addEventListener('click', function () { setSearchMode('podcasts'); });
 			document.getElementById('album-detail-artist').addEventListener('click', onAlbumArtistClick);
 			document.getElementById('album-play-btn').addEventListener('click', playAlbum);
 			document.getElementById('album-shuffle-btn').addEventListener('click', shuffleAlbum);
@@ -2579,6 +2731,7 @@
 			document.getElementById('playlist-shuffle-btn').addEventListener('click', shufflePlaylist);
 			document.getElementById('podcast-play-btn').addEventListener('click', playPodcastLatest);
 			document.getElementById('podcast-subscribe-btn').addEventListener('click', togglePodcastSubscription);
+			document.getElementById('audiobook-play-btn').addEventListener('click', playAudiobook);
 			document.getElementById('podcast-retention').addEventListener('change', syncRetentionValueVisibility);
 			document.getElementById('podcast-settings-save').addEventListener('click', savePodcastSettings);
 			document.getElementById('np-next-item').addEventListener('click', playNext);

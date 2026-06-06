@@ -17,6 +17,7 @@ namespace Thump.Views
 		Albums,
 		Playlists,
 		Podcasts,
+		Audiobooks,
 		Genres,
 	}
 
@@ -49,6 +50,7 @@ namespace Thump.Views
 		private Button m_buttonAlbums;
 		private Button m_buttonPlaylists;
 		private Button m_buttonPodcasts;
+		private Button m_buttonAudiobooks;
 		private Button m_buttonGenres;
 		private Button m_addPodcastButton;
 
@@ -62,6 +64,7 @@ namespace Thump.Views
 		private CollectionView m_albumsList;
 		private CollectionView m_playlistsList;
 		private CollectionView m_podcastsList;
+		private CollectionView m_audiobooksList;
 		private CollectionView m_genresList;
 		private Grid m_letterOverlay;
 
@@ -69,6 +72,8 @@ namespace Thump.Views
 		private ObservableCollection<PulseAlbum> m_albums;
 		private ObservableCollection<PulsePlaylist> m_playlists;
 		private ObservableCollection<PulsePodcast> m_podcasts;
+		private ObservableCollection<PulseAudiobook> m_audiobooks;
+		private ObservableCollection<AudiobookAuthor> m_audiobookAuthors;
 		private ObservableCollection<PulseGenre> m_genres;
 
 		public LibraryView(MainView mainView) : base(mainView)
@@ -169,6 +174,10 @@ namespace Thump.Views
 			m_buttonPodcasts = BuildFilterButton("Podcasts");
 			m_buttonPodcasts.Clicked += OnButtonPodcastsClicked;
 			buttonStack.Children.Add(m_buttonPodcasts);
+
+			m_buttonAudiobooks = BuildFilterButton("Audiobooks");
+			m_buttonAudiobooks.Clicked += OnButtonAudiobooksClicked;
+			buttonStack.Children.Add(m_buttonAudiobooks);
 
 			m_buttonGenres = BuildFilterButton("Genres");
 			m_buttonGenres.Clicked += OnButtonGenresClicked;
@@ -296,6 +305,11 @@ namespace Thump.Views
 			m_podcastsList.BackgroundColor = ThumpColors.Background;
 			listContainer.Children.Add(m_podcastsList);
 
+			m_audiobooksList = new CollectionView();
+			m_audiobooksList.IsVisible = false;
+			m_audiobooksList.BackgroundColor = ThumpColors.Background;
+			listContainer.Children.Add(m_audiobooksList);
+
 			m_genresList = new CollectionView();
 			m_genresList.IsVisible = false;
 			m_genresList.BackgroundColor = ThumpColors.Background;
@@ -392,6 +406,8 @@ namespace Thump.Views
 			m_albums = new ObservableCollection<PulseAlbum>();
 			m_playlists = new ObservableCollection<PulsePlaylist>();
 			m_podcasts = new ObservableCollection<PulsePodcast>();
+			m_audiobooks = new ObservableCollection<PulseAudiobook>();
+			m_audiobookAuthors = new ObservableCollection<AudiobookAuthor>();
 			m_genres = new ObservableCollection<PulseGenre>();
 			base.Initialize();
 		}
@@ -402,6 +418,7 @@ namespace Thump.Views
 			MainView.MediaClient.GetAlbums(OnAlbumsLoaded);
 			MainView.MediaClient.GetPlaylists(OnPlaylistsLoaded);
 			MainView.MediaClient.GetPodcasts(OnPodcastsLoaded);
+			MainView.MediaClient.GetAudiobooks(OnAudiobooksLoaded);
 			MainView.MediaClient.GetGenres(OnGenresLoaded);
 			base.RefreshData();
 		}
@@ -428,6 +445,48 @@ namespace Thump.Views
 		{
 			SyncFrom<PulsePodcast>(m_podcasts, podcasts);
 			BindPodcasts();
+		}
+
+		private void OnAudiobooksLoaded(List<PulseAudiobook> audiobooks)
+		{
+			SyncFrom<PulseAudiobook>(m_audiobooks, audiobooks);
+			RebuildAuthors();
+			BindAudiobooks();
+		}
+
+		// Derive the author list client-side from the books already fetched: one
+		// AudiobookAuthor per distinct Author, with a book count and the first
+		// book's cover. Reconciled by name so the tiles don't churn.
+		private void RebuildAuthors()
+		{
+			Dictionary<string, AudiobookAuthor> byName = new Dictionary<string, AudiobookAuthor>();
+			List<AudiobookAuthor> ordered = new List<AudiobookAuthor>();
+			for (int index = 0; index < m_audiobooks.Count; index++)
+			{
+				PulseAudiobook book = m_audiobooks[index];
+				string name = book.Author;
+				if (string.IsNullOrEmpty(name))
+				{
+					name = "Unknown Author";
+				}
+				AudiobookAuthor author;
+				bool found = byName.TryGetValue(name, out author);
+				if (!found)
+				{
+					author = new AudiobookAuthor();
+					author.Name = name;
+					author.CoverArt = book.CoverArt;
+					byName[name] = author;
+					ordered.Add(author);
+				}
+				author.BookCount = author.BookCount + 1;
+			}
+			SyncFrom<AudiobookAuthor>(m_audiobookAuthors, ordered, GetAuthorId);
+		}
+
+		private static string GetAuthorId(AudiobookAuthor author)
+		{
+			return author.Name;
 		}
 
 		private void OnGenresLoaded(List<PulseGenre> genres)
@@ -483,6 +542,21 @@ namespace Thump.Views
 			}
 			Sort<PulsePodcast>(m_podcasts, ComparePodcastByTitle);
 			m_podcastsList.ItemsSource = m_podcasts;
+		}
+
+		private void BindAudiobooks()
+		{
+			if (m_audiobookAuthors == null)
+			{
+				return;
+			}
+			Sort<AudiobookAuthor>(m_audiobookAuthors, CompareAuthorByName);
+			m_audiobooksList.ItemsSource = m_audiobookAuthors;
+		}
+
+		private static int CompareAuthorByName(AudiobookAuthor first, AudiobookAuthor second)
+		{
+			return string.Compare(first.Name, second.Name, StringComparison.OrdinalIgnoreCase);
 		}
 
 		private void BindGenres()
@@ -543,6 +617,8 @@ namespace Thump.Views
 			m_buttonPlaylists.TextColor = s_buttonInactiveText;
 			m_buttonPodcasts.BackgroundColor = s_buttonInactiveBackground;
 			m_buttonPodcasts.TextColor = s_buttonInactiveText;
+			m_buttonAudiobooks.BackgroundColor = s_buttonInactiveBackground;
+			m_buttonAudiobooks.TextColor = s_buttonInactiveText;
 			m_buttonGenres.BackgroundColor = s_buttonInactiveBackground;
 			m_buttonGenres.TextColor = s_buttonInactiveText;
 
@@ -550,6 +626,7 @@ namespace Thump.Views
 			m_albumsList.IsVisible = false;
 			m_playlistsList.IsVisible = false;
 			m_podcastsList.IsVisible = false;
+			m_audiobooksList.IsVisible = false;
 			m_genresList.IsVisible = false;
 
 			if (button == eLibraryButton.Artists)
@@ -575,6 +652,12 @@ namespace Thump.Views
 				m_buttonPodcasts.BackgroundColor = s_buttonActiveBackground;
 				m_buttonPodcasts.TextColor = s_buttonActiveText;
 				m_podcastsList.IsVisible = true;
+			}
+			else if (button == eLibraryButton.Audiobooks)
+			{
+				m_buttonAudiobooks.BackgroundColor = s_buttonActiveBackground;
+				m_buttonAudiobooks.TextColor = s_buttonActiveText;
+				m_audiobooksList.IsVisible = true;
 			}
 			else if (button == eLibraryButton.Genres)
 			{
@@ -626,6 +709,7 @@ namespace Thump.Views
 			BindAlbums();
 			BindPlaylists();
 			BindPodcasts();
+			BindAudiobooks();
 			BindGenres();
 		}
 
@@ -635,6 +719,7 @@ namespace Thump.Views
 			ApplyLayoutToList(m_albumsList, typeof(AlbumRowTile));
 			ApplyLayoutToList(m_playlistsList, typeof(PlaylistRowTile));
 			ApplyLayoutToList(m_podcastsList, typeof(PodcastRowTile));
+			ApplyLayoutToList(m_audiobooksList, typeof(AudiobookAuthorRowTile));
 			ApplyLayoutToList(m_genresList, typeof(GenreRowTile));
 		}
 
@@ -665,6 +750,10 @@ namespace Thump.Views
 			if (m_activeButton == eLibraryButton.Podcasts)
 			{
 				return m_podcastsList;
+			}
+			if (m_activeButton == eLibraryButton.Audiobooks)
+			{
+				return m_audiobooksList;
 			}
 			if (m_activeButton == eLibraryButton.Genres)
 			{
@@ -809,6 +898,11 @@ namespace Thump.Views
 		private void OnButtonPodcastsClicked(object sender, EventArgs e)
 		{
 			SetActiveButton(eLibraryButton.Podcasts);
+		}
+
+		private void OnButtonAudiobooksClicked(object sender, EventArgs e)
+		{
+			SetActiveButton(eLibraryButton.Audiobooks);
 		}
 
 		private void OnButtonGenresClicked(object sender, EventArgs e)

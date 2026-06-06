@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
@@ -15,7 +16,9 @@ namespace Thump.Views
 		private Label m_metaLabel;
 		private CollectionView m_trackList;
 		private PulseGenre m_genre;
-		private List<PulseTrack> m_tracks;
+		// Bound to m_trackList once; OnTracksLoaded reconciles in place. Play
+		// actions snapshot it to a List for OnPlayTracks(...).
+		private ObservableCollection<PulseTrack> m_tracks = new ObservableCollection<PulseTrack>();
 
 		public GenreDetailView(MainView mainView, PulseGenre genre) : base(mainView)
 		{
@@ -149,6 +152,7 @@ namespace Thump.Views
 		{
 			m_trackList = new CollectionView();
 			m_trackList.ItemTemplate = new DataTemplate(typeof(TrackRowTile));
+			m_trackList.ItemsSource = m_tracks;
 
 			Grid.SetRow(m_trackList, 3);
 			return m_trackList;
@@ -168,8 +172,9 @@ namespace Thump.Views
 		}
 		private void OnTracksLoaded(List<PulseTrack> tracks)
 		{
-			m_tracks = tracks;
-			m_trackList.ItemsSource = tracks;
+			// Each track appears once in a genre and server order is stable, so
+			// reconcile by Id and keep the order - no client sort.
+			SyncFrom<PulseTrack>(m_tracks, tracks);
 		}
 
 		private void OnBackClicked(object sender, EventArgs e)
@@ -179,22 +184,22 @@ namespace Thump.Views
 
 		private void OnPlayClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayTracks(m_tracks, 0, eQueueSource.Genre, m_genre.Id);
+			m_mainView.OnPlayTracks(new List<PulseTrack>(m_tracks), 0, eQueueSource.Genre, m_genre.Id);
 		}
 
 		private void OnShuffleClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayTracksShuffled(m_tracks, eQueueSource.Genre, m_genre.Id);
+			m_mainView.OnPlayTracksShuffled(new List<PulseTrack>(m_tracks), eQueueSource.Genre, m_genre.Id);
 		}
 
 		private void OnAddToQueueClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnAddToQueue(m_tracks, eQueueSource.Genre, m_genre.Id);
+			m_mainView.OnAddToQueue(new List<PulseTrack>(m_tracks), eQueueSource.Genre, m_genre.Id);
 		}
 
 		private void OnPlayNextClicked(object sender, EventArgs e)
 		{
-			m_mainView.OnPlayNext(m_tracks, eQueueSource.Genre, m_genre.Id);
+			m_mainView.OnPlayNext(new List<PulseTrack>(m_tracks), eQueueSource.Genre, m_genre.Id);
 		}
 	}
 }

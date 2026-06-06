@@ -26,6 +26,7 @@ namespace Thump.Playback
 		void Pause();
 		void Resume();
 		void SeekTo(long positionMilliseconds);
+		void SeekRelative(long deltaMilliseconds);
 		void Next();
 		void Previous();
 		void Stop();

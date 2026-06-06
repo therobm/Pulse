@@ -25,6 +25,7 @@ namespace Thump
 		Playlist,
 		Genre,
 		Podcast,
+		Audiobook,
 	}
 	public enum eTab
 	{
@@ -310,6 +311,20 @@ namespace Thump
 			PushDetail(detail);
 		}
 
+		public void OnAudiobookSelected(PulseAudiobook audiobook)
+		{
+			AudiobookDetailView detail = new AudiobookDetailView(this, audiobook);
+			detail.Initialize();
+			PushDetail(detail);
+		}
+
+		public void OnAudiobookAuthorSelected(AudiobookAuthor author)
+		{
+			AudiobookAuthorView view = new AudiobookAuthorView(this, author.Name);
+			view.Initialize();
+			PushDetail(view);
+		}
+
 		public void OnGenreSelected(PulseGenre genre)
 		{
 			GenreDetailView detail = new GenreDetailView(this, genre);
@@ -458,12 +473,29 @@ namespace Thump
 
 		public void OnNext()
 		{
-			m_player.Next();
+			// Series items skip +/-10s rather than changing track. Do it as a direct
+			// relative seek so it isn't blocked by controller-command authorization
+			// on a one-item queue (single-file audiobook).
+			if (CurrentTrackIsSeries())
+			{
+				m_player.SeekRelative(10000);
+			}
+			else
+			{
+				m_player.Next();
+			}
 		}
 
 		public void OnPrevious()
 		{
-			m_player.Previous();
+			if (CurrentTrackIsSeries())
+			{
+				m_player.SeekRelative(-10000);
+			}
+			else
+			{
+				m_player.Previous();
+			}
 		}
 
 		public void OnSeekToFraction(double fraction)
@@ -644,6 +676,22 @@ namespace Thump
 		public int GetQueueIndex()
 		{
 			return m_currentQueueIndex;
+		}
+
+		// True when the currently-playing queue item is series content (podcast or
+		// audiobook). The in-app skip buttons use this to stay enabled even on a
+		// one-item queue, since prev/next become a +/-10s seek for series.
+		public bool CurrentTrackIsSeries()
+		{
+			if (m_currentQueue == null)
+			{
+				return false;
+			}
+			if (m_currentQueueIndex < 0 || m_currentQueueIndex >= m_currentQueue.Count)
+			{
+				return false;
+			}
+			return m_currentQueue[m_currentQueueIndex].IsSeries;
 		}
 
 		public void OnQueueTrackSelected(PulseTrack track)

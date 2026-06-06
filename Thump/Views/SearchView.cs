@@ -8,9 +8,18 @@ using Thump.Views.Tiles;
 
 namespace Thump.Views
 {
+	public enum eSearchMode
+	{
+		Media,
+		Podcasts,
+	}
+
 	public class SearchView : ThumpView
 	{
 		private Entry m_searchEntry;
+		private Button m_modeMediaButton;
+		private Button m_modePodcastsButton;
+		private eSearchMode m_searchMode = eSearchMode.Media;
 		private Label m_artistsHeader;
 		private Label m_albumsHeader;
 		private Label m_songsHeader;
@@ -37,14 +46,18 @@ namespace Thump.Views
 			titleRow.Height = GridLength.Auto;
 			RowDefinition entryRow = new RowDefinition();
 			entryRow.Height = GridLength.Auto;
+			RowDefinition toggleRow = new RowDefinition();
+			toggleRow.Height = GridLength.Auto;
 			RowDefinition resultsRow = new RowDefinition();
 			resultsRow.Height = GridLength.Star;
 			grid.RowDefinitions.Add(titleRow);
 			grid.RowDefinitions.Add(entryRow);
+			grid.RowDefinitions.Add(toggleRow);
 			grid.RowDefinitions.Add(resultsRow);
 
 			grid.Children.Add(BuildTitle());
 			grid.Children.Add(BuildSearchEntry());
+			grid.Children.Add(BuildModeToggle());
 			grid.Children.Add(BuildResults());
 
 			Content = grid;
@@ -160,19 +173,123 @@ namespace Thump.Views
 
 			scroll.Content = stack;
 
-			Grid.SetRow(scroll, 2);
+			Grid.SetRow(scroll, 3);
 			return scroll;
 		}
 
 		private void OnSearchCompleted(object sender, EventArgs e)
 		{
+			RunSearch();
+		}
+
+		// Search runs in one mode at a time - Pulse library OR podcast discovery,
+		// chosen by the toggle - never both at once.
+		private void RunSearch()
+		{
+			HideAllResults();
 			string query = m_searchEntry.Text;
 			if (string.IsNullOrWhiteSpace(query))
 			{
 				return;
 			}
-			MainView.MediaClient.Search(query, OnSearchResults);
-			MainView.MediaClient.SearchPodcasts(query, OnPodcastSearchResults);
+			if (m_searchMode == eSearchMode.Media)
+			{
+				MainView.MediaClient.Search(query, OnSearchResults);
+			}
+			else
+			{
+				MainView.MediaClient.SearchPodcasts(query, OnPodcastSearchResults);
+			}
+		}
+
+		private View BuildModeToggle()
+		{
+			Grid toggleGrid = new Grid();
+			toggleGrid.ColumnSpacing = 8;
+			toggleGrid.Padding = new Thickness(16, 0, 16, 12);
+			ColumnDefinition mediaColumn = new ColumnDefinition();
+			mediaColumn.Width = GridLength.Star;
+			ColumnDefinition podcastColumn = new ColumnDefinition();
+			podcastColumn.Width = GridLength.Star;
+			toggleGrid.ColumnDefinitions.Add(mediaColumn);
+			toggleGrid.ColumnDefinitions.Add(podcastColumn);
+
+			m_modeMediaButton = new Button();
+			m_modeMediaButton.Text = "Pulse";
+			m_modeMediaButton.CornerRadius = 8;
+			m_modeMediaButton.FontSize = 14;
+			m_modeMediaButton.Clicked += OnModeMediaClicked;
+			Grid.SetColumn(m_modeMediaButton, 0);
+			toggleGrid.Children.Add(m_modeMediaButton);
+
+			m_modePodcastsButton = new Button();
+			m_modePodcastsButton.Text = "Podcasts";
+			m_modePodcastsButton.CornerRadius = 8;
+			m_modePodcastsButton.FontSize = 14;
+			m_modePodcastsButton.Clicked += OnModePodcastsClicked;
+			Grid.SetColumn(m_modePodcastsButton, 1);
+			toggleGrid.Children.Add(m_modePodcastsButton);
+
+			UpdateModeButtons();
+
+			Grid.SetRow(toggleGrid, 2);
+			return toggleGrid;
+		}
+
+		private void OnModeMediaClicked(object sender, EventArgs e)
+		{
+			SetSearchMode(eSearchMode.Media);
+		}
+
+		private void OnModePodcastsClicked(object sender, EventArgs e)
+		{
+			SetSearchMode(eSearchMode.Podcasts);
+		}
+
+		private void SetSearchMode(eSearchMode mode)
+		{
+			if (m_searchMode == mode)
+			{
+				return;
+			}
+			m_searchMode = mode;
+			UpdateModeButtons();
+			RunSearch();
+		}
+
+		// Reflect the active mode on the toggle buttons and the entry placeholder.
+		private void UpdateModeButtons()
+		{
+			if (m_searchMode == eSearchMode.Media)
+			{
+				m_modeMediaButton.BackgroundColor = ThumpColors.Accent;
+				m_modeMediaButton.TextColor = ThumpColors.Background;
+				m_modePodcastsButton.BackgroundColor = ThumpColors.Surface;
+				m_modePodcastsButton.TextColor = ThumpColors.OnBackground;
+				m_searchEntry.Placeholder = "Search artists, albums, songs";
+			}
+			else
+			{
+				m_modePodcastsButton.BackgroundColor = ThumpColors.Accent;
+				m_modePodcastsButton.TextColor = ThumpColors.Background;
+				m_modeMediaButton.BackgroundColor = ThumpColors.Surface;
+				m_modeMediaButton.TextColor = ThumpColors.OnBackground;
+				m_searchEntry.Placeholder = "Search for podcasts";
+			}
+		}
+
+		private void HideAllResults()
+		{
+			m_artistResults.IsVisible = false;
+			m_artistsHeader.IsVisible = false;
+			m_albumResults.IsVisible = false;
+			m_albumsHeader.IsVisible = false;
+			m_songResults.IsVisible = false;
+			m_songsHeader.IsVisible = false;
+			m_playlistResults.IsVisible = false;
+			m_playlistsHeader.IsVisible = false;
+			m_podcastResults.IsVisible = false;
+			m_podcastsHeader.IsVisible = false;
 		}
 
 		private void OnPodcastSearchResults(System.Collections.Generic.List<PulsePodcast> podcasts)
