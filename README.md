@@ -39,7 +39,9 @@ A native Android app built with .NET MAUI. Streams from your Pulse server, cache
   <img src="Docs/ThumpPlaylist.png" alt="Thump playlist" width="32%">
   <img src="Docs/ThumpAudiobook.png" alt="Thump audiobook" width="32%">
 </p>
-
+<p align="center">
+  <img src="Docs/androidauto.png" alt="Thump podcast player" width="100%">
+</p>
 <p align="center">
   <img src="Docs/ThumpPodcast.png" alt="Thump podcast player" width="32%">
   <img src="Docs/ThumpPodcastDetail.png" alt="Thump podcast detail" width="32%">
