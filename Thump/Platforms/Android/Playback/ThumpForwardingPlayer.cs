@@ -15,6 +15,53 @@ namespace Thump.Playback.AndroidOS
 		{
 		}
 
+		// A single-file audiobook is a one-item queue, so the wrapped ExoPlayer
+		// reports no next/prev and the system/AA disable those buttons - the +/-10s
+		// overrides below never get a chance to fire. For series content, advertise
+		// the seek-next/prev commands ourselves so the buttons stay live.
+		public override PlayerCommands AvailableCommands
+		{
+			get
+			{
+				PlayerCommands baseCommands = base.AvailableCommands;
+				if (!CurrentIsSeries())
+				{
+					return baseCommands;
+				}
+				PlayerCommands.Builder builder = new PlayerCommands.Builder();
+				builder.AddAll(baseCommands);
+				builder.Add(BasePlayer.InterfaceConsts.CommandSeekToNext);
+				builder.Add(BasePlayer.InterfaceConsts.CommandSeekToNextMediaItem);
+				builder.Add(BasePlayer.InterfaceConsts.CommandSeekToPrevious);
+				builder.Add(BasePlayer.InterfaceConsts.CommandSeekToPreviousMediaItem);
+				return builder.Build();
+			}
+		}
+
+		public override bool HasNextMediaItem
+		{
+			get
+			{
+				if (CurrentIsSeries())
+				{
+					return true;
+				}
+				return base.HasNextMediaItem;
+			}
+		}
+
+		public override bool HasPreviousMediaItem
+		{
+			get
+			{
+				if (CurrentIsSeries())
+				{
+					return true;
+				}
+				return base.HasPreviousMediaItem;
+			}
+		}
+
 		private bool CurrentIsSeries()
 		{
 			MediaItem current = CurrentMediaItem;

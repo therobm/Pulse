@@ -355,8 +355,20 @@ namespace Thump.Views
 			}
 			int index = m_mainView.GetQueueIndex();
 			int count = m_mainView.GetQueue().Count;
-			bool canPrevious = index > 0;
-			bool canNext = index < count - 1;
+			bool canPrevious;
+			bool canNext;
+			if (m_mainView.CurrentTrackIsSeries())
+			{
+				// Prev/next are +/-10s for series, so keep them live even on a
+				// single-item queue (single-file audiobook).
+				canPrevious = true;
+				canNext = true;
+			}
+			else
+			{
+				canPrevious = index > 0;
+				canNext = index < count - 1;
+			}
 			SetSkipButtonState(m_prevButton, canPrevious);
 			SetSkipButtonState(m_nextButton, canNext);
 		}

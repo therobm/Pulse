@@ -293,6 +293,35 @@ namespace Thump.Pulse
 			});
 		}
 
+		public override void GetAudiobooks(Action<List<PulseAudiobook>> onComplete)
+		{
+			string url = BuildPulseUrl("audiobooks", null);
+			FetchObject<List<PulseAudiobook>>(url, eMediaCacheStrategy.NetworkFirst, (books) =>
+			{
+				List<PulseAudiobook> results = new List<PulseAudiobook>();
+				if (books != null)
+				{
+					results = books;
+				}
+				if (onComplete != null)
+				{
+					onComplete(results);
+				}
+			});
+		}
+
+		public override void GetAudiobook(string audiobookId, Action<PulseAudiobookDetails> onComplete)
+		{
+			string url = BuildPulseUrl("audiobook", "id=" + Uri.EscapeDataString(audiobookId));
+			FetchObject<PulseAudiobookDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
+			{
+				if (onComplete != null)
+				{
+					onComplete(details);
+				}
+			});
+		}
+
 		public override void SearchPodcasts(string query, Action<List<PulsePodcast>> onComplete)
 		{
 			string url = BuildPulseUrl("searchPodcasts", "query=" + Uri.EscapeDataString(query));
