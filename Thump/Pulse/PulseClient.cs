@@ -330,6 +330,28 @@ namespace Thump.Pulse
 			});
 		}
 
+		public override void SearchPodcasts(string query, Action<List<PulsePodcast>> onComplete)
+		{
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, new List<PulsePodcast>());
+				return;
+			}
+			string url = BuildPulseUrl("searchPodcasts", "query=" + Uri.EscapeDataString(query));
+			FetchObject<List<PulsePodcast>>(url, false, (hits) =>
+			{
+				List<PulsePodcast> results = new List<PulsePodcast>();
+				if (hits != null)
+				{
+					results = hits;
+				}
+				if (onComplete != null)
+				{
+					onComplete(results);
+				}
+			});
+		}
+
 		public override void AddPodcast(string feedUrl, bool subscribe, Action<PulsePodcast> onComplete)
 		{
 			if (!IsOnline())
@@ -369,6 +391,27 @@ namespace Thump.Pulse
 			string param = "id=" + Uri.EscapeDataString(podcastId);
 			RunCommand(BuildPulseUrl("unsubscribePodcast", param));
 			CompleteOnMain(onComplete, true);
+		}
+
+		public override void UpdatePodcast(string podcastId, string retentionPolicy, int retentionValue, int pollIntervalMinutes, bool autoDownload, Action<PulsePodcast> onComplete)
+		{
+			if (!IsOnline())
+			{
+				CompleteOnMain(onComplete, null);
+				return;
+			}
+			string param = "id=" + Uri.EscapeDataString(podcastId)
+				+ "&retentionPolicy=" + Uri.EscapeDataString(retentionPolicy)
+				+ "&retentionValue=" + retentionValue
+				+ "&pollIntervalMinutes=" + pollIntervalMinutes
+				+ "&autoDownload=" + (autoDownload ? "1" : "0");
+			FetchObject<PulsePodcast>(BuildPulseUrl("updatePodcast", param), false, (podcast) =>
+			{
+				if (onComplete != null)
+				{
+					onComplete(podcast);
+				}
+			});
 		}
 
 		public override void SaveEpisodeProgress(string episodeId, int positionSeconds)

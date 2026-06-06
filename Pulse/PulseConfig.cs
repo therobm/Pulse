@@ -23,6 +23,12 @@ namespace Pulse
 		// PulseData/ is used. Replaces the old Debugger.IsAttached coupling.
 		public string DatabaseEnvironment { get; set; } = "Production";
 
+		// Podcast discovery service. The server owns podcast search and proxies
+		// to whatever service this URL points at; swapping providers is a config
+		// change, not a code change. "{query}" is replaced with the URL-encoded
+		// search term. Default is Apple's keyless iTunes Search API.
+		public string PodcastSearchUrl { get; set; } = "https://itunes.apple.com/search?term={query}&entity=podcast";
+
 
 		public static string GetConfigPath()
 		{

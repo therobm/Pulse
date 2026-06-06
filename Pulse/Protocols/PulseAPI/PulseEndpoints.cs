@@ -80,8 +80,10 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("allPodcasts", GetAllPodcasts);
 			RegisterRoute("podcast", GetPodcast);
 			RegisterRoute("addPodcast", AddPodcast);
+			RegisterRoute("updatePodcast", UpdatePodcast);
 			RegisterRoute("subscribePodcast", SubscribePodcast);
 			RegisterRoute("unsubscribePodcast", UnsubscribePodcast);
+			RegisterRoute("searchPodcasts", SearchPodcasts);
 			RegisterRoute("episodeProgress", EpisodeProgress);
 		}
 
@@ -1467,6 +1469,9 @@ namespace Pulse.Protocols.PulseAPI
 
 			pulsePodcast.FeedUrl = series.FeedUrl;
 			pulsePodcast.AutoDownload = series.AutoDownload;
+			pulsePodcast.RetentionPolicy = series.Retention.ToString();
+			pulsePodcast.RetentionValue = series.RetentionValue;
+			pulsePodcast.PollIntervalMinutes = series.PollIntervalMinutes;
 
 			return pulsePodcast;
 		}
@@ -1573,6 +1578,89 @@ namespace Pulse.Protocols.PulseAPI
 				return RespondStatus(context, "add_failed");
 			}
 			return RespondObject(context, BuildPulsePodcast(series, user));
+		}
+
+		/// <summary>
+		/// Podcast discovery: searches the configured provider by name and
+		/// returns the hits as PulsePodcasts. These are NOT catalogued series -
+		/// they have no Id; the client adds one via AddPodcast using its FeedUrl.
+		/// CoverArt carries the provider's remote artwork URL directly (clients
+		/// load it as-is rather than through the coverArt endpoint).
+		/// </summary>
+		public IResult SearchPodcasts(HttpContext context)
+		{
+			string query = context.Request.Query["query"].FirstOrDefault();
+			if (string.IsNullOrEmpty(query))
+			{
+				query = context.Request.Query["q"].FirstOrDefault();
+			}
+
+			List<Pulse.Series.PodcastSearchResult> hits = m_podcastManager.SearchPodcasts(query);
+			List<PulsePodcast> pulsePodcasts = new List<PulsePodcast>();
+			for (int index = 0; index < hits.Count; index++)
+			{
+				pulsePodcasts.Add(BuildSearchResultPodcast(hits[index]));
+			}
+			return RespondList(context, pulsePodcasts);
+		}
+
+		/// <summary>
+		/// Maps a remote discovery hit to the PulsePodcast wire shape. Id is left
+		/// empty (not in the catalogue yet) and CoverArt holds the remote artwork
+		/// URL so the search UI can render it without a server-side cover.
+		/// </summary>
+		private PulsePodcast BuildSearchResultPodcast(Pulse.Series.PodcastSearchResult hit)
+		{
+			PulsePodcast pulsePodcast = new PulsePodcast();
+			pulsePodcast.Id = "";
+			pulsePodcast.Title = hit.Title;
+			pulsePodcast.Author = hit.Author;
+			pulsePodcast.Description = hit.Description;
+			pulsePodcast.CoverArt = hit.ArtworkUrl;
+			pulsePodcast.FeedUrl = hit.FeedUrl;
+			pulsePodcast.Subscribed = false;
+			pulsePodcast.EpisodeCount = 0;
+			pulsePodcast.ItemCount = 0;
+			return pulsePodcast;
+		}
+
+		/// <summary>
+		/// Updates a podcast's backlog settings (poll interval, retention
+		/// policy + value, auto-download). Reads query params, defaults
+		/// missing/invalid values (KeepAll / 0 / 60 / false), writes
+		/// through PodcastManager.UpdatePodcastSettings (which also kicks
+		/// a background apply so the new settings take effect immediately
+		/// rather than waiting for the next poll cycle), then returns the
+		/// updated PulsePodcast for the caller to reflect in their UI.
+		/// </summary>
+		public IResult UpdatePodcast(HttpContext context)
+		{
+			string id = context.Request.Query["id"].FirstOrDefault();
+			string user = context.Request.Query["u"].FirstOrDefault();
+			if (user == null) { user = ""; }
+			SeriesInfo series = m_podcastManager.GetSeries(id);
+			if (series == null) { return RespondStatus(context, "not_found"); }
+
+			string retentionRaw = context.Request.Query["retentionPolicy"].FirstOrDefault();
+			eRetentionPolicy retention = eRetentionPolicy.KeepAll;
+			bool retentionParsed = Enum.TryParse<eRetentionPolicy>(retentionRaw, out retention);
+			if (!retentionParsed) { retention = eRetentionPolicy.KeepAll; }
+
+			string retentionValueRaw = context.Request.Query["retentionValue"].FirstOrDefault();
+			int retentionValue = 0;
+			int.TryParse(retentionValueRaw, out retentionValue);
+
+			string pollRaw = context.Request.Query["pollIntervalMinutes"].FirstOrDefault();
+			int pollInterval = 60;
+			bool pollParsed = int.TryParse(pollRaw, out pollInterval);
+			if (!pollParsed || pollInterval <= 0) { pollInterval = 60; }
+
+			string autoRaw = context.Request.Query["autoDownload"].FirstOrDefault();
+			bool autoDownload = autoRaw == "1";
+
+			m_podcastManager.UpdatePodcastSettings(id, pollInterval, retention, retentionValue, autoDownload);
+			SeriesInfo updated = m_podcastManager.GetSeries(id);
+			return RespondObject(context, BuildPulsePodcast(updated, user));
 		}
 
 		public IResult SubscribePodcast(HttpContext context)
