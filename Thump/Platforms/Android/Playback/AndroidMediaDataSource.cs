@@ -117,6 +117,7 @@ namespace Thump.Playback.AndroidOS
 			int position = (int)dataSpec.Position;
 			TransferInitializing(dataSpec);
 
+			
 			// 1. full blob already cached -> serve from memory, no network
 			byte[] cached;
 			if (m_data.GetCachedResults(m_url, out cached) && cached != null)
@@ -157,6 +158,8 @@ namespace Thump.Playback.AndroidOS
 				contentLength = m_response.Content.Headers.ContentLength.Value;
 			}
 			m_bytesRemaining = (int)contentLength;
+
+			Log.Info("AndroidMediaDataSource::Open trackId=" + m_trackId + " contentLength=" + contentLength + " position=" + position + " cached=" + (cached != null));
 
 			// cache only on a clean sequential start with known length
 			if (position == 0 && contentLength > 0)
@@ -284,12 +287,23 @@ namespace Thump.Playback.AndroidOS
 				// network read needs its own stall guard; HttpClient.Timeout no
 				// longer applies once we're past headers, and Exo's loader thread
 				// blocks here indefinitely on a dead tunnel otherwise.
-				using CancellationTokenSource cts = new CancellationTokenSource(m_stallWindow);
-				read = m_readStream.ReadAsync(buffer, offset, toRead, cts.Token).Result;
+				try 
+				{
+					using CancellationTokenSource cts = new CancellationTokenSource(m_stallWindow);
+					read = m_readStream.ReadAsync(buffer, offset, toRead, cts.Token).Result;
+				}
+				catch(Exception ex)
+				{
+					Log.Exception(ex);
+					Log.Error("AndroidMediaDataSource::Read STALL/ERROR trackId=" + m_trackId + " remaining=" + m_bytesRemaining + " ex=" + ex.GetType().Name);
+					throw new IOException("stream read failed: " + m_trackId, ex);
+				}
+				
 			}
 
 			if (read <= 0)
 			{
+				Log.Info("AndroidMediaDataSource::Read EOF trackId=" + m_trackId + " remaining=" + m_bytesRemaining + " cached=" + (m_memorySource != null));
 				bool wasStreaming = (m_memorySource == null);
 				if (wasStreaming && m_bytesRemaining > 0)
 				{
@@ -344,6 +358,7 @@ namespace Thump.Playback.AndroidOS
 		{
 			bool wasStreaming = (m_memorySource == null);
 
+			Log.Info("AndroidMediaDataSource::Close trackId=" + m_trackId + " finalized=" + m_streamFinalized + " remaining=" + m_bytesRemaining);
 			if (wasStreaming)
 			{
 				FinalizeStream();   // commits if complete, releases pipe; no-op if EOF already did

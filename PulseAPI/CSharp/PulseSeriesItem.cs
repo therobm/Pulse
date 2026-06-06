@@ -35,6 +35,21 @@ namespace PulseAPI.CSharp
 	/// </summary>
 	public class PulseChapter : PulseSeriesItem
 	{
+		// Chapter offsets into the underlying file, in milliseconds. EndMs == 0
+		// means "the whole file" (one-file-per-chapter audiobooks). When EndMs >
+		// StartMs the chapter is a window into a shared single file and the client
+		// clips playback to [StartMs, EndMs).
+		public int StartMs;
+		public int EndMs;
+
+		/// <summary>
+		/// The id to request the audio stream with. For a chapter that is a window into
+		/// a shared file (EndMs &gt; StartMs) every chapter of that file carries the SAME
+		/// StreamId so the client streams/caches the file under one key. For a whole-file
+		/// chapter (EndMs == 0) StreamId equals the chapter's own Id.
+		/// </summary>
+		public string StreamId;
+
 		public PulseChapter()
 		{
 			Kind = eDataType.Chapter;

@@ -39,6 +39,12 @@ namespace Pulse.Series
 		public string LocalPath = "";
 		public long FileSizeBytes = 0;
 		public eDownloadState DownloadState = eDownloadState.Discovered;
+		// Chapter offsets into LocalPath, in milliseconds. EndMs == 0 means "play
+		// the whole file" (podcast episodes, one-file-per-chapter audiobooks). When
+		// EndMs > StartMs the item is a time window into a shared file (single-file
+		// audiobook with embedded chapters).
+		public int StartMs = 0;
+		public int EndMs = 0;
 
 		public bool NeedsDownload()
 		{
