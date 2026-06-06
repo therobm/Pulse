@@ -125,6 +125,7 @@ namespace Thump.Playback.AndroidOS
 			builder.SetMediaSourceFactory(mediaSourceFactory);
 
 			m_player = builder.Build();
+			m_player.AddListener(new ThumpPlayerListener());
 
 			AndroidMediaLibraryCallback library = new AndroidMediaLibraryCallback();
 			library.m_onAddMediaItems = null;
