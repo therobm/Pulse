@@ -1,24 +1,51 @@
+<p align="center">
+  <img src="Docs/player.png" alt="Pulse web player" width="100%">
+</p>
+
 # Pulse
 
-A self-hosted music ecosystem: a server that owns your library, and a client that plays it. This repository holds both halves plus the contract they share.
+Pulse is a self-hosted music ecosystem — a single app that serves your library through a webpage or an android client with android auto support.
 
-## Projects
+One executable, no external services, no database server. It scans your library, serves it over its own API, and gets out of the way.
 
-### Pulse — server
+## What you get
 
-A self-hosted music server built in C#. Scans a local library, serves it over the Pulse API, and layers on playlist sync, scoring, smart playlists, and a tablet web client. Runs as a single executable with no external service dependencies.
+**Music, podcasts, and audiobooks** in one place. Subscribe to podcast feeds with auto-download and backlog management. Import audiobooks and pick up where you left off across devices.
 
-See [Pulse/README.md](Pulse/README.md) for features, configuration, and build instructions.
+**Smart playlists** that learn what you actually listen to. Bayesian scoring weighted by listen ratio, skip rate, and play history — not what an algorithm thinks you should hear.
 
-### Thump — client
+**Library stats** that tell you what's really going on — play coverage, session health, top artists, most played tracks, all at a glance.
 
-An Android music client built with .NET MAUI. Streams from a Pulse server, caches tracks for offline playback, and supports Android Auto. Lives in [Thump/](Thump).
+<p align="center">
+  <img src="Docs/stats.png" alt="Pulse stats dashboard" width="100%">
+</p>
 
-## Shared
+## Pulse — the server
 
-### PulseAPI — contract
+A single C# executable. Scans your library, serves the Pulse API, hosts a tablet-optimized web player.
 
-The wire contract shared between server and client, with C# and JS bindings so both sides stay in sync. Lives in [PulseAPI/](PulseAPI).
+See [Pulse/README.md](Pulse/README.md) for configuration and build instructions.
+
+<p align="center">
+  <img src="Docs/podcasts.png" alt="Pulse podcast management" width="100%">
+</p>
+
+## Thump — the Android client
+
+A native Android app built with .NET MAUI. Streams from your Pulse server, caches tracks for offline playback, and works with Android Auto. Music, podcasts, and audiobooks.
+
+<p align="center">
+  <img src="Docs/ThumpHome.png" alt="Thump home screen" width="32%">
+  <img src="Docs/ThumpPlaylist.png" alt="Thump playlist" width="32%">
+  <img src="Docs/ThumpAudiobook.png" alt="Thump audiobook" width="32%">
+</p>
+
+<p align="center">
+  <img src="Docs/ThumpPodcast.png" alt="Thump podcast player" width="32%">
+  <img src="Docs/ThumpPodcastDetail.png" alt="Thump podcast detail" width="32%">
+</p>
+
+See [Thump/README.md](Thump/README.md) for build instructions.
 
 ## License
 
