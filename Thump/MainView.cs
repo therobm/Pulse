@@ -473,12 +473,29 @@ namespace Thump
 
 		public void OnNext()
 		{
-			m_player.Next();
+			// Series items skip +/-10s rather than changing track. Do it as a direct
+			// relative seek so it isn't blocked by controller-command authorization
+			// on a one-item queue (single-file audiobook).
+			if (CurrentTrackIsSeries())
+			{
+				m_player.SeekRelative(10000);
+			}
+			else
+			{
+				m_player.Next();
+			}
 		}
 
 		public void OnPrevious()
 		{
-			m_player.Previous();
+			if (CurrentTrackIsSeries())
+			{
+				m_player.SeekRelative(-10000);
+			}
+			else
+			{
+				m_player.Previous();
+			}
 		}
 
 		public void OnSeekToFraction(double fraction)

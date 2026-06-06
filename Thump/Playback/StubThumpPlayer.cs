@@ -23,6 +23,10 @@ namespace Thump.Playback
 		{
 		}
 
+		public void SeekRelative(long deltaMilliseconds)
+		{
+		}
+
 		public void Next()
 		{
 		}
