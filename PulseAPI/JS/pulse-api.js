@@ -338,6 +338,18 @@
 		return this._contents('podcast', { id: id });
 	};
 
+	// All audiobooks scanned from the server's AudiobooksPath. Resolves to an
+	// array of PulseAudiobook objects.
+	PulseClient.prototype.audiobooks = function () {
+		return this._contents('audiobooks');
+	};
+
+	// One audiobook's detail: resolves to a PulseAudiobookDetails
+	// ({ Book: PulseAudiobook, Chapters: [PulseChapter] }), chapters in order.
+	PulseClient.prototype.audiobook = function (id) {
+		return this._contents('audiobook', { id: id });
+	};
+
 	// Add a feed to the catalogue by RSS URL. subscribe=true also adds it to
 	// this user's subscriptions. Resolves to the PulsePodcast.
 	PulseClient.prototype.addPodcast = function (feedUrl, subscribe) {
