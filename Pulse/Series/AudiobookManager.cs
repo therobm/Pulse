@@ -759,36 +759,94 @@ namespace Pulse.Series
 					return markers;
 				}
 
-				int count = payload[5];
-				int position = 6;
-				for (int chapterIndex = 0; chapterIndex < count; chapterIndex++)
+				// The reserved bytes before the 1-byte chapter count vary by writer:
+				// 1 byte (mp4v2/GPAC -> entries at 6), 4 bytes (ffmpeg, which made
+				// most .m4b files -> entries at 9), or none (-> entries at 5). Try
+				// each and keep the first that parses cleanly (validated in
+				// ParseNeroPayload), preferring the layout that consumes the payload
+				// most fully.
+				int[] candidateStarts = new int[] { 9, 6, 5 };
+				List<ChapterMarker> best = null;
+				int bestLeftover = int.MaxValue;
+				for (int candidateIndex = 0; candidateIndex < candidateStarts.Length; candidateIndex++)
 				{
-					if (position + 9 > payload.Length)
+					int leftover;
+					List<ChapterMarker> parsed = ParseNeroPayload(payload, candidateStarts[candidateIndex], out leftover);
+					if (parsed != null && leftover < bestLeftover)
 					{
-						break;
+						best = parsed;
+						bestLeftover = leftover;
 					}
-					long start100ns = ReadUInt64BE(payload, position);
-					position = position + 8;
-					int titleLength = payload[position];
-					position = position + 1;
-					if (position + titleLength > payload.Length)
-					{
-						break;
-					}
-					string title = Encoding.UTF8.GetString(payload, position, titleLength);
-					position = position + titleLength;
-
-					ChapterMarker marker = new ChapterMarker();
-					marker.StartMs = (int)(start100ns / 10000L);
-					marker.EndMs = 0;
-					marker.Title = title;
-					markers.Add(marker);
+				}
+				if (best != null)
+				{
+					markers = best;
 				}
 			}
 			finally
 			{
 				stream.Close();
 			}
+			return markers;
+		}
+
+		// Parse the Nero chapter entries assuming the 1-byte count sits at
+		// entriesStart-1 and entries begin at entriesStart. Returns null (so the
+		// caller tries the other layout) if the count is 0, the entries run past
+		// the payload, a timestamp is implausible, or the starts aren't monotonic.
+		private List<ChapterMarker> ParseNeroPayload(byte[] payload, int entriesStart, out int leftover)
+		{
+			leftover = int.MaxValue;
+			if (entriesStart < 1 || entriesStart > payload.Length)
+			{
+				return null;
+			}
+			int count = payload[entriesStart - 1];
+			if (count <= 0)
+			{
+				return null;
+			}
+
+			List<ChapterMarker> markers = new List<ChapterMarker>();
+			int position = entriesStart;
+			for (int chapterIndex = 0; chapterIndex < count; chapterIndex++)
+			{
+				if (position + 9 > payload.Length)
+				{
+					return null;
+				}
+				long start100ns = ReadUInt64BE(payload, position);
+				position = position + 8;
+				int titleLength = payload[position];
+				position = position + 1;
+				if (position + titleLength > payload.Length)
+				{
+					return null;
+				}
+				string title = Encoding.UTF8.GetString(payload, position, titleLength);
+				position = position + titleLength;
+
+				long startMs = start100ns / 10000L;
+				// Reject implausible timestamps (> 100h) - a sign of a wrong offset.
+				if (startMs < 0 || startMs > 360000000L)
+				{
+					return null;
+				}
+				ChapterMarker marker = new ChapterMarker();
+				marker.StartMs = (int)startMs;
+				marker.EndMs = 0;
+				marker.Title = title;
+				markers.Add(marker);
+			}
+
+			for (int index = 1; index < markers.Count; index++)
+			{
+				if (markers[index].StartMs < markers[index - 1].StartMs)
+				{
+					return null;
+				}
+			}
+			leftover = payload.Length - position;
 			return markers;
 		}
 
