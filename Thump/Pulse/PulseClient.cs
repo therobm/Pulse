@@ -31,6 +31,11 @@ namespace Thump.Pulse
 		private string BuildPulseUrl(string endpoint, string extraParams)
 		{
 			string url = m_baseUrl + "/pulse_v1/" + endpoint + "?u=" + Uri.EscapeDataString(m_user);
+			string token = ThumpSettings.GetToken();
+			if (!string.IsNullOrEmpty(token))
+			{
+				url = url + "&token=" + Uri.EscapeDataString(token);
+			}
 			if (!string.IsNullOrEmpty(extraParams))
 			{
 				url = url + "&" + extraParams;
@@ -140,7 +145,7 @@ namespace Thump.Pulse
 			response = default(JsonElement);
 			try
 			{
-				string url = m_baseUrl + "/pulse_v1/ping?u=" + Uri.EscapeDataString(m_user);
+				string url = BuildPulseUrl("ping", "");
 				string json = HttpGet(url, eMediaCacheStrategy.NetworkOnly, false, true);
 				if (string.IsNullOrEmpty(json))
 				{

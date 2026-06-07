@@ -52,6 +52,8 @@ namespace Pulse.Protocols.PulseAPI
 		private static object s_dummyHashLock = new object();
 
 		private PulseData m_pulseData;
+		private SessionStore m_sessions = new SessionStore();
+		private LoginRateLimiter m_rateLimiter = new LoginRateLimiter();
 		IPulseRouteHost m_host;
 
 		/// <summary>
@@ -106,11 +108,18 @@ namespace Pulse.Protocols.PulseAPI
 			{
 				return false;
 			}
-			return SessionStore.TryValidate(sessionId, out userName, out isAdmin);
+			return m_sessions.TryValidate(sessionId, out userName, out isAdmin);
 		}
 
 		private IResult Login(HttpContext context)
 		{
+			string clientIp = GetClientIp(context);
+			if (m_rateLimiter.IsLockedOut(clientIp))
+			{
+				context.Response.Headers["Retry-After"] = "300";
+				return Respond("rate_limited", HttpStatusCode.OK);
+			}
+
 			string body = ReadRequestBody(context);
 			if (string.IsNullOrEmpty(body))
 			{
@@ -129,6 +138,7 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (request == null || string.IsNullOrEmpty(request.Username) || string.IsNullOrEmpty(request.Password))
 			{
+				m_rateLimiter.RecordFailure(clientIp);
 				return Respond("invalid_credentials", HttpStatusCode.OK);
 			}
 
@@ -152,6 +162,7 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (!hasHash || !verified)
 			{
+				m_rateLimiter.RecordFailure(clientIp);
 				return Respond("invalid_credentials", HttpStatusCode.OK);
 			}
 
@@ -162,7 +173,9 @@ namespace Pulse.Protocols.PulseAPI
 				isAdmin = user.IsAdmin;
 			}
 
-			string sessionId = SessionStore.CreateSession(request.Username, isAdmin, request.RememberMe);
+			m_rateLimiter.RecordSuccess(clientIp);
+
+			string sessionId = m_sessions.CreateSession(request.Username, isAdmin, request.RememberMe);
 			AppendSessionCookie(context, sessionId, request.RememberMe);
 
 			Log.Info(-1, "Auth: login for '" + request.Username + "'");
@@ -183,7 +196,7 @@ namespace Pulse.Protocols.PulseAPI
 			string sessionId = context.Request.Cookies[CookieName];
 			if (!string.IsNullOrEmpty(sessionId))
 			{
-				SessionStore.Remove(sessionId);
+				m_sessions.Remove(sessionId);
 			}
 
 			CookieOptions clearOptions = new CookieOptions();
@@ -356,6 +369,13 @@ namespace Pulse.Protocols.PulseAPI
 		/// </summary>
 		private IResult CreateToken(HttpContext context)
 		{
+			string clientIp = GetClientIp(context);
+			if (m_rateLimiter.IsLockedOut(clientIp))
+			{
+				context.Response.Headers["Retry-After"] = "300";
+				return Respond("rate_limited", HttpStatusCode.OK);
+			}
+
 			string body = ReadRequestBody(context);
 			if (string.IsNullOrEmpty(body))
 			{
@@ -380,6 +400,7 @@ namespace Pulse.Protocols.PulseAPI
 			UserRecord user = m_pulseData.GetUser(request.Username);
 			if (user == null)
 			{
+				m_rateLimiter.RecordFailure(clientIp);
 				return Respond("unknown_user", HttpStatusCode.OK);
 			}
 
@@ -391,6 +412,8 @@ namespace Pulse.Protocols.PulseAPI
 				label = "";
 			}
 			m_pulseData.InsertToken(token, request.Username, label);
+
+			m_rateLimiter.RecordSuccess(clientIp);
 
 			Log.Info(-1, "Auth: created token for '" + request.Username + "' label='" + label + "'");
 
@@ -519,6 +542,22 @@ namespace Pulse.Protocols.PulseAPI
 			userName = user.Name;
 			isAdmin = user.IsAdmin;
 			return true;
+		}
+
+		/// <summary>
+		/// Best-effort source-IP extraction for the brute-force limiter.
+		/// Falls back to the sentinel "unknown" if the connection does not
+		/// expose a remote address (e.g. some in-process test transports);
+		/// the limiter still tracks "unknown" as a key, which is the safest
+		/// default for an ambiguous origin.
+		/// </summary>
+		private static string GetClientIp(HttpContext context)
+		{
+			if (context.Connection.RemoteIpAddress != null)
+			{
+				return context.Connection.RemoteIpAddress.ToString();
+			}
+			return "unknown";
 		}
 
 		/// <summary>

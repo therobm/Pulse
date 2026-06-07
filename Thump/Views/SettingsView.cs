@@ -37,6 +37,7 @@ namespace Thump.Views
 		private Entry m_serverPortEntry;
 		private Entry m_usernameEntry;
 		private Entry m_passwordEntry;
+		private Entry m_tokenEntry;
 		private Button m_serverSubsonic;
 		private Button m_serverPulse;
 		private Button m_httpsHttps;
@@ -295,6 +296,10 @@ namespace Thump.Views
 			m_passwordEntry.IsPassword = true;
 			section.Children.Add(m_passwordEntry);
 
+			section.Children.Add(BuildFieldLabel("Device Token"));
+			m_tokenEntry = BuildEntry();
+			section.Children.Add(m_tokenEntry);
+
 			section.Children.Add(BuildFieldLabel("Connection"));
 			HorizontalStackLayout httpsRow = new HorizontalStackLayout();
 			httpsRow.Spacing = 8;
@@ -350,6 +355,7 @@ namespace Thump.Views
 			m_serverPortEntry.Text = ThumpSettings.GetServerPort();
 			m_usernameEntry.Text = ThumpSettings.GetUsername();
 			m_passwordEntry.Text = ThumpSettings.GetPassword();
+			m_tokenEntry.Text = ThumpSettings.GetToken();
 			SetUseHttps(ThumpSettings.GetUseHttps());
 
 			base.Initialize();
@@ -507,6 +513,7 @@ namespace Thump.Views
 			string port = m_serverPortEntry.Text;
 			string user = m_usernameEntry.Text;
 			string password = m_passwordEntry.Text;
+			string token = m_tokenEntry.Text;
 
 			string validationError = ValidateAndNormalizeServer(ref ip, ref port);
 			if (!string.IsNullOrEmpty(validationError))
@@ -520,6 +527,7 @@ namespace Thump.Views
 			ThumpSettings.SetServerPort(port);
 			ThumpSettings.SetUsername(user);
 			ThumpSettings.SetPassword(password);
+			ThumpSettings.SetToken(token);
 			ThumpSettings.SetUseHttps(m_useHttps);
 
 			m_connectStatusLabel.Text = "Connecting…";

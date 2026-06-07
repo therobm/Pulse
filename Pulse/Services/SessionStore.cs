@@ -28,9 +28,9 @@ namespace Pulse.Services
 	/// Lifetimes are lazy: expired entries are not eagerly swept -- the next
 	/// TryValidate that sees one removes it. P1 has no background pruner.
 	/// </summary>
-	public static class SessionStore
+	public class SessionStore
 	{
-		private static ConcurrentDictionary<string, SessionEntry> s_sessions = new ConcurrentDictionary<string, SessionEntry>();
+		private ConcurrentDictionary<string, SessionEntry> m_sessions = new ConcurrentDictionary<string, SessionEntry>();
 
 		/// <summary>
 		/// Base64Url variant: '+' -> '-', '/' -> '_', strip '=' padding. Keeps
@@ -51,7 +51,7 @@ namespace Pulse.Services
 		/// to 30 days; otherwise the session expires after 24 hours of
 		/// inactivity. Slides on every successful validation.
 		/// </summary>
-		public static string CreateSession(string userName, bool isAdmin, bool rememberMe)
+		public string CreateSession(string userName, bool isAdmin, bool rememberMe)
 		{
 			byte[] raw = RandomNumberGenerator.GetBytes(32);
 			string sessionId = ToUrlSafeBase64(raw);
@@ -72,7 +72,7 @@ namespace Pulse.Services
 			entry.IdleTimeout = idle;
 			entry.ExpiresUtc = DateTime.UtcNow + idle;
 
-			s_sessions.TryAdd(sessionId, entry);
+			m_sessions.TryAdd(sessionId, entry);
 			return sessionId;
 		}
 
@@ -82,7 +82,7 @@ namespace Pulse.Services
 		/// success, the entry's idle window slides: ExpiresUtc is reset to now
 		/// plus IdleTimeout so an active user does not get logged out mid-use.
 		/// </summary>
-		public static bool TryValidate(string sessionId, out string userName, out bool isAdmin)
+		public bool TryValidate(string sessionId, out string userName, out bool isAdmin)
 		{
 			userName = "";
 			isAdmin = false;
@@ -92,7 +92,7 @@ namespace Pulse.Services
 			}
 
 			SessionEntry entry;
-			bool found = s_sessions.TryGetValue(sessionId, out entry);
+			bool found = m_sessions.TryGetValue(sessionId, out entry);
 			if (!found)
 			{
 				return false;
@@ -102,7 +102,7 @@ namespace Pulse.Services
 			if (now > entry.ExpiresUtc)
 			{
 				SessionEntry removed;
-				s_sessions.TryRemove(sessionId, out removed);
+				m_sessions.TryRemove(sessionId, out removed);
 				return false;
 			}
 
@@ -115,14 +115,14 @@ namespace Pulse.Services
 		/// <summary>
 		/// Drops a session by id. Safe to call with an unknown id.
 		/// </summary>
-		public static void Remove(string sessionId)
+		public void Remove(string sessionId)
 		{
 			if (string.IsNullOrEmpty(sessionId))
 			{
 				return;
 			}
 			SessionEntry removed;
-			s_sessions.TryRemove(sessionId, out removed);
+			m_sessions.TryRemove(sessionId, out removed);
 		}
 	}
 }
