@@ -160,21 +160,6 @@ namespace Pulse.MusicLibrary
 			m_database.DeleteUser(userName);
 		}
 
-		public string GetUserPasswordHash(string name)
-		{
-			return m_database.GetUserPasswordHash(name);
-		}
-
-		public void SetUserPassword(string name, string passwordHash)
-		{
-			m_database.SetUserPassword(name, passwordHash);
-		}
-
-		public bool AnyUserHasPassword()
-		{
-			return m_database.AnyUserHasPassword();
-		}
-
 		public bool GetAlbumCover(AlbumInfo album, out byte[] bytes, out string contentType)
 		{
 			bytes = null;
@@ -283,9 +268,10 @@ namespace Pulse.MusicLibrary
 		private DateTime m_nowPlayingStartTime = DateTime.MinValue;
 		private HashSet<string> m_missingSongs = new HashSet<string>();
 		private PulseConfig m_config;
-		public MusicManager(PulseConfig config)
+		public MusicManager(PulseConfig config, PulseData pulseData)
 		{
 			m_config = config;
+			m_database = pulseData;
 			m_lidarrSync = new LidarrSync(config.LidarrURL, config.LidarrApiKey);
 		}
 
@@ -768,9 +754,7 @@ namespace Pulse.MusicLibrary
 			Pulse.Database.PulseDBMigrations.RunMigrations();
 			Log.Info(-1, "Pulse DB: env=" + environmentName + " path=" + sqlitePath);
 
-			PulseData data = new PulseData();
-			m_database = data;
-			data.Load();
+			m_database.Load();
 		}
 
 		private void SaveDB(string reason)

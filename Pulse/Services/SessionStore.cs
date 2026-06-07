@@ -33,6 +33,17 @@ namespace Pulse.Services
 		private static ConcurrentDictionary<string, SessionEntry> s_sessions = new ConcurrentDictionary<string, SessionEntry>();
 
 		/// <summary>
+		/// Base64Url variant: '+' -> '-', '/' -> '_', strip '=' padding. Keeps
+		/// the id safe to drop into a cookie value without escaping.
+		/// </summary>
+		private static string ToUrlSafeBase64(byte[] bytes)
+		{
+			string standard = Convert.ToBase64String(bytes);
+			string replaced = standard.Replace('+', '-').Replace('/', '_');
+			return replaced.TrimEnd('=');
+		}
+
+		/// <summary>
 		/// Mints a new opaque session id, stores it against the supplied user
 		/// metadata, and returns it. "Remember me" stretches the idle window
 		/// to 30 days; otherwise the session expires after 24 hours of
@@ -73,11 +84,17 @@ namespace Pulse.Services
 		{
 			userName = "";
 			isAdmin = false;
-			if (string.IsNullOrEmpty(sessionId)) { return false; }
+			if (string.IsNullOrEmpty(sessionId))
+			{
+				return false;
+			}
 
 			SessionEntry entry;
 			bool found = s_sessions.TryGetValue(sessionId, out entry);
-			if (!found) { return false; }
+			if (!found)
+			{
+				return false;
+			}
 
 			DateTime now = DateTime.UtcNow;
 			if (now > entry.ExpiresUtc)
@@ -98,18 +115,12 @@ namespace Pulse.Services
 		/// </summary>
 		public static void Remove(string sessionId)
 		{
-			if (string.IsNullOrEmpty(sessionId)) { return; }
+			if (string.IsNullOrEmpty(sessionId))
+			{
+				return;
+			}
 			SessionEntry removed;
 			s_sessions.TryRemove(sessionId, out removed);
-		}
-
-		// Base64Url variant: '+' -> '-', '/' -> '_', strip '=' padding. Keeps
-		// the id safe to drop into a cookie value without escaping.
-		private static string ToUrlSafeBase64(byte[] bytes)
-		{
-			string standard = Convert.ToBase64String(bytes);
-			string replaced = standard.Replace('+', '-').Replace('/', '_');
-			return replaced.TrimEnd('=');
 		}
 	}
 }

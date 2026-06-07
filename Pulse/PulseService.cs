@@ -80,6 +80,7 @@ namespace Pulse
 		private Subsonic m_subsonic;
 		private PulseEndpoints m_pulseEndpoints;
 		private Pulse.Protocols.LegacyPulse.LegacyPulseAPI m_legacyPulse;
+		private PulseData m_pulseData;
 		private MusicManager m_musicManager;
 		private AnalyticsDB m_analyticsDB;
 		private PodcastManager m_podcastManager;
@@ -101,7 +102,13 @@ namespace Pulse
 		{
 			m_config = config;
 
-			m_musicManager = new MusicManager(config);
+			// PulseData is the shared domain layer; build it first so both the
+			// MusicManager facade and the auth endpoints hit the same instance.
+			// MusicManager.LoadDB still owns the sqlite path setup and the
+			// data.Load() call, so newing PulseData here is safe -- its
+			// constructor is DB-independent.
+			m_pulseData = new PulseData();
+			m_musicManager = new MusicManager(config, m_pulseData);
 			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
 
@@ -116,7 +123,7 @@ namespace Pulse
 			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_analyticsDB, m_podcastManager, m_audiobookManager);
 			m_legacyPulse = new global::Pulse.Protocols.LegacyPulse.LegacyPulseAPI(this, m_musicManager);
 			m_subsonic = new Subsonic(m_legacyPulse);
-			m_authEndpoints = new AuthEndpoints(m_musicManager);
+			m_authEndpoints = new AuthEndpoints(m_pulseData);
 
 			RegisterRoutes(webServer);
 			SyncSpotify();

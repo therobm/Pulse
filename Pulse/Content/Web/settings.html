@@ -683,10 +683,6 @@
 				errorDiv.textContent = '';
 				let pw = pwInput.value;
 				let confirm = confirmInput.value;
-				if (!pw || pw.length < 8) {
-					errorDiv.textContent = 'Password must be at least 8 characters.';
-					return;
-				}
 				if (pw !== confirm) {
 					errorDiv.textContent = 'Passwords do not match.';
 					return;
@@ -728,24 +724,62 @@
 			pwInput.focus();
 		}
 
+		// Maps the server's machine-parsable status code on a PulseResponse
+		// envelope to a human-readable message. The point of routing failures
+		// through this table is so the policy (e.g. minimum password length)
+		// stays server-side: the client just relays whatever the server says.
+		function describeAuthStatus(status) {
+			if (status === 'password_too_short') {
+				return "Password does not meet the server's requirements";
+			}
+			if (status === 'invalid_credentials') {
+				return 'Invalid credentials';
+			}
+			if (status === 'not_signed_in') {
+				return 'Sign in first';
+			}
+			if (status === 'forbidden') {
+				return 'Not allowed';
+			}
+			if (status === 'unknown_user') {
+				return 'Unknown user';
+			}
+			if (status === 'missing_fields') {
+				return 'Username and password are required.';
+			}
+			if (status === 'missing_body') {
+				return 'Missing request body';
+			}
+			return 'Request failed';
+		}
+
+		// Parses the JSON envelope and returns it, or null if the response was
+		// not parseable JSON. Lets callers branch on status/contents directly.
+		function parseAuthEnvelope(responseText) {
+			let parsed = null;
+			try { parsed = JSON.parse(responseText); } catch (e) { parsed = null; }
+			return parsed;
+		}
+
 		function runSetPassword(userName, password, callback) {
 			let xhr = new XMLHttpRequest();
 			xhr.open('POST', '/pulse/setPassword');
 			xhr.withCredentials = true;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 			xhr.onload = function () {
-				let message = 'Set-password failed (HTTP ' + xhr.status + ')';
-				let parsed = null;
-				try { parsed = JSON.parse(xhr.responseText); } catch (e) { parsed = null; }
-				if (xhr.status === 200) {
+				let parsed = parseAuthEnvelope(xhr.responseText);
+				if (parsed && parsed.status === 'ok') {
 					callback(true, '');
 					return;
 				}
-				if (parsed && parsed.error) { message = parsed.error; }
+				let message = 'Set-password failed';
+				if (parsed && parsed.status) {
+					message = describeAuthStatus(parsed.status);
+				}
 				callback(false, message);
 			};
 			xhr.onerror = function () { callback(false, 'Network error'); };
-			let payload = JSON.stringify({ username: userName, password: password });
+			let payload = JSON.stringify({ Username: userName, Password: password });
 			xhr.send(payload);
 		}
 
@@ -755,18 +789,19 @@
 			xhr.withCredentials = true;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 			xhr.onload = function () {
-				let parsed = null;
-				try { parsed = JSON.parse(xhr.responseText); } catch (e) { parsed = null; }
-				if (xhr.status === 200 && parsed && parsed.username) {
-					callback(true, parsed, '');
+				let parsed = parseAuthEnvelope(xhr.responseText);
+				if (parsed && parsed.status === 'ok' && parsed.contents && parsed.contents.Username) {
+					callback(true, parsed.contents, '');
 					return;
 				}
 				let message = 'Invalid credentials';
-				if (parsed && parsed.error) { message = parsed.error; }
+				if (parsed && parsed.status) {
+					message = describeAuthStatus(parsed.status);
+				}
 				callback(false, null, message);
 			};
 			xhr.onerror = function () { callback(false, null, 'Network error'); };
-			let payload = JSON.stringify({ username: username, password: password, rememberMe: rememberMe });
+			let payload = JSON.stringify({ Username: username, Password: password, RememberMe: rememberMe });
 			xhr.send(payload);
 		}
 
@@ -792,8 +827,8 @@
 			runLogin(username, password, rememberMe, function (ok, data, message) {
 				if (ok) {
 					document.getElementById('login-password').value = '';
-					setLoginState(data.username, data.isAdmin);
-					showToast('Signed in as ' + data.username);
+					setLoginState(data.Username, data.IsAdmin);
+					showToast('Signed in as ' + data.Username);
 				}
 				else {
 					errEl.textContent = message;
