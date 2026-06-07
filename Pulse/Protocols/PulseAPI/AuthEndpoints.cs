@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Pulse.Data;
+using Pulse.Database;
 using Pulse.MusicLibrary;
 using Pulse.Services;
 using PulseAPI.CSharp;
@@ -78,6 +79,10 @@ namespace Pulse.Protocols.PulseAPI
 			RegisterRoute("createUser", CreateUser);
 			RegisterRoute("updateUser", UpdateUser);
 			RegisterRoute("deleteUser", DeleteUser);
+
+			RegisterRoute("createToken", CreateToken);
+			RegisterRoute("listTokens", ListTokens);
+			RegisterRoute("revokeToken", RevokeToken);
 		}
 
 		private void RegisterRoute(string route, Func<HttpContext, IResult> handler)
@@ -340,6 +345,180 @@ namespace Pulse.Protocols.PulseAPI
 			m_pulseData.DeleteUser(userName);
 			Log.Info(-1, "Settings: deleted user '" + userName + "'");
 			return Respond(HttpStatusCode.OK);
+		}
+
+		/// <summary>
+		/// POST { Username, Label } -> 200 PulseToken on success. Mints a 256-bit
+		/// random token, base64url-encoded, and stores it against the named user.
+		/// The raw token rides back in the response body so the caller can show
+		/// it to the operator exactly once. No auth check on the endpoint
+		/// itself -- token management is opt-in plumbing in P2, not enforced.
+		/// </summary>
+		private IResult CreateToken(HttpContext context)
+		{
+			string body = ReadRequestBody(context);
+			if (string.IsNullOrEmpty(body))
+			{
+				return Respond("missing_body", HttpStatusCode.BadRequest);
+			}
+
+			PulseCreateTokenRequest request;
+			try
+			{
+				request = PulseWire.Parse<PulseCreateTokenRequest>(body);
+			}
+			catch (Exception)
+			{
+				request = null;
+			}
+
+			if (request == null || string.IsNullOrEmpty(request.Username))
+			{
+				return Respond("missing_fields", HttpStatusCode.BadRequest);
+			}
+
+			UserRecord user = m_pulseData.GetUser(request.Username);
+			if (user == null)
+			{
+				return Respond("unknown_user", HttpStatusCode.OK);
+			}
+
+			byte[] raw = RandomNumberGenerator.GetBytes(32);
+			string token = SessionStore.ToUrlSafeBase64(raw);
+			string label = request.Label;
+			if (label == null)
+			{
+				label = "";
+			}
+			m_pulseData.InsertToken(token, request.Username, label);
+
+			Log.Info(-1, "Auth: created token for '" + request.Username + "' label='" + label + "'");
+
+			PulseToken result = new PulseToken();
+			result.Token = token;
+			result.Username = request.Username;
+			result.Label = label;
+			result.CreatedAt = DateTime.UtcNow.ToString("o");
+
+			return Respond(result);
+		}
+
+		/// <summary>
+		/// GET (optional ?user=&lt;name&gt;) -> list of PulseTokenSummary. With no
+		/// user query param every token is returned; with one, only that user's
+		/// tokens. No auth check -- listing tokens is plumbing for the
+		/// management UI, not gated in P2.
+		/// </summary>
+		private IResult ListTokens(HttpContext context)
+		{
+			string userFilter = context.Request.Query["user"].FirstOrDefault();
+			List<TokenRow> rows;
+			if (!string.IsNullOrEmpty(userFilter))
+			{
+				rows = m_pulseData.GetTokensForUser(userFilter);
+			}
+			else
+			{
+				rows = m_pulseData.GetAllTokens();
+			}
+
+			List<PulseTokenSummary> tokens = new List<PulseTokenSummary>();
+			for (int index = 0; index < rows.Count; index++)
+			{
+				TokenRow row = rows[index];
+				PulseTokenSummary summary = new PulseTokenSummary();
+				summary.Token = row.Token;
+				summary.Username = row.UserName;
+				summary.Label = row.Label;
+				summary.CreatedAt = row.CreatedAt;
+				summary.LastUsed = row.LastUsed;
+				tokens.Add(summary);
+			}
+			return RespondList(tokens);
+		}
+
+		/// <summary>
+		/// POST { Token } -> 200 status="ok". Idempotent: revoking an unknown
+		/// token still returns ok. No auth check -- revoking a token is
+		/// plumbing for the management UI, not gated in P2.
+		/// </summary>
+		private IResult RevokeToken(HttpContext context)
+		{
+			string body = ReadRequestBody(context);
+			if (string.IsNullOrEmpty(body))
+			{
+				return Respond("missing_body", HttpStatusCode.BadRequest);
+			}
+
+			PulseRevokeTokenRequest request;
+			try
+			{
+				request = PulseWire.Parse<PulseRevokeTokenRequest>(body);
+			}
+			catch (Exception)
+			{
+				request = null;
+			}
+
+			if (request == null || string.IsNullOrEmpty(request.Token))
+			{
+				return Respond("missing_fields", HttpStatusCode.BadRequest);
+			}
+
+			m_pulseData.DeleteToken(request.Token);
+			Log.Info(-1, "Auth: revoked token");
+			return Respond("ok", HttpStatusCode.OK);
+		}
+
+		/// <summary>
+		/// Checks the request for a device token: first Authorization: Bearer
+		/// header, then ?token= query param fallback. If a valid token is
+		/// found, updates its last-used timestamp and returns the mapped user.
+		/// Returns false if no token is present or the token is unknown. This
+		/// helper is plumbing for the future enforcement layer (P5); P2 does
+		/// not call it from any gate.
+		/// </summary>
+		public bool GetTokenUser(HttpContext context, out string userName, out bool isAdmin)
+		{
+			userName = "";
+			isAdmin = false;
+
+			string authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+			string tokenValue = "";
+			if (!string.IsNullOrEmpty(authHeader))
+			{
+				string prefix = "Bearer ";
+				if (authHeader.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+				{
+					tokenValue = authHeader.Substring(prefix.Length).Trim();
+				}
+			}
+
+			if (string.IsNullOrEmpty(tokenValue))
+			{
+				tokenValue = context.Request.Query["token"].FirstOrDefault();
+			}
+			if (string.IsNullOrEmpty(tokenValue))
+			{
+				return false;
+			}
+
+			string resolvedUser = m_pulseData.LookupTokenUser(tokenValue);
+			if (string.IsNullOrEmpty(resolvedUser))
+			{
+				return false;
+			}
+
+			m_pulseData.UpdateTokenLastUsed(tokenValue);
+
+			UserRecord user = m_pulseData.GetUser(resolvedUser);
+			if (user == null)
+			{
+				return false;
+			}
+			userName = user.Name;
+			isAdmin = user.IsAdmin;
+			return true;
 		}
 
 		/// <summary>
