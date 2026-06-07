@@ -6,7 +6,7 @@ namespace PulseAPI.CSharp
 	/// RememberMe exactly. Plain data bag (public fields, no properties) so it
 	/// composes naturally with the rest of PulseAPI.
 	/// </summary>
-	public class LoginRequest
+	public class PulseLoginRequest : PulseObject
 	{
 		public string Username;
 		public string Password;
@@ -17,7 +17,7 @@ namespace PulseAPI.CSharp
 	/// Wire body for POST /pulse/setPassword. Same PascalCase rule as
 	/// LoginRequest -- the client must send Username/Password verbatim.
 	/// </summary>
-	public class SetPasswordRequest
+	public class PulseSetPasswordRequest : PulseObject
 	{
 		public string Username;
 		public string Password;
@@ -29,7 +29,7 @@ namespace PulseAPI.CSharp
 	/// to render its signed-in state -- the session itself rides in the
 	/// HttpOnly cookie, not in the JSON body.
 	/// </summary>
-	public class LoginResult
+	public class PulseLoginResult : PulseObject
 	{
 		public string Username;
 		public bool IsAdmin;

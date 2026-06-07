@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 
 namespace Pulse.Data
 {
@@ -332,8 +333,44 @@ namespace Pulse.Data
 			return true;
 		}
 
-		public void Load()
+		public void Load(PulseConfig config)
 		{
+			// Environment selection: config drives in normal operation (Flatline
+			// bug #67 -- behavior shouldn't change based on launch method) BUT a
+			// debugger attached is a hard safety lockout to Staging. Debug
+			// sessions must never touch production data -- a test interaction
+			// scrobbling against the real DB is catastrophic and the silent
+			// inverse (prod accidentally writes to staging) is recoverable.
+			string environmentName = config.DatabaseEnvironment;
+			if (string.IsNullOrWhiteSpace(environmentName))
+			{
+				environmentName = "Production";
+			}
+#if DEBUG
+			//Enforce debug builds never touch production
+			if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
+			{
+				Log.Warning(-1, "Debugger attached: forcing Staging environment (config said '" + environmentName + "'). Debug sessions never touch production data.");
+			}
+			environmentName = "Staging";
+#endif
+
+			string pulseDataRoot = Path.Combine(config.MusicPath, "PulseData");
+			if (!Directory.Exists(pulseDataRoot))
+			{
+				Directory.CreateDirectory(pulseDataRoot);
+			}
+
+			// Separate sqlite file per environment. Production -> pulse_production.db,
+			// Staging -> pulse_staging.db. Keeps the existing concept while letting
+			// the two run side-by-side without cross-contamination.
+			string sqliteFileName = "pulse_" + environmentName.ToLowerInvariant() + ".db";
+			string sqlitePath = Path.Combine(pulseDataRoot, sqliteFileName);
+			Pulse.Database.PulseDBConnector.SetDatabaseFilePath(sqlitePath);
+			Pulse.Database.PulseDBMigrations.RunMigrations();
+			Log.Info(-1, "Pulse DB: env=" + environmentName + " path=" + sqlitePath);
+
+
 			Stopwatch sw = Stopwatch.StartNew();
 
 			List<ArtistInfo> artists = m_db.LoadArtists();

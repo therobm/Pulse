@@ -25,237 +25,15 @@ namespace Pulse.MusicLibrary
 		public Dictionary<string, ArtistInfo> m_scanningArtistCache = new Dictionary<string, ArtistInfo>();
 		public Dictionary<string, AlbumInfo> m_scanningAlbumCache = new Dictionary<string, AlbumInfo>();
 
-		public int GetTrackCount()
+		public static string GenerateID(string input)
 		{
-			return m_database.GetTrackCount();
-		}
-		public int GetAlbumCount()
-		{
-			return m_database.GetAlbumCount();
-		}
-		public int GetArtistCount()
-		{
-			return m_database.GetArtistCount();
-		}
-
-		public bool GetIsScanning()
-		{
-			return m_scanning;
-		}
-
-		public List<ArtistInfo> GetAllArtists()
-		{
-			return m_database.GetAllArtists();
-		}
-
-		public List<TrackInfo> GetAllTracks()
-		{
-			return m_database.GetAllTracks();
-		}
-		public List<AlbumInfo> GetAllAlbums()
-		{
-			return m_database.GetAllAlbums();
-		}
-
-	
-		public PlaylistInfo GetPlaylist(string id)
-		{
-			return m_database.GetPlaylist(id);
-		}
-		public PlaylistAndTracks GetPlaylistAndTracks(string id)
-		{
-			PlaylistInfo playlist = GetPlaylist(id);
-			List<TrackInfo> tracks = GetPlaylistTracks(id);
-
-			PlaylistAndTracks fullPlaylist = new PlaylistAndTracks(playlist, tracks);
-			return fullPlaylist;
-		}
-		public List<PlaylistInfo> GetAllPlaylists(string userName)
-		{
-			return m_database.GetAllPlaylists(userName);
-		}
-
-		public List<TrackInfo> GetPlaylistTracks(string playlistId)
-		{
-			return m_database.GetPlaylistTracks(playlistId);
-		}
-
-		public void SetRating(string trackId, int rating)
-		{
-			m_database.SetRating(trackId, rating);
-		}
-
-		public void UpdateStar(string userName, string trackId, string albumId, string artistId, bool isStarred)
-		{
-			m_database.UpdateStar(userName, trackId, albumId, artistId, isStarred);
-		}
-
-		public PulseAnalyticsInfo GetAnalytics()
-		{
-			return m_database.GetAnalytics();
-		}
-
-		/// <summary>
-		/// Pass-through to the item_stats counter used by the topItems /
-		/// recentlyPlayed routes to rank one media type by play count or recency.
-		/// </summary>
-		public Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType)
-		{
-			return m_database.GetItemStats(userName, mediaType);
-		}
-
-		public TrackInfo GetTrack(string id)
-		{
-			return m_database.GetTrack(id);
-		}
-
-		public AlbumInfo GetAlbum(string id)
-		{
-			return m_database.GetAlbum(id);
-		}
-
-		public ArtistInfo GetArtist(string id)
-		{
-			return m_database.GetArtist(id);
-		}
-
-
-		public List<BookmarkInfo> GetBookmarks(string userName)
-		{
-			return m_database.GetBookmarks(userName);
-		}
-
-		public void SaveBookmark(string userName, string trackId, long positionMs, string comment)
-		{
-			m_database.SaveBookmark(userName, trackId, positionMs, comment);
-		}
-
-		public void DeleteBookmark(string userName, string trackId)
-		{
-			m_database.DeleteBookmark(userName, trackId);
-		}
-
-		public List<UserRecord> GetAllUsers()
-		{
-			return m_database.GetAllUsers();
-		}
-
-		public UserRecord GetUser(string name)
-		{
-			return m_database.GetUser(name);
-		}
-
-		public string CreateUser(string name, string displayName, bool isAdmin)
-		{
-			return m_database.CreateUser(name, displayName, isAdmin);
-		}
-
-		public string UpdateUser(string oldName, string newName, string displayName, bool isAdmin)
-		{
-			return m_database.UpdateUser(oldName, newName, displayName, isAdmin);
-		}
-
-		public void DeleteUser(string userName)
-		{
-			m_database.DeleteUser(userName);
-		}
-
-		public bool GetAlbumCover(AlbumInfo album, out byte[] bytes, out string contentType)
-		{
-			bytes = null;
-			contentType = "image/jpeg";
-			if (album == null || album.Tracks.Count == 0)
+			using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
 			{
-				return false;
+				byte[] inputBytes = System.Text.Encoding.UTF8.GetBytes(input);
+				byte[] hashBytes = md5.ComputeHash(inputBytes);
+				return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
 			}
-
-			for (int index = 0; index < album.Tracks.Count; index++)
-			{
-				try
-				{
-					TagLib.File tagFile = TagLib.File.Create(album.Tracks[index].FilePath);
-					if (tagFile.Tag.Pictures.Length > 0)
-					{
-						bytes = tagFile.Tag.Pictures[0].Data.Data;
-						tagFile.Dispose();
-						return true;
-					}
-					tagFile.Dispose();
-				}
-				catch (Exception ex)
-				{
-					Log.Error(-1, "TryGetAlbumCoverBytes: failed to read embedded art - " + ex.Message);
-				}
-			}
-
-			string albumDir = Path.GetDirectoryName(album.Tracks[0].FilePath);
-			string[] artFileNames = new string[] { "cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png", "album.jpg", "album.png" };
-			for (int artIndex = 0; artIndex < artFileNames.Length; artIndex++)
-			{
-				string artPath = Path.Combine(albumDir, artFileNames[artIndex]);
-				if (File.Exists(artPath))
-				{
-					bytes = File.ReadAllBytes(artPath);
-					if (artPath.EndsWith(".png"))
-					{
-						contentType = "image/png";
-					}
-					return true;
-				}
-			}
-
-			return false;
 		}
-
-		public bool GetArtistImage(ArtistInfo artist, out byte[] bytes, out string contentType)
-		{
-			bytes = null;
-			contentType = "image/jpeg";
-			if (artist == null)
-				return false;
-
-			// Score each album by its total play count across tracks and pick the
-			// busiest. Ties go to the order the artist has albums in. New albums
-			// (zero plays) still get a chance through the fallback loop below.
-			AlbumInfo bestAlbum = null;
-			int bestPlays = -1;
-			for (int index = 0; index < artist.Albums.Count; index++)
-			{
-				AlbumInfo album = artist.Albums[index];
-				int plays = 0;
-				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
-				{
-					plays = plays + album.Tracks[trackIndex].Score.PlayCount;
-				}
-				if (plays > bestPlays)
-				{
-					bestPlays = plays;
-					bestAlbum = album;
-				}
-			}
-
-			if (bestAlbum != null)
-			{
-				return GetAlbumCover(bestAlbum, out bytes, out contentType);
-			}
-
-			// Fallback: walk every album until we find one with art.
-			for (int index = 0; index < artist.Albums.Count; index++)
-			{
-				if (artist.Albums[index] == bestAlbum)
-				{
-					continue;
-				}
-
-				if (GetAlbumCover(artist.Albums[index], out bytes, out contentType))
-				{
-					return true;
-				}
-			}
-			return false;
-		}
-
-
 
 		private PulseData m_database;
 		private object m_missingLock = new object();
@@ -268,6 +46,7 @@ namespace Pulse.MusicLibrary
 		private DateTime m_nowPlayingStartTime = DateTime.MinValue;
 		private HashSet<string> m_missingSongs = new HashSet<string>();
 		private PulseConfig m_config;
+
 		public MusicManager(PulseConfig config, PulseData pulseData)
 		{
 			m_config = config;
@@ -275,15 +54,7 @@ namespace Pulse.MusicLibrary
 			m_lidarrSync = new LidarrSync(config.LidarrURL, config.LidarrApiKey);
 		}
 
-		public static string GenerateID(string input)
-		{
-			using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
-			{
-				byte[] inputBytes = System.Text.Encoding.UTF8.GetBytes(input);
-				byte[] hashBytes = md5.ComputeHash(inputBytes);
-				return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
-			}
-		}
+	
 
 		public void Run(string musicPath)
 		{
@@ -292,7 +63,6 @@ namespace Pulse.MusicLibrary
 				return;
 			}
 
-			LoadDB();
 			DebugDuplicates();
 			m_pendingScanPath = musicPath;
 			m_scanThread = new Thread(RunScanThread);
@@ -713,48 +483,6 @@ namespace Pulse.MusicLibrary
 		{
 			m_database.DeletePlaylist(playlistId);
 			SaveDB("playlist-delete");
-		}
-
-
-
-		private void LoadDB()
-		{
-			// Environment selection: config drives in normal operation (Flatline
-			// bug #67 -- behavior shouldn't change based on launch method) BUT a
-			// debugger attached is a hard safety lockout to Staging. Debug
-			// sessions must never touch production data -- a test interaction
-			// scrobbling against the real DB is catastrophic and the silent
-			// inverse (prod accidentally writes to staging) is recoverable.
-			string environmentName = m_config.DatabaseEnvironment;
-			if (string.IsNullOrWhiteSpace(environmentName))
-			{
-				environmentName = "Production";
-			}
-#if DEBUG
-			//Enforce debug builds never touch production
-			if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
-			{
-				Log.Warning(-1, "Debugger attached: forcing Staging environment (config said '" + environmentName + "'). Debug sessions never touch production data.");
-			}
-			environmentName = "Staging";
-#endif
-
-			string pulseDataRoot = Path.Combine(m_config.MusicPath, "PulseData");
-			if (!Directory.Exists(pulseDataRoot))
-			{
-				Directory.CreateDirectory(pulseDataRoot);
-			}
-
-			// Separate sqlite file per environment. Production -> pulse_production.db,
-			// Staging -> pulse_staging.db. Keeps the existing concept while letting
-			// the two run side-by-side without cross-contamination.
-			string sqliteFileName = "pulse_" + environmentName.ToLowerInvariant() + ".db";
-			string sqlitePath = Path.Combine(pulseDataRoot, sqliteFileName);
-			Pulse.Database.PulseDBConnector.SetDatabaseFilePath(sqlitePath);
-			Pulse.Database.PulseDBMigrations.RunMigrations();
-			Log.Info(-1, "Pulse DB: env=" + environmentName + " path=" + sqlitePath);
-
-			m_database.Load();
 		}
 
 		private void SaveDB(string reason)
@@ -1206,6 +934,236 @@ namespace Pulse.MusicLibrary
 			}
 
 			return matrix[sourceLength, targetLength];
+		}
+
+		public int GetTrackCount()
+		{
+			return m_database.GetTrackCount();
+		}
+		public int GetAlbumCount()
+		{
+			return m_database.GetAlbumCount();
+		}
+		public int GetArtistCount()
+		{
+			return m_database.GetArtistCount();
+		}
+
+		public bool GetIsScanning()
+		{
+			return m_scanning;
+		}
+
+		public List<ArtistInfo> GetAllArtists()
+		{
+			return m_database.GetAllArtists();
+		}
+
+		public List<TrackInfo> GetAllTracks()
+		{
+			return m_database.GetAllTracks();
+		}
+		public List<AlbumInfo> GetAllAlbums()
+		{
+			return m_database.GetAllAlbums();
+		}
+
+
+		public PlaylistInfo GetPlaylist(string id)
+		{
+			return m_database.GetPlaylist(id);
+		}
+		public PlaylistAndTracks GetPlaylistAndTracks(string id)
+		{
+			PlaylistInfo playlist = GetPlaylist(id);
+			List<TrackInfo> tracks = GetPlaylistTracks(id);
+
+			PlaylistAndTracks fullPlaylist = new PlaylistAndTracks(playlist, tracks);
+			return fullPlaylist;
+		}
+		public List<PlaylistInfo> GetAllPlaylists(string userName)
+		{
+			return m_database.GetAllPlaylists(userName);
+		}
+
+		public List<TrackInfo> GetPlaylistTracks(string playlistId)
+		{
+			return m_database.GetPlaylistTracks(playlistId);
+		}
+
+		public void SetRating(string trackId, int rating)
+		{
+			m_database.SetRating(trackId, rating);
+		}
+
+		public void UpdateStar(string userName, string trackId, string albumId, string artistId, bool isStarred)
+		{
+			m_database.UpdateStar(userName, trackId, albumId, artistId, isStarred);
+		}
+
+		public PulseAnalyticsInfo GetAnalytics()
+		{
+			return m_database.GetAnalytics();
+		}
+
+		/// <summary>
+		/// Pass-through to the item_stats counter used by the topItems /
+		/// recentlyPlayed routes to rank one media type by play count or recency.
+		/// </summary>
+		public Dictionary<string, ItemStats> GetItemStats(string userName, eDataType mediaType)
+		{
+			return m_database.GetItemStats(userName, mediaType);
+		}
+
+		public TrackInfo GetTrack(string id)
+		{
+			return m_database.GetTrack(id);
+		}
+
+		public AlbumInfo GetAlbum(string id)
+		{
+			return m_database.GetAlbum(id);
+		}
+
+		public ArtistInfo GetArtist(string id)
+		{
+			return m_database.GetArtist(id);
+		}
+
+
+		public List<BookmarkInfo> GetBookmarks(string userName)
+		{
+			return m_database.GetBookmarks(userName);
+		}
+
+		public void SaveBookmark(string userName, string trackId, long positionMs, string comment)
+		{
+			m_database.SaveBookmark(userName, trackId, positionMs, comment);
+		}
+
+		public void DeleteBookmark(string userName, string trackId)
+		{
+			m_database.DeleteBookmark(userName, trackId);
+		}
+
+		public List<UserRecord> GetAllUsers()
+		{
+			return m_database.GetAllUsers();
+		}
+
+		public UserRecord GetUser(string name)
+		{
+			return m_database.GetUser(name);
+		}
+
+		public string CreateUser(string name, string displayName, bool isAdmin)
+		{
+			return m_database.CreateUser(name, displayName, isAdmin);
+		}
+
+		public string UpdateUser(string oldName, string newName, string displayName, bool isAdmin)
+		{
+			return m_database.UpdateUser(oldName, newName, displayName, isAdmin);
+		}
+
+		public void DeleteUser(string userName)
+		{
+			m_database.DeleteUser(userName);
+		}
+
+		public bool GetAlbumCover(AlbumInfo album, out byte[] bytes, out string contentType)
+		{
+			bytes = null;
+			contentType = "image/jpeg";
+			if (album == null || album.Tracks.Count == 0)
+			{
+				return false;
+			}
+
+			for (int index = 0; index < album.Tracks.Count; index++)
+			{
+				try
+				{
+					TagLib.File tagFile = TagLib.File.Create(album.Tracks[index].FilePath);
+					if (tagFile.Tag.Pictures.Length > 0)
+					{
+						bytes = tagFile.Tag.Pictures[0].Data.Data;
+						tagFile.Dispose();
+						return true;
+					}
+					tagFile.Dispose();
+				}
+				catch (Exception ex)
+				{
+					Log.Error(-1, "TryGetAlbumCoverBytes: failed to read embedded art - " + ex.Message);
+				}
+			}
+
+			string albumDir = Path.GetDirectoryName(album.Tracks[0].FilePath);
+			string[] artFileNames = new string[] { "cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png", "album.jpg", "album.png" };
+			for (int artIndex = 0; artIndex < artFileNames.Length; artIndex++)
+			{
+				string artPath = Path.Combine(albumDir, artFileNames[artIndex]);
+				if (File.Exists(artPath))
+				{
+					bytes = File.ReadAllBytes(artPath);
+					if (artPath.EndsWith(".png"))
+					{
+						contentType = "image/png";
+					}
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		public bool GetArtistImage(ArtistInfo artist, out byte[] bytes, out string contentType)
+		{
+			bytes = null;
+			contentType = "image/jpeg";
+			if (artist == null)
+				return false;
+
+			// Score each album by its total play count across tracks and pick the
+			// busiest. Ties go to the order the artist has albums in. New albums
+			// (zero plays) still get a chance through the fallback loop below.
+			AlbumInfo bestAlbum = null;
+			int bestPlays = -1;
+			for (int index = 0; index < artist.Albums.Count; index++)
+			{
+				AlbumInfo album = artist.Albums[index];
+				int plays = 0;
+				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+				{
+					plays = plays + album.Tracks[trackIndex].Score.PlayCount;
+				}
+				if (plays > bestPlays)
+				{
+					bestPlays = plays;
+					bestAlbum = album;
+				}
+			}
+
+			if (bestAlbum != null)
+			{
+				return GetAlbumCover(bestAlbum, out bytes, out contentType);
+			}
+
+			// Fallback: walk every album until we find one with art.
+			for (int index = 0; index < artist.Albums.Count; index++)
+			{
+				if (artist.Albums[index] == bestAlbum)
+				{
+					continue;
+				}
+
+				if (GetAlbumCover(artist.Albums[index], out bytes, out contentType))
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 	}
 }

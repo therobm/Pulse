@@ -8,6 +8,9 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Text;
+using TagLib.IFD.Tags;
 
 namespace Pulse.Protocols.PulseAPI
 {
@@ -90,16 +93,35 @@ namespace Pulse.Protocols.PulseAPI
 
 			RegisterRoute("audiobooks", GetAudiobooks);
 			RegisterRoute("audiobook", GetAudiobook);
+
+
+
+			RegisterRoute("stats", GetStats);
+			RegisterRoute("version", GetVersion);
+
+
 		}
 
 		private void RegisterRoute(string route, Func<HttpContext, IResult> handler)
 		{
 			m_host.RegisterResultRoute(m_apiSpace + route, handler);
 		}
-
+		public IResult Respond(HttpStatusCode code)
+		{
+			PulseResponse body = new PulseResponse();
+			body.contentType = PulseResponse.ContentType.PulseObject;
+			return Results.Text(PulseWire.Serialize(body), "application/json", Encoding.UTF8, (int)code);
+		}
+		public IResult Respond(HttpContext context, PulseObject contents)
+		{
+			PulseResponse body = new PulseResponse();
+			body.contentType = PulseResponse.ContentType.PulseObject;
+			body.contents = contents;
+			return Results.Text(PulseWire.Serialize(body), "application/json", Encoding.UTF8, (int)HttpStatusCode.OK);
+		}
 		public IResult Respond(HttpContext context, PulseResponse body)
 		{
-			return Results.Text(PulseWire.Serialize(body), "application/json");
+			return Results.Text(PulseWire.Serialize(body), "application/json", Encoding.UTF8, (int)HttpStatusCode.OK);
 		}
 
 		private IResult RespondObject<T>(HttpContext context, T contents) where T : PulseObject
@@ -1142,7 +1164,7 @@ namespace Pulse.Protocols.PulseAPI
 			return Respond(context, new PulseResponse());
 		}
 
-		
+
 
 		/// <summary>
 		/// The pulse_v1 analytics feed: clients POST a serialized PulseAnalytics
@@ -1923,24 +1945,44 @@ namespace Pulse.Protocols.PulseAPI
 
 			return RespondStatus(context, "missing_id");
 		}
-	}
 
-	/// <summary>
-	/// Response envelope for the /analytics events query. Plain public
-	/// fields; serialized through PulseWire which emits field names verbatim.
-	/// </summary>
-	public class AnalyticsEventsResponse
-	{
-		public string SessionId;
-		public List<PulseAnalyticsEvent> Events;
-	}
+		private IResult GetStats(HttpContext context)
+		{
+			string userName = context.Request.Query["u"].FirstOrDefault();
 
-	/// <summary>
-	/// Response envelope for the /analytics sessions query.
-	/// </summary>
-	public class AnalyticsSessionsResponse
-	{
-		public string DeviceId;
-		public List<PulseAnalyticsSession> Sessions;
+			List<TrackInfo> allTracks = m_musicManager.GetAllTracks();
+			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
+			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
+			List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(userName);
+
+			PulseStats stats = Pulse.Data.PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userName);
+
+			return Respond(context, stats);
+		}
+
+		private IResult GetVersion(HttpContext context)
+		{
+			return Respond(context, new PulseVersion(PulseService.GetServerVersion()));
+		}
+
+
+		/// <summary>
+		/// Response envelope for the /analytics events query. Plain public
+		/// fields; serialized through PulseWire which emits field names verbatim.
+		/// </summary>
+		public class AnalyticsEventsResponse
+		{
+			public string SessionId;
+			public List<PulseAnalyticsEvent> Events;
+		}
+
+		/// <summary>
+		/// Response envelope for the /analytics sessions query.
+		/// </summary>
+		public class AnalyticsSessionsResponse
+		{
+			public string DeviceId;
+			public List<PulseAnalyticsSession> Sessions;
+		}
 	}
 }

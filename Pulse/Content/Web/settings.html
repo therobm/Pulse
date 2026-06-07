@@ -481,7 +481,7 @@
 	<script>
 		function pulseGet(endpoint, callback) {
 			let xhr = new XMLHttpRequest();
-			xhr.open('GET', '/pulse/' + endpoint);
+			xhr.open('GET', '/pulse_v1/' + endpoint);
 			xhr.onload = function () {
 				if (xhr.status === 200) {
 					let data = JSON.parse(xhr.responseText);
@@ -493,6 +493,39 @@
 				}
 			};
 			xhr.send();
+		}
+
+		// Adapt PulseUser wire objects (PascalCase, inside the PulseResponse
+		// envelope's contents) to the lowercase shape the rest of this page
+		// uses. Created comes back as a DateTime; the .NET min-date sentinel
+		// is mapped to '' so the existing orphan/created checks keep working.
+		function adaptUsers(list) {
+			let out = [];
+			if (!list) { return out; }
+			for (let idx = 0; idx < list.length; idx++) {
+				let user = list[idx];
+				let created = user.Created || '';
+				if (created.indexOf('0001-01-01') === 0) { created = ''; }
+				out.push({
+					name: user.Name,
+					displayName: user.DisplayName,
+					created: created,
+					isAdmin: user.IsAdmin,
+					scoredTrackCount: user.ScoredTrackCount,
+					starredCount: user.StarredCount,
+					playlistLastPlayedCount: user.PlaylistLastPlayedCount
+				});
+			}
+			return out;
+		}
+
+		// Success for a mutation route: the envelope returns status === 'ok',
+		// while the legacy {ok,error} shape returns ok === true. Accept either.
+		function isOk(data) {
+			if (!data) { return false; }
+			if (data.ok === true) { return true; }
+			if (data.status === 'ok') { return true; }
+			return false;
 		}
 
 		function showToast(message, isError) {
@@ -516,7 +549,7 @@
 		function loadUsers() {
 			let container = document.getElementById('users-container');
 			container.innerHTML = '<div class="loading-text">Loading users...</div>';
-			pulseGet('listUsers', function (data) { renderUsers(data.users || []); });
+			pulseGet('listUsers', function (data) { renderUsers(adaptUsers(data.contents)); });
 		}
 
 		function renderUsers(users) {
@@ -763,7 +796,7 @@
 
 		function runSetPassword(userName, password, callback) {
 			let xhr = new XMLHttpRequest();
-			xhr.open('POST', '/pulse/setPassword');
+			xhr.open('POST', '/pulse_v1/setPassword');
 			xhr.withCredentials = true;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 			xhr.onload = function () {
@@ -785,7 +818,7 @@
 
 		function runLogin(username, password, rememberMe, callback) {
 			let xhr = new XMLHttpRequest();
-			xhr.open('POST', '/pulse/login');
+			xhr.open('POST', '/pulse_v1/login');
 			xhr.withCredentials = true;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 			xhr.onload = function () {
@@ -807,7 +840,7 @@
 
 		function runLogout(callback) {
 			let xhr = new XMLHttpRequest();
-			xhr.open('POST', '/pulse/logout');
+			xhr.open('POST', '/pulse_v1/logout');
 			xhr.withCredentials = true;
 			xhr.onload = function () { callback(xhr.status === 200); };
 			xhr.onerror = function () { callback(false); };
@@ -950,23 +983,23 @@
 		}
 
 		function runDelete(userName) {
-			let url = '/pulse/deleteUser?user=' + encodeURIComponent(userName);
+			let url = '/pulse_v1/deleteUser?user=' + encodeURIComponent(userName);
 			postPulse(url, function (data) {
-				if (data.ok) { showToast('Deleted ' + userName); }
-				else { showToast('Delete failed: ' + (data.error || 'unknown error'), true); }
+				if (isOk(data)) { showToast('Deleted ' + userName); }
+				else { showToast('Delete failed: ' + (data.status || 'unknown error'), true); }
 				loadUsers();
 			});
 		}
 
 		function runUpdate(oldName, newName, displayName, isAdmin) {
 			if (!newName) { showToast('Name is required', true); return; }
-			let url = '/pulse/updateUser?name=' + encodeURIComponent(oldName)
+			let url = '/pulse_v1/updateUser?name=' + encodeURIComponent(oldName)
 				+ '&newName=' + encodeURIComponent(newName)
 				+ '&displayName=' + encodeURIComponent(displayName)
 				+ '&isAdmin=' + (isAdmin ? 'true' : 'false');
 			postPulse(url, function (data) {
-				if (data.ok) { showToast('Saved ' + newName); }
-				else { showToast('Update failed: ' + (data.error || 'unknown error'), true); }
+				if (isOk(data)) { showToast('Saved ' + newName); }
+				else { showToast('Update failed: ' + (data.status || 'unknown error'), true); }
 				loadUsers();
 			});
 		}
@@ -1008,17 +1041,17 @@
 			errEl.textContent = '';
 			if (!name) { errEl.textContent = 'Name is required.'; return; }
 
-			let url = '/pulse/createUser?name=' + encodeURIComponent(name)
+			let url = '/pulse_v1/createUser?name=' + encodeURIComponent(name)
 				+ '&displayName=' + encodeURIComponent(displayName)
 				+ '&isAdmin=' + (isAdmin ? 'true' : 'false');
 			postPulse(url, function (data) {
-				if (data.ok) {
+				if (isOk(data)) {
 					hideCreateForm();
 					showToast('Created ' + name);
 					loadUsers();
 				}
 				else {
-					errEl.textContent = data.error || 'Create failed';
+					errEl.textContent = data.status || 'Create failed';
 				}
 			});
 		}
@@ -1049,7 +1082,7 @@
 
 		function loadVersionTag() {
 			let request = new XMLHttpRequest();
-			request.open('GET', '/pulse/version');
+			request.open('GET', '/pulse_v1/version');
 			request.onload = function () {
 				if (request.status !== 200) { return; }
 				let data = JSON.parse(request.responseText);

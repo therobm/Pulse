@@ -21,7 +21,7 @@ using Pulse.Protocols.LegacyPulse;
 using Pulse.Protocols.PulseAPI;
 using Pulse.Database;
 using Pulse.Series;
-using Pulse.Services;
+using PulseAPI.CSharp;
 
 namespace Pulse
 {
@@ -102,12 +102,10 @@ namespace Pulse
 		{
 			m_config = config;
 
-			// PulseData is the shared domain layer; build it first so both the
-			// MusicManager facade and the auth endpoints hit the same instance.
-			// MusicManager.LoadDB still owns the sqlite path setup and the
-			// data.Load() call, so newing PulseData here is safe -- its
-			// constructor is DB-independent.
+
 			m_pulseData = new PulseData();
+			m_pulseData.Load(m_config);
+
 			m_musicManager = new MusicManager(config, m_pulseData);
 			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
@@ -263,7 +261,6 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/deletePlaylist", m_legacyPulse.DeletePlaylist);
 			
 			host.RegisterResultRoute("pulse/stats", HandleStats);
-			host.RegisterRoute("web/stats.html", HandleStatsPage);
 
 			host.RegisterResultRoute("pulse/version", HandleVersion);
 
@@ -271,6 +268,10 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/createUser", m_legacyPulse.HandleCreateUser);
 			host.RegisterResultRoute("pulse/updateUser", m_legacyPulse.HandleUpdateUser);
 			host.RegisterResultRoute("pulse/deleteUser", m_legacyPulse.HandleDeleteUser);
+
+
+			//web pages
+			host.RegisterRoute("web/stats.html", HandleStatsPage);
 			host.RegisterRoute("web/settings.html", HandleSettingsPage);
 
 
@@ -399,7 +400,7 @@ namespace Pulse
 			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
 			List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(userName);
 
-			PulseStatsResponse stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userName);
+			PulseStats stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userName);
 			string json = System.Text.Json.JsonSerializer.Serialize(stats);
 			return Results.Content(json, "application/json");
 		}
