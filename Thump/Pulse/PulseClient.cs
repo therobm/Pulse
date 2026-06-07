@@ -145,7 +145,7 @@ namespace Thump.Pulse
 			response = default(JsonElement);
 			try
 			{
-				string url = m_baseUrl + "/pulse_v1/ping?u=" + Uri.EscapeDataString(m_user);
+				string url = BuildPulseUrl("ping", "");
 				string json = HttpGet(url, eMediaCacheStrategy.NetworkOnly, false, true);
 				if (string.IsNullOrEmpty(json))
 				{
