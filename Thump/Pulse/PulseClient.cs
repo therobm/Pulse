@@ -31,6 +31,11 @@ namespace Thump.Pulse
 		private string BuildPulseUrl(string endpoint, string extraParams)
 		{
 			string url = m_baseUrl + "/pulse_v1/" + endpoint + "?u=" + Uri.EscapeDataString(m_user);
+			string token = ThumpSettings.GetToken();
+			if (!string.IsNullOrEmpty(token))
+			{
+				url = url + "&token=" + Uri.EscapeDataString(token);
+			}
 			if (!string.IsNullOrEmpty(extraParams))
 			{
 				url = url + "&" + extraParams;
