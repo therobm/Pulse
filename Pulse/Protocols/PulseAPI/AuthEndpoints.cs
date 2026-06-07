@@ -111,6 +111,13 @@ namespace Pulse.Protocols.PulseAPI
 
 		private IResult Login(HttpContext context)
 		{
+			string clientIp = GetClientIp(context);
+			if (LoginRateLimiter.IsLockedOut(clientIp))
+			{
+				context.Response.Headers["Retry-After"] = "3600";
+				return Respond("rate_limited", HttpStatusCode.OK);
+			}
+
 			string body = ReadRequestBody(context);
 			if (string.IsNullOrEmpty(body))
 			{
@@ -129,6 +136,7 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (request == null || string.IsNullOrEmpty(request.Username) || string.IsNullOrEmpty(request.Password))
 			{
+				LoginRateLimiter.RecordFailure(clientIp);
 				return Respond("invalid_credentials", HttpStatusCode.OK);
 			}
 
@@ -152,6 +160,7 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (!hasHash || !verified)
 			{
+				LoginRateLimiter.RecordFailure(clientIp);
 				return Respond("invalid_credentials", HttpStatusCode.OK);
 			}
 
@@ -161,6 +170,8 @@ namespace Pulse.Protocols.PulseAPI
 			{
 				isAdmin = user.IsAdmin;
 			}
+
+			LoginRateLimiter.RecordSuccess(clientIp);
 
 			string sessionId = SessionStore.CreateSession(request.Username, isAdmin, request.RememberMe);
 			AppendSessionCookie(context, sessionId, request.RememberMe);
@@ -356,6 +367,13 @@ namespace Pulse.Protocols.PulseAPI
 		/// </summary>
 		private IResult CreateToken(HttpContext context)
 		{
+			string clientIp = GetClientIp(context);
+			if (LoginRateLimiter.IsLockedOut(clientIp))
+			{
+				context.Response.Headers["Retry-After"] = "3600";
+				return Respond("rate_limited", HttpStatusCode.OK);
+			}
+
 			string body = ReadRequestBody(context);
 			if (string.IsNullOrEmpty(body))
 			{
@@ -380,6 +398,7 @@ namespace Pulse.Protocols.PulseAPI
 			UserRecord user = m_pulseData.GetUser(request.Username);
 			if (user == null)
 			{
+				LoginRateLimiter.RecordFailure(clientIp);
 				return Respond("unknown_user", HttpStatusCode.OK);
 			}
 
@@ -391,6 +410,8 @@ namespace Pulse.Protocols.PulseAPI
 				label = "";
 			}
 			m_pulseData.InsertToken(token, request.Username, label);
+
+			LoginRateLimiter.RecordSuccess(clientIp);
 
 			Log.Info(-1, "Auth: created token for '" + request.Username + "' label='" + label + "'");
 
@@ -519,6 +540,22 @@ namespace Pulse.Protocols.PulseAPI
 			userName = user.Name;
 			isAdmin = user.IsAdmin;
 			return true;
+		}
+
+		/// <summary>
+		/// Best-effort source-IP extraction for the brute-force limiter.
+		/// Falls back to the sentinel "unknown" if the connection does not
+		/// expose a remote address (e.g. some in-process test transports);
+		/// the limiter still tracks "unknown" as a key, which is the safest
+		/// default for an ambiguous origin.
+		/// </summary>
+		private static string GetClientIp(HttpContext context)
+		{
+			if (context.Connection.RemoteIpAddress != null)
+			{
+				return context.Connection.RemoteIpAddress.ToString();
+			}
+			return "unknown";
 		}
 
 		/// <summary>
