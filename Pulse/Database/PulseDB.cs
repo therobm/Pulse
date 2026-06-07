@@ -1333,5 +1333,84 @@ namespace Pulse.Database
 				connection.Close();
 			}
 		}
+
+		/// <summary>
+		/// Returns the stored BCrypt password hash for a user, or "" if the
+		/// user has no password set or does not exist. Callers must NOT log
+		/// the returned value -- it is verification material.
+		/// </summary>
+		public string ReadUserPasswordHash(string name)
+		{
+			if (string.IsNullOrEmpty(name)) { return ""; }
+			string hash = "";
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT password_hash FROM users WHERE name = $name;";
+				command.Parameters.AddWithValue("$name", name);
+				object result = command.ExecuteScalar();
+				if (result != null && result != DBNull.Value)
+				{
+					hash = (string)result;
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return hash;
+		}
+
+		/// <summary>
+		/// Overwrites a user's stored password hash. The caller has already
+		/// hashed the plaintext (BCrypt); this routine never sees it.
+		/// </summary>
+		public void SetUserPassword(string name, string passwordHash)
+		{
+			if (string.IsNullOrEmpty(name)) { return; }
+			string storedHash = passwordHash;
+			if (storedHash == null) { storedHash = ""; }
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "UPDATE users SET password_hash = $hash WHERE name = $name;";
+				command.Parameters.AddWithValue("$hash", storedHash);
+				command.Parameters.AddWithValue("$name", name);
+				command.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		/// <summary>
+		/// True when at least one user in the table has a non-empty password
+		/// hash. The setPassword endpoint uses this to allow the very first
+		/// password to be set without a session, then locks the route to
+		/// authenticated callers from that point forward.
+		/// </summary>
+		public bool AnyUserHasPassword()
+		{
+			bool any = false;
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT EXISTS(SELECT 1 FROM users WHERE password_hash <> '');";
+				object result = command.ExecuteScalar();
+				if (result != null && result != DBNull.Value)
+				{
+					any = Convert.ToInt32(result) != 0;
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return any;
+		}
 	}
 }

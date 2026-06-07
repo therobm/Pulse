@@ -33,6 +33,7 @@
 		<PackageReference Include="TagLibSharp" Version="2.3.0" />
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
 		<PackageReference Include="System.Drawing.Common" Version="8.0.10" />
+		<PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
 	</ItemGroup>
 
 	<ItemGroup>

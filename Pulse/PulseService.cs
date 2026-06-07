@@ -21,6 +21,7 @@ using Pulse.Protocols.LegacyPulse;
 using Pulse.Protocols.PulseAPI;
 using Pulse.Database;
 using Pulse.Series;
+using PulseAPI.CSharp;
 
 namespace Pulse
 {
@@ -79,10 +80,12 @@ namespace Pulse
 		private Subsonic m_subsonic;
 		private PulseEndpoints m_pulseEndpoints;
 		private Pulse.Protocols.LegacyPulse.LegacyPulseAPI m_legacyPulse;
+		private PulseData m_pulseData;
 		private MusicManager m_musicManager;
 		private AnalyticsDB m_analyticsDB;
 		private PodcastManager m_podcastManager;
 		private AudiobookManager m_audiobookManager;
+		private AuthEndpoints m_authEndpoints;
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 		private object m_spotifySyncsLock = new object();
 		// Pending Spotify OAuth attempts, keyed by a server-issued random state
@@ -99,7 +102,11 @@ namespace Pulse
 		{
 			m_config = config;
 
-			m_musicManager = new MusicManager(config);
+
+			m_pulseData = new PulseData();
+			m_pulseData.Load(m_config);
+
+			m_musicManager = new MusicManager(config, m_pulseData);
 			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
 
@@ -114,6 +121,7 @@ namespace Pulse
 			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_analyticsDB, m_podcastManager, m_audiobookManager);
 			m_legacyPulse = new global::Pulse.Protocols.LegacyPulse.LegacyPulseAPI(this, m_musicManager);
 			m_subsonic = new Subsonic(m_legacyPulse);
+			m_authEndpoints = new AuthEndpoints(m_pulseData);
 
 			RegisterRoutes(webServer);
 			SyncSpotify();
@@ -124,6 +132,7 @@ namespace Pulse
 		private void RegisterRoutes(IPulseRouteHost host)
 		{
 			m_pulseEndpoints.RegisterRoutes(host);
+			m_authEndpoints.RegisterRoutes(host);
 
 			host.RegisterResultRoute("rest/ping.view", m_subsonic.HandlePing);
 			host.RegisterResultRoute("rest/ping", m_subsonic.HandlePing);
@@ -252,7 +261,6 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/deletePlaylist", m_legacyPulse.DeletePlaylist);
 			
 			host.RegisterResultRoute("pulse/stats", HandleStats);
-			host.RegisterRoute("web/stats.html", HandleStatsPage);
 
 			host.RegisterResultRoute("pulse/version", HandleVersion);
 
@@ -260,6 +268,10 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/createUser", m_legacyPulse.HandleCreateUser);
 			host.RegisterResultRoute("pulse/updateUser", m_legacyPulse.HandleUpdateUser);
 			host.RegisterResultRoute("pulse/deleteUser", m_legacyPulse.HandleDeleteUser);
+
+
+			//web pages
+			host.RegisterRoute("web/stats.html", HandleStatsPage);
 			host.RegisterRoute("web/settings.html", HandleSettingsPage);
 
 
@@ -388,7 +400,7 @@ namespace Pulse
 			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
 			List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(userName);
 
-			PulseStatsResponse stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userName);
+			PulseStats stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userName);
 			string json = System.Text.Json.JsonSerializer.Serialize(stats);
 			return Results.Content(json, "application/json");
 		}
