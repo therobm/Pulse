@@ -686,6 +686,36 @@ namespace Pulse.Data
 			return m_db.AnyUserHasPassword();
 		}
 
+		public void InsertToken(string token, string userName, string label)
+		{
+			m_db.InsertToken(token, userName, label);
+		}
+
+		public List<TokenRow> GetAllTokens()
+		{
+			return m_db.GetAllTokens();
+		}
+
+		public List<TokenRow> GetTokensForUser(string userName)
+		{
+			return m_db.GetTokensForUser(userName);
+		}
+
+		public string LookupTokenUser(string token)
+		{
+			return m_db.LookupTokenUser(token);
+		}
+
+		public void UpdateTokenLastUsed(string token)
+		{
+			m_db.UpdateTokenLastUsed(token);
+		}
+
+		public void DeleteToken(string token)
+		{
+			m_db.DeleteToken(token);
+		}
+
 		// Walks the in-memory stores and bumps ScoredTrackCount / StarredCount /
 		// PlaylistLastPlayedCount on the matching record. When `createMissing` is
 		// true a record is materialized for any name that doesn't already have

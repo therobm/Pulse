@@ -34,9 +34,11 @@ namespace Pulse.Services
 
 		/// <summary>
 		/// Base64Url variant: '+' -> '-', '/' -> '_', strip '=' padding. Keeps
-		/// the id safe to drop into a cookie value without escaping.
+		/// the id safe to drop into a cookie value without escaping. Exposed so
+		/// the token-mint path (PLS133) can use the same opaque encoding as
+		/// session ids.
 		/// </summary>
-		private static string ToUrlSafeBase64(byte[] bytes)
+		public static string ToUrlSafeBase64(byte[] bytes)
 		{
 			string standard = Convert.ToBase64String(bytes);
 			string replaced = standard.Replace('+', '-').Replace('/', '_');
