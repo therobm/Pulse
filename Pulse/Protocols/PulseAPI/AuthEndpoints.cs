@@ -112,9 +112,9 @@ namespace Pulse.Protocols.PulseAPI
 		private IResult Login(HttpContext context)
 		{
 			string clientIp = GetClientIp(context);
-			if (LoginRateLimiter.IsLockedOut(clientIp))
+			if (BruteForceGuard.IsLockedOut(clientIp))
 			{
-				context.Response.Headers["Retry-After"] = "3600";
+				context.Response.Headers["Retry-After"] = "300";
 				return Respond("rate_limited", HttpStatusCode.OK);
 			}
 
@@ -136,7 +136,7 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (request == null || string.IsNullOrEmpty(request.Username) || string.IsNullOrEmpty(request.Password))
 			{
-				LoginRateLimiter.RecordFailure(clientIp);
+				BruteForceGuard.RecordFailure(clientIp);
 				return Respond("invalid_credentials", HttpStatusCode.OK);
 			}
 
@@ -160,7 +160,7 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (!hasHash || !verified)
 			{
-				LoginRateLimiter.RecordFailure(clientIp);
+				BruteForceGuard.RecordFailure(clientIp);
 				return Respond("invalid_credentials", HttpStatusCode.OK);
 			}
 
@@ -171,7 +171,7 @@ namespace Pulse.Protocols.PulseAPI
 				isAdmin = user.IsAdmin;
 			}
 
-			LoginRateLimiter.RecordSuccess(clientIp);
+			BruteForceGuard.RecordSuccess(clientIp);
 
 			string sessionId = SessionStore.CreateSession(request.Username, isAdmin, request.RememberMe);
 			AppendSessionCookie(context, sessionId, request.RememberMe);
@@ -368,9 +368,9 @@ namespace Pulse.Protocols.PulseAPI
 		private IResult CreateToken(HttpContext context)
 		{
 			string clientIp = GetClientIp(context);
-			if (LoginRateLimiter.IsLockedOut(clientIp))
+			if (BruteForceGuard.IsLockedOut(clientIp))
 			{
-				context.Response.Headers["Retry-After"] = "3600";
+				context.Response.Headers["Retry-After"] = "300";
 				return Respond("rate_limited", HttpStatusCode.OK);
 			}
 
@@ -398,7 +398,7 @@ namespace Pulse.Protocols.PulseAPI
 			UserRecord user = m_pulseData.GetUser(request.Username);
 			if (user == null)
 			{
-				LoginRateLimiter.RecordFailure(clientIp);
+				BruteForceGuard.RecordFailure(clientIp);
 				return Respond("unknown_user", HttpStatusCode.OK);
 			}
 
@@ -411,7 +411,7 @@ namespace Pulse.Protocols.PulseAPI
 			}
 			m_pulseData.InsertToken(token, request.Username, label);
 
-			LoginRateLimiter.RecordSuccess(clientIp);
+			BruteForceGuard.RecordSuccess(clientIp);
 
 			Log.Info(-1, "Auth: created token for '" + request.Username + "' label='" + label + "'");
 
