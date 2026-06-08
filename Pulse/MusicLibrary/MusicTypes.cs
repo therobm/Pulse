@@ -31,6 +31,7 @@ namespace Pulse.MusicLibrary
 	}
 	public class TrackInfo : PulseInfo
 	{
+		public string LegacyId { get; set; }
 		public string Id { get; set; }
 		public string Title { get; set; }
 		public string Artist { get; set; }

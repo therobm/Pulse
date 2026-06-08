@@ -169,6 +169,18 @@ namespace Pulse.Database
 					track.Score.SkipCount = reader.GetInt32(19);
 					track.Score.TotalListenSeconds = reader.GetDouble(20);
 					track.Score.WeightedScore = (float)reader.GetDouble(21);
+
+
+					//Hack to capture legacy IDs so we can repair playlist links
+					if (track.FilePath.Contains("Music"))
+					{
+						string oldPathRoot = "\\\\192.168.5.4\\Vault\\Music";
+						string newPathRoot = "\\\\192.168.5.4\\Vault\\Pulse\\Music";
+
+						string oldFilepath = track.FilePath.Replace(newPathRoot, oldPathRoot);
+						track.LegacyId = MusicManager.GenerateID(oldFilepath);
+					}
+
 					result.Add(track);
 				}
 				reader.Close();
