@@ -55,6 +55,14 @@ namespace Pulse.Series
 			m_scanThread.Start();
 		}
 
+		/// <summary>
+		/// Stop the save timer and flush dirty data. Call once on process exit.
+		/// </summary>
+		public void Shutdown()
+		{
+			m_data.Shutdown();
+		}
+
 		private void RunScan()
 		{
 			try
