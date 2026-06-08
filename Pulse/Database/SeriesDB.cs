@@ -182,8 +182,6 @@ namespace Pulse.Database
 				command.Parameters.AddWithValue("$collection", series.Collection);
 				command.Parameters.AddWithValue("$collection_index", series.CollectionIndex);
 				command.Parameters.AddWithValue("$feed_url", series.FeedUrl);
-				command.Parameters.AddWithValue("$last_polled", series.LastPolled);
-				command.Parameters.AddWithValue("$poll_interval_minutes", series.PollIntervalMinutes);
 				command.Parameters.AddWithValue("$retention_policy", series.Retention.ToString());
 				command.Parameters.AddWithValue("$retention_value", series.RetentionValue);
 				command.Parameters.AddWithValue("$auto_download", autoDownloadInt);
@@ -1125,8 +1123,6 @@ namespace Pulse.Database
 			series.Collection = ReadString(reader, 8);
 			series.CollectionIndex = ReadInt(reader, 9, 0);
 			series.FeedUrl = ReadString(reader, 10);
-			series.LastPolled = ReadString(reader, 11);
-			series.PollIntervalMinutes = ReadInt(reader, 12, 60);
 
 			string retentionString = ReadString(reader, 13);
 			eRetentionPolicy parsedRetention;

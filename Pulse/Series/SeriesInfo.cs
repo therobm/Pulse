@@ -48,8 +48,6 @@ namespace Pulse.Series
 		public string Collection = "";
 		public int CollectionIndex = 0;
 		public string FeedUrl = "";
-		public string LastPolled = "";
-		public int PollIntervalMinutes = 60;
 		public eRetentionPolicy Retention = eRetentionPolicy.KeepAll;
 		public int RetentionValue = 0;
 		public bool AutoDownload = false;

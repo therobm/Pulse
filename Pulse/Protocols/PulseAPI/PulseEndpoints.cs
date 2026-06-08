@@ -1498,7 +1498,6 @@ namespace Pulse.Protocols.PulseAPI
 			pulsePodcast.AutoDownload = series.AutoDownload;
 			pulsePodcast.RetentionPolicy = series.Retention.ToString();
 			pulsePodcast.RetentionValue = series.RetentionValue;
-			pulsePodcast.PollIntervalMinutes = series.PollIntervalMinutes;
 
 			return pulsePodcast;
 		}

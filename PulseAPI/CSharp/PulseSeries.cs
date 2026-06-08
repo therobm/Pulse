@@ -35,7 +35,6 @@ namespace PulseAPI.CSharp
 		/// </summary>
 		public string RetentionPolicy;
 		public int RetentionValue;
-		public int PollIntervalMinutes;
 
 		public PulsePodcast()
 		{
