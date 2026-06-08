@@ -364,11 +364,16 @@ namespace Pulse.Protocols.PulseAPI
 			{
 				string seriesId = id.Substring(3);
 				SeriesInfo series = m_podcastManager.GetSeries(seriesId);
-				if (series != null && !string.IsNullOrEmpty(series.ArtworkPath) && File.Exists(series.ArtworkPath))
+				if (series != null)
 				{
-					byte[] bytes = File.ReadAllBytes(series.ArtworkPath);
-					m_coverArtCache[id] = bytes;
-					return Results.Bytes(bytes, "image/jpeg");
+					string seriesDir = m_podcastManager.GetSeriesMediaDir(series);
+					string artworkPath = Path.Combine(seriesDir, "folder.jpg");
+					if (File.Exists(artworkPath))
+					{
+						byte[] bytes = File.ReadAllBytes(artworkPath);
+						m_coverArtCache[id] = bytes;
+						return Results.Bytes(bytes, "image/jpeg");
+					}
 				}
 				return Results.Bytes(m_defaultCoverArt, "image/png");
 			}
@@ -1498,7 +1503,6 @@ namespace Pulse.Protocols.PulseAPI
 			pulsePodcast.AutoDownload = series.AutoDownload;
 			pulsePodcast.RetentionPolicy = series.Retention.ToString();
 			pulsePodcast.RetentionValue = series.RetentionValue;
-			pulsePodcast.PollIntervalMinutes = series.PollIntervalMinutes;
 
 			return pulsePodcast;
 		}

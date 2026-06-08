@@ -202,15 +202,7 @@ namespace Pulse.Series
 			return trimmed;
 		}
 
-		/// <summary>
-		/// Offline-testable core of feed ingest: parse the supplied stream,
-		/// upsert the series row (metadata columns only), refresh
-		/// series_items, and update only the LastPolled column on the
-		/// existing series row. Feed settings (PollIntervalMinutes,
-		/// Retention, RetentionValue, AutoDownload) are NOT touched here --
-		/// they are set once at AddPodcast time and only changed by
-		/// deliberate user action; a poll cycle must never clobber them.
-		/// </summary>
+		
 		public void IngestFeedStream(string seriesId, string feedUrl, Stream feedXml, out string artworkUrl)
 		{
 			RssFeedParser parser = new RssFeedParser();
@@ -322,8 +314,13 @@ namespace Pulse.Series
 
 			string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 
-			SeriesInfo storedAfterIngest = GetSeries(seriesId);
-			if (storedAfterIngest != null && string.IsNullOrEmpty(storedAfterIngest.FeedUrl))
+			SeriesInfo series = GetSeries(seriesId);
+			if (series == null)
+			{
+				return null;
+			}
+
+			if (string.IsNullOrEmpty(series.FeedUrl))
 			{
 				m_db.SetSeriesFeed(seriesId, feedUrl, 60, eRetentionPolicy.KeepN, 10, true, nowIso);
 			}
@@ -334,18 +331,14 @@ namespace Pulse.Series
 				m_db.SetSubscribed(seriesId, userName, true, nowIso);
 			}
 
-			SeriesInfo storedSeries = GetSeries(seriesId);
-			if (storedSeries != null)
-			{
-				CacheArtwork(artworkUrl, storedSeries);
-			}
+			CacheArtwork(artworkUrl, series);
 
 			Thread downloadThread = new Thread(RunInitialDownload);
 			downloadThread.IsBackground = true;
 			downloadThread.Name = "Pulse.PodcastInitialDownload";
 			downloadThread.Start(seriesId);
 
-			return GetSeries(seriesId);
+			return series;
 		}
 
 		/// <summary>
@@ -597,14 +590,11 @@ namespace Pulse.Series
 			string artworkPath = Path.Combine(seriesDir, "folder.jpg");
 			if (File.Exists(artworkPath))
 			{
-				series.ArtworkPath = artworkPath;
-				m_db.UpsertSeries(series);
 				return;
 			}
 
 			try
 			{
-
 				HttpResponseMessage response = s_httpClient.GetAsync(httpArtURL, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
 				try
 				{
@@ -631,9 +621,6 @@ namespace Pulse.Series
 				{
 					response.Dispose();
 				}
-
-				series.ArtworkPath = artworkPath;
-				m_db.UpsertSeries(series);
 			}
 			catch (Exception ex)
 			{
@@ -652,15 +639,7 @@ namespace Pulse.Series
 			}
 		}
 
-		/// <summary>
-		/// One complete refresh of a single feed: HTTP GET the feed URL,
-		/// ingest into the DB (series + items + LastPolled), localise the
-		/// artwork if still remote, pull any items that retention says
-		/// should be on disk, and cull anything that retention no longer
-		/// wants. Any feed-level failure (network, XML, etc.) is logged
-		/// and swallowed so a single bad feed never tears down the poll
-		/// thread.
-		/// </summary>
+		
 		public void RefreshFeed(string seriesId)
 		{
 			SeriesInfo series = m_db.LoadSeries(seriesId);
@@ -732,45 +711,33 @@ namespace Pulse.Series
 		{
 			while (true)
 			{
-				try
-				{
-					List<SeriesInfo> podcasts = m_db.LoadAllPodcastSeries();
-					int podcastCount = podcasts.Count;
-					DateTime nowUtc = DateTime.UtcNow;
-					for (int podcastIndex = 0; podcastIndex < podcastCount; podcastIndex++)
-					{
-						SeriesInfo podcast = podcasts[podcastIndex];
-						bool due = IsFeedDue(podcast, nowUtc);
-						if (due)
-						{
-							RefreshFeed(podcast.Id);
-						}
-					}
-				}
-				catch (Exception ex)
-				{
-					Log.Error(-1, "Podcast poll cycle failed: " + ex.Message);
-				}
-				Thread.Sleep(60000);
+				PollSeries();
+
+				//hourly poll
+				int pollInterval = 1000 * 3600;
+				Thread.Sleep(pollInterval);
 			}
 		}
 
-		private bool IsFeedDue(SeriesInfo series, DateTime nowUtc)
+		private void PollSeries()
 		{
-			if (string.IsNullOrEmpty(series.LastPolled))
+			try
 			{
-				return true;
+				List<SeriesInfo> podcasts = m_db.LoadAllPodcastSeries();
+				int podcastCount = podcasts.Count;
+				DateTime nowUtc = DateTime.UtcNow;
+				for (int podcastIndex = 0; podcastIndex < podcastCount; podcastIndex++)
+				{
+					SeriesInfo podcast = podcasts[podcastIndex];
+					RefreshFeed(podcast.Id);
+				}
 			}
-			DateTimeOffset lastPolled;
-			bool parseOk = DateTimeOffset.TryParse(series.LastPolled, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out lastPolled);
-			if (!parseOk)
+			catch (Exception ex)
 			{
-				return true;
+				Log.Error(-1, "Podcast poll cycle failed: " + ex.Message);
 			}
-			TimeSpan since = nowUtc - lastPolled.UtcDateTime;
-			TimeSpan interval = TimeSpan.FromMinutes(series.PollIntervalMinutes);
-			return since >= interval;
 		}
+
 
 		/// <summary>
 		/// Picks the items that should be on disk per the series'
