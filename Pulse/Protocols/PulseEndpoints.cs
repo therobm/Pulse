@@ -370,7 +370,7 @@ namespace Pulse.Protocols
 
 				// Podcasts: art lives as folder.jpg in the download directory.
 				Podcast podcast = m_podcastManager.GetPodcast(seriesId);
-				if (podcast != null && podcast.Type == eSeriesType.Podcast)
+				if (podcast != null)
 				{
 					string podcastDir = m_podcastManager.GetPodcastMediaDir(podcast);
 					string artworkPath = Path.Combine(podcastDir, "folder.jpg");

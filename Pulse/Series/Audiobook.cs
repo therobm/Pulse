@@ -4,12 +4,6 @@ using System.Collections.Generic;
 
 namespace Pulse.Series
 {
-	public enum eSeriesType
-	{
-		Podcast,
-		Audiobook
-	}
-
 	/// <summary>One audiobook in the library.</summary>
 	public class Audiobook : PulseDataObject
 	{
