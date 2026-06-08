@@ -178,7 +178,6 @@ namespace Pulse.Series
 
 			Podcast series = new Podcast();
 			series.Id = podcastId;
-			series.Type = eSeriesType.Podcast;
 			series.Title = parsed.Channel.Title;
 			series.Author = parsed.Channel.Author;
 			series.Description = parsed.Channel.Description;

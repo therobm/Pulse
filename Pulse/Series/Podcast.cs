@@ -17,7 +17,6 @@ namespace Pulse.Series
 		}
 
 		public string Id = "";
-		public eSeriesType Type = eSeriesType.Podcast;
 		public string Title = "";
 		public string Author = "";
 		public string Description = "";

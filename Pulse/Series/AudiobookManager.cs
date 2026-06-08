@@ -1,5 +1,4 @@
 using Pulse.Data;
-using Pulse.DataStorage;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -10,10 +9,7 @@ using System.Threading;
 namespace Pulse.Series
 {
 	
-	/// <summary>
-	/// TODO FUCK THIS
-	/// Separate into a two data managers and scanners, this class is bloated as shit.
-	/// </summary>
+	/// <summary>Audiobook scanner and query facade.</summary>
 	public class AudiobookManager
 	{
 		/// <summary>A single chapter window pulled from a file's embedded markers.</summary>
@@ -61,19 +57,6 @@ namespace Pulse.Series
 		public AudiobookManager(PulseConfig config)
 		{
 			m_config = config;
-			string environmentName = config.DatabaseEnvironment;
-			if (string.IsNullOrWhiteSpace(environmentName))
-			{
-				environmentName = "Production";
-			}
-#if DEBUG
-			if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
-			{
-				Log.Warning(-1, "Debugger attached: forcing Staging environment for series DB (config said '" + environmentName + "').");
-			}
-			environmentName = "Staging";
-#endif
-
 			m_audiobooksPath = config.AudiobooksPath;
 
 			if (!Directory.Exists(config.PulseDataPath))
@@ -84,7 +67,6 @@ namespace Pulse.Series
 			// Cover art embedded in audio tags is extracted to here (the source
 			// library may be read-only and we don't want to litter it).
 			m_artCacheRoot = Path.Combine(config.PulseDataPath, "AudiobookArt");
-
 
 			m_data = new AudiobookData(m_config);
 		}
@@ -132,6 +114,10 @@ namespace Pulse.Series
 				return;
 			}
 
+			// Hydrate dicts from the store so user progress from previous runs
+			// is preserved when the scanner overwrites catalogue fields.
+			m_data.Load();
+
 			Dictionary<string, List<string>> filesByFolder = new Dictionary<string, List<string>>();
 			IEnumerable<string> allFiles = Directory.EnumerateFiles(m_audiobooksPath, "*.*", SearchOption.AllDirectories);
 			foreach (string file in allFiles)
@@ -151,14 +137,14 @@ namespace Pulse.Series
 				list.Add(file);
 			}
 
-			HashSet<string> liveSeriesIds = new HashSet<string>();
-			HashSet<string> liveItemIds = new HashSet<string>();
+			HashSet<string> liveBookIds = new HashSet<string>();
+			HashSet<string> liveChapterIds = new HashSet<string>();
 			int folderCount = 0;
 			foreach (KeyValuePair<string, List<string>> pair in filesByFolder)
 			{
 				try
 				{
-					ScanBook(pair.Key, pair.Value, liveSeriesIds, liveItemIds);
+					ScanBook(pair.Key, pair.Value, liveBookIds, liveChapterIds);
 					folderCount++;
 				}
 				catch (Exception ex)
@@ -167,28 +153,25 @@ namespace Pulse.Series
 				}
 			}
 
-			// Drop catalogued books/chapters whose files are gone (or that an
-			// earlier scan created before a layout change). Scoped to audiobooks,
-			// so podcasts are untouched.
-			PruneRemoved(liveSeriesIds, liveItemIds);
+			PruneRemoved(liveBookIds, liveChapterIds);
 
-			Log.Info(-1, "Audiobook scan complete: " + liveSeriesIds.Count + " book(s) from " + folderCount + " folder(s) under " + m_audiobooksPath);
+			Log.Info(-1, "Audiobook scan complete: " + liveBookIds.Count + " book(s) from " + folderCount + " folder(s) under " + m_audiobooksPath);
 		}
 
-		private void PruneRemoved(HashSet<string> liveSeriesIds, HashSet<string> liveItemIds)
+		private void PruneRemoved(HashSet<string> liveBookIds, HashSet<string> liveChapterIds)
 		{
 			int removedBooks = 0;
 			int removedChapters = 0;
 			List<Audiobook> existing = m_data.LoadBooks();
-			for (int seriesIndex = 0; seriesIndex < existing.Count; seriesIndex++)
+			for (int i = 0; i < existing.Count; i++)
 			{
-				Audiobook book = existing[seriesIndex];
-				List<Chapter> chatper = m_data.LoadChapters(book.Id);
-				if (!liveSeriesIds.Contains(book.Id))
+				Audiobook book = existing[i];
+				List<Chapter> chapters = m_data.LoadChapters(book.Id);
+				if (!liveBookIds.Contains(book.Id))
 				{
-					for (int i = 0; i < chatper.Count; i++)
+					for (int j = 0; j < chapters.Count; j++)
 					{
-						m_data.Delete(chatper[i]);
+						m_data.Delete(chapters[j]);
 						removedChapters++;
 					}
 					m_data.Delete(book);
@@ -196,11 +179,11 @@ namespace Pulse.Series
 				}
 				else
 				{
-					for (int itemIndex = 0; itemIndex < chatper.Count; itemIndex++)
+					for (int j = 0; j < chapters.Count; j++)
 					{
-						if (!liveItemIds.Contains(chatper[itemIndex].Id))
+						if (!liveChapterIds.Contains(chapters[j].Id))
 						{
-							m_data.Delete(chatper[itemIndex]);
+							m_data.Delete(chapters[j]);
 							removedChapters++;
 						}
 					}
@@ -212,25 +195,25 @@ namespace Pulse.Series
 			}
 		}
 
-		private void ScanBook(string folder, List<string> files, HashSet<string> liveSeriesIds, HashSet<string> liveItemIds)
+		private void ScanBook(string folder, List<string> files, HashSet<string> liveBookIds, HashSet<string> liveChapterIds)
 		{
 			// Read tags once per file. A folder is not always one book: it can be an
 			// author folder holding several single-file books. Partition by album
 			// tag - chapters of one book share an album; separate books don't.
 			List<AudiobookFileEntry> entries = new List<AudiobookFileEntry>();
-			for (int index = 0; index < files.Count; index++)
+			for (int i = 0; i < files.Count; i++)
 			{
 				AudiobookFileEntry entry = new AudiobookFileEntry();
-				entry.Path = files[index];
-				entry.Tags = ReadFileTags(files[index]);
+				entry.Path = files[i];
+				entry.Tags = ReadFileTags(files[i]);
 				entries.Add(entry);
 			}
 
 			Dictionary<string, List<AudiobookFileEntry>> byAlbum = new Dictionary<string, List<AudiobookFileEntry>>();
 			List<string> albumOrder = new List<string>();
-			for (int index = 0; index < entries.Count; index++)
+			for (int i = 0; i < entries.Count; i++)
 			{
-				string key = AlbumKey(entries[index].Tags.Album);
+				string key = AlbumKey(entries[i].Tags.Album);
 				List<AudiobookFileEntry> group;
 				bool found = byAlbum.TryGetValue(key, out group);
 				if (!found)
@@ -239,20 +222,20 @@ namespace Pulse.Series
 					byAlbum[key] = group;
 					albumOrder.Add(key);
 				}
-				group.Add(entries[index]);
+				group.Add(entries[i]);
 			}
 
 			bool multipleBooks = byAlbum.Count > 1;
 			string folderRelative = MakeRelative(folder);
-			for (int albumIndex = 0; albumIndex < albumOrder.Count; albumIndex++)
+			for (int i = 0; i < albumOrder.Count; i++)
 			{
-				List<AudiobookFileEntry> group = byAlbum[albumOrder[albumIndex]];
+				List<AudiobookFileEntry> group = byAlbum[albumOrder[i]];
 				group.Sort(CompareEntries);
-				BuildBook(folder, folderRelative, group, multipleBooks, liveSeriesIds, liveItemIds);
+				BuildBook(folder, folderRelative, group, multipleBooks, liveBookIds, liveChapterIds);
 			}
 		}
 
-		private void BuildBook(string folder, string folderRelative, List<AudiobookFileEntry> entries, bool multipleBooks, HashSet<string> liveSeriesIds, HashSet<string> liveItemIds)
+		private void BuildBook(string folder, string folderRelative, List<AudiobookFileEntry> entries, bool multipleBooks, HashSet<string> liveBookIds, HashSet<string> liveChapterIds)
 		{
 			AudiobookFileEntry firstEntry = entries[0];
 
@@ -264,7 +247,7 @@ namespace Pulse.Series
 				idInput = folderRelative + "|" + AlbumKey(firstEntry.Tags.Album);
 			}
 			string bookId = StableId("ab", idInput);
-			liveSeriesIds.Add(bookId);
+			liveBookIds.Add(bookId);
 
 			// When a folder yields several books it is acting as an author folder,
 			// so its name is the author fallback; a single-book folder is the book
@@ -281,78 +264,67 @@ namespace Pulse.Series
 
 			Audiobook book = new Audiobook();
 			book.Id = bookId;
-			book.Type = eSeriesType.Audiobook;
 			book.Title = FirstNonEmpty(firstEntry.Tags.Album, Path.GetFileName(folder));
 			book.Author = FirstNonEmpty(firstEntry.Tags.Author, folderAuthorFallback);
-			book.Narrator = "";
-			book.Description = "";
 			book.ArtworkPath = ResolveCoverArt(folder, entries, bookId);
-			book.DateAdded = DateTime.UtcNow.ToString("o");
 			m_data.UpdateBook(book);
 
 			List<Chapter> chapters;
 			if (entries.Count == 1)
 			{
-				// A single file may carry embedded chapters; split it into one item
-				// per chapter (each a [start,end) window into the shared file).
-				chapters = BuildSingleFileChapters(bookId, entries[0], liveItemIds);
+				chapters = BuildSingleFileChapters(bookId, entries[0], liveChapterIds);
 			}
 			else
 			{
-				// Multi-file book: one item per file, whole-file (no offsets).
 				chapters = new List<Chapter>();
-				for (int index = 0; index < entries.Count; index++)
+				for (int i = 0; i < entries.Count; i++)
 				{
-					AudiobookFileEntry entry = entries[index];
+					AudiobookFileEntry entry = entries[i];
 					Chapter item = new Chapter();
 					item.Id = StableId("ch", MakeRelative(entry.Path));
-					item.SeriesId = bookId;
-					item.Title = FirstNonEmpty(entry.Tags.Title, "Chapter " + (index + 1).ToString());
-					item.OrderIndex = index;
+					item.AudiobookId = bookId;
+					item.Title = FirstNonEmpty(entry.Tags.Title, "Chapter " + (i + 1).ToString());
+					item.OrderIndex = i;
 					item.DurationSeconds = entry.Tags.DurationSeconds;
 					item.LocalPath = entry.Path;
 					item.FileSizeBytes = FileSize(entry.Path);
-					item.DownloadState = eDownloadState.Downloaded;
 					chapters.Add(item);
-					liveItemIds.Add(item.Id);
+					liveChapterIds.Add(item.Id);
 				}
 			}
 			m_data.UpdateChapters(chapters);
 		}
 
-		private List<Chapter> BuildSingleFileChapters(string seriesId, AudiobookFileEntry entry, HashSet<string> liveItemIds)
+		private List<Chapter> BuildSingleFileChapters(string bookId, AudiobookFileEntry entry, HashSet<string> liveChapterIds)
 		{
 			List<Chapter> items = new List<Chapter>();
 			string relFile = MakeRelative(entry.Path);
 			long fileSize = FileSize(entry.Path);
 
-			List<ChapterMarker> chapters = ExtractChapters(entry.Path, entry.Tags.DurationSeconds);
-			if (chapters.Count == 0)
+			List<ChapterMarker> markers = ExtractChapters(entry.Path, entry.Tags.DurationSeconds);
+			if (markers.Count == 0)
 			{
-				// No embedded chapters: the whole file is one item (whole-file id is
-				// kept stable so a rescan updates in place).
+				// No embedded chapters: the whole file is one chapter.
 				Chapter whole = new Chapter();
 				whole.Id = StableId("ch", relFile);
-				whole.SeriesId = seriesId;
+				whole.AudiobookId = bookId;
 				whole.Title = FirstNonEmpty(entry.Tags.Title, "Chapter 1");
-				whole.OrderIndex = 0;
 				whole.DurationSeconds = entry.Tags.DurationSeconds;
 				whole.LocalPath = entry.Path;
 				whole.FileSizeBytes = fileSize;
-				whole.DownloadState = eDownloadState.Downloaded;
 				items.Add(whole);
-				liveItemIds.Add(whole.Id);
+				liveChapterIds.Add(whole.Id);
 				return items;
 			}
 
-			for (int index = 0; index < chapters.Count; index++)
+			for (int i = 0; i < markers.Count; i++)
 			{
-				ChapterMarker marker = chapters[index];
+				ChapterMarker marker = markers[i];
 				Chapter item = new Chapter();
-				item.Id = StableId("ch", relFile + "|" + index.ToString());
-				item.SeriesId = seriesId;
-				item.Title = FirstNonEmpty(marker.Title, "Chapter " + (index + 1).ToString());
-				item.OrderIndex = index;
+				item.Id = StableId("ch", relFile + "|" + i.ToString());
+				item.AudiobookId = bookId;
+				item.Title = FirstNonEmpty(marker.Title, "Chapter " + (i + 1).ToString());
+				item.OrderIndex = i;
 				int durationMs = marker.EndMs - marker.StartMs;
 				if (durationMs < 0)
 				{
@@ -361,11 +333,10 @@ namespace Pulse.Series
 				item.DurationSeconds = durationMs / 1000;
 				item.LocalPath = entry.Path;
 				item.FileSizeBytes = fileSize;
-				item.DownloadState = eDownloadState.Downloaded;
 				item.StartMs = marker.StartMs;
 				item.EndMs = marker.EndMs;
 				items.Add(item);
-				liveItemIds.Add(item.Id);
+				liveChapterIds.Add(item.Id);
 			}
 			return items;
 		}
@@ -379,7 +350,7 @@ namespace Pulse.Series
 			return album.Trim().ToLowerInvariant();
 		}
 
-		/// <summary>All catalogued audiobooks (every series of type Audiobook).</summary>
+		/// <summary>All catalogued audiobooks.</summary>
 		public List<Audiobook> GetAllAudiobooks()
 		{
 			return m_data.LoadBooks();
@@ -398,7 +369,7 @@ namespace Pulse.Series
 			return items;
 		}
 
-		public Chapter GetChatper(string chapterId)
+		public Chapter GetChapter(string chapterId)
 		{
 			return m_data.LoadChapter(chapterId);
 		}
@@ -406,38 +377,26 @@ namespace Pulse.Series
 		/// <summary>
 		/// Resolves the cover art file for an audiobook. Checks the extracted
 		/// art cache first (survives library moves), then falls back to the
-		/// ArtworkPath stored on the series row.
+		/// ArtworkPath stored at scan time.
 		/// </summary>
 		public string GetCoverArtPath(string bookId)
 		{
-			// Art cache is under PulseDataPath, not the library — stable across moves.
 			string[] extensions = new string[] { ".jpg", ".png", ".jpeg" };
-			for (int index = 0; index < extensions.Length; index++)
+			for (int i = 0; i < extensions.Length; i++)
 			{
-				string cached = Path.Combine(m_artCacheRoot, bookId, "cover" + extensions[index]);
+				string cached = Path.Combine(m_artCacheRoot, bookId, "cover" + extensions[i]);
 				if (File.Exists(cached))
 				{
 					return cached;
 				}
 			}
 
-			// Fall back to the path stored at scan time (folder art next to the files).
-			Audiobook series = m_data.LoadBook(bookId);
-			if (series != null && !string.IsNullOrEmpty(series.ArtworkPath) && File.Exists(series.ArtworkPath))
+			Audiobook book = m_data.LoadBook(bookId);
+			if (book != null && !string.IsNullOrEmpty(book.ArtworkPath) && File.Exists(book.ArtworkPath))
 			{
-				return series.ArtworkPath;
+				return book.ArtworkPath;
 			}
 			return "";
-		}
-
-		public AudiobookUserDataInfo GetUserSeries(string seriesId, string userName)
-		{
-			return m_data.LoadUserSeries(seriesId, userName);
-		}
-
-		public ChapterUserDataInfo GetProgress(string itemId, string userName)
-		{
-			return m_data.LoadProgress(itemId, userName);
 		}
 
 		private static int CompareByOrderIndex(Chapter left, Chapter right)
@@ -459,9 +418,9 @@ namespace Pulse.Series
 		private static bool IsAudioFile(string path)
 		{
 			string ext = Path.GetExtension(path).ToLowerInvariant();
-			for (int index = 0; index < s_audioExtensions.Length; index++)
+			for (int i = 0; i < s_audioExtensions.Length; i++)
 			{
-				if (s_audioExtensions[index] == ext)
+				if (s_audioExtensions[i] == ext)
 				{
 					return true;
 				}
@@ -477,16 +436,16 @@ namespace Pulse.Series
 
 		// Cover art, in priority order: an explicit folder image, else a picture
 		// embedded in one of the audio files (extracted to the art cache).
-		private string ResolveCoverArt(string folder, List<AudiobookFileEntry> entries, string seriesId)
+		private string ResolveCoverArt(string folder, List<AudiobookFileEntry> entries, string bookId)
 		{
 			string folderArt = FindFolderCoverArt(folder);
 			if (!string.IsNullOrEmpty(folderArt))
 			{
 				return folderArt;
 			}
-			for (int index = 0; index < entries.Count; index++)
+			for (int i = 0; i < entries.Count; i++)
 			{
-				string extracted = ExtractEmbeddedCover(entries[index].Path, seriesId);
+				string extracted = ExtractEmbeddedCover(entries[i].Path, bookId);
 				if (!string.IsNullOrEmpty(extracted))
 				{
 					return extracted;
@@ -522,9 +481,9 @@ namespace Pulse.Series
 
 		private static string FindFolderCoverArt(string folder)
 		{
-			for (int index = 0; index < s_coverNames.Length; index++)
+			for (int i = 0; i < s_coverNames.Length; i++)
 			{
-				string candidate = Path.Combine(folder, s_coverNames[index]);
+				string candidate = Path.Combine(folder, s_coverNames[i]);
 				if (File.Exists(candidate))
 				{
 					return candidate;
@@ -537,7 +496,7 @@ namespace Pulse.Series
 		// to AudiobookArt/{seriesId}/cover.{ext}. Returns the written path, or ""
 		// when the file has no embedded art. This is what VLC shows for files with
 		// no sidecar image.
-		private string ExtractEmbeddedCover(string path, string seriesId)
+		private string ExtractEmbeddedCover(string path, string bookId)
 		{
 			try
 			{
@@ -559,7 +518,7 @@ namespace Pulse.Series
 					{
 						extension = ".png";
 					}
-					string dir = Path.Combine(m_artCacheRoot, seriesId);
+					string dir = Path.Combine(m_artCacheRoot, bookId);
 					if (!Directory.Exists(dir))
 					{
 						Directory.CreateDirectory(dir);
@@ -657,9 +616,9 @@ namespace Pulse.Series
 			{
 				byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
 				StringBuilder hex = new StringBuilder();
-				for (int index = 0; index < 10; index++)
+				for (int i = 0; i < 10; i++)
 				{
-					hex.Append(hash[index].ToString("x2"));
+					hex.Append(hash[i].ToString("x2"));
 				}
 				return prefix + hex.ToString();
 			}
@@ -699,19 +658,19 @@ namespace Pulse.Series
 		private void NormalizeChapterEnds(List<ChapterMarker> markers, int fileDurationMs)
 		{
 			markers.Sort(CompareMarkerByStart);
-			for (int index = 0; index < markers.Count; index++)
+			for (int i = 0; i < markers.Count; i++)
 			{
-				if (markers[index].EndMs > markers[index].StartMs)
+				if (markers[i].EndMs > markers[i].StartMs)
 				{
 					continue;
 				}
-				if (index + 1 < markers.Count)
+				if (i + 1 < markers.Count)
 				{
-					markers[index].EndMs = markers[index + 1].StartMs;
+					markers[i].EndMs = markers[i + 1].StartMs;
 				}
 				else
 				{
-					markers[index].EndMs = fileDurationMs;
+					markers[i].EndMs = fileDurationMs;
 				}
 			}
 		}
@@ -814,10 +773,10 @@ namespace Pulse.Series
 				int[] candidateStarts = new int[] { 9, 6, 5 };
 				List<ChapterMarker> best = null;
 				int bestLeftover = int.MaxValue;
-				for (int candidateIndex = 0; candidateIndex < candidateStarts.Length; candidateIndex++)
+				for (int i = 0; i < candidateStarts.Length; i++)
 				{
 					int leftover;
-					List<ChapterMarker> parsed = ParseNeroPayload(payload, candidateStarts[candidateIndex], out leftover);
+					List<ChapterMarker> parsed = ParseNeroPayload(payload, candidateStarts[i], out leftover);
 					if (parsed != null && leftover < bestLeftover)
 					{
 						best = parsed;
@@ -855,7 +814,7 @@ namespace Pulse.Series
 
 			List<ChapterMarker> markers = new List<ChapterMarker>();
 			int position = entriesStart;
-			for (int chapterIndex = 0; chapterIndex < count; chapterIndex++)
+			for (int i = 0; i < count; i++)
 			{
 				if (position + 9 > payload.Length)
 				{
@@ -885,9 +844,9 @@ namespace Pulse.Series
 				markers.Add(marker);
 			}
 
-			for (int index = 1; index < markers.Count; index++)
+			for (int i = 1; i < markers.Count; i++)
 			{
-				if (markers[index].StartMs < markers[index - 1].StartMs)
+				if (markers[i].StartMs < markers[i - 1].StartMs)
 				{
 					return null;
 				}
@@ -966,9 +925,9 @@ namespace Pulse.Series
 		private static long ReadUInt32BE(byte[] data, int offset)
 		{
 			long value = 0;
-			for (int index = 0; index < 4; index++)
+			for (int i = 0; i < 4; i++)
 			{
-				value = (value << 8) | (long)data[offset + index];
+				value = (value << 8) | (long)data[offset + i];
 			}
 			return value;
 		}
@@ -976,9 +935,9 @@ namespace Pulse.Series
 		private static long ReadUInt64BE(byte[] data, int offset)
 		{
 			long value = 0;
-			for (int index = 0; index < 8; index++)
+			for (int i = 0; i < 8; i++)
 			{
-				value = (value << 8) | (long)data[offset + index];
+				value = (value << 8) | (long)data[offset + i];
 			}
 			return value;
 		}
