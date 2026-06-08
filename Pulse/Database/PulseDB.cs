@@ -41,6 +41,19 @@ namespace Pulse.Database
 	}
 
 	/// <summary>
+	/// One row loaded from the tokens table (v9 / PLS133). DB-layer DTO -- the
+	/// wire shape lives in PulseAPI.CSharp.PulseToken / PulseTokenSummary.
+	/// </summary>
+	public class TokenRow
+	{
+		public string Token;
+		public string UserName;
+		public string Label;
+		public string CreatedAt;
+		public string LastUsed;
+	}
+
+	/// <summary>
 	/// SQLite-backed persistence for the Pulse data layer. Stateless: holds no
 	/// dictionaries and never reads or writes one. Load methods return collections;
 	/// Save accepts the dirty set. PulseData composes a PulseDatabase and owns
@@ -1327,6 +1340,252 @@ namespace Pulse.Database
 					Log.Error(-1, "DeleteUser failed for '" + userName + "', rolled back: " + ex.Message);
 					throw;
 				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		/// <summary>
+		/// Returns the stored BCrypt password hash for a user, or "" if the
+		/// user has no password set or does not exist. Callers must NOT log
+		/// the returned value -- it is verification material.
+		/// </summary>
+		public string ReadUserPasswordHash(string name)
+		{
+			if (string.IsNullOrEmpty(name)) { return ""; }
+			string hash = "";
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT password_hash FROM users WHERE name = $name;";
+				command.Parameters.AddWithValue("$name", name);
+				object result = command.ExecuteScalar();
+				if (result != null && result != DBNull.Value)
+				{
+					hash = (string)result;
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return hash;
+		}
+
+		/// <summary>
+		/// Overwrites a user's stored password hash. The caller has already
+		/// hashed the plaintext (BCrypt); this routine never sees it.
+		/// </summary>
+		public void SetUserPassword(string name, string passwordHash)
+		{
+			if (string.IsNullOrEmpty(name)) { return; }
+			string storedHash = passwordHash;
+			if (storedHash == null) { storedHash = ""; }
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "UPDATE users SET password_hash = $hash WHERE name = $name;";
+				command.Parameters.AddWithValue("$hash", storedHash);
+				command.Parameters.AddWithValue("$name", name);
+				command.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		/// <summary>
+		/// True when at least one user in the table has a non-empty password
+		/// hash. The setPassword endpoint uses this to allow the very first
+		/// password to be set without a session, then locks the route to
+		/// authenticated callers from that point forward.
+		/// </summary>
+		public bool AnyUserHasPassword()
+		{
+			bool any = false;
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT EXISTS(SELECT 1 FROM users WHERE password_hash <> '');";
+				object result = command.ExecuteScalar();
+				if (result != null && result != DBNull.Value)
+				{
+					any = Convert.ToInt32(result) != 0;
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return any;
+		}
+
+		/// <summary>
+		/// Inserts a freshly-minted device token. created_at is stamped here so
+		/// every caller writes a consistent format; last_used picks up the
+		/// schema default ('') until the validation helper bumps it.
+		/// </summary>
+		public void InsertToken(string token, string userName, string label)
+		{
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "INSERT INTO tokens (token, user_name, label, created_at) VALUES ($token, $user_name, $label, $created_at);";
+				command.Parameters.AddWithValue("$token", token);
+				command.Parameters.AddWithValue("$user_name", userName);
+				command.Parameters.AddWithValue("$label", label ?? "");
+				command.Parameters.AddWithValue("$created_at", DateTime.UtcNow.ToString("o"));
+				command.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		/// <summary>
+		/// Returns every row in the tokens table, newest first.
+		/// </summary>
+		public List<TokenRow> GetAllTokens()
+		{
+			List<TokenRow> result = new List<TokenRow>();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT token, user_name, label, created_at, last_used FROM tokens ORDER BY created_at DESC;";
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
+				{
+					TokenRow row = new TokenRow();
+					row.Token = reader.GetString(0);
+					row.UserName = reader.GetString(1);
+					row.Label = reader.GetString(2);
+					row.CreatedAt = reader.GetString(3);
+					row.LastUsed = reader.GetString(4);
+					result.Add(row);
+				}
+				reader.Close();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
+
+		/// <summary>
+		/// Returns the tokens registered to one user, newest first.
+		/// </summary>
+		public List<TokenRow> GetTokensForUser(string userName)
+		{
+			List<TokenRow> result = new List<TokenRow>();
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT token, user_name, label, created_at, last_used FROM tokens WHERE user_name = $user_name ORDER BY created_at DESC;";
+				command.Parameters.AddWithValue("$user_name", userName);
+				SqliteDataReader reader = command.ExecuteReader();
+				while (reader.Read())
+				{
+					TokenRow row = new TokenRow();
+					row.Token = reader.GetString(0);
+					row.UserName = reader.GetString(1);
+					row.Label = reader.GetString(2);
+					row.CreatedAt = reader.GetString(3);
+					row.LastUsed = reader.GetString(4);
+					result.Add(row);
+				}
+				reader.Close();
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return result;
+		}
+
+		/// <summary>
+		/// Resolves a raw token value to its owning user. Returns "" when the
+		/// token is not in the table -- the validation helper treats that as
+		/// "no auth" without further error handling.
+		/// </summary>
+		public string LookupTokenUser(string token)
+		{
+			if (string.IsNullOrEmpty(token))
+			{
+				return "";
+			}
+			string userName = "";
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "SELECT user_name FROM tokens WHERE token = $token;";
+				command.Parameters.AddWithValue("$token", token);
+				object result = command.ExecuteScalar();
+				if (result != null && result != DBNull.Value)
+				{
+					userName = (string)result;
+				}
+			}
+			finally
+			{
+				connection.Close();
+			}
+			return userName;
+		}
+
+		/// <summary>
+		/// Stamps the last_used column on a token. Called on every successful
+		/// token resolve so the management UI can show recent activity.
+		/// </summary>
+		public void UpdateTokenLastUsed(string token)
+		{
+			if (string.IsNullOrEmpty(token))
+			{
+				return;
+			}
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "UPDATE tokens SET last_used = $last_used WHERE token = $token;";
+				command.Parameters.AddWithValue("$last_used", DateTime.UtcNow.ToString("o"));
+				command.Parameters.AddWithValue("$token", token);
+				command.ExecuteNonQuery();
+			}
+			finally
+			{
+				connection.Close();
+			}
+		}
+
+		/// <summary>
+		/// Removes a device token. Idempotent; deleting an unknown token is a
+		/// no-op.
+		/// </summary>
+		public void DeleteToken(string token)
+		{
+			if (string.IsNullOrEmpty(token))
+			{
+				return;
+			}
+			SqliteConnection connection = PulseDBConnector.OpenConnection();
+			try
+			{
+				SqliteCommand command = connection.CreateCommand();
+				command.CommandText = "DELETE FROM tokens WHERE token = $token;";
+				command.Parameters.AddWithValue("$token", token);
+				command.ExecuteNonQuery();
 			}
 			finally
 			{

@@ -23,6 +23,7 @@ namespace Thump.Data
 		private const string s_keyUsername = "thump.login.username";
 		private const string s_keyPassword = "thump.login.password";
 		private const string s_keyUseHttps = "thump.login.useHttps";
+		private const string s_keyToken = "thump.login.token";
 		private const string s_keyAnalyticsEnabled = "thump.analytics.enabled";
 		private const string s_keyDeviceId = "thump.analytics.deviceId";
 
@@ -128,6 +129,29 @@ namespace Thump.Data
 		public static void SetUseHttps(bool value)
 		{
 			Preferences.Set(s_keyUseHttps, value);
+		}
+
+		/// <summary>
+		/// Device token for Pulse API authentication. Stored in SecureStorage
+		/// so it stays encrypted at rest. Returns "" if no token is configured.
+		/// </summary>
+		public static string GetToken()
+		{
+			string value = SecureStorage.Default.GetAsync(s_keyToken).GetAwaiter().GetResult();
+			if (!string.IsNullOrEmpty(value))
+			{
+				return value;
+			}
+			return "";
+		}
+		public static void SetToken(string value)
+		{
+			if (string.IsNullOrEmpty(value))
+			{
+				SecureStorage.Default.Remove(s_keyToken);
+				return;
+			}
+			SecureStorage.Default.SetAsync(s_keyToken, value).GetAwaiter().GetResult();
 		}
 
 		/// <summary>

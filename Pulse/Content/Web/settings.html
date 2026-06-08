@@ -324,6 +324,82 @@
 				color: var(--danger);
 			}
 
+		.login-form {
+			margin-top: 8px;
+			padding: 14px;
+			border: 1px dashed var(--border);
+			border-radius: 6px;
+		}
+
+			.login-form .form-row {
+				display: grid;
+				grid-template-columns: 1fr 1fr auto auto auto;
+				gap: 10px;
+				align-items: center;
+			}
+
+			.login-form label {
+				font-size: 11px;
+				color: var(--text-secondary);
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				display: block;
+				margin-bottom: 4px;
+			}
+
+			.login-form .checkbox-label {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 12px;
+				color: var(--text-secondary);
+			}
+
+			.login-form .form-error {
+				color: var(--danger);
+				font-size: 12px;
+				margin-top: 8px;
+				min-height: 16px;
+			}
+
+		.login-state {
+			font-size: 12px;
+			color: var(--text-secondary);
+		}
+
+			.login-state.signed-in {
+				color: var(--success);
+			}
+
+		.password-row {
+			padding: 10px 12px;
+			border-bottom: 1px solid var(--border);
+			background: rgba(108, 92, 231, 0.05);
+		}
+
+			.password-row .form-row {
+				display: grid;
+				grid-template-columns: 1fr 1fr auto auto;
+				gap: 10px;
+				align-items: center;
+			}
+
+			.password-row label {
+				font-size: 11px;
+				color: var(--text-secondary);
+				text-transform: uppercase;
+				letter-spacing: 1px;
+				display: block;
+				margin-bottom: 4px;
+			}
+
+			.password-row .form-error {
+				color: var(--danger);
+				font-size: 12px;
+				margin-top: 8px;
+				min-height: 16px;
+			}
+
 		.version-tag {
 			position: fixed;
 			right: 8px;
@@ -343,6 +419,31 @@
 		<div class="header">
 			<h1>Pulse<span>/</span>Settings</h1>
 			<div class="subtitle">administer the server</div>
+		</div>
+
+		<div class="section">
+			<div class="section-head">
+				<h2>Sign in</h2>
+				<div id="login-state" class="login-state"></div>
+			</div>
+			<div class="section-hint">Password login is additive in P1: existing routes are not gated yet. Sign in here to be able to set passwords for other users once the first password exists.</div>
+
+			<div id="login-form" class="login-form">
+				<div class="form-row">
+					<div>
+						<label for="login-username">Username</label>
+						<input type="text" class="input" id="login-username" maxlength="120" autocomplete="username" />
+					</div>
+					<div>
+						<label for="login-password">Password</label>
+						<input type="password" class="input" id="login-password" maxlength="200" autocomplete="current-password" />
+					</div>
+					<label class="checkbox-label"><input type="checkbox" id="login-remember" /> Remember me</label>
+					<button class="btn btn-primary" id="login-submit">Sign in</button>
+					<button class="btn" id="logout-btn">Sign out</button>
+				</div>
+				<div class="form-error" id="login-error"></div>
+			</div>
 		</div>
 
 		<div class="section">
@@ -373,6 +474,46 @@
 				<div class="loading-text">Loading users...</div>
 			</div>
 		</div>
+
+		<div class="section">
+			<div class="section-head">
+				<h2>Device Tokens</h2>
+				<button class="btn btn-primary" id="new-token-btn">Create token</button>
+			</div>
+			<div class="section-hint">Device tokens authenticate clients that cannot sign in via the cookie path (set-top boxes, mobile apps, scripted callers). P2 is plumbing only -- nothing on the server is gated by a token yet. The raw token is shown once on creation; copy it then.</div>
+
+			<div id="token-create-form" class="create-form">
+				<div class="form-row">
+					<div>
+						<label for="token-user">User</label>
+						<input type="text" class="input" id="token-user" maxlength="120" autocomplete="off" />
+					</div>
+					<div>
+						<label for="token-label">Label</label>
+						<input type="text" class="input" id="token-label" maxlength="120" autocomplete="off" />
+					</div>
+					<span></span>
+					<button class="btn btn-primary" id="token-create-submit">Create</button>
+					<button class="btn" id="token-create-cancel">Cancel</button>
+				</div>
+				<div class="form-error" id="token-create-error"></div>
+			</div>
+
+			<div id="token-reveal-row" class="password-row" style="display: none;">
+				<div class="form-row">
+					<div style="grid-column: span 2;">
+						<label for="token-reveal-value">New token (copy now -- shown only once)</label>
+						<input type="text" class="input" id="token-reveal-value" readonly />
+					</div>
+					<button class="btn btn-primary" id="token-reveal-copy">Copy</button>
+					<button class="btn" id="token-reveal-close">Done</button>
+				</div>
+			</div>
+
+			<div id="tokens-container">
+				<div class="loading-text">Loading tokens...</div>
+			</div>
+		</div>
 	</div>
 
 	<div id="toast" class="toast"></div>
@@ -380,7 +521,7 @@
 	<script>
 		function pulseGet(endpoint, callback) {
 			let xhr = new XMLHttpRequest();
-			xhr.open('GET', '/pulse/' + endpoint);
+			xhr.open('GET', '/pulse_v1/' + endpoint);
 			xhr.onload = function () {
 				if (xhr.status === 200) {
 					let data = JSON.parse(xhr.responseText);
@@ -392,6 +533,39 @@
 				}
 			};
 			xhr.send();
+		}
+
+		// Adapt PulseUser wire objects (PascalCase, inside the PulseResponse
+		// envelope's contents) to the lowercase shape the rest of this page
+		// uses. Created comes back as a DateTime; the .NET min-date sentinel
+		// is mapped to '' so the existing orphan/created checks keep working.
+		function adaptUsers(list) {
+			let out = [];
+			if (!list) { return out; }
+			for (let idx = 0; idx < list.length; idx++) {
+				let user = list[idx];
+				let created = user.Created || '';
+				if (created.indexOf('0001-01-01') === 0) { created = ''; }
+				out.push({
+					name: user.Name,
+					displayName: user.DisplayName,
+					created: created,
+					isAdmin: user.IsAdmin,
+					scoredTrackCount: user.ScoredTrackCount,
+					starredCount: user.StarredCount,
+					playlistLastPlayedCount: user.PlaylistLastPlayedCount
+				});
+			}
+			return out;
+		}
+
+		// Success for a mutation route: the envelope returns status === 'ok',
+		// while the legacy {ok,error} shape returns ok === true. Accept either.
+		function isOk(data) {
+			if (!data) { return false; }
+			if (data.ok === true) { return true; }
+			if (data.status === 'ok') { return true; }
+			return false;
 		}
 
 		function showToast(message, isError) {
@@ -415,7 +589,7 @@
 		function loadUsers() {
 			let container = document.getElementById('users-container');
 			container.innerHTML = '<div class="loading-text">Loading users...</div>';
-			pulseGet('listUsers', function (data) { renderUsers(data.users || []); });
+			pulseGet('listUsers', function (data) { renderUsers(adaptUsers(data.contents)); });
 		}
 
 		function renderUsers(users) {
@@ -507,6 +681,12 @@
 				editBtn.textContent = 'Edit';
 				editBtn.addEventListener('click', function () { showEditRow(user); });
 				wrapper.appendChild(editBtn);
+
+				let passwordBtn = document.createElement('button');
+				passwordBtn.className = 'btn';
+				passwordBtn.textContent = 'Set password';
+				passwordBtn.addEventListener('click', function () { showPasswordRow(user.name); });
+				wrapper.appendChild(passwordBtn);
 			}
 
 			let deleteBtn = document.createElement('button');
@@ -516,6 +696,243 @@
 			wrapper.appendChild(deleteBtn);
 
 			actionsCell.appendChild(wrapper);
+		}
+
+		function showPasswordRow(userName) {
+			let row = document.querySelector('tr[data-user-name="' + cssEscape(userName) + '"]');
+			if (!row) { return; }
+			let existing = row.nextElementSibling;
+			if (existing && existing.classList.contains('password-row')) {
+				existing.parentNode.removeChild(existing);
+				return;
+			}
+
+			let passwordRow = document.createElement('tr');
+			passwordRow.className = 'password-row';
+			let cell = document.createElement('td');
+			cell.colSpan = 6;
+
+			let formRow = document.createElement('div');
+			formRow.className = 'form-row';
+
+			let pwWrap = document.createElement('div');
+			let pwLabel = document.createElement('label');
+			pwLabel.textContent = 'New password';
+			pwLabel.setAttribute('for', 'password-input-' + userName);
+			let pwInput = document.createElement('input');
+			pwInput.type = 'password';
+			pwInput.className = 'input';
+			pwInput.id = 'password-input-' + userName;
+			pwInput.maxLength = 200;
+			pwInput.autocomplete = 'new-password';
+			pwWrap.appendChild(pwLabel);
+			pwWrap.appendChild(pwInput);
+
+			let confirmWrap = document.createElement('div');
+			let confirmLabel = document.createElement('label');
+			confirmLabel.textContent = 'Confirm';
+			confirmLabel.setAttribute('for', 'password-confirm-' + userName);
+			let confirmInput = document.createElement('input');
+			confirmInput.type = 'password';
+			confirmInput.className = 'input';
+			confirmInput.id = 'password-confirm-' + userName;
+			confirmInput.maxLength = 200;
+			confirmInput.autocomplete = 'new-password';
+			confirmWrap.appendChild(confirmLabel);
+			confirmWrap.appendChild(confirmInput);
+
+			let saveBtn = document.createElement('button');
+			saveBtn.className = 'btn btn-primary';
+			saveBtn.textContent = 'Save password';
+
+			let cancelBtn = document.createElement('button');
+			cancelBtn.className = 'btn';
+			cancelBtn.textContent = 'Cancel';
+
+			let errorDiv = document.createElement('div');
+			errorDiv.className = 'form-error';
+
+			function submitPassword() {
+				errorDiv.textContent = '';
+				let pw = pwInput.value;
+				let confirm = confirmInput.value;
+				if (pw !== confirm) {
+					errorDiv.textContent = 'Passwords do not match.';
+					return;
+				}
+				runSetPassword(userName, pw, function (ok, message) {
+					if (ok) {
+						showToast('Password set for ' + userName);
+						passwordRow.parentNode.removeChild(passwordRow);
+					}
+					else {
+						errorDiv.textContent = message;
+					}
+				});
+			}
+
+			function cancelPassword() {
+				passwordRow.parentNode.removeChild(passwordRow);
+			}
+
+			saveBtn.addEventListener('click', submitPassword);
+			cancelBtn.addEventListener('click', cancelPassword);
+			confirmInput.addEventListener('keydown', function (event) {
+				if (event.key === 'Enter') { submitPassword(); }
+				else if (event.key === 'Escape') { cancelPassword(); }
+			});
+			pwInput.addEventListener('keydown', function (event) {
+				if (event.key === 'Escape') { cancelPassword(); }
+			});
+
+			formRow.appendChild(pwWrap);
+			formRow.appendChild(confirmWrap);
+			formRow.appendChild(saveBtn);
+			formRow.appendChild(cancelBtn);
+			cell.appendChild(formRow);
+			cell.appendChild(errorDiv);
+			passwordRow.appendChild(cell);
+
+			row.parentNode.insertBefore(passwordRow, row.nextSibling);
+			pwInput.focus();
+		}
+
+		// Maps the server's machine-parsable status code on a PulseResponse
+		// envelope to a human-readable message. The point of routing failures
+		// through this table is so the policy (e.g. minimum password length)
+		// stays server-side: the client just relays whatever the server says.
+		function describeAuthStatus(status) {
+			if (status === 'password_too_short') {
+				return "Password does not meet the server's requirements";
+			}
+			if (status === 'invalid_credentials') {
+				return 'Invalid credentials';
+			}
+			if (status === 'not_signed_in') {
+				return 'Sign in first';
+			}
+			if (status === 'forbidden') {
+				return 'Not allowed';
+			}
+			if (status === 'unknown_user') {
+				return 'Unknown user';
+			}
+			if (status === 'missing_fields') {
+				return 'Username and password are required.';
+			}
+			if (status === 'missing_body') {
+				return 'Missing request body';
+			}
+			return 'Request failed';
+		}
+
+		// Parses the JSON envelope and returns it, or null if the response was
+		// not parseable JSON. Lets callers branch on status/contents directly.
+		function parseAuthEnvelope(responseText) {
+			let parsed = null;
+			try { parsed = JSON.parse(responseText); } catch (e) { parsed = null; }
+			return parsed;
+		}
+
+		function runSetPassword(userName, password, callback) {
+			let xhr = new XMLHttpRequest();
+			xhr.open('POST', '/pulse_v1/setPassword');
+			xhr.withCredentials = true;
+			xhr.setRequestHeader('Content-Type', 'application/json');
+			xhr.onload = function () {
+				let parsed = parseAuthEnvelope(xhr.responseText);
+				if (parsed && parsed.status === 'ok') {
+					callback(true, '');
+					return;
+				}
+				let message = 'Set-password failed';
+				if (parsed && parsed.status) {
+					message = describeAuthStatus(parsed.status);
+				}
+				callback(false, message);
+			};
+			xhr.onerror = function () { callback(false, 'Network error'); };
+			let payload = JSON.stringify({ Username: userName, Password: password });
+			xhr.send(payload);
+		}
+
+		function runLogin(username, password, rememberMe, callback) {
+			let xhr = new XMLHttpRequest();
+			xhr.open('POST', '/pulse_v1/login');
+			xhr.withCredentials = true;
+			xhr.setRequestHeader('Content-Type', 'application/json');
+			xhr.onload = function () {
+				let parsed = parseAuthEnvelope(xhr.responseText);
+				if (parsed && parsed.status === 'ok' && parsed.contents && parsed.contents.Username) {
+					callback(true, parsed.contents, '');
+					return;
+				}
+				let message = 'Invalid credentials';
+				if (parsed && parsed.status) {
+					message = describeAuthStatus(parsed.status);
+				}
+				callback(false, null, message);
+			};
+			xhr.onerror = function () { callback(false, null, 'Network error'); };
+			let payload = JSON.stringify({ Username: username, Password: password, RememberMe: rememberMe });
+			xhr.send(payload);
+		}
+
+		function runLogout(callback) {
+			let xhr = new XMLHttpRequest();
+			xhr.open('POST', '/pulse_v1/logout');
+			xhr.withCredentials = true;
+			xhr.onload = function () { callback(xhr.status === 200); };
+			xhr.onerror = function () { callback(false); };
+			xhr.send();
+		}
+
+		function submitLogin() {
+			let username = document.getElementById('login-username').value.trim();
+			let password = document.getElementById('login-password').value;
+			let rememberMe = document.getElementById('login-remember').checked;
+			let errEl = document.getElementById('login-error');
+			errEl.textContent = '';
+			if (!username || !password) {
+				errEl.textContent = 'Username and password are required.';
+				return;
+			}
+			runLogin(username, password, rememberMe, function (ok, data, message) {
+				if (ok) {
+					document.getElementById('login-password').value = '';
+					setLoginState(data.Username, data.IsAdmin);
+					showToast('Signed in as ' + data.Username);
+				}
+				else {
+					errEl.textContent = message;
+				}
+			});
+		}
+
+		function submitLogout() {
+			runLogout(function (ok) {
+				if (ok) {
+					setLoginState('', false);
+					showToast('Signed out');
+				}
+				else {
+					showToast('Sign out failed', true);
+				}
+			});
+		}
+
+		function setLoginState(userName, isAdmin) {
+			let stateEl = document.getElementById('login-state');
+			if (userName) {
+				let suffix = '';
+				if (isAdmin) { suffix = ' (admin)'; }
+				stateEl.textContent = 'Signed in as ' + userName + suffix;
+				stateEl.classList.add('signed-in');
+			}
+			else {
+				stateEl.textContent = 'Not signed in';
+				stateEl.classList.remove('signed-in');
+			}
 		}
 
 		function showDeleteConfirm(actionsCell, userName) {
@@ -606,23 +1023,23 @@
 		}
 
 		function runDelete(userName) {
-			let url = '/pulse/deleteUser?user=' + encodeURIComponent(userName);
+			let url = '/pulse_v1/deleteUser?user=' + encodeURIComponent(userName);
 			postPulse(url, function (data) {
-				if (data.ok) { showToast('Deleted ' + userName); }
-				else { showToast('Delete failed: ' + (data.error || 'unknown error'), true); }
+				if (isOk(data)) { showToast('Deleted ' + userName); }
+				else { showToast('Delete failed: ' + (data.status || 'unknown error'), true); }
 				loadUsers();
 			});
 		}
 
 		function runUpdate(oldName, newName, displayName, isAdmin) {
 			if (!newName) { showToast('Name is required', true); return; }
-			let url = '/pulse/updateUser?name=' + encodeURIComponent(oldName)
+			let url = '/pulse_v1/updateUser?name=' + encodeURIComponent(oldName)
 				+ '&newName=' + encodeURIComponent(newName)
 				+ '&displayName=' + encodeURIComponent(displayName)
 				+ '&isAdmin=' + (isAdmin ? 'true' : 'false');
 			postPulse(url, function (data) {
-				if (data.ok) { showToast('Saved ' + newName); }
-				else { showToast('Update failed: ' + (data.error || 'unknown error'), true); }
+				if (isOk(data)) { showToast('Saved ' + newName); }
+				else { showToast('Update failed: ' + (data.status || 'unknown error'), true); }
 				loadUsers();
 			});
 		}
@@ -664,19 +1081,256 @@
 			errEl.textContent = '';
 			if (!name) { errEl.textContent = 'Name is required.'; return; }
 
-			let url = '/pulse/createUser?name=' + encodeURIComponent(name)
+			let url = '/pulse_v1/createUser?name=' + encodeURIComponent(name)
 				+ '&displayName=' + encodeURIComponent(displayName)
 				+ '&isAdmin=' + (isAdmin ? 'true' : 'false');
 			postPulse(url, function (data) {
-				if (data.ok) {
+				if (isOk(data)) {
 					hideCreateForm();
 					showToast('Created ' + name);
 					loadUsers();
 				}
 				else {
-					errEl.textContent = data.error || 'Create failed';
+					errEl.textContent = data.status || 'Create failed';
 				}
 			});
+		}
+
+		// Adapt PulseTokenSummary wire objects (PascalCase) to the lowercase
+		// shape used by the token table renderer. Mirrors adaptUsers.
+		function adaptTokens(list) {
+			let out = [];
+			if (!list) { return out; }
+			for (let idx = 0; idx < list.length; idx++) {
+				let tok = list[idx];
+				out.push({
+					token: tok.Token,
+					username: tok.Username,
+					label: tok.Label,
+					createdAt: tok.CreatedAt,
+					lastUsed: tok.LastUsed
+				});
+			}
+			return out;
+		}
+
+		function formatTokenTimestamp(iso) {
+			if (!iso) { return '—'; }
+			let date = new Date(iso);
+			if (isNaN(date.getTime())) { return '—'; }
+			let year = date.getFullYear();
+			let month = String(date.getMonth() + 1).padStart(2, '0');
+			let day = String(date.getDate()).padStart(2, '0');
+			let hours = String(date.getHours()).padStart(2, '0');
+			let minutes = String(date.getMinutes()).padStart(2, '0');
+			return year + '-' + month + '-' + day + ' ' + hours + ':' + minutes;
+		}
+
+		function loadTokens() {
+			let container = document.getElementById('tokens-container');
+			container.innerHTML = '<div class="loading-text">Loading tokens...</div>';
+			pulseGet('listTokens', function (data) { renderTokens(adaptTokens(data.contents)); });
+		}
+
+		function renderTokens(tokens) {
+			let container = document.getElementById('tokens-container');
+			if (tokens.length === 0) {
+				container.innerHTML = '<div class="empty-state">No device tokens issued.</div>';
+				return;
+			}
+
+			let table = document.createElement('table');
+			table.className = 'user-table';
+
+			let head = document.createElement('thead');
+			let headRow = document.createElement('tr');
+			let columns = [
+				{ label: 'User', cls: 'col-name' },
+				{ label: 'Label', cls: 'col-display' },
+				{ label: 'Created', cls: 'col-created' },
+				{ label: 'Last used', cls: 'col-created' },
+				{ label: '', cls: 'col-actions' }
+			];
+			for (let idx = 0; idx < columns.length; idx++) {
+				let th = document.createElement('th');
+				th.textContent = columns[idx].label;
+				th.className = columns[idx].cls;
+				headRow.appendChild(th);
+			}
+			head.appendChild(headRow);
+			table.appendChild(head);
+
+			let body = document.createElement('tbody');
+			for (let idx = 0; idx < tokens.length; idx++) {
+				body.appendChild(buildTokenRow(tokens[idx]));
+			}
+			table.appendChild(body);
+
+			container.innerHTML = '';
+			container.appendChild(table);
+		}
+
+		function buildTokenRow(tok) {
+			let row = document.createElement('tr');
+
+			let userCell = document.createElement('td');
+			userCell.className = 'col-name';
+			userCell.textContent = tok.username;
+			row.appendChild(userCell);
+
+			let labelCell = document.createElement('td');
+			labelCell.className = 'col-display';
+			labelCell.textContent = tok.label || '—';
+			row.appendChild(labelCell);
+
+			let createdCell = document.createElement('td');
+			createdCell.className = 'col-created';
+			createdCell.textContent = formatTokenTimestamp(tok.createdAt);
+			row.appendChild(createdCell);
+
+			let usedCell = document.createElement('td');
+			usedCell.className = 'col-created';
+			usedCell.textContent = formatTokenTimestamp(tok.lastUsed);
+			row.appendChild(usedCell);
+
+			let actionsCell = document.createElement('td');
+			actionsCell.className = 'col-actions';
+			let wrapper = document.createElement('span');
+			wrapper.className = 'action-row';
+			let revokeBtn = document.createElement('button');
+			revokeBtn.className = 'btn btn-danger';
+			revokeBtn.textContent = 'Revoke';
+			revokeBtn.addEventListener('click', function () { showRevokeConfirm(actionsCell, tok); });
+			wrapper.appendChild(revokeBtn);
+			actionsCell.appendChild(wrapper);
+			row.appendChild(actionsCell);
+
+			return row;
+		}
+
+		function showRevokeConfirm(actionsCell, tok) {
+			actionsCell.innerHTML = '';
+
+			let wrapper = document.createElement('span');
+			wrapper.className = 'action-row';
+
+			let label = document.createElement('span');
+			label.className = 'confirm-label';
+			let labelText = 'Revoke?';
+			if (tok.label) { labelText = 'Revoke "' + tok.label + '"?'; }
+			label.textContent = labelText;
+			wrapper.appendChild(label);
+
+			let confirmBtn = document.createElement('button');
+			confirmBtn.className = 'btn btn-confirm';
+			confirmBtn.textContent = 'Confirm';
+			confirmBtn.addEventListener('click', function () { runRevokeToken(tok); });
+			wrapper.appendChild(confirmBtn);
+
+			let cancelBtn = document.createElement('button');
+			cancelBtn.className = 'btn';
+			cancelBtn.textContent = 'Cancel';
+			cancelBtn.addEventListener('click', function () { loadTokens(); });
+			wrapper.appendChild(cancelBtn);
+
+			actionsCell.appendChild(wrapper);
+		}
+
+		function runRevokeToken(tok) {
+			let xhr = new XMLHttpRequest();
+			xhr.open('POST', '/pulse_v1/revokeToken');
+			xhr.setRequestHeader('Content-Type', 'application/json');
+			xhr.onload = function () {
+				let parsed = parseAuthEnvelope(xhr.responseText);
+				if (parsed && isOk(parsed)) {
+					let toastMsg = 'Token revoked';
+					if (tok.label) { toastMsg = 'Revoked "' + tok.label + '"'; }
+					showToast(toastMsg);
+				}
+				else {
+					showToast('Revoke failed', true);
+				}
+				loadTokens();
+			};
+			xhr.onerror = function () { showToast('Network error', true); loadTokens(); };
+			let payload = JSON.stringify({ Token: tok.token });
+			xhr.send(payload);
+		}
+
+		function showTokenCreateForm() {
+			let form = document.getElementById('token-create-form');
+			form.classList.add('visible');
+			document.getElementById('token-create-error').textContent = '';
+			document.getElementById('token-user').value = '';
+			document.getElementById('token-label').value = '';
+			document.getElementById('token-reveal-row').style.display = 'none';
+			document.getElementById('token-user').focus();
+		}
+
+		function hideTokenCreateForm() {
+			document.getElementById('token-create-form').classList.remove('visible');
+		}
+
+		function submitTokenCreate() {
+			let username = document.getElementById('token-user').value.trim();
+			let label = document.getElementById('token-label').value.trim();
+			let errEl = document.getElementById('token-create-error');
+			errEl.textContent = '';
+			if (!username) {
+				errEl.textContent = 'User is required.';
+				return;
+			}
+
+			let xhr = new XMLHttpRequest();
+			xhr.open('POST', '/pulse_v1/createToken');
+			xhr.setRequestHeader('Content-Type', 'application/json');
+			xhr.onload = function () {
+				let parsed = parseAuthEnvelope(xhr.responseText);
+				if (parsed && parsed.status === 'ok' && parsed.contents && parsed.contents.Token) {
+					hideTokenCreateForm();
+					revealToken(parsed.contents.Token);
+					showToast('Token created');
+					loadTokens();
+					return;
+				}
+				let message = 'Create failed';
+				if (parsed && parsed.status) {
+					message = describeAuthStatus(parsed.status);
+				}
+				errEl.textContent = message;
+			};
+			xhr.onerror = function () { errEl.textContent = 'Network error'; };
+			let payload = JSON.stringify({ Username: username, Label: label });
+			xhr.send(payload);
+		}
+
+		function revealToken(rawToken) {
+			let row = document.getElementById('token-reveal-row');
+			let input = document.getElementById('token-reveal-value');
+			input.value = rawToken;
+			row.style.display = 'block';
+			input.focus();
+			input.select();
+		}
+
+		function copyRevealedToken() {
+			let input = document.getElementById('token-reveal-value');
+			input.focus();
+			input.select();
+			let copied = false;
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				navigator.clipboard.writeText(input.value).then(function () { showToast('Copied to clipboard'); }, function () { showToast('Copy failed', true); });
+				return;
+			}
+			try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+			if (copied) { showToast('Copied to clipboard'); }
+			else { showToast('Copy failed', true); }
+		}
+
+		function hideRevealedToken() {
+			let row = document.getElementById('token-reveal-row');
+			document.getElementById('token-reveal-value').value = '';
+			row.style.display = 'none';
 		}
 
 		function wireUp() {
@@ -691,11 +1345,36 @@
 				if (event.key === 'Enter') { submitCreate(); }
 				else if (event.key === 'Escape') { hideCreateForm(); }
 			});
+
+			document.getElementById('login-submit').addEventListener('click', submitLogin);
+			document.getElementById('logout-btn').addEventListener('click', submitLogout);
+			document.getElementById('login-username').addEventListener('keydown', function (event) {
+				if (event.key === 'Enter') { submitLogin(); }
+			});
+			document.getElementById('login-password').addEventListener('keydown', function (event) {
+				if (event.key === 'Enter') { submitLogin(); }
+			});
+
+			document.getElementById('new-token-btn').addEventListener('click', showTokenCreateForm);
+			document.getElementById('token-create-cancel').addEventListener('click', hideTokenCreateForm);
+			document.getElementById('token-create-submit').addEventListener('click', submitTokenCreate);
+			document.getElementById('token-user').addEventListener('keydown', function (event) {
+				if (event.key === 'Enter') { submitTokenCreate(); }
+				else if (event.key === 'Escape') { hideTokenCreateForm(); }
+			});
+			document.getElementById('token-label').addEventListener('keydown', function (event) {
+				if (event.key === 'Enter') { submitTokenCreate(); }
+				else if (event.key === 'Escape') { hideTokenCreateForm(); }
+			});
+			document.getElementById('token-reveal-copy').addEventListener('click', copyRevealedToken);
+			document.getElementById('token-reveal-close').addEventListener('click', hideRevealedToken);
+
+			setLoginState('', false);
 		}
 
 		function loadVersionTag() {
 			let request = new XMLHttpRequest();
-			request.open('GET', '/pulse/version');
+			request.open('GET', '/pulse_v1/version');
 			request.onload = function () {
 				if (request.status !== 200) { return; }
 				let data = JSON.parse(request.responseText);
@@ -709,6 +1388,7 @@
 		document.addEventListener('DOMContentLoaded', function () {
 			wireUp();
 			loadUsers();
+			loadTokens();
 			loadVersionTag();
 		});
 	</script>

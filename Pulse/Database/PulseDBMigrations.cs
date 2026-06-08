@@ -329,6 +329,35 @@ namespace Pulse.Database
 			";
 			steps.Add(v7);
 
+			// v8: password column on users for the cookie-session auth path
+			// (PLS132 / parent epic PLS129). Default '' means "no password set
+			// yet"; ReadUserPasswordHash treats that as "unauthenticatable" and
+			// the new setPassword route is the only writer.
+			MigrationStep v8 = new MigrationStep();
+			v8.Version = 8;
+			v8.Sql = @"
+				ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT '';
+			";
+			steps.Add(v8);
+
+			// v9: device-token table for the opt-in token auth path (PLS133 /
+			// parent epic PLS129). The raw token is the primary key -- the
+			// validation helper looks it up directly. last_used defaults to ''
+			// and gets stamped on every successful token lookup so the
+			// management UI can show activity.
+			MigrationStep v9 = new MigrationStep();
+			v9.Version = 9;
+			v9.Sql = @"
+				CREATE TABLE tokens (
+					token TEXT PRIMARY KEY,
+					user_name TEXT NOT NULL,
+					label TEXT NOT NULL DEFAULT '',
+					created_at TEXT NOT NULL,
+					last_used TEXT NOT NULL DEFAULT ''
+				);
+			";
+			steps.Add(v9);
+
 			return steps;
 		}
 	}
