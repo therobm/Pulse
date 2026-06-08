@@ -7,7 +7,7 @@ using Pulse.Data;
 using Pulse.MusicLibrary;
 using Pulse.Protocols;
 using Pulse.Spotify;
-using Pulse.Protocols.Subsonic;
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -17,11 +17,11 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Threading;
-using Pulse.Protocols.LegacyPulse;
-using Pulse.Protocols.PulseAPI;
 using Pulse.Database;
 using Pulse.Series;
 using PulseAPI.CSharp;
+using Pulse.DataStorage;
+using Pulse.Podcasts;
 
 namespace Pulse
 {
@@ -77,9 +77,9 @@ namespace Pulse
 
 		static PulseConfig m_config;
 		static MusicManager s_musicManager;
-		private Subsonic m_subsonic;
+
 		private PulseEndpoints m_pulseEndpoints;
-		private Pulse.Protocols.LegacyPulse.LegacyPulseAPI m_legacyPulse;
+
 		private PulseData m_pulseData;
 		private MusicManager m_musicManager;
 		private AnalyticsDB m_analyticsDB;
@@ -103,8 +103,8 @@ namespace Pulse
 			m_config = config;
 
 
-			m_pulseData = new PulseData();
-			m_pulseData.Load(m_config);
+			m_pulseData = new PulseData(m_config);
+			m_pulseData.Load();
 
 			m_musicManager = new MusicManager(config, m_pulseData);
 			s_musicManager = m_musicManager;
@@ -119,8 +119,7 @@ namespace Pulse
 			m_audiobookManager.Run();
 
 			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_analyticsDB, m_podcastManager, m_audiobookManager);
-			m_legacyPulse = new global::Pulse.Protocols.LegacyPulse.LegacyPulseAPI(this, m_musicManager);
-			m_subsonic = new Subsonic(m_legacyPulse);
+			
 			m_authEndpoints = new AuthEndpoints(m_pulseData);
 
 			RegisterRoutes(webServer);
@@ -134,141 +133,9 @@ namespace Pulse
 			m_pulseEndpoints.RegisterRoutes(host);
 			m_authEndpoints.RegisterRoutes(host);
 
-			host.RegisterResultRoute("rest/ping.view", m_subsonic.HandlePing);
-			host.RegisterResultRoute("rest/ping", m_subsonic.HandlePing);
-			host.RegisterResultRoute("rest/getLicense.view", m_subsonic.HandleGetLicense);
-			host.RegisterResultRoute("rest/getLicense", m_subsonic.HandleGetLicense);
-			host.RegisterResultRoute("rest/getUser.view", m_subsonic.HandleGetUser);
-			host.RegisterResultRoute("rest/getUser", m_subsonic.HandleGetUser);
-			host.RegisterResultRoute("rest/getAlbumList2.view", m_subsonic.HandleGetAlbumList2);
-			host.RegisterResultRoute("rest/getAlbumList2", m_subsonic.HandleGetAlbumList2);
-			host.RegisterResultRoute("rest/getGenres.view", m_subsonic.HandleGetGenres);
-			host.RegisterResultRoute("rest/getGenres", m_subsonic.HandleGetGenres);
-			host.RegisterResultRoute("rest/getSongsByGenre.view", m_subsonic.HandleGetSongsByGenre);
-			host.RegisterResultRoute("rest/getSongsByGenre", m_subsonic.HandleGetSongsByGenre);
-			host.RegisterResultRoute("rest/getRandomSongs.view", m_subsonic.HandleGetRandomSongs);
-			host.RegisterResultRoute("rest/getRandomSongs", m_subsonic.HandleGetRandomSongs);
-			host.RegisterResultRoute("rest/download.view", m_subsonic.HandleDownload);
-			host.RegisterResultRoute("rest/download", m_subsonic.HandleDownload);
-			host.RegisterResultRoute("rest/getNowPlaying.view", m_subsonic.HandleGetNowPlaying);
-			host.RegisterResultRoute("rest/getNowPlaying", m_subsonic.HandleGetNowPlaying);
-			host.RegisterResultRoute("rest/getAlbumInfo.view", m_subsonic.HandleGetAlbumInfo);
-			host.RegisterResultRoute("rest/getAlbumInfo", m_subsonic.HandleGetAlbumInfo);
-			host.RegisterResultRoute("rest/getAlbumInfo2.view", m_subsonic.HandleGetAlbumInfo);
-			host.RegisterResultRoute("rest/getAlbumInfo2", m_subsonic.HandleGetAlbumInfo);
-			host.RegisterResultRoute("rest/getSimilarSongs.view", m_subsonic.HandleGetSimilarSongs2);
-			host.RegisterResultRoute("rest/getSimilarSongs", m_subsonic.HandleGetSimilarSongs2);
-			host.RegisterResultRoute("rest/getSimilarSongs2.view", m_subsonic.HandleGetSimilarSongs2);
-			host.RegisterResultRoute("rest/getSimilarSongs2", m_subsonic.HandleGetSimilarSongs2);
-			host.RegisterResultRoute("rest/getLyrics.view", m_subsonic.HandleGetLyrics);
-			host.RegisterResultRoute("rest/getLyrics", m_subsonic.HandleGetLyrics);
-			host.RegisterResultRoute("rest/getLyricsBySongId.view", m_subsonic.HandleGetLyricsBySongId);
-			host.RegisterResultRoute("rest/getLyricsBySongId", m_subsonic.HandleGetLyricsBySongId);
-			host.RegisterResultRoute("rest/getPlayQueue.view", m_subsonic.HandleGetPlayQueue);
-			host.RegisterResultRoute("rest/getPlayQueue", m_subsonic.HandleGetPlayQueue);
-			host.RegisterResultRoute("rest/savePlayQueue.view", m_subsonic.HandleSavePlayQueue);
-			host.RegisterResultRoute("rest/savePlayQueue", m_subsonic.HandleSavePlayQueue);
-			host.RegisterResultRoute("rest/getBookmarks.view", m_subsonic.HandleGetBookmarks);
-			host.RegisterResultRoute("rest/getBookmarks", m_subsonic.HandleGetBookmarks);
-			host.RegisterResultRoute("rest/createBookmark.view", m_subsonic.HandleCreateBookmark);
-			host.RegisterResultRoute("rest/createBookmark", m_subsonic.HandleCreateBookmark);
-			host.RegisterResultRoute("rest/deleteBookmark.view", m_subsonic.HandleDeleteBookmark);
-			host.RegisterResultRoute("rest/deleteBookmark", m_subsonic.HandleDeleteBookmark);
-			host.RegisterResultRoute("rest/getOpenSubsonicExtensions.view", m_subsonic.HandleGetOpenSubsonicExtensions);
-			host.RegisterResultRoute("rest/getOpenSubsonicExtensions", m_subsonic.HandleGetOpenSubsonicExtensions);
-			host.RegisterResultRoute("rest/getPlaylists.view", m_subsonic.HandleGetPlaylists);
-			host.RegisterResultRoute("rest/getPlaylists", m_subsonic.HandleGetPlaylists);
-			host.RegisterResultRoute("rest/getPlaylist.view", m_subsonic.HandleGetPlaylist);
-			host.RegisterResultRoute("rest/getPlaylist", m_subsonic.HandleGetPlaylist);
-			host.RegisterResultRoute("rest/getMusicFolders.view", m_subsonic.HandleGetMusicFolders);
-			host.RegisterResultRoute("rest/getMusicFolders", m_subsonic.HandleGetMusicFolders);
-			host.RegisterResultRoute("rest/getArtists.view", m_subsonic.HandleGetArtists);
-			host.RegisterResultRoute("rest/getArtists", m_subsonic.HandleGetArtists);
-			host.RegisterResultRoute("rest/getArtist.view", m_subsonic.HandleGetArtist);
-			host.RegisterResultRoute("rest/getArtist", m_subsonic.HandleGetArtist);
-			host.RegisterResultRoute("rest/getAlbum.view", m_subsonic.HandleGetAlbum);
-			host.RegisterResultRoute("rest/getAlbum", m_subsonic.HandleGetAlbum);
-			host.RegisterResultRoute("rest/stream.view", m_subsonic.HandleStream);
-			host.RegisterResultRoute("rest/stream", m_subsonic.HandleStream);
-			host.RegisterResultRoute("rest/getSong.view", m_subsonic.HandleGetSong);
-			host.RegisterResultRoute("rest/getSong", m_subsonic.HandleGetSong);
-			host.RegisterResultRoute("rest/getCoverArt.view", m_subsonic.HandleGetCoverArt);
-			host.RegisterResultRoute("rest/getCoverArt", m_subsonic.HandleGetCoverArt);
-			host.RegisterResultRoute("rest/scrobble.view", m_subsonic.HandleScrobble);
-			host.RegisterResultRoute("rest/scrobble", m_subsonic.HandleScrobble);
-			host.RegisterResultRoute("rest/getStarred.view", m_subsonic.HandleGetStarred);
-			host.RegisterResultRoute("rest/getStarred", m_subsonic.HandleGetStarred);
-			host.RegisterResultRoute("rest/getStarred2", m_subsonic.HandleGetStarred2);
-			host.RegisterResultRoute("rest/getStarred2.view", m_subsonic.HandleGetStarred2);
-			host.RegisterResultRoute("rest/getTopSongs.view", m_subsonic.HandleGetTopSongs);
-			host.RegisterResultRoute("rest/getTopSongs", m_subsonic.HandleGetTopSongs);
-			host.RegisterResultRoute("rest/getArtistInfo.view", m_subsonic.HandleGetArtistInfo);
-			host.RegisterResultRoute("rest/getArtistInfo", m_subsonic.HandleGetArtistInfo);
-			host.RegisterResultRoute("rest/getArtistInfo2.view", m_subsonic.HandleGetArtistInfo);
-			host.RegisterResultRoute("rest/getArtistInfo2", m_subsonic.HandleGetArtistInfo);
-			host.RegisterResultRoute("rest/search3.view", m_subsonic.HandleSearch3);
-			host.RegisterResultRoute("rest/search3", m_subsonic.HandleSearch3);
-			host.RegisterResultRoute("rest/getIndexes", m_subsonic.HandleGetIndexes);
-			host.RegisterResultRoute("rest/getIndexes.view", m_subsonic.HandleGetIndexes);
-			host.RegisterResultRoute("rest/getInternetRadioStations", m_subsonic.HandleGetInternetRadioStations);
-			host.RegisterResultRoute("rest/getInternetRadioStations.view", m_subsonic.HandleGetInternetRadioStations);
-			host.RegisterResultRoute("rest/getMusicDirectory", m_subsonic.HandleGetMusicDirectory);
-			host.RegisterResultRoute("rest/getMusicDirectory.view", m_subsonic.HandleGetMusicDirectory);
-			host.RegisterResultRoute("rest/setRating", m_subsonic.HandleSetRating);
-			host.RegisterResultRoute("rest/setRating.view", m_subsonic.HandleSetRating);
-			host.RegisterResultRoute("rest/star", m_subsonic.HandleStar);
-			host.RegisterResultRoute("rest/star.view", m_subsonic.HandleStar);
-			host.RegisterResultRoute("rest/unstar", m_subsonic.HandleUnstar);
-			host.RegisterResultRoute("rest/unstar.view", m_subsonic.HandleUnstar);
-			host.RegisterResultRoute("play", HandlePlay);
-			host.RegisterResultRoute("rest/createPlaylist.view", m_subsonic.HandleCreatePlaylist);
-			host.RegisterResultRoute("rest/createPlaylist", m_subsonic.HandleCreatePlaylist);
-			host.RegisterResultRoute("rest/updatePlaylist.view", m_subsonic.HandleUpdatePlaylist);
-			host.RegisterResultRoute("rest/updatePlaylist", m_subsonic.HandleUpdatePlaylist);
-			host.RegisterResultRoute("rest/deletePlaylist.view", m_subsonic.HandleDeletePlaylist);
-			host.RegisterResultRoute("rest/deletePlaylist", m_subsonic.HandleDeletePlaylist);
-
-			//Pulse API
-			host.RegisterResultRoute("pulse/recentlyPlayed", m_legacyPulse.HandleRecentlyPlayed);
-			host.RegisterResultRoute("pulse/popularArtists", m_legacyPulse.HandlePopularArtists);
-			host.RegisterResultRoute("pulse/topPlaylists", m_legacyPulse.GetTopPlaylists);
-			host.RegisterResultRoute("pulse/recentPlaylists", m_legacyPulse.GetRecentPlaylists);
-			host.RegisterResultRoute("pulse/artistTracks", m_legacyPulse.HandleArtistTracks);
-			host.RegisterResultRoute("pulse/markPlaylistPlayed", m_legacyPulse.HandleMarkPlaylistPlayed);
-
-			host.RegisterResultRoute("pulse/ping", m_legacyPulse.Ping);
-			host.RegisterResultRoute("pulse/me", m_legacyPulse.GetUser);
-			host.RegisterResultRoute("pulse/stream", m_legacyPulse.GetStream);
-			host.RegisterResultRoute("pulse/download", m_legacyPulse.GetDownload);
-			host.RegisterResultRoute("pulse/coverArt", m_legacyPulse.GetCoverArt);
-			host.RegisterResultRoute("pulse/search", m_legacyPulse.Search);
-			host.RegisterResultRoute("pulse/track", m_legacyPulse.GetTrack);
-			host.RegisterResultRoute("pulse/topTracks", m_legacyPulse.GetTopTracks);
-			host.RegisterResultRoute("pulse/artists", m_legacyPulse.GetArtists);
-			host.RegisterResultRoute("pulse/artist", m_legacyPulse.GetArtist);
-			host.RegisterResultRoute("pulse/albums", m_legacyPulse.GetAlbums);
-			host.RegisterResultRoute("pulse/album", m_legacyPulse.GetAlbum);
-			host.RegisterResultRoute("pulse/genres", m_legacyPulse.GetGenres);
-			host.RegisterResultRoute("pulse/genreTracks", m_legacyPulse.GetGenreTracks);
-			host.RegisterResultRoute("pulse/favorites", m_legacyPulse.GetFavorites);
-			host.RegisterResultRoute("pulse/favorite", m_legacyPulse.Favorite);
-			host.RegisterResultRoute("pulse/unfavorite", m_legacyPulse.Unfavorite);
-			host.RegisterResultRoute("pulse/reportTrackAnalytics", m_legacyPulse.ReportTrackAnalytics);
-			host.RegisterResultRoute("pulse/playlists", m_legacyPulse.GetPlaylists);
-			host.RegisterResultRoute("pulse/playlist", m_legacyPulse.GetPlaylist);
-			host.RegisterResultRoute("pulse/createPlaylist", m_legacyPulse.CreatePlaylist);
-			host.RegisterResultRoute("pulse/updatePlaylist", m_legacyPulse.UpdatePlaylist);
-			host.RegisterResultRoute("pulse/deletePlaylist", m_legacyPulse.DeletePlaylist);
-			
 			host.RegisterResultRoute("pulse/stats", HandleStats);
 
 			host.RegisterResultRoute("pulse/version", HandleVersion);
-
-			host.RegisterResultRoute("pulse/listUsers", m_legacyPulse.HandleListUsers);
-			host.RegisterResultRoute("pulse/createUser", m_legacyPulse.HandleCreateUser);
-			host.RegisterResultRoute("pulse/updateUser", m_legacyPulse.HandleUpdateUser);
-			host.RegisterResultRoute("pulse/deleteUser", m_legacyPulse.HandleDeleteUser);
-
 
 			//web pages
 			host.RegisterRoute("web/stats.html", HandleStatsPage);
@@ -395,10 +262,10 @@ namespace Pulse
 		{
 			string userName = QueryParameters.GetString(context, "u");
 
-			List<TrackInfo> allTracks = m_musicManager.GetAllTracks();
-			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
-			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
-			List<PlaylistInfo> allPlaylists = m_musicManager.GetAllPlaylists(userName);
+			List<TrackData> allTracks = m_musicManager.GetAllTracks();
+			List<AlbumData> allAlbums = m_musicManager.GetAllAlbums();
+			List<ArtistData> allArtists = m_musicManager.GetAllArtists();
+			List<PlaylistData> allPlaylists = m_musicManager.GetAllPlaylists(userName);
 
 			PulseStats stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userName);
 			string json = System.Text.Json.JsonSerializer.Serialize(stats);

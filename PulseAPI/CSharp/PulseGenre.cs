@@ -10,7 +10,7 @@ namespace PulseAPI.CSharp
 
 		public PulseGenre()
 		{
-			Kind = eDataType.Genre;
+			Kind = ePulseWireType.Genre;
 		}
 	}
 
@@ -22,7 +22,7 @@ namespace PulseAPI.CSharp
 		public PulseGenreDetails()
 		{
 			Tracks = new List<PulseTrack>();
-			Kind = eDataType.GenreDetails;
+			Kind = ePulseWireType.GenreDetails;
 		}
 	}
 }

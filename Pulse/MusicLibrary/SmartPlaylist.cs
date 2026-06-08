@@ -1,4 +1,4 @@
-﻿
+﻿using Pulse.DataStorage;
 using System;
 using System.Collections.Generic;
 
@@ -6,11 +6,11 @@ namespace Pulse.MusicLibrary
 {
 	public class SmartPlaylist
 	{
-		private static List<TrackInfo> WeightedSample(List<TrackInfo> candidates, int count, string userName, Dictionary<string, float> artistScores, Random rng)
+		private static List<TrackData> WeightedSample(List<TrackData> candidates, int count, string userName, Dictionary<string, float> artistScores, Random rng)
 		{
 			if (candidates.Count <= count)
 			{
-				return new List<TrackInfo>(candidates);
+				return new List<TrackData>(candidates);
 			}
 
 			// Build parallel weight array
@@ -35,7 +35,7 @@ namespace Pulse.MusicLibrary
 				candidateIndices.Add(i);
 			}
 
-			List<TrackInfo> result = new List<TrackInfo>();
+			List<TrackData> result = new List<TrackData>();
 			float totalWeight = 0f;
 			for (int index = 0; index < weights.Length; index++)
 			{
@@ -63,7 +63,7 @@ namespace Pulse.MusicLibrary
 			return result;
 		}
 
-		public static PlaylistInfo BuildSmartPlaylist(string playlistId, string playlistName, List<TrackInfo> scoredTracks, List<ArtistInfo> scoredArtists, List<TrackInfo> unplayedTracks, string userName, Random rng)
+		public static PlaylistData BuildSmartPlaylist(string playlistId, string playlistName, List<TrackData> scoredTracks, List<ArtistData> scoredArtists, List<TrackData> unplayedTracks, string userName, Random rng)
 		{			
 			int maxTracks = 200;
 			int scoredSlots = Math.Min((int)(maxTracks * 0.8f), scoredTracks.Count);
@@ -83,9 +83,9 @@ namespace Pulse.MusicLibrary
 			}
 
 			//Shuffle our scored tracks
-			List<TrackInfo> selectedScored = WeightedSample(scoredTracks, scoredSlots, userName, artistScores, rng);
+			List<TrackData> selectedScored = WeightedSample(scoredTracks, scoredSlots, userName, artistScores, rng);
 
-			PlaylistInfo playlist = new PlaylistInfo();
+			PlaylistData playlist = new PlaylistData();
 			playlist.Id = playlistId;
 			playlist.Name = playlistName;
 			playlist.Comment = "Auto-generated from listening history";
@@ -98,7 +98,7 @@ namespace Pulse.MusicLibrary
 			}
 		
 			int openSlots = Math.Min(maxTracks - playlist.TrackIds.Count, unplayedTracks.Count);
-			List<TrackInfo> selectedUnplayed = WeightedSample(unplayedTracks, openSlots, userName, artistScores, rng);
+			List<TrackData> selectedUnplayed = WeightedSample(unplayedTracks, openSlots, userName, artistScores, rng);
 			for (int i = 0; i < selectedUnplayed.Count; i++)
 			{
 				playlist.TrackIds.Add(selectedUnplayed[i].Id);
@@ -122,9 +122,9 @@ namespace Pulse.MusicLibrary
 			}
 		}
 
-		public static void CategorizeTracks(ICollection<TrackInfo> allTracks, string userName, List<TrackInfo> scoredTracks, List<TrackInfo> unplayedTracks)
+		public static void CategorizeTracks(ICollection<TrackData> allTracks, string userName, List<TrackData> scoredTracks, List<TrackData> unplayedTracks)
 		{
-			foreach (TrackInfo track in allTracks)
+			foreach (TrackData track in allTracks)
 			{
 				if (track.IsStarredBy(userName))
 				{

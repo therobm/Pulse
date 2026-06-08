@@ -15,7 +15,7 @@ namespace PulseAPI.CSharp
 
 		public PulsePlaylist()
 		{
-			Kind = eDataType.Playlist;
+			Kind = ePulseWireType.Playlist;
 		}
 	}
 
@@ -27,7 +27,7 @@ namespace PulseAPI.CSharp
 		public PulsePlaylistDetails()
 		{
 			Tracks = new List<PulseTrack>();
-			Kind = eDataType.PlaylistTracks;
+			Kind = ePulseWireType.PlaylistTracks;
 		}
 	}
 }

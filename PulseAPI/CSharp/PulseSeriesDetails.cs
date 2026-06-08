@@ -13,7 +13,7 @@ namespace PulseAPI.CSharp
 		public PulseAudiobookDetails()
 		{
 			Chapters = new List<PulseChapter>();
-			Kind = eDataType.AudiobookDetails;
+			Kind = ePulseWireType.AudiobookDetails;
 		}
 	}
 
@@ -26,7 +26,7 @@ namespace PulseAPI.CSharp
 		public PulsePodcastDetails()
 		{
 			Episodes = new List<PulsePodcastEpisode>();
-			Kind = eDataType.PodcastDetails;
+			Kind = ePulseWireType.PodcastDetails;
 		}
 	}
 }

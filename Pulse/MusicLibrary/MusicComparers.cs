@@ -1,3 +1,4 @@
+using Pulse.DataStorage;
 using System;
 using System.Collections.Generic;
 
@@ -5,7 +6,7 @@ namespace Pulse.MusicLibrary
 {
 	public static class MusicComparers
 	{
-		public static int CompareTrackByTopRank(TrackInfo left, TrackInfo right)
+		public static int CompareTrackByTopRank(TrackData left, TrackData right)
 		{
 			int byScore = right.Score.WeightedScore.CompareTo(left.Score.WeightedScore);
 			if (byScore != 0)
@@ -15,7 +16,7 @@ namespace Pulse.MusicLibrary
 			return right.Score.PlayCount.CompareTo(left.Score.PlayCount);
 		}
 
-		public static int CompareAlbumByName(AlbumInfo left, AlbumInfo right)
+		public static int CompareAlbumByName(AlbumData left, AlbumData right)
 		{
 			string leftName = left.Name;
 			if (leftName == null)
@@ -30,7 +31,7 @@ namespace Pulse.MusicLibrary
 			return string.Compare(leftName, rightName, StringComparison.OrdinalIgnoreCase);
 		}
 
-		public static int CompareAlbumByArtistThenName(AlbumInfo left, AlbumInfo right)
+		public static int CompareAlbumByArtistThenName(AlbumData left, AlbumData right)
 		{
 			string leftArtist = left.ArtistName;
 			if (leftArtist == null)
@@ -50,27 +51,27 @@ namespace Pulse.MusicLibrary
 			return CompareAlbumByName(left, right);
 		}
 
-		public static int CompareAlbumYearAscending(AlbumInfo left, AlbumInfo right)
+		public static int CompareAlbumYearAscending(AlbumData left, AlbumData right)
 		{
 			return left.Year.CompareTo(right.Year);
 		}
 
-		public static int CompareAlbumYearDescending(AlbumInfo left, AlbumInfo right)
+		public static int CompareAlbumYearDescending(AlbumData left, AlbumData right)
 		{
 			return right.Year.CompareTo(left.Year);
 		}
 
-		public static int CompareAlbumPlayCountDescending(KeyValuePair<AlbumInfo, int> left, KeyValuePair<AlbumInfo, int> right)
+		public static int CompareAlbumPlayCountDescending(KeyValuePair<AlbumData, int> left, KeyValuePair<AlbumData, int> right)
 		{
 			return right.Value.CompareTo(left.Value);
 		}
 
-		public static int CompareAlbumDateDescending(KeyValuePair<AlbumInfo, DateTime> left, KeyValuePair<AlbumInfo, DateTime> right)
+		public static int CompareAlbumDateDescending(KeyValuePair<AlbumData, DateTime> left, KeyValuePair<AlbumData, DateTime> right)
 		{
 			return right.Value.CompareTo(left.Value);
 		}
 
-		public static int CompareAlbumFloatDescending(KeyValuePair<AlbumInfo, float> left, KeyValuePair<AlbumInfo, float> right)
+		public static int CompareAlbumFloatDescending(KeyValuePair<AlbumData, float> left, KeyValuePair<AlbumData, float> right)
 		{
 			return right.Value.CompareTo(left.Value);
 		}

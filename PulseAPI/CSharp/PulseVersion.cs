@@ -7,7 +7,7 @@ namespace PulseAPI.CSharp
 		public PulseVersion(string version)
 		{
 			Version = version;
-			Kind = eDataType.Version;
+			Kind = ePulseWireType.Version;
 		}
 	}
 }

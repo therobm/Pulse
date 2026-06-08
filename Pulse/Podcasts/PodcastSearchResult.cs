@@ -1,4 +1,4 @@
-namespace Pulse.Series
+namespace Pulse.Podcasts
 {
 	/// <summary>
 	/// One hit from the podcast discovery service (see PulseConfig.PodcastSearchUrl).
