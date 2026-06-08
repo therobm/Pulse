@@ -109,7 +109,6 @@ namespace Pulse.Lidarr
 					continue;
 				}
 
-				// --- MBID check goes here ---
 				JsonElement mbidElement;
 				if (lookupResult.TryGetProperty("foreignArtistId", out mbidElement))
 				{

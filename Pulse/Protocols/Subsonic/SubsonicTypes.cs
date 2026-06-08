@@ -2,7 +2,6 @@
 using Pulse.MusicLibrary;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json.Serialization;
 
 namespace Pulse.Protocols.Subsonic
@@ -267,10 +266,6 @@ namespace Pulse.Protocols.Subsonic
 		public string coverArt { get; set; }
 		public List<SongID3> entry { get; set; }
 
-		// --- OpenSubsonic spec fields (Flatline #159), all additive ---
-		// Pulse doesn't track ownership today (single-user system) so owner
-		// defaults to empty and isPublic to true. created / changed need
-		// schema support; left empty for now (separate follow-up).
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string owner { get; set; }
 		// Wire name is "public" (C# reserved keyword); rename the field
@@ -414,7 +409,6 @@ namespace Pulse.Protocols.Subsonic
 		// Spec-defined coverArt. See PlaylistWithSongs.coverArt.
 		public string coverArt { get; set; }
 
-		// --- OpenSubsonic spec fields (Flatline #159), mirror PlaylistWithSongs. ---
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string owner { get; set; }
 		[JsonPropertyName("public")]
@@ -463,7 +457,6 @@ namespace Pulse.Protocols.Subsonic
 		public int albumCount { get; set; }
 		public string coverArt { get; set; }
 
-		// --- OpenSubsonic spec fields (Flatline #159), all additive ---
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string starred { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -513,7 +506,6 @@ namespace Pulse.Protocols.Subsonic
 		public string genre { get; set; }
 		public List<SongID3> song { get; set; } = new List<SongID3>();
 
-		// --- OpenSubsonic spec fields (Flatline #159), mirror AlbumID3. ---
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
 		public int playCount { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -606,8 +598,6 @@ namespace Pulse.Protocols.Subsonic
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string starred { get; set; }  // ISO datetime string or null
 
-		// --- OpenSubsonic spec fields (Flatline #159), all additive ---
-		// Constants that strict clients expect to always be present:
 		public string parent { get; set; }
 		public bool isDir { get; set; } = false;
 		public bool isVideo { get; set; } = false;
@@ -668,7 +658,6 @@ namespace Pulse.Protocols.Subsonic
 			starred = null;
 			playCount = trackInfo.Score.PlayCount;
 
-			// --- New populations for OpenSubsonic (#159) ---
 			parent = trackInfo.AlbumId;
 			displayArtist = trackInfo.Artist;
 			// Rough average bitrate from file size + duration. Spec is kbps.
@@ -692,7 +681,6 @@ namespace Pulse.Protocols.Subsonic
 		public string coverArt { get; set; }
 		public List<AlbumID3> album { get; set; } = new List<AlbumID3>();
 
-		// --- OpenSubsonic spec fields (Flatline #159), mirror ArtistID3. ---
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
 		public string starred { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -742,7 +730,6 @@ namespace Pulse.Protocols.Subsonic
 		public int year { get; set; }
 		public string genre { get; set; }
 
-		// --- OpenSubsonic spec fields (Flatline #159), all additive ---
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
 		public int playCount { get; set; }
 		[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -839,10 +826,6 @@ namespace Pulse.Protocols.Subsonic
 		public bool playlistRole { get; set; }
 		public bool streamRole { get; set; }
 
-		// --- Spec fields (Flatline #160). Clients gate UI features on
-		// these; missing = treated as false by lenient parsers, rejected
-		// by strict ones. Pulse is single-user-ish for now so defaults are
-		// generous except for features we don't actually implement.
 		public string email { get; set; } = "";
 		public int maxBitRate { get; set; } = 0;          // 0 = no limit
 		public bool uploadRole { get; set; } = false;     // no upload UI

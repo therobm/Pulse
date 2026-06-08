@@ -6,7 +6,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace Pulse.Protocols.LegacyPulse
 {
@@ -39,8 +38,8 @@ namespace Pulse.Protocols.LegacyPulse
 		public IResult HandleRecentlyPlayed(HttpContext context)
 		{
 			int count = QueryParameters.GetInt(context, "count", 10);
-			string user = context.Request.Query["u"].FirstOrDefault();
-			string typesParam = context.Request.Query["types"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
+			string typesParam = QueryParameters.GetString(context, "types");
 
 			bool includeTracks;
 			bool includeArtists;
@@ -266,7 +265,7 @@ namespace Pulse.Protocols.LegacyPulse
 		// listens to rather than aggregate activity.
 		public IResult HandleMarkPlaylistPlayed(HttpContext context)
 		{
-			string playlistId = context.Request.Query["id"].FirstOrDefault();
+			string playlistId = QueryParameters.GetString(context, "id");
 			if (string.IsNullOrEmpty(playlistId))
 			{
 				return Results.Json(new { ok = false });
@@ -276,7 +275,7 @@ namespace Pulse.Protocols.LegacyPulse
 			{
 				return Results.Json(new { ok = false });
 			}
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 			DateTime now = DateTime.UtcNow;
 			playlist.LastPlayed = now;
 			if (!string.IsNullOrEmpty(user))
@@ -319,9 +318,9 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult HandleCreateUser(HttpContext context)
 		{
-			string name = context.Request.Query["name"].FirstOrDefault();
-			string displayName = context.Request.Query["displayName"].FirstOrDefault() ?? "";
-			bool isAdmin = string.Equals(context.Request.Query["isAdmin"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase);
+			string name = QueryParameters.GetString(context, "name");
+			string displayName = QueryParameters.GetString(context, "displayName") ?? "";
+			bool isAdmin = QueryParameters.GetBool(context, "isAdmin");
 
 			string error = m_musicManager.CreateUser(name, displayName, isAdmin);
 			if (!string.IsNullOrEmpty(error))
@@ -334,10 +333,10 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult HandleUpdateUser(HttpContext context)
 		{
-			string oldName = context.Request.Query["name"].FirstOrDefault();
-			string newName = context.Request.Query["newName"].FirstOrDefault();
-			string displayName = context.Request.Query["displayName"].FirstOrDefault() ?? "";
-			bool isAdmin = string.Equals(context.Request.Query["isAdmin"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase);
+			string oldName = QueryParameters.GetString(context, "name");
+			string newName = QueryParameters.GetString(context, "newName");
+			string displayName = QueryParameters.GetString(context, "displayName") ?? "";
+			bool isAdmin = QueryParameters.GetBool(context, "isAdmin");
 
 			if (string.IsNullOrEmpty(newName))
 			{
@@ -358,7 +357,7 @@ namespace Pulse.Protocols.LegacyPulse
 		// up duplicate-cased names that crept in (e.g. "shannon" vs "Shannon").
 		public IResult HandleDeleteUser(HttpContext context)
 		{
-			string userName = context.Request.Query["user"].FirstOrDefault();
+			string userName = QueryParameters.GetString(context, "user");
 			if (string.IsNullOrEmpty(userName))
 			{
 				return Results.Json(new { ok = false, error = "Missing user" });
@@ -373,7 +372,7 @@ namespace Pulse.Protocols.LegacyPulse
 		// firing one getAlbum call per album.
 		public IResult HandleArtistTracks(HttpContext context)
 		{
-			string artistId = context.Request.Query["id"].FirstOrDefault();
+			string artistId = QueryParameters.GetString(context, "id");
 			if (string.IsNullOrEmpty(artistId))
 			{
 				return Results.Json(new { tracks = new List<object>() });
@@ -424,7 +423,7 @@ namespace Pulse.Protocols.LegacyPulse
 		public IResult HandlePopularArtists(HttpContext context)
 		{
 			int count = QueryParameters.GetInt(context, "count", 10);
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 
 			List<ArtistInfo> allArtists = m_musicManager.GetAllArtists();
 
@@ -460,8 +459,8 @@ namespace Pulse.Protocols.LegacyPulse
 		public IResult GetTopPlaylists(HttpContext context)
 		{
 			int count = QueryParameters.GetInt(context, "count", 10);
-			string user = context.Request.Query["u"].FirstOrDefault();
-			string api = context.Request.Query["api"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
+			string api = QueryParameters.GetString(context, "api");
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
 
@@ -509,8 +508,8 @@ namespace Pulse.Protocols.LegacyPulse
 		public IResult GetRecentPlaylists(HttpContext context)
 		{
 			int count = QueryParameters.GetInt(context, "count", 10);
-			string user = context.Request.Query["u"].FirstOrDefault();
-			string api = context.Request.Query["api"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
+			string api = QueryParameters.GetString(context, "api");
 
 			List<PlaylistInfo> all = m_musicManager.GetAllPlaylists(user);
 

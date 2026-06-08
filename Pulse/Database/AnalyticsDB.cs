@@ -42,7 +42,7 @@ namespace Pulse.Database
 	/// <summary>
 	/// Intake + drain ("firehose") for the analytics pipeline. The route handler
 	/// calls Enqueue from the request thread; a single background drain thread
-	/// pulls batches off the queue, opens one transaction per batch, upserts the
+	/// pulls batches off the queue, opens one transaction per batch, Updates the
 	/// session row, and inserts every event in the batch. The drain thread also
 	/// runs a 30-day retention prune at startup and on a 6-hour cadence after
 	/// that. The request thread never touches the database.
@@ -250,7 +250,7 @@ namespace Pulse.Database
 				SqliteTransaction transaction = connection.BeginTransaction();
 				try
 				{
-					UpsertSession(connection, transaction, batch, item.ReceivedAt);
+					UpdateSession(connection, transaction, batch, item.ReceivedAt);
 
 					if (batch.Events != null)
 					{
@@ -280,7 +280,7 @@ namespace Pulse.Database
 			}
 		}
 
-		private void UpsertSession(SqliteConnection connection, SqliteTransaction transaction, PulseAnalyticsBatch batch, string receivedAt)
+		private void UpdateSession(SqliteConnection connection, SqliteTransaction transaction, PulseAnalyticsBatch batch, string receivedAt)
 		{
 			SqliteCommand command = connection.CreateCommand();
 			command.Transaction = transaction;

@@ -8,7 +8,7 @@ namespace Pulse.Database
 	/// <summary>
 	/// SQLite-backed persistence for the podcast / audiobook "series" data
 	/// layer. Stateless: holds no dictionaries and never caches a row. Load
-	/// methods return collections (or null for single-row misses); Upsert
+	/// methods return collections (or null for single-row misses); Update
 	/// methods write a single row. Connection lifetime is per-call --
 	/// OpenConnection / try / finally / Close on every method, matching the
 	/// PulseDB shape.
@@ -22,9 +22,9 @@ namespace Pulse.Database
 			m_connector = connector;
 		}
 
-		public List<SeriesInfo> LoadAllSeries()
+		public List<SeriesTypes> LoadAllSeries()
 		{
-			List<SeriesInfo> result = new List<SeriesInfo>();
+			List<SeriesTypes> result = new List<SeriesTypes>();
 			SqliteConnection connection = m_connector.OpenConnection();
 			try
 			{
@@ -35,7 +35,7 @@ namespace Pulse.Database
 				{
 					while (reader.Read())
 					{
-						SeriesInfo series = ReadSeriesRow(reader);
+						SeriesTypes series = ReadSeriesRow(reader);
 						result.Add(series);
 					}
 				}
@@ -51,9 +51,9 @@ namespace Pulse.Database
 			return result;
 		}
 
-		public List<SeriesInfo> LoadAllSeriesByType(eSeriesType type)
+		public List<SeriesTypes> LoadAllSeriesByType(eSeriesType type)
 		{
-			List<SeriesInfo> result = new List<SeriesInfo>();
+			List<SeriesTypes> result = new List<SeriesTypes>();
 			SqliteConnection connection = m_connector.OpenConnection();
 			try
 			{
@@ -66,7 +66,7 @@ namespace Pulse.Database
 				{
 					while (reader.Read())
 					{
-						SeriesInfo series = ReadSeriesRow(reader);
+						SeriesTypes series = ReadSeriesRow(reader);
 						result.Add(series);
 					}
 				}
@@ -89,19 +89,19 @@ namespace Pulse.Database
 		/// loop reads feed_url / last_polled / poll_interval_minutes /
 		/// retention / auto_download directly from the SeriesInfo.
 		/// </summary>
-		public List<SeriesInfo> LoadAllPodcastSeries()
+		public List<SeriesTypes> LoadAllPodcastSeries()
 		{
 			return LoadAllSeriesByType(eSeriesType.Podcast);
 		}
 
-		public SeriesInfo LoadSeries(string id)
+		public SeriesTypes LoadSeries(string id)
 		{
 			if (string.IsNullOrEmpty(id))
 			{
 				return null;
 			}
 
-			SeriesInfo found = null;
+			SeriesTypes found = null;
 			SqliteConnection connection = m_connector.OpenConnection();
 			try
 			{
@@ -133,10 +133,10 @@ namespace Pulse.Database
 		/// Full-row INSERT/UPDATE of a series including the folded feed
 		/// columns. Used by callers that already hold the complete state
 		/// (tests, manual fixups). The feed-respecting ingest path uses
-		/// UpsertSeriesMetadata instead so it cannot clobber the user's
+		/// UpdateSeriesMetadata instead so it cannot clobber the user's
 		/// feed settings on a re-poll.
 		/// </summary>
-		public void UpsertSeries(SeriesInfo series)
+		public void UpdateSeries(SeriesTypes series)
 		{
 			if (series == null)
 			{
@@ -194,7 +194,7 @@ namespace Pulse.Database
 		}
 
 		/// <summary>
-		/// Ingest-safe upsert: INSERTs a new series row with default feed
+		/// Ingest-safe Update: INSERTs a new series row with default feed
 		/// columns and date_added taken from the supplied SeriesInfo, but on
 		/// CONFLICT(id) ONLY updates the metadata columns (title, author,
 		/// description, artwork_path, narrator, collection, collection_index)
@@ -203,7 +203,7 @@ namespace Pulse.Database
 		/// feed settings (PollIntervalMinutes, Retention, RetentionValue,
 		/// AutoDownload) or reset LastPolled.
 		/// </summary>
-		public void UpsertSeriesMetadata(SeriesInfo series)
+		public void UpdateSeriesMetadata(SeriesTypes series)
 		{
 			if (series == null)
 			{
@@ -247,7 +247,7 @@ namespace Pulse.Database
 		/// Sets the six feed columns on an existing series row in one
 		/// UPDATE. Called by AddPodcast the first time a feed is configured
 		/// -- subsequent re-polls leave these alone (see
-		/// UpsertSeriesMetadata) so user-set values survive.
+		/// UpdateSeriesMetadata) so user-set values survive.
 		/// </summary>
 		public void SetSeriesFeed(string seriesId, string feedUrl, int pollIntervalMinutes, eRetentionPolicy retention, int retentionValue, bool autoDownload, string lastPolledIso)
 		{
@@ -324,7 +324,7 @@ namespace Pulse.Database
 		/// Targeted UPDATE that touches only the last_polled column for one
 		/// series. Used by the poll-refresh path so re-ingesting a feed does
 		/// not clobber user-set fields (PollIntervalMinutes, Retention,
-		/// RetentionValue, AutoDownload) the way a full UpsertSeries would.
+		/// RetentionValue, AutoDownload) the way a full UpdateSeries would.
 		/// Replaces the old SetFeedLastPolled now that the feed lives on the
 		/// series row.
 		/// </summary>
@@ -478,7 +478,7 @@ namespace Pulse.Database
 			return found;
 		}
 
-		public void UpsertItem(SeriesItemInfo item)
+		public void Update(SeriesItemInfo item)
 		{
 			if (item == null)
 			{
@@ -549,13 +549,13 @@ namespace Pulse.Database
 		}
 
 		/// <summary>
-		/// Batched upsert for a list of items: a single open connection and a
+		/// Batched Update for a list of items: a single open connection and a
 		/// single transaction wrap all rows. The per-row INSERT...ON CONFLICT
-		/// shape matches UpsertItem so callers see identical semantics; the
+		/// shape matches UpdateItem so callers see identical semantics; the
 		/// difference is purely cost. RSS ingest can present 2 800+ items on
 		/// a first poll -- opening that many connections is the wrong shape.
 		/// </summary>
-		public void UpsertItems(List<SeriesItemInfo> items)
+		public void UpdateItems(List<SeriesItemInfo> items)
 		{
 			if (items == null)
 			{
@@ -705,7 +705,7 @@ namespace Pulse.Database
 			return found;
 		}
 
-		public void UpsertProgress(SeriesItemUserDataInfo progress)
+		public void UpdateProgress(SeriesItemUserDataInfo progress)
 		{
 			if (progress == null)
 			{
@@ -880,9 +880,9 @@ namespace Pulse.Database
 			return count;
 		}
 
-		public List<SeriesInfo> LoadSubscribedSeries(string userName, eSeriesType type)
+		public List<SeriesTypes> LoadSubscribedSeries(string userName, eSeriesType type)
 		{
-			List<SeriesInfo> result = new List<SeriesInfo>();
+			List<SeriesTypes> result = new List<SeriesTypes>();
 			if (string.IsNullOrEmpty(userName))
 			{
 				return result;
@@ -906,7 +906,7 @@ namespace Pulse.Database
 				{
 					while (reader.Read())
 					{
-						SeriesInfo series = ReadSeriesRow(reader);
+						SeriesTypes series = ReadSeriesRow(reader);
 						result.Add(series);
 					}
 				}
@@ -1032,15 +1032,15 @@ namespace Pulse.Database
 					for (int itemIndex = 0; itemIndex < itemCount; itemIndex++)
 					{
 						string itemId = itemIds[itemIndex];
-						SqliteCommand upsertCommand = connection.CreateCommand();
-						upsertCommand.Transaction = transaction;
-						upsertCommand.CommandText = @"INSERT INTO series_items_user_data (item_id, user_name, position_seconds, completed, last_played)
+						SqliteCommand UpdateCommand = connection.CreateCommand();
+						UpdateCommand.Transaction = transaction;
+						UpdateCommand.CommandText = @"INSERT INTO series_items_user_data (item_id, user_name, position_seconds, completed, last_played)
 							VALUES ($item_id, $user_name, 0, 1, '')
 							ON CONFLICT(item_id, user_name) DO UPDATE SET
 								completed = 1;";
-						upsertCommand.Parameters.AddWithValue("$item_id", itemId);
-						upsertCommand.Parameters.AddWithValue("$user_name", userName);
-						upsertCommand.ExecuteNonQuery();
+						UpdateCommand.Parameters.AddWithValue("$item_id", itemId);
+						UpdateCommand.Parameters.AddWithValue("$user_name", userName);
+						UpdateCommand.ExecuteNonQuery();
 					}
 					transaction.Commit();
 				}
@@ -1101,9 +1101,9 @@ namespace Pulse.Database
 			}
 		}
 
-		private SeriesInfo ReadSeriesRow(SqliteDataReader reader)
+		private SeriesTypes ReadSeriesRow(SqliteDataReader reader)
 		{
-			SeriesInfo series = new SeriesInfo();
+			SeriesTypes series = new SeriesTypes();
 			series.Id = ReadString(reader, 0);
 
 			string typeString = ReadString(reader, 1);

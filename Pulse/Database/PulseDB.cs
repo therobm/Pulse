@@ -377,7 +377,7 @@ namespace Pulse.Database
 			for (int index = 0; index < dirtyArtists.Count; index++)
 			{
 				ArtistInfo artist = dirtyArtists[index];
-				UpsertArtist(connection, transaction, artist);
+				UpdateArtist(connection, transaction, artist);
 				WriteStarred(connection, transaction, "artist", artist.Id, artist.Starred);
 				artist.m_bIsDirty = false;
 				count++;
@@ -391,7 +391,7 @@ namespace Pulse.Database
 			for (int index = 0; index < dirtyAlbums.Count; index++)
 			{
 				AlbumInfo album = dirtyAlbums[index];
-				UpsertAlbum(connection, transaction, album);
+				UpdateAlbum(connection, transaction, album);
 				WriteStarred(connection, transaction, "album", album.Id, album.Starred);
 				album.m_bIsDirty = false;
 				count++;
@@ -405,7 +405,7 @@ namespace Pulse.Database
 			for (int index = 0; index < dirtyTracks.Count; index++)
 			{
 				TrackInfo track = dirtyTracks[index];
-				UpsertTrack(connection, transaction, track);
+				UpdateTrack(connection, transaction, track);
 				WriteTrackUserScores(connection, transaction, track);
 				WriteStarred(connection, transaction, "track", track.Id, track.Starred);
 				track.m_bIsDirty = false;
@@ -420,7 +420,7 @@ namespace Pulse.Database
 			for (int index = 0; index < dirtyPlaylists.Count; index++)
 			{
 				PlaylistInfo playlist = dirtyPlaylists[index];
-				UpsertPlaylist(connection, transaction, playlist);
+				UpdatePlaylist(connection, transaction, playlist);
 				WritePlaylistTracks(connection, transaction, playlist);
 				WritePlaylistUserLastPlayed(connection, transaction, playlist);
 				playlist.m_bIsDirty = false;
@@ -452,9 +452,7 @@ namespace Pulse.Database
 			return 1;
 		}
 
-		// ------- UPSERTs -------
-
-		public static void UpsertArtist(SqliteConnection connection, SqliteTransaction transaction, ArtistInfo artist)
+		public static void UpdateArtist(SqliteConnection connection, SqliteTransaction transaction, ArtistInfo artist)
 		{
 			SqliteCommand command = connection.CreateCommand();
 			command.Transaction = transaction;
@@ -475,7 +473,7 @@ namespace Pulse.Database
 			return value.ToString("o");
 		}
 
-		public static void UpsertAlbum(SqliteConnection connection, SqliteTransaction transaction, AlbumInfo album)
+		public static void UpdateAlbum(SqliteConnection connection, SqliteTransaction transaction, AlbumInfo album)
 		{
 			SqliteCommand command = connection.CreateCommand();
 			command.Transaction = transaction;
@@ -498,7 +496,7 @@ namespace Pulse.Database
 			command.ExecuteNonQuery();
 		}
 
-		public static void UpsertTrack(SqliteConnection connection, SqliteTransaction transaction, TrackInfo track)
+		public static void UpdateTrack(SqliteConnection connection, SqliteTransaction transaction, TrackInfo track)
 		{
 			SqliteCommand command = connection.CreateCommand();
 			command.Transaction = transaction;
@@ -557,7 +555,7 @@ namespace Pulse.Database
 			command.ExecuteNonQuery();
 		}
 
-		public static void UpsertPlaylist(SqliteConnection connection, SqliteTransaction transaction, PlaylistInfo playlist)
+		public static void UpdatePlaylist(SqliteConnection connection, SqliteTransaction transaction, PlaylistInfo playlist)
 		{
 			SqliteCommand command = connection.CreateCommand();
 			command.Transaction = transaction;
@@ -850,21 +848,21 @@ namespace Pulse.Database
 						}
 					}
 
-					SqliteCommand upsertState = connection.CreateCommand();
-					upsertState.Transaction = transaction;
-					upsertState.CommandText = @"INSERT INTO playqueue_state (user_name, current_track_id, position_ms, changed, changed_by)
+					SqliteCommand UpdateState = connection.CreateCommand();
+					UpdateState.Transaction = transaction;
+					UpdateState.CommandText = @"INSERT INTO playqueue_state (user_name, current_track_id, position_ms, changed, changed_by)
 						VALUES ($u, $c, $p, $ch, $cb)
 						ON CONFLICT(user_name) DO UPDATE SET
 							current_track_id = excluded.current_track_id,
 							position_ms = excluded.position_ms,
 							changed = excluded.changed,
 							changed_by = excluded.changed_by;";
-					upsertState.Parameters.AddWithValue("$u", userName);
-					upsertState.Parameters.AddWithValue("$c", currentTrackId ?? "");
-					upsertState.Parameters.AddWithValue("$p", positionMs);
-					upsertState.Parameters.AddWithValue("$ch", DateTime.UtcNow.ToString("o"));
-					upsertState.Parameters.AddWithValue("$cb", changedBy ?? "");
-					upsertState.ExecuteNonQuery();
+					UpdateState.Parameters.AddWithValue("$u", userName);
+					UpdateState.Parameters.AddWithValue("$c", currentTrackId ?? "");
+					UpdateState.Parameters.AddWithValue("$p", positionMs);
+					UpdateState.Parameters.AddWithValue("$ch", DateTime.UtcNow.ToString("o"));
+					UpdateState.Parameters.AddWithValue("$cb", changedBy ?? "");
+					UpdateState.ExecuteNonQuery();
 
 					transaction.Commit();
 				}
@@ -978,7 +976,7 @@ namespace Pulse.Database
 
 		// Append-only INSERT into the playback_events log -- the raw immutable
 		// event stream (one row per Started/Paused/Skipped/Completed). On a
-		// Started event we additionally upsert the item_stats counter so the
+		// Started event we additionally Update the item_stats counter so the
 		// most-played shelves read a single row per (user, item) rather than
 		// re-aggregating the log on every request. Same connection for both
 		// statements; log insert first so the counter never gets ahead of the
@@ -1011,17 +1009,17 @@ namespace Pulse.Database
 
 				if (analytics.Action == PulseAnalytics.eAction.Started)
 				{
-					SqliteCommand upsertCommand = connection.CreateCommand();
-					upsertCommand.CommandText = @"INSERT INTO item_stats (user_name, media_type, media_id, play_count, last_played)
+					SqliteCommand UpdateCommand = connection.CreateCommand();
+					UpdateCommand.CommandText = @"INSERT INTO item_stats (user_name, media_type, media_id, play_count, last_played)
 						VALUES ($u, $type, $id, 1, $occurred)
 						ON CONFLICT(user_name, media_type, media_id) DO UPDATE SET
 							play_count = play_count + 1,
 							last_played = CASE WHEN excluded.last_played > last_played THEN excluded.last_played ELSE last_played END;";
-					upsertCommand.Parameters.AddWithValue("$u", normalizedUser);
-					upsertCommand.Parameters.AddWithValue("$type", typeName);
-					upsertCommand.Parameters.AddWithValue("$id", analytics.MediaId);
-					upsertCommand.Parameters.AddWithValue("$occurred", occurredIso);
-					upsertCommand.ExecuteNonQuery();
+					UpdateCommand.Parameters.AddWithValue("$u", normalizedUser);
+					UpdateCommand.Parameters.AddWithValue("$type", typeName);
+					UpdateCommand.Parameters.AddWithValue("$id", analytics.MediaId);
+					UpdateCommand.Parameters.AddWithValue("$occurred", occurredIso);
+					UpdateCommand.ExecuteNonQuery();
 				}
 			}
 			finally
