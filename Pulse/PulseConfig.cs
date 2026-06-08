@@ -9,6 +9,8 @@ namespace Pulse
 		public int HttpPort { get; set; } = 32457;
 		public int HttpsPort { get; set; } = 32458;
 
+		public string PodcastPath = "";
+		public string PulseDataPath = "";
 		public string MusicPath { get; set; } = "";
 		public string SpotifyClient = "";
 		public string SpotifySecret = "";
@@ -53,6 +55,24 @@ namespace Pulse
 			else if (!Directory.Exists(MusicPath))
 			{
 				errors.Add("MusicPath '" + MusicPath + "' does not exist");
+			}
+
+			if (string.IsNullOrWhiteSpace(PodcastPath))
+			{
+				errors.Add("PodcastPath is required");
+			}
+			else if (!Directory.Exists(MusicPath))
+			{
+				errors.Add("PodcastPath '" + PodcastPath + "' does not exist");
+			}
+
+			if (string.IsNullOrWhiteSpace(PulseDataPath))
+			{
+				errors.Add("PulseDataPath is required");
+			}
+			else if (!Directory.Exists(PulseDataPath))
+			{
+				errors.Add("PulseDataPath '" + PulseDataPath + "' does not exist");
 			}
 
 			if (HttpPort <= 0 || HttpPort > 65535)

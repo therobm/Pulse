@@ -109,14 +109,13 @@ namespace Pulse.Database
 			environmentName = "Staging";
 #endif
 
-			string pulseDataRoot = Path.Combine(config.MusicPath, "PulseData");
-			if (!Directory.Exists(pulseDataRoot))
+			if (!Directory.Exists(config.PulseDataPath))
 			{
-				Directory.CreateDirectory(pulseDataRoot);
+				Directory.CreateDirectory(config.PulseDataPath);
 			}
 
 			string analyticsFileName = "pulse_analytics_" + environmentName.ToLowerInvariant() + ".db";
-			string analyticsPath = Path.Combine(pulseDataRoot, analyticsFileName);
+			string analyticsPath = Path.Combine(config.PulseDataPath, analyticsFileName);
 
 			m_connector = new AnalyticsDBConnector();
 			m_connector.SetDatabaseFilePath(analyticsPath);

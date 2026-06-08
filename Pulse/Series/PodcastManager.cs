@@ -27,12 +27,14 @@ namespace Pulse.Series
 
 		private SeriesDBConnector m_connector;
 		private SeriesDB m_db;
-		private string m_musicPath;
+
+		private PulseConfig m_config;
 		private string m_podcastSearchUrl;
 		private Thread m_pollThread;
 
 		public PodcastManager(PulseConfig config)
 		{
+			m_config = config;
 			string environmentName = config.DatabaseEnvironment;
 			if (string.IsNullOrWhiteSpace(environmentName))
 			{
@@ -46,17 +48,15 @@ namespace Pulse.Series
 			environmentName = "Staging";
 #endif
 
-			m_musicPath = config.MusicPath;
 			m_podcastSearchUrl = config.PodcastSearchUrl;
 
-			string pulseDataRoot = Path.Combine(config.MusicPath, "PulseData");
-			if (!Directory.Exists(pulseDataRoot))
+			if (!Directory.Exists(config.PulseDataPath))
 			{
-				Directory.CreateDirectory(pulseDataRoot);
+				Directory.CreateDirectory(config.PulseDataPath);
 			}
 
 			string sqliteFileName = "pulse_series_" + environmentName.ToLowerInvariant() + ".db";
-			string sqlitePath = Path.Combine(pulseDataRoot, sqliteFileName);
+			string sqlitePath = Path.Combine(config.PulseDataPath, sqliteFileName);
 
 			SeriesDBConnector connector = new SeriesDBConnector();
 			connector.SetDatabaseFilePath(sqlitePath);
@@ -102,7 +102,7 @@ namespace Pulse.Series
 		/// </summary>
 		public string GetSeriesMediaDir(SeriesTypes series)
 		{
-			string podcastsRoot = Path.Combine(m_musicPath, "PulseData", "Podcasts");
+			string podcastsRoot = m_config.PodcastPath;
 			string folderName = SanitizeForFileName(series.Title);
 			string seriesDir = Path.Combine(podcastsRoot, folderName);
 			if (!Directory.Exists(seriesDir))
