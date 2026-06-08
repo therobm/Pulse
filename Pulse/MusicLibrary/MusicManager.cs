@@ -672,7 +672,8 @@ namespace Pulse.MusicLibrary
 			FileInfo fileInfo = new FileInfo(filePath);
 
 			TrackData track = new TrackData();
-			track.Id = MusicManager.GenerateID(filePath);
+			string relPath = Path.GetRelativePath(musicRoot, filePath);
+			track.Id = MusicManager.GenerateID(relPath);
 			track.Title = title;
 			track.Artist = artist;
 			track.ArtistId = artistId;

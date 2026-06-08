@@ -98,6 +98,20 @@ namespace Pulse
 
 		public bool IsRunning { get; private set; }
 
+		/// <summary>
+		/// Stop background services and flush dirty data. Call once on process exit.
+		/// </summary>
+		public void Shutdown()
+		{
+			foreach (SpotifySync sync in m_spotifySyncs.Values)
+			{
+				sync.Stop();
+			}
+			m_pulseData.Shutdown();
+			m_podcastManager.Shutdown();
+			m_audiobookManager.Shutdown();
+		}
+
 		public void Run(IPulseRouteHost webServer, PulseConfig config)
 		{
 			m_config = config;

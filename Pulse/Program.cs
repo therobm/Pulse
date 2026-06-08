@@ -40,6 +40,9 @@ namespace Pulse
 			Console.CancelKeyPress += OnCancelKeyPress;
 			AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
 			s_shutdown.Wait();
+
+			Log.Info(-1, "Shutting down...");
+			m_pulse.Shutdown();
 			Log.Info(-1, "Server has shutdown.");
 		}
 

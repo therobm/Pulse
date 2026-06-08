@@ -590,6 +590,14 @@ namespace Pulse.Podcasts
 			m_pollThread.Start();
 		}
 
+		/// <summary>
+		/// Stop the poll thread and flush dirty data. Call once on process exit.
+		/// </summary>
+		public void Shutdown()
+		{
+			m_data.Shutdown();
+		}
+
 		private void PollLoop()
 		{
 			while (true)

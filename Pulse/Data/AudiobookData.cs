@@ -103,6 +103,28 @@ namespace Pulse.Data
 			}
 		}
 
+		/// <summary>
+		/// Stop the periodic save timer and flush any remaining dirty objects.
+		/// Call once during process shutdown.
+		/// </summary>
+		public void Shutdown()
+		{
+			if (m_saveTimer != null)
+			{
+				m_saveTimer.Dispose();
+				m_saveTimer = null;
+			}
+			try
+			{
+				Save();
+				Log.Info(-1, "AudiobookData: shutdown flush complete");
+			}
+			catch (Exception ex)
+			{
+				Log.Error(-1, "AudiobookData: shutdown flush failed - " + ex.Message);
+			}
+		}
+
 		public List<Audiobook> LoadBooks()
 		{
 			return new List<Audiobook>(m_audiobooks.Values);
