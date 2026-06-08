@@ -433,10 +433,36 @@ namespace Pulse.Data
 				}
 			}
 
+			// Build a legacy-to-current ID lookup so playlists that reference
+			// the old (pre-move) track IDs can be remapped on load.
+			Dictionary<string, string> legacyToCurrentId = new Dictionary<string, string>();
+			foreach (TrackInfo track in m_tracks.Values)
+			{
+				if (!string.IsNullOrEmpty(track.LegacyId) && track.LegacyId != track.Id)
+				{
+					legacyToCurrentId[track.LegacyId] = track.Id;
+				}
+			}
+
 			List<PlaylistInfo> playlists = m_db.LoadPlaylists();
 			for (int index = 0; index < playlists.Count; index++)
 			{
-				m_playlists[playlists[index].Id] = playlists[index];
+				PlaylistInfo playlist = playlists[index];
+
+				if (legacyToCurrentId.Count > 0)
+				{
+					for (int trackIndex = 0; trackIndex < playlist.TrackIds.Count; trackIndex++)
+					{
+						string currentId;
+						if (legacyToCurrentId.TryGetValue(playlist.TrackIds[trackIndex], out currentId))
+						{
+							playlist.TrackIds[trackIndex] = currentId;
+							playlist.m_bIsDirty = true;
+						}
+					}
+				}
+
+				m_playlists[playlist.Id] = playlist;
 			}
 
 			List<string> recentlyPlayed = m_db.LoadRecentlyPlayed();
