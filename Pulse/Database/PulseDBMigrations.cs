@@ -304,7 +304,7 @@ namespace Pulse.Database
 			// logic playback log with the unrelated product-analytics sidecar DB);
 			// the raw event stream is kept intact. Alongside it, a per-(user,item)
 			// item_stats counter is introduced so the most-played shelves can read
-			// a single upserted row per item instead of re-aggregating the log on
+			// a single Updateed row per item instead of re-aggregating the log on
 			// every request. Backfilled once from the existing 'Started' rows so
 			// existing data carries forward.
 			MigrationStep v7 = new MigrationStep();

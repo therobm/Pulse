@@ -80,7 +80,7 @@ namespace Pulse.Series
 			return client;
 		}
 
-		public SeriesInfo GetSeries(string seriesId)
+		public SeriesTypes GetSeries(string seriesId)
 		{
 			return m_db.LoadSeries(seriesId);
 		}
@@ -100,7 +100,7 @@ namespace Pulse.Series
 		/// media is browsable outside Pulse; two podcasts whose titles
 		/// sanitize identically would share a folder, which is acceptable.
 		/// </summary>
-		public string GetSeriesMediaDir(SeriesInfo series)
+		public string GetSeriesMediaDir(SeriesTypes series)
 		{
 			string podcastsRoot = Path.Combine(m_musicPath, "PulseData", "Podcasts");
 			string folderName = SanitizeForFileName(series.Title);
@@ -210,14 +210,14 @@ namespace Pulse.Series
 
 			string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 
-			SeriesInfo existingSeries = m_db.LoadSeries(seriesId);
+			SeriesTypes existingSeries = m_db.LoadSeries(seriesId);
 			string dateAdded = nowIso;
 			if (existingSeries != null && !string.IsNullOrEmpty(existingSeries.DateAdded))
 			{
 				dateAdded = existingSeries.DateAdded;
 			}
 
-			SeriesInfo series = new SeriesInfo();
+			SeriesTypes series = new SeriesTypes();
 			series.Id = seriesId;
 			series.Type = eSeriesType.Podcast;
 			series.Title = parsed.Channel.Title;
@@ -228,7 +228,7 @@ namespace Pulse.Series
 
 			series.DateAdded = dateAdded;
 
-			m_db.UpsertSeriesMetadata(series);
+			m_db.UpdateSeriesMetadata(series);
 
 			m_db.SetSeriesLastPolled(seriesId, nowIso);
 
@@ -271,7 +271,7 @@ namespace Pulse.Series
 
 			if (newItems.Count > 0)
 			{
-				m_db.UpsertItems(newItems);
+				m_db.UpdateItems(newItems);
 			}
 		}
 
@@ -288,7 +288,7 @@ namespace Pulse.Series
 		/// series artwork is cached locally and any already-eligible items
 		/// begin downloading.
 		/// </summary>
-		public SeriesInfo AddPodcast(string feedUrl, string userName, bool subscribe)
+		public SeriesTypes AddPodcast(string feedUrl, string userName, bool subscribe)
 		{
 			string seriesId = MusicManager.GenerateID(feedUrl);
 
@@ -314,7 +314,7 @@ namespace Pulse.Series
 
 			string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 
-			SeriesInfo series = GetSeries(seriesId);
+			SeriesTypes series = GetSeries(seriesId);
 			if (series == null)
 			{
 				return null;
@@ -390,30 +390,28 @@ namespace Pulse.Series
 				return;
 			}
 
-			SeriesInfo series = m_db.LoadSeries(item.SeriesId);
+			SeriesTypes series = m_db.LoadSeries(item.SeriesId);
 			if (series == null)
 			{
 				return;
 			}
 
 			item.DownloadState = eDownloadState.Downloading;
-			m_db.UpsertItem(item);
+			m_db.Update(item);
 
+			//Generate our local file path
 			string extension = ExtensionForMediaSourceUrl(item.MediaSourceUrl);
 			string seriesDir = GetSeriesMediaDir(series);
 			string baseName = SanitizeForFileName(item.Title);
 			string targetPath = Path.Combine(seriesDir, baseName + extension);
+
+
 			if (File.Exists(targetPath))
 			{
-				for (int attempt = 2; attempt <= 9999; attempt++)
-				{
-					string candidate = Path.Combine(seriesDir, baseName + " (" + attempt + ")" + extension);
-					if (!File.Exists(candidate))
-					{
-						targetPath = candidate;
-						break;
-					}
-				}
+				//file was already downloaded, our local path was just incorrect
+				item.LocalPath = targetPath;
+				m_db.Update(item);
+				return;
 			}
 
 			try
@@ -453,13 +451,13 @@ namespace Pulse.Series
 					item.DurationSeconds = ProbeDurationSeconds(targetPath);
 				}
 				item.DownloadState = eDownloadState.Downloaded;
-				m_db.UpsertItem(item);
+				m_db.Update(item);
 				Log.Info(-1, "Podcast downloaded: " + item.Title);
 			}
 			catch (Exception ex)
 			{
 				item.DownloadState = eDownloadState.Failed;
-				m_db.UpsertItem(item);
+				m_db.Update(item);
 				Log.Warning(-1, "Podcast download failed: " + item.Title + " -- " + ex.Message);
 				if (File.Exists(targetPath))
 				{
@@ -514,7 +512,7 @@ namespace Pulse.Series
 		/// <param name="seriesId"></param>
 		public void EnforceRetention(string seriesId)
 		{
-			SeriesInfo series = m_db.LoadSeries(seriesId);
+			SeriesTypes series = m_db.LoadSeries(seriesId);
 			if (series == null || series.Retention == eRetentionPolicy.KeepExisting)
 			{
 				return;
@@ -571,11 +569,11 @@ namespace Pulse.Series
 			}
 			item.LocalPath = "";
 			item.DownloadState = eDownloadState.Discovered;
-			m_db.UpsertItem(item);
+			m_db.Update(item);
 		}
 	
 
-		public void CacheArtwork(string httpArtURL, SeriesInfo series)
+		public void CacheArtwork(string httpArtURL, SeriesTypes series)
 		{
 			if (series == null)
 			{
@@ -642,7 +640,7 @@ namespace Pulse.Series
 		
 		public void RefreshFeed(string seriesId)
 		{
-			SeriesInfo series = m_db.LoadSeries(seriesId);
+			SeriesTypes series = m_db.LoadSeries(seriesId);
 			if (series == null)
 			{
 				return;
@@ -674,7 +672,7 @@ namespace Pulse.Series
 					response.Dispose();
 				}
 
-				SeriesInfo storedSeries = GetSeries(seriesId);
+				SeriesTypes storedSeries = GetSeries(seriesId);
 				if (storedSeries != null)
 				{
 					CacheArtwork(artworkUrl, storedSeries);
@@ -723,12 +721,12 @@ namespace Pulse.Series
 		{
 			try
 			{
-				List<SeriesInfo> podcasts = m_db.LoadAllPodcastSeries();
+				List<SeriesTypes> podcasts = m_db.LoadAllPodcastSeries();
 				int podcastCount = podcasts.Count;
 				DateTime nowUtc = DateTime.UtcNow;
 				for (int podcastIndex = 0; podcastIndex < podcastCount; podcastIndex++)
 				{
-					SeriesInfo podcast = podcasts[podcastIndex];
+					SeriesTypes podcast = podcasts[podcastIndex];
 					RefreshFeed(podcast.Id);
 				}
 			}
@@ -748,7 +746,7 @@ namespace Pulse.Series
 		/// PublishedDate is ISO-8601 ("yyyy-MM-ddTHH:mm:ssZ") so a string
 		/// sort is equivalent to a chronological sort.
 		/// </summary>
-		private List<SeriesItemInfo> ComputeKeepSet(List<SeriesItemInfo> items, SeriesInfo series)
+		private List<SeriesItemInfo> ComputeKeepSet(List<SeriesItemInfo> items, SeriesTypes series)
 		{
 			List<SeriesItemInfo> result = new List<SeriesItemInfo>();
 			if (items == null || series == null)
@@ -827,7 +825,7 @@ namespace Pulse.Series
 		/// SeriesDB.LoadSubscribedSeries scoped to eSeriesType.Podcast --
 		/// keeps PulseEndpoints from reaching past the manager.
 		/// </summary>
-		public List<SeriesInfo> GetSubscribedPodcasts(string userName)
+		public List<SeriesTypes> GetSubscribedPodcasts(string userName)
 		{
 			return m_db.LoadSubscribedSeries(userName, eSeriesType.Podcast);
 		}
@@ -836,7 +834,7 @@ namespace Pulse.Series
 		/// Every podcast series known to the database, subscribed or not.
 		/// Used by the discovery endpoint that lists podcasts across users.
 		/// </summary>
-		public List<SeriesInfo> GetAllPodcasts()
+		public List<SeriesTypes> GetAllPodcasts()
 		{
 			return m_db.LoadAllSeriesByType(eSeriesType.Podcast);
 		}
@@ -1044,7 +1042,7 @@ namespace Pulse.Series
 		}
 
 		/// <summary>
-		/// Record playback progress for one user on one item. Upserts the
+		/// Record playback progress for one user on one item. Updates the
 		/// series_items_user_data row, flips Completed once playback passes
 		/// 95% of the known duration (a previously-true Completed stays
 		/// true so a stray seek backwards doesn't unset it), and refreshes
@@ -1092,7 +1090,7 @@ namespace Pulse.Series
 			{
 				progress.Completed = false;
 			}
-			m_db.UpsertProgress(progress);
+			m_db.UpdateProgress(progress);
 
 			m_db.SetSeriesLastItem(item.SeriesId, userName, itemId, nowIso, nowIso);
 		}

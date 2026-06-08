@@ -311,9 +311,9 @@ namespace Pulse.Protocols.PulseAPI
 
 		public IResult CreateUser(HttpContext context)
 		{
-			string name = context.Request.Query["name"].FirstOrDefault();
-			string displayName = context.Request.Query["displayName"].FirstOrDefault() ?? "";
-			bool isAdmin = string.Equals(context.Request.Query["isAdmin"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase);
+			string name = QueryParameters.GetString(context, "name");
+			string displayName = QueryParameters.GetString(context, "displayName");
+			bool isAdmin = QueryParameters.GetBool(context, "isAdmin");
 
 			string error = m_pulseData.CreateUser(name, displayName, isAdmin);
 			if (!string.IsNullOrEmpty(error))
@@ -326,10 +326,10 @@ namespace Pulse.Protocols.PulseAPI
 
 		public IResult UpdateUser(HttpContext context)
 		{
-			string oldName = context.Request.Query["name"].FirstOrDefault();
-			string newName = context.Request.Query["newName"].FirstOrDefault();
-			string displayName = context.Request.Query["displayName"].FirstOrDefault() ?? "";
-			bool isAdmin = string.Equals(context.Request.Query["isAdmin"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase);
+			string oldName = QueryParameters.GetString(context, "name");
+			string newName = QueryParameters.GetString(context, "newName");
+			string displayName = QueryParameters.GetString(context, "displayName");
+			bool isAdmin = QueryParameters.GetBool(context, "isAdmin");
 
 			if (string.IsNullOrEmpty(newName))
 			{
@@ -350,7 +350,7 @@ namespace Pulse.Protocols.PulseAPI
 		// up duplicate-cased names that crept in (e.g. "shannon" vs "Shannon").
 		public IResult DeleteUser(HttpContext context)
 		{
-			string userName = context.Request.Query["user"].FirstOrDefault();
+			string userName = QueryParameters.GetString(context, "user");
 			if (string.IsNullOrEmpty(userName))
 			{
 				return Respond("Missing user", HttpStatusCode.OK);
@@ -434,7 +434,7 @@ namespace Pulse.Protocols.PulseAPI
 		/// </summary>
 		private IResult ListTokens(HttpContext context)
 		{
-			string userFilter = context.Request.Query["user"].FirstOrDefault();
+			string userFilter = QueryParameters.GetString(context, "user");
 			List<TokenRow> rows;
 			if (!string.IsNullOrEmpty(userFilter))
 			{
@@ -519,7 +519,7 @@ namespace Pulse.Protocols.PulseAPI
 
 			if (string.IsNullOrEmpty(tokenValue))
 			{
-				tokenValue = context.Request.Query["token"].FirstOrDefault();
+				tokenValue = QueryParameters.GetString(context, "token");
 			}
 			if (string.IsNullOrEmpty(tokenValue))
 			{

@@ -287,8 +287,8 @@ namespace Pulse
 
 		private void HandleSpotifyCallback(HttpContext context)
 		{
-			string code = context.Request.Query["code"].FirstOrDefault();
-			string state = context.Request.Query["state"].FirstOrDefault();
+			string code = QueryParameters.GetString(context, "code");
+			string state = QueryParameters.GetString(context, "state");
 
 			if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
 			{
@@ -393,7 +393,7 @@ namespace Pulse
 
 		private IResult HandleStats(HttpContext context)
 		{
-			string userName = context.Request.Query["u"].FirstOrDefault();
+			string userName = QueryParameters.GetString(context, "u");
 
 			List<TrackInfo> allTracks = m_musicManager.GetAllTracks();
 			List<AlbumInfo> allAlbums = m_musicManager.GetAllAlbums();
@@ -412,10 +412,9 @@ namespace Pulse
 
 		private void HandleStatsPage(HttpContext context)
 		{
-			string embed = context.Request.Query["embed"].FirstOrDefault();
-			if (embed != "1")
+			if (!QueryParameters.GetBool(context, "embed"))
 			{
-				string user = context.Request.Query["u"].FirstOrDefault();
+				string user = QueryParameters.GetString(context, "u");
 				string redirect = "/web/pulse.html?view=stats";
 				if (!string.IsNullOrEmpty(user))
 				{
@@ -439,8 +438,7 @@ namespace Pulse
 
 		private void HandleSettingsPage(HttpContext context)
 		{
-			string embed = context.Request.Query["embed"].FirstOrDefault();
-			if (embed != "1")
+			if (!QueryParameters.GetBool(context, "embed"))
 			{
 				context.Response.Redirect("/web/pulse.html?view=settings");
 				return;

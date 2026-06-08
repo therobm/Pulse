@@ -96,7 +96,7 @@ namespace Pulse.Series
 
 		/// <summary>
 		/// Walks AudiobooksPath, groups audio files by their containing folder,
-		/// and upserts one audiobook series per folder with one chapter per file.
+		/// and Updates one audiobook series per folder with one chapter per file.
 		/// Re-runnable: ids are derived deterministically from the relative path,
 		/// so a rescan updates rather than duplicates.
 		/// </summary>
@@ -160,10 +160,10 @@ namespace Pulse.Series
 		{
 			int removedBooks = 0;
 			int removedChapters = 0;
-			List<SeriesInfo> existing = m_db.LoadAllSeriesByType(eSeriesType.Audiobook);
+			List<SeriesTypes> existing = m_db.LoadAllSeriesByType(eSeriesType.Audiobook);
 			for (int seriesIndex = 0; seriesIndex < existing.Count; seriesIndex++)
 			{
-				SeriesInfo series = existing[seriesIndex];
+				SeriesTypes series = existing[seriesIndex];
 				List<SeriesItemInfo> items = m_db.LoadItemsForSeries(series.Id);
 				if (!liveSeriesIds.Contains(series.Id))
 				{
@@ -260,7 +260,7 @@ namespace Pulse.Series
 				folderAuthorFallback = DeriveAuthorFromFolder(folder);
 			}
 
-			SeriesInfo series = new SeriesInfo();
+			SeriesTypes series = new SeriesTypes();
 			series.Id = seriesId;
 			series.Type = eSeriesType.Audiobook;
 			series.Title = FirstNonEmpty(firstEntry.Tags.Album, Path.GetFileName(folder));
@@ -269,7 +269,7 @@ namespace Pulse.Series
 			series.Description = "";
 			series.ArtworkPath = ResolveCoverArt(folder, entries, seriesId);
 			series.DateAdded = DateTime.UtcNow.ToString("o");
-			m_db.UpsertSeries(series);
+			m_db.UpdateSeries(series);
 
 			List<SeriesItemInfo> items;
 			if (entries.Count == 1)
@@ -298,7 +298,7 @@ namespace Pulse.Series
 					liveItemIds.Add(item.Id);
 				}
 			}
-			m_db.UpsertItems(items);
+			m_db.UpdateItems(items);
 		}
 
 		private List<SeriesItemInfo> BuildSingleFileItems(string seriesId, AudiobookFileEntry entry, HashSet<string> liveItemIds)
@@ -361,12 +361,12 @@ namespace Pulse.Series
 		}
 
 		/// <summary>All catalogued audiobooks (every series of type Audiobook).</summary>
-		public List<SeriesInfo> GetAllAudiobooks()
+		public List<SeriesTypes> GetAllAudiobooks()
 		{
 			return m_db.LoadAllSeriesByType(eSeriesType.Audiobook);
 		}
 
-		public SeriesInfo GetSeries(string seriesId)
+		public SeriesTypes GetSeries(string seriesId)
 		{
 			return m_db.LoadSeries(seriesId);
 		}

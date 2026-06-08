@@ -7,7 +7,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Pulse.Protocols.LegacyPulse;
@@ -54,10 +53,6 @@ namespace Pulse.Protocols.Subsonic
 			m_pulseAPI = pulseAPI;
 		}
 
-		// ========================================
-		// Helpers
-		// ========================================
-
 		private SubsonicResponseBody CreateResponse()
 		{
 			SubsonicResponseBody body = new SubsonicResponseBody();
@@ -76,7 +71,7 @@ namespace Pulse.Protocols.Subsonic
 
 		private IResult Respond(HttpContext context, SubsonicResponseBody body)
 		{
-			string format = context.Request.Query["f"].FirstOrDefault() ?? "json";
+			string format = QueryParameters.GetString(context, "f", "json");
 
 			SubsonicWrapper wrapper = new SubsonicWrapper();
 			wrapper.response = body;
@@ -90,12 +85,9 @@ namespace Pulse.Protocols.Subsonic
 			string xml = JsonSerializer.Serialize(wrapper, s_jsonOptions);
 			return Results.Text(xml, "application/json");
 		}
-		// ========================================
-		// Endpoints
-		// ========================================
 		public IResult HandleGetUser(HttpContext context)
 		{
-			string username = context.Request.Query["username"].FirstOrDefault() ?? "Rob";
+			string username = QueryParameters.GetString(context, "username", "Rob");
 
 			SubsonicResponseBody body = CreateResponse();
 			body.user = new UserInfo();
@@ -139,8 +131,8 @@ namespace Pulse.Protocols.Subsonic
 			}
 
 			
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
+			string user = QueryParameters.GetString(context, "u");
 			TrackInfo track = ExtractPulseContent<TrackInfo>(pResult);
 
 			if (track == null)
@@ -157,7 +149,7 @@ namespace Pulse.Protocols.Subsonic
 
 		public IResult HandleGetCoverArt(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
 			string sType = "album";
 
 			if (!string.IsNullOrEmpty(id) && id.StartsWith("pl-"))
@@ -312,7 +304,7 @@ namespace Pulse.Protocols.Subsonic
 				return Respond(context, body);
 			}
 
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 
 		
 			body.topSongs = new TopSongsContainer();
@@ -345,7 +337,7 @@ namespace Pulse.Protocols.Subsonic
 		// the same container, just under different field names.
 		private StarredContainer BuildStarredContainer(HttpContext context)
 		{
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 
 			StarredContainer container = new StarredContainer();
 
@@ -387,7 +379,7 @@ namespace Pulse.Protocols.Subsonic
 		/// <returns></returns>
 		public IResult HandleGetArtistInfo(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
 			int count = QueryParameters.GetInt(context, "count", 20);
 			SubsonicResponseBody body = CreateResponse();
 			body.artistInfo2 = new ArtistInfo2();
@@ -396,7 +388,7 @@ namespace Pulse.Protocols.Subsonic
 
 		public IResult HandleSetRating(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
 			int rating = QueryParameters.GetInt(context, "rating", 0);
 
 			return Respond(context, CreateErrorResponse(10, "Rating not supported on Pulse"));
@@ -405,10 +397,10 @@ namespace Pulse.Protocols.Subsonic
 		public IResult HandleStar(HttpContext context)
 		{
 
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string albumId = context.Request.Query["albumId"].FirstOrDefault();
-			string artistId = context.Request.Query["artistId"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
+			string albumId = QueryParameters.GetString(context, "albumId");
+			string artistId = QueryParameters.GetString(context, "artistId");
+			string user = QueryParameters.GetString(context, "u");
 
 
 			string itemID = id;
@@ -449,10 +441,10 @@ namespace Pulse.Protocols.Subsonic
 
 		public IResult HandleUnstar(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string albumId = context.Request.Query["albumId"].FirstOrDefault();
-			string artistId = context.Request.Query["artistId"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
+			string albumId = QueryParameters.GetString(context, "albumId");
+			string artistId = QueryParameters.GetString(context, "artistId");
+			string user = QueryParameters.GetString(context, "u");
 
 
 			string itemID = id;
@@ -493,11 +485,11 @@ namespace Pulse.Protocols.Subsonic
 
 		public IResult HandleScrobble(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
-			string submissionParam = context.Request.Query["submission"].FirstOrDefault();
-			string timeParam = context.Request.Query["time"].FirstOrDefault();
-			string clientParam = context.Request.Query["c"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
+			string user = QueryParameters.GetString(context, "u");
+			string submissionParam = QueryParameters.GetString(context, "submission");
+			string timeParam = QueryParameters.GetString(context, "time");
+			string clientParam = QueryParameters.GetString(context, "c");
 
 			string submissionResolved = submissionParam;
 			if (submissionResolved == null)
@@ -576,7 +568,7 @@ namespace Pulse.Protocols.Subsonic
 
 		public IResult HandleGetArtist(HttpContext context)
 		{
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 
 			ArtistInfo source = ExtractPulseContent<ArtistInfo>(m_pulseAPI.GetArtist(context));
 			if (source == null)
@@ -591,7 +583,7 @@ namespace Pulse.Protocols.Subsonic
 
 		public IResult HandleGetAlbum(HttpContext context)
 		{
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 
 			AlbumInfo source = ExtractPulseContent<AlbumInfo>(m_pulseAPI.GetAlbum(context));
 			if (source == null)
@@ -650,8 +642,8 @@ namespace Pulse.Protocols.Subsonic
 		/// </summary>
 		public IResult HandleGetSongsByGenre(HttpContext context)
 		{
-			string genre = context.Request.Query["genre"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string genre = QueryParameters.GetString(context, "genre");
+			string user = QueryParameters.GetString(context, "u");
 
 			if (string.IsNullOrEmpty(genre))
 			{
@@ -755,7 +747,7 @@ namespace Pulse.Protocols.Subsonic
 
 		public IResult HandleGetPlaylists(HttpContext context)
 		{
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 
 			SubsonicResponseBody body = CreateResponse();
 			body.playlists = new PlaylistsContainer();
@@ -775,7 +767,7 @@ namespace Pulse.Protocols.Subsonic
 
 		public IResult HandleGetPlaylist(HttpContext context)
 		{
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 
 			PlaylistAndTracks playlist = ExtractPulseContent<PlaylistAndTracks>(m_pulseAPI.GetPlaylist(context));
 			if (playlist == null)
@@ -790,7 +782,7 @@ namespace Pulse.Protocols.Subsonic
 
 		public IResult HandleCreatePlaylist(HttpContext context)
 		{
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 
 
 			PlaylistAndTracks playlist = ExtractPulseContent<PlaylistAndTracks>(m_pulseAPI.CreatePlaylist(context));

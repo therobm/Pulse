@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Http;
 using System;
 using System.Collections.Generic;
 using Pulse.MusicLibrary;
-using System.Linq;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -32,8 +31,8 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult GetStream(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
+			string user = QueryParameters.GetString(context, "u");
 
 			TrackInfo track = m_musicManager.GetTrack(id);
 
@@ -48,8 +47,8 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult GetDownload(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
+			string user = QueryParameters.GetString(context, "u");
 
 			TrackInfo track = m_musicManager.GetTrack(id);
 
@@ -67,15 +66,15 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult Ping(HttpContext context)
 		{
-			string u = context.Request.Query["u"].FirstOrDefault();
+			string u = QueryParameters.GetString(context, "u");
 			Ping response = new Ping();
 			response.serverVersion = PulseService.GetServerVersion();
 			return Results.Json(response);
 		}
 		public IResult GetTrack(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
+			string user = QueryParameters.GetString(context, "u");
 			TrackInfo track = m_musicManager.GetTrack(id);
 
 			if (track == null)
@@ -86,8 +85,8 @@ namespace Pulse.Protocols.LegacyPulse
 		}
 		public IResult GetCoverArt(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string sType = context.Request.Query["type"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
+			string sType = QueryParameters.GetString(context, "type");
 
 			int size = QueryParameters.GetInt(context, "size", 0);
 
@@ -195,7 +194,7 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult Search(HttpContext context)
 		{
-			string query = context.Request.Query["query"].FirstOrDefault() ?? "";
+			string query = QueryParameters.GetString(context, "query") ?? "";
 			query = query.Trim('"');
 
 			if (string.IsNullOrEmpty(query))
@@ -203,7 +202,7 @@ namespace Pulse.Protocols.LegacyPulse
 				return CreateResponse(new SearchResult());
 			}
 
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 
 			int artistCount = QueryParameters.GetInt(context, "artistCount", 20);
 			int albumCount = QueryParameters.GetInt(context, "albumCount", 20);
@@ -276,8 +275,8 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult GetTopTracks(HttpContext context)
 		{
-			string artistName = context.Request.Query["artist"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string artistName = QueryParameters.GetString(context, "artist");
+			string user = QueryParameters.GetString(context, "u");
 			int count = QueryParameters.GetInt(context, "count", 50);
 			if (count < 1)
 			{
@@ -339,7 +338,7 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult GetFavorites(HttpContext context)
 		{
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 			if (user == null)
 			{
 				user = "";
@@ -390,9 +389,9 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult Favorite(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string type = context.Request.Query["type"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
+			string type = QueryParameters.GetString(context, "type");
+			string user = QueryParameters.GetString(context, "u");
 
 			if (string.IsNullOrEmpty(id))
 			{
@@ -428,9 +427,9 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult Unfavorite(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string type = context.Request.Query["type"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
+			string type = QueryParameters.GetString(context, "type");
+			string user = QueryParameters.GetString(context, "u");
 
 			if (string.IsNullOrEmpty(id))
 			{
@@ -467,8 +466,8 @@ namespace Pulse.Protocols.LegacyPulse
 		
 		public IResult ReportTrackAnalytics(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
+			string user = QueryParameters.GetString(context, "u");
 
 			if (string.IsNullOrEmpty(id))
 			{
@@ -488,7 +487,7 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult GetArtist(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
 			ArtistInfo artist = m_musicManager.GetArtist(id);
 			if (artist == null)
 			{
@@ -501,10 +500,10 @@ namespace Pulse.Protocols.LegacyPulse
 		// / frequent / recent / byyear / bygenre / starred / highest). Default = random.
 		public IResult GetAlbums(HttpContext context)
 		{
-			string typeRaw = context.Request.Query["type"].FirstOrDefault();
+			string typeRaw = QueryParameters.GetString(context, "type");
 			int size = QueryParameters.GetInt(context, "size", 20);
 			int offset = QueryParameters.GetInt(context, "offset", 0);
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 			if (user == null)
 			{
 				user = "";
@@ -595,8 +594,8 @@ namespace Pulse.Protocols.LegacyPulse
 			{
 				int fromYear = int.MinValue;
 				int toYear = int.MaxValue;
-				string fromYearRaw = context.Request.Query["fromYear"].FirstOrDefault();
-				string toYearRaw = context.Request.Query["toYear"].FirstOrDefault();
+				string fromYearRaw = QueryParameters.GetString(context, "fromYear");
+				string toYearRaw = QueryParameters.GetString(context, "toYear");
 				int parsedFromYear = 0;
 				bool fromYearParsed = int.TryParse(fromYearRaw, out parsedFromYear);
 				if (fromYearParsed)
@@ -630,7 +629,7 @@ namespace Pulse.Protocols.LegacyPulse
 			}
 			else if (type == "bygenre")
 			{
-				string genre = context.Request.Query["genre"].FirstOrDefault();
+				string genre = QueryParameters.GetString(context, "genre");
 				List<AlbumInfo> filtered = new List<AlbumInfo>();
 				if (!string.IsNullOrEmpty(genre))
 				{
@@ -704,7 +703,7 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult GetAlbum(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
 			AlbumInfo album = m_musicManager.GetAlbum(id);
 			if (album == null)
 			{
@@ -751,8 +750,8 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult GetGenreTracks(HttpContext context)
 		{
-			string genre = context.Request.Query["genre"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string genre = QueryParameters.GetString(context, "genre");
+			string user = QueryParameters.GetString(context, "u");
 			int count = QueryParameters.GetInt(context, "count", 10);
 			int offset = QueryParameters.GetInt(context, "offset", 0);
 
@@ -785,7 +784,7 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult GetPlaylists(HttpContext context)
 		{
-			string user = context.Request.Query["u"].FirstOrDefault();
+			string user = QueryParameters.GetString(context, "u");
 
 			SearchResult result = new SearchResult();
 			result.Playlists = m_musicManager.GetAllPlaylists(user);
@@ -794,7 +793,7 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult GetPlaylist(HttpContext context)
 		{
-			string id = context.Request.Query["id"].FirstOrDefault();
+			string id = QueryParameters.GetString(context, "id");
 			if (string.IsNullOrEmpty(id))
 			{
 				return CreateResponse(new Error(ePulseCode.NotFound, "Missing id"));
@@ -810,10 +809,10 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult CreatePlaylist(HttpContext context)
 		{
-			string playlistId = context.Request.Query["playlistId"].FirstOrDefault();
-			string name = context.Request.Query["name"].FirstOrDefault();
-			string user = context.Request.Query["u"].FirstOrDefault();
-			List<string> songIds = context.Request.Query["songId"].ToList();
+			string playlistId = QueryParameters.GetString(context, "playlistId");
+			string name = QueryParameters.GetString(context, "name");
+			string user = QueryParameters.GetString(context, "u");
+			List<string> songIds = QueryParameters.GetList(context, "songId");
 
 			PlaylistInfo playlist = null;
 			if (!string.IsNullOrEmpty(playlistId))
@@ -861,11 +860,11 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult UpdatePlaylist(HttpContext context)
 		{
-			string playlistId = context.Request.Query["playlistId"].FirstOrDefault();
-			string name = context.Request.Query["name"].FirstOrDefault();
-			string comment = context.Request.Query["comment"].FirstOrDefault();
-			List<string> songIdsToAdd = context.Request.Query["songIdToAdd"].ToList();
-			List<string> indicesToRemove = context.Request.Query["songIndexToRemove"].ToList();
+			string playlistId = QueryParameters.GetString(context, "playlistId");
+			string name = QueryParameters.GetString(context, "name");
+			string comment = QueryParameters.GetString(context, "comment");
+			List<string> songIdsToAdd = QueryParameters.GetList(context, "songIdToAdd");
+			List<string> indicesToRemove = QueryParameters.GetList(context, "songIndexToRemove");
 
 			if (string.IsNullOrEmpty(playlistId))
 			{
@@ -968,7 +967,7 @@ namespace Pulse.Protocols.LegacyPulse
 
 		public IResult DeletePlaylist(HttpContext context)
 		{
-			string playlistId = context.Request.Query["id"].FirstOrDefault();
+			string playlistId = QueryParameters.GetString(context, "id");
 			if (string.IsNullOrEmpty(playlistId))
 			{
 				return CreateResponse(new Error(ePulseCode.NotFound, "Missing id"));
