@@ -6,6 +6,7 @@ using Pulse.Podcasts;
 using Pulse.Series;
 using PulseAPI.CSharp;
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -259,8 +260,14 @@ namespace Pulse.Protocols
 		public IResult GetStream(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string type = ""; //pass a damn parameter
 
+			//pass a damn parameter so we don't need this dumb try fail
+			string type = QueryParameters.GetString(context, "type", "");
+
+			if (!string.IsNullOrEmpty(id))
+			{
+				//call direct
+			}
 
 
 			TrackData track = m_musicManager.GetTrack(id);
@@ -270,17 +277,36 @@ namespace Pulse.Protocols
 				return Results.File(fileStream, track.ContentType, enableRangeProcessing: true);
 			}
 
+			//try podcast
+
+			string streamPath = "";
 			Episode item = m_podcastManager.GetEpisode(id);
-			if (item != null && !string.IsNullOrEmpty(item.LocalPath) && File.Exists(item.LocalPath))
+			if (item != null)
+			{
+				streamPath = item.LocalPath;
+			}
+			else
+			{
+				//try audiobook
+				Chapter chapter = m_audiobookManager.GetChapter(id);
+				if (chapter != null)
+				{
+					streamPath = chapter.LocalPath;
+				}
+			}
+
+			if (!string.IsNullOrEmpty(streamPath) && File.Exists(streamPath))
 			{
 				string contentType = "audio/mpeg";
-				if (item.LocalPath.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase))
+				if (streamPath.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase))
 				{
 					contentType = "audio/mp4";
 				}
-				FileStream podcastStream = new FileStream(item.LocalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+				FileStream podcastStream = new FileStream(streamPath, FileMode.Open, FileAccess.Read, FileShare.Read);
 				return Results.File(podcastStream, contentType, enableRangeProcessing: true);
 			}
+		
+
 
 			return RespondStatus(context, "not_found");
 		}
