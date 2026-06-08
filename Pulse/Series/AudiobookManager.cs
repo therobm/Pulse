@@ -47,18 +47,17 @@ namespace Pulse.Series
 
 			m_audiobooksPath = config.AudiobooksPath;
 
-			string pulseDataRoot = Path.Combine(config.MusicPath, "PulseData");
-			if (!Directory.Exists(pulseDataRoot))
+			if (!Directory.Exists(config.PulseDataPath))
 			{
-				Directory.CreateDirectory(pulseDataRoot);
+				Directory.CreateDirectory(config.PulseDataPath);
 			}
 
 			// Cover art embedded in audio tags is extracted to here (the source
 			// library may be read-only and we don't want to litter it).
-			m_artCacheRoot = Path.Combine(pulseDataRoot, "AudiobookArt");
+			m_artCacheRoot = Path.Combine(config.PulseDataPath, "AudiobookArt");
 
 			string sqliteFileName = "pulse_series_" + environmentName.ToLowerInvariant() + ".db";
-			string sqlitePath = Path.Combine(pulseDataRoot, sqliteFileName);
+			string sqlitePath = Path.Combine(config.PulseDataPath, sqliteFileName);
 
 			SeriesDBConnector connector = new SeriesDBConnector();
 			connector.SetDatabaseFilePath(sqlitePath);

@@ -355,17 +355,16 @@ namespace Pulse.Data
 			environmentName = "Staging";
 #endif
 
-			string pulseDataRoot = Path.Combine(config.MusicPath, "PulseData");
-			if (!Directory.Exists(pulseDataRoot))
+			if (!Directory.Exists(config.PulseDataPath))
 			{
-				Directory.CreateDirectory(pulseDataRoot);
+				Directory.CreateDirectory(config.PulseDataPath);
 			}
 
 			// Separate sqlite file per environment. Production -> pulse_production.db,
 			// Staging -> pulse_staging.db. Keeps the existing concept while letting
 			// the two run side-by-side without cross-contamination.
 			string sqliteFileName = "pulse_" + environmentName.ToLowerInvariant() + ".db";
-			string sqlitePath = Path.Combine(pulseDataRoot, sqliteFileName);
+			string sqlitePath = Path.Combine(config.PulseDataPath, sqliteFileName);
 			Pulse.Database.PulseDBConnector.SetDatabaseFilePath(sqlitePath);
 			Pulse.Database.PulseDBMigrations.RunMigrations();
 			Log.Info(-1, "Pulse DB: env=" + environmentName + " path=" + sqlitePath);
