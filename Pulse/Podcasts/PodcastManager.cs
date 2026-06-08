@@ -12,7 +12,7 @@ using Pulse.Database;
 using Pulse.DataStorage;
 using Pulse.MusicLibrary;
 
-namespace Pulse.Series
+namespace Pulse.Podcasts
 {
 
 	public class PodcastManager

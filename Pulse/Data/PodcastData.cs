@@ -1,7 +1,7 @@
 ﻿
 
 using Pulse.DataStorage;
-using Pulse.Series;
+using Pulse.Podcasts;
 using System.Collections.Generic;
 using System.IO;
 

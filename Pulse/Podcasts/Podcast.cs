@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 
-namespace Pulse.Series
+namespace Pulse.Podcasts
 {
 	public class Podcast
 	{

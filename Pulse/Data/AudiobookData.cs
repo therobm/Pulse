@@ -1,5 +1,4 @@
 using Pulse.DataStorage;
-using Pulse.Series;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
