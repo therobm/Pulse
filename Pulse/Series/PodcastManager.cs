@@ -314,8 +314,13 @@ namespace Pulse.Series
 
 			string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 
-			SeriesInfo storedAfterIngest = GetSeries(seriesId);
-			if (storedAfterIngest != null && string.IsNullOrEmpty(storedAfterIngest.FeedUrl))
+			SeriesInfo series = GetSeries(seriesId);
+			if (series == null)
+			{
+				return null;
+			}
+
+			if (string.IsNullOrEmpty(series.FeedUrl))
 			{
 				m_db.SetSeriesFeed(seriesId, feedUrl, 60, eRetentionPolicy.KeepN, 10, true, nowIso);
 			}
@@ -326,18 +331,14 @@ namespace Pulse.Series
 				m_db.SetSubscribed(seriesId, userName, true, nowIso);
 			}
 
-			SeriesInfo storedSeries = GetSeries(seriesId);
-			if (storedSeries != null)
-			{
-				CacheArtwork(artworkUrl, storedSeries);
-			}
+			CacheArtwork(artworkUrl, series);
 
 			Thread downloadThread = new Thread(RunInitialDownload);
 			downloadThread.IsBackground = true;
 			downloadThread.Name = "Pulse.PodcastInitialDownload";
 			downloadThread.Start(seriesId);
 
-			return GetSeries(seriesId);
+			return series;
 		}
 
 		/// <summary>
@@ -589,14 +590,11 @@ namespace Pulse.Series
 			string artworkPath = Path.Combine(seriesDir, "folder.jpg");
 			if (File.Exists(artworkPath))
 			{
-				series.ArtworkPath = artworkPath;
-				m_db.UpsertSeries(series);
 				return;
 			}
 
 			try
 			{
-
 				HttpResponseMessage response = s_httpClient.GetAsync(httpArtURL, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
 				try
 				{
@@ -623,9 +621,6 @@ namespace Pulse.Series
 				{
 					response.Dispose();
 				}
-
-				series.ArtworkPath = artworkPath;
-				m_db.UpsertSeries(series);
 			}
 			catch (Exception ex)
 			{
