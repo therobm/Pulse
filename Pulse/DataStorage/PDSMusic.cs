@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
+
 namespace Pulse.DataStorage
 {
 	public enum eDataType
@@ -136,6 +137,8 @@ namespace Pulse.DataStorage
 		public int Year;
 
 		public Dictionary<string, bool> Starred = new Dictionary<string, bool>();
+
+		[JsonIgnore]
 		public List<TrackData> Tracks = new List<TrackData>();
 	}
 
@@ -143,6 +146,8 @@ namespace Pulse.DataStorage
 	{
 		public string Name;
 		public Dictionary<string, bool> Starred = new Dictionary<string, bool>();
+
+		[JsonIgnore]
 		public List<AlbumData> Albums = new List<AlbumData>();
 
 		public DateTime LastPlayed;
