@@ -211,7 +211,7 @@ namespace Pulse.Series
 		/// they are set once at AddPodcast time and only changed by
 		/// deliberate user action; a poll cycle must never clobber them.
 		/// </summary>
-		public void IngestFeedStream(string seriesId, string feedUrl, Stream feedXml)
+		public void IngestFeedStream(string seriesId, string feedUrl, Stream feedXml, out string artworkUrl)
 		{
 			RssFeedParser parser = new RssFeedParser();
 			ParsedFeed parsed = parser.Parse(feedXml);
@@ -231,15 +231,11 @@ namespace Pulse.Series
 			series.Title = parsed.Channel.Title;
 			series.Author = parsed.Channel.Author;
 			series.Description = parsed.Channel.Description;
-			series.ArtworkPath = parsed.Channel.ArtworkUrl;
-			// Preserve a previously-cached local artwork path across a
-			// re-poll; otherwise a freshly parsed (remote) URL would
-			// overwrite the localised one and re-trigger a fetch.
-			if (existingSeries != null && !string.IsNullOrEmpty(existingSeries.ArtworkPath) && !existingSeries.ArtworkPath.StartsWith("http"))
-			{
-				series.ArtworkPath = existingSeries.ArtworkPath;
-			}
+			artworkUrl = parsed.Channel.ArtworkUrl;
+
+
 			series.DateAdded = dateAdded;
+
 			m_db.UpsertSeriesMetadata(series);
 
 			m_db.SetSeriesLastPolled(seriesId, nowIso);
@@ -304,6 +300,7 @@ namespace Pulse.Series
 		{
 			string seriesId = MusicManager.GenerateID(feedUrl);
 
+			string artworkUrl = "";
 			HttpResponseMessage response = s_httpClient.GetAsync(feedUrl).GetAwaiter().GetResult();
 			try
 			{
@@ -311,7 +308,7 @@ namespace Pulse.Series
 				Stream contentStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
 				try
 				{
-					IngestFeedStream(seriesId, feedUrl, contentStream);
+					IngestFeedStream(seriesId, feedUrl, contentStream, out artworkUrl);
 				}
 				finally
 				{
@@ -340,7 +337,7 @@ namespace Pulse.Series
 			SeriesInfo storedSeries = GetSeries(seriesId);
 			if (storedSeries != null)
 			{
-				CacheArtwork(storedSeries);
+				CacheArtwork(artworkUrl, storedSeries);
 			}
 
 			Thread downloadThread = new Thread(RunInitialDownload);
@@ -583,25 +580,15 @@ namespace Pulse.Series
 			item.DownloadState = eDownloadState.Discovered;
 			m_db.UpsertItem(item);
 		}
-		/// <summary>
-		/// Localises a series' artwork: if ArtworkPath is still a remote
-		/// URL, downloads it to {seriesDir}/folder.jpg (the convention
-		/// music players recognise) and rewrites the series row to point
-		/// at the local file. Skips work if a local artwork file is
-		/// already present on disk. Failures leave the remote URL intact
-		/// -- a missing thumbnail is not worth aborting a poll cycle for.
-		/// </summary>
-		public void CacheArtwork(SeriesInfo series)
+	
+
+		public void CacheArtwork(string httpArtURL, SeriesInfo series)
 		{
 			if (series == null)
 			{
 				return;
 			}
-			if (string.IsNullOrEmpty(series.ArtworkPath))
-			{
-				return;
-			}
-			if (!series.ArtworkPath.StartsWith("http"))
+			if (string.IsNullOrEmpty(httpArtURL))
 			{
 				return;
 			}
@@ -617,7 +604,8 @@ namespace Pulse.Series
 
 			try
 			{
-				HttpResponseMessage response = s_httpClient.GetAsync(series.ArtworkPath, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+
+				HttpResponseMessage response = s_httpClient.GetAsync(httpArtURL, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
 				try
 				{
 					response.EnsureSuccessStatusCode();
@@ -685,6 +673,7 @@ namespace Pulse.Series
 				return;
 			}
 
+			string artworkUrl = "";
 			try
 			{
 				HttpResponseMessage response = s_httpClient.GetAsync(series.FeedUrl).GetAwaiter().GetResult();
@@ -694,7 +683,7 @@ namespace Pulse.Series
 					Stream contentStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
 					try
 					{
-						IngestFeedStream(seriesId, series.FeedUrl, contentStream);
+						IngestFeedStream(seriesId, series.FeedUrl, contentStream, out artworkUrl);
 					}
 					finally
 					{
@@ -709,7 +698,7 @@ namespace Pulse.Series
 				SeriesInfo storedSeries = GetSeries(seriesId);
 				if (storedSeries != null)
 				{
-					CacheArtwork(storedSeries);
+					CacheArtwork(artworkUrl, storedSeries);
 				}
 				EnforceRetention(seriesId);
 			}
