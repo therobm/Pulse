@@ -566,6 +566,10 @@ namespace Pulse.MusicLibrary
 					{
 						CommitScannedTrack(scanned);
 						processedCount++;
+						if (processedCount % 500 == 0)
+						{
+							Console.WriteLine("Scan progress: " + processedCount + " imported...");
+						}
 					}
 				}
 				catch (Exception exception)
