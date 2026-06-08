@@ -42,7 +42,6 @@ namespace Pulse.MusicLibrary
 		private Thread m_scanThread;
 		private bool m_scanning;
 		private object m_scanLock = new object();
-		private int m_processedSinceLastSave = 0;
 		private string m_nowPlayingTrackId;
 		private DateTime m_nowPlayingStartTime = DateTime.MinValue;
 		private HashSet<string> m_missingSongs = new HashSet<string>();
@@ -163,7 +162,6 @@ namespace Pulse.MusicLibrary
 						+ " score=" + previousTrack.Score.WeightedScore.ToString("F3")
 						+ skipSuffix);
 
-					SaveDB("track-streamed");
 				}
 			}
 
@@ -239,7 +237,6 @@ namespace Pulse.MusicLibrary
 			}
 			artist.LastPlayed = DateTime.UtcNow;
 			artist.m_bIsDirty = true;
-			SaveDB("artist-started");
 		}
 
 		/// <summary>
@@ -262,7 +259,6 @@ namespace Pulse.MusicLibrary
 				playlist.UserLastPlayed[userName] = now;
 			}
 			playlist.m_bIsDirty = true;
-			SaveDB("playlist-started");
 		}
 
 		public PlaylistData ImportPlaylist(string name, List<PlaylistImportEntry> entries)
@@ -374,7 +370,6 @@ namespace Pulse.MusicLibrary
 
 			playlist.DurationSeconds = totalDuration;
 			m_database.CreateOrUpdate(playlist);
-			SaveDB("playlist-import");
 
 			//Console.WriteLine("Pulse: Imported playlist \"" + name + "\": " + matched + " matched, " + missed + " missed, " + entries.Count + " total");
 			return playlist;
@@ -477,18 +472,16 @@ namespace Pulse.MusicLibrary
 		public void CreateOrUpdatePlaylist(PlaylistData playlist)
 		{
 			m_database.CreateOrUpdate(playlist);
-			SaveDB("playlist-create-update");
 		}
 
 		public void DeletePlaylist(string playlistId)
 		{
 			m_database.DeletePlaylist(playlistId);
-			SaveDB("playlist-delete");
 		}
 
-		private void SaveDB(string reason)
+		private void SaveDB()
 		{
-			m_database.Save(reason);
+			m_database.Save();
 
 			JsonSerializerOptions options = new JsonSerializerOptions
 			{
@@ -521,7 +514,6 @@ namespace Pulse.MusicLibrary
 
 			m_scanningAlbumCache.Clear();
 			m_scanningArtistCache.Clear();
-			m_processedSinceLastSave = 0;
 
 			// Tag parsing (TagLib.File.Create) is the slow, disk-bound part of a scan
 			// and touches no shared state, so it runs in parallel. The cheap part --
@@ -574,13 +566,6 @@ namespace Pulse.MusicLibrary
 					{
 						CommitScannedTrack(scanned);
 						processedCount++;
-
-						m_processedSinceLastSave++;
-						if (m_processedSinceLastSave >= 500)
-						{
-							m_processedSinceLastSave = 0;
-							SaveDB("scan-batch");
-						}
 					}
 				}
 				catch (Exception exception)
@@ -611,7 +596,7 @@ namespace Pulse.MusicLibrary
 
 			Log.Info(-1, "Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_database.GetTrackCount());
 			m_scanning = false;
-			SaveDB("scan-complete");
+			SaveDB();
 		}
 
 		/// <summary>
@@ -785,7 +770,7 @@ namespace Pulse.MusicLibrary
 			if (relinked > 0)
 			{
 				Log.Info(-1, "Pulse: Library repair re-linked " + relinked + " track(s) to rebuilt albums.");
-				SaveDB("library-repair");
+				SaveDB();
 			}
 		}
 
