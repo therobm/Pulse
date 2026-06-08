@@ -1,76 +1,129 @@
-
-
-using Pulse.Database;
 using Pulse.DataStorage;
 using Pulse.Series;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using TagLib.Riff;
 
 namespace Pulse.Data
 {
+	/// <summary>
+	/// In-memory cache of audiobooks and chapters, backed by PulseDataStore.
+	/// The dictionaries are authoritative at runtime; the store is pure persistence.
+	/// </summary>
 	public class AudiobookData
 	{
 		private ConcurrentDictionary<string, Audiobook> m_audiobooks = new ConcurrentDictionary<string, Audiobook>();
 		private ConcurrentDictionary<string, Chapter> m_chapters = new ConcurrentDictionary<string, Chapter>();
 
+		private PulseDataStore m_data;
 
-		private PulseConfig m_config;
-		private PulseDataStore m_audiobookData;
-
-		public AudiobookData(PulseConfig pulseConfig)
+		public AudiobookData(PulseConfig config)
 		{
-			m_config = pulseConfig;
-
 			string audiobookDB = "audiobooks.db";
 #if DEBUG
 			audiobookDB = "audiobooks_staging.db";
 #endif
+			string dbPath = Path.Combine(config.PulseDataPath, audiobookDB);
+			m_data = new PulseDataStore(dbPath);
+		}
 
-			string dbPath = Path.Combine(m_config.PulseDataPath, audiobookDB);
-			m_audiobookData = new PulseDataStore(dbPath);
+		/// <summary>
+		/// Hydrate in-memory dictionaries from the store. Call once before
+		/// the first scan so that user state from a previous run survives.
+		/// </summary>
+		public void Load()
+		{
+			List<Audiobook> books = m_data.LoadList<Audiobook>(eDataType.Audiobook);
+			for (int i = 0; i < books.Count; i++)
+			{
+				m_audiobooks[books[i].Id] = books[i];
+			}
+
+			List<Chapter> chapters = m_data.LoadList<Chapter>(eDataType.AudiobookChapter);
+			for (int i = 0; i < chapters.Count; i++)
+			{
+				m_chapters[chapters[i].Id] = chapters[i];
+			}
 		}
 
 		public List<Audiobook> LoadBooks()
 		{
-			return new List<Audiobook>();
+			return new List<Audiobook>(m_audiobooks.Values);
 		}
+
 		public Audiobook LoadBook(string bookId)
 		{
-			return null;
+			Audiobook book;
+			m_audiobooks.TryGetValue(bookId, out book);
+			return book;
 		}
-		public void UpdateBook(Audiobook bookData)
-		{
-		}
-		public void UpdateBooks(List<Audiobook> books)
-		{
 
-		}
-		public void UpdateChapter(Chapter chapter)
+		/// <summary>
+		/// Insert or update a book. Preserves the Users dict from the
+		/// existing entry so a rescan does not wipe user progress.
+		/// </summary>
+		public void UpdateBook(Audiobook book)
 		{
-			List<Chapter> chapters = new List<Chapter>();
-			chapters.Add(chapter);
-			UpdateChapters(chapters);
+			Audiobook existing;
+			bool found = m_audiobooks.TryGetValue(book.Id, out existing);
+			if (found)
+			{
+				book.Users = existing.Users;
+			}
+			m_audiobooks[book.Id] = book;
+			m_data.Save(eDataType.Audiobook, book);
 		}
+
+		/// <summary>
+		/// Insert or update chapters. Preserves the Users dict from existing
+		/// entries so a rescan does not wipe user progress.
+		/// </summary>
 		public void UpdateChapters(List<Chapter> chapters)
 		{
+			for (int i = 0; i < chapters.Count; i++)
+			{
+				Chapter chapter = chapters[i];
+				Chapter existing;
+				bool found = m_chapters.TryGetValue(chapter.Id, out existing);
+				if (found)
+				{
+					chapter.Users = existing.Users;
+				}
+				m_chapters[chapter.Id] = chapter;
+			}
+			m_data.SaveList(eDataType.AudiobookChapter, chapters);
 		}
+
 		public Chapter LoadChapter(string chapterId)
 		{
-			return null;
+			Chapter chapter;
+			m_chapters.TryGetValue(chapterId, out chapter);
+			return chapter;
 		}
+
 		public List<Chapter> LoadChapters(string bookId)
 		{
-			return new List<Chapter>();
+			List<Chapter> result = new List<Chapter>();
+			foreach (KeyValuePair<string, Chapter> pair in m_chapters)
+			{
+				if (pair.Value.AudiobookId == bookId)
+				{
+					result.Add(pair.Value);
+				}
+			}
+			return result;
 		}
+
 		public void Delete(Audiobook book)
 		{
-
+			m_audiobooks.TryRemove(book.Id, out _);
+			m_data.Delete(eDataType.Audiobook, book.Id);
 		}
+
 		public void Delete(Chapter chapter)
 		{
+			m_chapters.TryRemove(chapter.Id, out _);
+			m_data.Delete(eDataType.AudiobookChapter, chapter.Id);
 		}
-
 	}
 }

@@ -1608,20 +1608,19 @@ namespace Pulse.Protocols
 			List<Chapter> chapters = m_audiobookManager.GetChapters(series.Id);
 			book.ItemCount = chapters.Count;
 			int totalDuration = 0;
-			for (int index = 0; index < chapters.Count; index++)
+			for (int i = 0; i < chapters.Count; i++)
 			{
-				totalDuration = totalDuration + chapters[index].DurationSeconds;
+				totalDuration = totalDuration + chapters[i].DurationSeconds;
 			}
 			book.TotalDuration = totalDuration;
-			// Audiobooks don't track an unplayed badge in v1.
 			book.UnplayedCount = 0;
 
-			AudiobookUserDataInfo userSeries = m_audiobookManager.GetUserSeries(series.Id, user);
-			if (userSeries != null)
+			Audiobook.UserData userData;
+			bool hasUser = series.Users.TryGetValue(user, out userData);
+			if (hasUser)
 			{
-				book.Subscribed = userSeries.Subscribed;
-				book.LastItemId = userSeries.LastItemId;
-				book.LastPlayed = userSeries.LastPlayed;
+				book.LastItemId = userData.LastChapterId;
+				book.LastPlayed = userData.LastPlayed.ToString("o");
 			}
 			return book;
 		}
@@ -1630,18 +1629,18 @@ namespace Pulse.Protocols
 		{
 			PulseChapter chapter = new PulseChapter();
 			chapter.Id = item.Id;
-			chapter.SeriesId = item.SeriesId;
+			chapter.SeriesId = item.AudiobookId;
 			chapter.Title = item.Title;
-			chapter.Description = item.Description;
 			chapter.OrderIndex = item.OrderIndex;
 			chapter.Duration = item.DurationSeconds;
 			chapter.StartMs = item.StartMs;
 			chapter.EndMs = item.EndMs;
 			chapter.StreamId = streamId;
-			chapter.CoverArt = "se-" + item.SeriesId;
+			chapter.CoverArt = "se-" + item.AudiobookId;
 
-			ChapterUserDataInfo progress = m_audiobookManager.GetProgress(item.Id, user);
-			if (progress != null)
+			Chapter.UserData progress;
+			bool hasUser = item.Users.TryGetValue(user, out progress);
+			if (hasUser)
 			{
 				chapter.PositionSeconds = progress.PositionSeconds;
 				chapter.Completed = progress.Completed;
@@ -1655,9 +1654,9 @@ namespace Pulse.Protocols
 
 			List<Audiobook> allBooks = m_audiobookManager.GetAllAudiobooks();
 			List<PulseAudiobook> pulseBooks = new List<PulseAudiobook>();
-			for (int index = 0; index < allBooks.Count; index++)
+			for (int i = 0; i < allBooks.Count; i++)
 			{
-				pulseBooks.Add(BuildPulseAudiobook(allBooks[index], user));
+				pulseBooks.Add(BuildPulseAudiobook(allBooks[i], user));
 			}
 			return RespondList(context, pulseBooks);
 		}
@@ -1679,17 +1678,13 @@ namespace Pulse.Protocols
 			List<Chapter> chapters = m_audiobookManager.GetChapters(id);
 
 			// Group chapters by their underlying LocalPath and pick a canonical
-			// stream id per group: the Id of the chapter with the lowest
-			// OrderIndex in that group. Chapters that share a single file
-			// (single-file audiobooks with embedded chapters) all resolve to
-			// one StreamId so the client streams/caches the file under one key.
-			// A whole-file chapter (its group has size 1 and EndMs == 0)
-			// naturally ends up with its own Id as StreamId.
+			// stream id per group so chapters sharing a single file all resolve
+			// to one StreamId for client caching.
 			Dictionary<string, string> canonicalStreamIdByPath = new Dictionary<string, string>();
 			Dictionary<string, int> lowestOrderIndexByPath = new Dictionary<string, int>();
-			for (int index = 0; index < chapters.Count; index++)
+			for (int i = 0; i < chapters.Count; i++)
 			{
-				Chapter chapter = chapters[index];
+				Chapter chapter = chapters[i];
 				string localPath = chapter.LocalPath;
 				if (string.IsNullOrEmpty(localPath))
 				{
@@ -1709,9 +1704,9 @@ namespace Pulse.Protocols
 				}
 			}
 
-			for (int index = 0; index < chapters.Count; index++)
+			for (int i = 0; i < chapters.Count; i++)
 			{
-				Chapter chapter = chapters[index];
+				Chapter chapter = chapters[i];
 				string streamId = chapter.Id;
 				if (!string.IsNullOrEmpty(chapter.LocalPath))
 				{

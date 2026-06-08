@@ -1,5 +1,6 @@
 using Pulse.DataStorage;
-using System.IO;
+using System;
+using System.Collections.Generic;
 
 namespace Pulse.Series
 {
@@ -9,77 +10,48 @@ namespace Pulse.Series
 		Audiobook
 	}
 
-	public class Audiobook
+	/// <summary>One audiobook in the library.</summary>
+	public class Audiobook : PulseDataObject
 	{
-		public string Id = "";
-		public eSeriesType Type = eSeriesType.Podcast;
+		public class UserData
+		{
+			public string LastChapterId = "";
+			public DateTime LastPlayed;
+		}
+
 		public string Title = "";
 		public string Author = "";
+		public string Narrator = "";
 		public string Description = "";
 		public string ArtworkPath = "";
-		public string DateAdded = "";
-		public string Narrator = "";
 		public string Collection = "";
-		public int CollectionIndex = 0;
-		public string FeedUrl = "";
-		public eRetentionPolicy Retention = eRetentionPolicy.KeepAll;
-		public int RetentionValue = 0;
-		public bool AutoDownload = false;
+		public int CollectionIndex;
+		public Dictionary<string, UserData> Users = new Dictionary<string, UserData>();
 	}
 
-	public class AudiobookUserDataInfo
+	/// <summary>One chapter of an audiobook (a file, or a time window into a file).</summary>
+	public class Chapter : PulseDataObject
 	{
-		public string SeriesId = "";
-		public string UserName = "";
-		public bool Subscribed = false;
-		public string LastItemId = "";
-		public string LastPlayed = "";
-		public string DateAdded = "";
-	}
-
-	public class Chapter
-	{
-		public string Id = "";
-		public string SeriesId = "";
-		public string Guid = "";
-		public string Title = "";
-		public string Description = "";
-		public int DurationSeconds = 0;
-		public int OrderIndex = 0;
-		public string PublishedDate = "";
-		public string MediaSourceUrl = "";
-		public string LocalPath = "";
-		public long FileSizeBytes = 0;
-		public eDownloadState DownloadState = eDownloadState.Discovered;
-		// Chapter offsets into LocalPath, in milliseconds. EndMs == 0 means "play
-		// the whole file" (podcast episodes, one-file-per-chapter audiobooks). When
-		// EndMs > StartMs the item is a time window into a shared file (single-file
-		// audiobook with embedded chapters).
-		public int StartMs = 0;
-		public int EndMs = 0;
-
-		public bool NeedsDownload()
+		public class UserData
 		{
-			if (DownloadState == eDownloadState.Downloading)
-				return false;
-
-			if (DownloadState != eDownloadState.Downloaded)
-				return true;
-
-			//if our on disk is missing, we want to download again
-			if (string.IsNullOrEmpty(LocalPath) || !File.Exists(LocalPath))
-				return true;
-
-			return false;
+			public int PositionSeconds;
+			public bool Completed;
+			public DateTime LastPlayed;
 		}
-	}
 
-	public class ChapterUserDataInfo
-	{
-		public string ItemId = "";
-		public string UserName = "";
-		public int PositionSeconds = 0;
-		public bool Completed = false;
-		public string LastPlayed = "";
+		public string AudiobookId = "";
+		public string Title = "";
+		public int DurationSeconds;
+		public int OrderIndex;
+		public string LocalPath = "";
+		public long FileSizeBytes;
+		/// <summary>
+		/// Chapter offset into LocalPath, in milliseconds. EndMs == 0 means
+		/// play the whole file. When EndMs > StartMs the chapter is a time
+		/// window into a shared single file (embedded-chapter audiobook).
+		/// </summary>
+		public int StartMs;
+		public int EndMs;
+		public Dictionary<string, UserData> Users = new Dictionary<string, UserData>();
 	}
 }
