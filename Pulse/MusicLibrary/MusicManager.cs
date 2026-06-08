@@ -510,12 +510,7 @@ namespace Pulse.MusicLibrary
 
 			HashSet<string> existingIds = new HashSet<string>();
 			for (int i = 0; i < allTracks.Count; i++)
-			{
-				// Hash the relative path so it matches the scan's skip check,
-				// regardless of whether the stored Id used absolute or relative paths.
-				string relPath = Path.GetRelativePath(musicPath, allTracks[i].FilePath);
-				existingIds.Add(MusicManager.GenerateID(relPath));
-			}
+				existingIds.Add(allTracks[i].Id);
 
 			m_scanningAlbumCache.Clear();
 			m_scanningArtistCache.Clear();
