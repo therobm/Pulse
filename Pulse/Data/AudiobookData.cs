@@ -1,8 +1,9 @@
 using Pulse.DataStorage;
-using Pulse.Series;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 
 namespace Pulse.Data
 {
@@ -16,6 +17,7 @@ namespace Pulse.Data
 		private ConcurrentDictionary<string, Chapter> m_chapters = new ConcurrentDictionary<string, Chapter>();
 
 		private PulseDataStore m_data;
+		private Timer m_saveTimer;
 
 		public AudiobookData(PulseConfig config)
 		{
@@ -43,6 +45,61 @@ namespace Pulse.Data
 			for (int i = 0; i < chapters.Count; i++)
 			{
 				m_chapters[chapters[i].Id] = chapters[i];
+			}
+
+			m_saveTimer = new Timer(OnSaveTimer, null, 10000, 10000);
+		}
+
+		/// <summary>
+		/// Write all dirty audiobooks and chapters to the store, then clear their flags.
+		/// </summary>
+		public void Save()
+		{
+			List<Audiobook> dirtyBooks = new List<Audiobook>();
+			foreach (KeyValuePair<string, Audiobook> pair in m_audiobooks)
+			{
+				if (pair.Value.m_bIsDirty)
+				{
+					dirtyBooks.Add(pair.Value);
+				}
+			}
+
+			List<Chapter> dirtyChapters = new List<Chapter>();
+			foreach (KeyValuePair<string, Chapter> pair in m_chapters)
+			{
+				if (pair.Value.m_bIsDirty)
+				{
+					dirtyChapters.Add(pair.Value);
+				}
+			}
+
+			if (dirtyBooks.Count > 0)
+			{
+				m_data.SaveList(eDataType.Audiobook, dirtyBooks);
+				for (int i = 0; i < dirtyBooks.Count; i++)
+				{
+					dirtyBooks[i].m_bIsDirty = false;
+				}
+			}
+
+			if (dirtyChapters.Count > 0)
+			{
+				m_data.SaveList(eDataType.AudiobookChapter, dirtyChapters);
+				for (int i = 0; i < dirtyChapters.Count; i++)
+				{
+					dirtyChapters[i].m_bIsDirty = false;
+				}
+			}
+		}
+
+		private void OnSaveTimer(object state)
+		{
+			try
+			{
+				Save();
+			}
+			catch (Exception)
+			{
 			}
 		}
 
@@ -72,6 +129,7 @@ namespace Pulse.Data
 			}
 			m_audiobooks[book.Id] = book;
 			m_data.Save(eDataType.Audiobook, book);
+			book.m_bIsDirty = false;
 		}
 
 		/// <summary>
@@ -92,6 +150,10 @@ namespace Pulse.Data
 				m_chapters[chapter.Id] = chapter;
 			}
 			m_data.SaveList(eDataType.AudiobookChapter, chapters);
+			for (int i = 0; i < chapters.Count; i++)
+			{
+				chapters[i].m_bIsDirty = false;
+			}
 		}
 
 		public Chapter LoadChapter(string chapterId)

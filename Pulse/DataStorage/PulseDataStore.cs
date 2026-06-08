@@ -134,7 +134,7 @@ namespace Pulse.DataStorage
 		/// <summary>
 		/// Load all objects of a given kind.
 		/// </summary>
-		public List<T> LoadList<T>(eDataType kind)
+		public List<T> LoadList<T>(eDataType kind) where T : PulseDataObject
 		{
 			List<T> result = new List<T>();
 			SqliteConnection connection = OpenConnection();
@@ -155,13 +155,17 @@ namespace Pulse.DataStorage
 			{
 				connection.Close();
 			}
+			for (int i = 0; i < result.Count; i++)
+			{
+				result[i].m_bIsDirty = false;
+			}
 			return result;
 		}
 
 		/// <summary>
 		/// Load a single object by kind and id. Returns default if not found.
 		/// </summary>
-		public T Load<T>(eDataType kind, string id)
+		public T Load<T>(eDataType kind, string id) where T : PulseDataObject
 		{
 			SqliteConnection connection = OpenConnection();
 			try
@@ -173,7 +177,9 @@ namespace Pulse.DataStorage
 				object result = command.ExecuteScalar();
 				if (result != null)
 				{
-					return JsonSerializer.Deserialize<T>((string)result, m_jsonOptions);
+					T item = JsonSerializer.Deserialize<T>((string)result, m_jsonOptions);
+					item.m_bIsDirty = false;
+					return item;
 				}
 			}
 			finally

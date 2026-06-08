@@ -21,6 +21,7 @@ using Pulse.Database;
 using Pulse.Series;
 using PulseAPI.CSharp;
 using Pulse.DataStorage;
+using Pulse.Podcasts;
 
 namespace Pulse
 {

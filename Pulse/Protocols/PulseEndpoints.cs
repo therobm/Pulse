@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Http;
 using Pulse.Database;
 using Pulse.DataStorage;
 using Pulse.MusicLibrary;
+using Pulse.Podcasts;
 using Pulse.Series;
 using PulseAPI.CSharp;
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -258,8 +260,14 @@ namespace Pulse.Protocols
 		public IResult GetStream(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string type = ""; //pass a damn parameter
 
+			//pass a damn parameter so we don't need this dumb try fail
+			string type = QueryParameters.GetString(context, "type", "");
+
+			if (!string.IsNullOrEmpty(id))
+			{
+				//call direct
+			}
 
 
 			TrackData track = m_musicManager.GetTrack(id);
@@ -269,17 +277,36 @@ namespace Pulse.Protocols
 				return Results.File(fileStream, track.ContentType, enableRangeProcessing: true);
 			}
 
+			//try podcast
+
+			string streamPath = "";
 			Episode item = m_podcastManager.GetEpisode(id);
-			if (item != null && !string.IsNullOrEmpty(item.LocalPath) && File.Exists(item.LocalPath))
+			if (item != null)
+			{
+				streamPath = item.LocalPath;
+			}
+			else
+			{
+				//try audiobook
+				Chapter chapter = m_audiobookManager.GetChapter(id);
+				if (chapter != null)
+				{
+					streamPath = chapter.LocalPath;
+				}
+			}
+
+			if (!string.IsNullOrEmpty(streamPath) && File.Exists(streamPath))
 			{
 				string contentType = "audio/mpeg";
-				if (item.LocalPath.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase))
+				if (streamPath.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase))
 				{
 					contentType = "audio/mp4";
 				}
-				FileStream podcastStream = new FileStream(item.LocalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+				FileStream podcastStream = new FileStream(streamPath, FileMode.Open, FileAccess.Read, FileShare.Read);
 				return Results.File(podcastStream, contentType, enableRangeProcessing: true);
 			}
+		
+
 
 			return RespondStatus(context, "not_found");
 		}
@@ -1497,10 +1524,7 @@ namespace Pulse.Protocols
 			pulsePodcast.Id = series.Id;
 			pulsePodcast.Title = series.Title;
 			pulsePodcast.Author = series.Author;
-			pulsePodcast.Narrator = series.Narrator;
 			pulsePodcast.Description = series.Description;
-			pulsePodcast.Collection = series.Collection;
-			pulsePodcast.CollectionIndex = series.CollectionIndex;
 			pulsePodcast.CoverArt = "se-" + series.Id;
 
 			List<Episode> downloaded = m_podcastManager.GetDownloadedItems(series.Id);
@@ -1508,13 +1532,13 @@ namespace Pulse.Protocols
 			pulsePodcast.ItemCount = downloaded.Count;
 			pulsePodcast.UnplayedCount = m_podcastManager.GetUnplayedCount(series.Id, user);
 
-			Podcast.UserData userSeries = null;
-			series.UserInfo.TryGetValue(user, out userSeries);
-			if (userSeries != null)
+			Podcast.UserData userSeries;
+			bool hasUser = series.Users.TryGetValue(user, out userSeries);
+			if (hasUser)
 			{
 				pulsePodcast.Subscribed = userSeries.Subscribed;
 				pulsePodcast.LastItemId = userSeries.LastEpisodeId;
-				pulsePodcast.LastPlayed = userSeries.LastPlayed;
+				pulsePodcast.LastPlayed = userSeries.LastPlayed.ToString("o");
 			}
 
 			pulsePodcast.FeedUrl = series.FeedUrl;
@@ -1537,10 +1561,11 @@ namespace Pulse.Protocols
 			episode.Duration = item.DurationSeconds;
 			episode.CoverArt = "se-" + item.PodcastId;
 
-			if (item.UserInfo.ContainsKey(user)) 
+			Episode.UserData progress;
+			if (item.Users.TryGetValue(user, out progress))
 			{
-				episode.PositionSeconds = item.UserInfo[user].PositionSeconds;
-				episode.Completed = item.UserInfo[user].Completed;
+				episode.PositionSeconds = progress.PositionSeconds;
+				episode.Completed = progress.Completed;
 			}
 			return episode;
 		}
