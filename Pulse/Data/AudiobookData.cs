@@ -129,6 +129,7 @@ namespace Pulse.Data
 			}
 			m_audiobooks[book.Id] = book;
 			m_data.Save(eDataType.Audiobook, book);
+			book.m_bIsDirty = false;
 		}
 
 		/// <summary>
@@ -149,6 +150,10 @@ namespace Pulse.Data
 				m_chapters[chapter.Id] = chapter;
 			}
 			m_data.SaveList(eDataType.AudiobookChapter, chapters);
+			for (int i = 0; i < chapters.Count; i++)
+			{
+				chapters[i].m_bIsDirty = false;
+			}
 		}
 
 		public Chapter LoadChapter(string chapterId)

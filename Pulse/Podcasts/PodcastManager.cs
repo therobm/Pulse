@@ -300,7 +300,6 @@ namespace Pulse.Podcasts
 			if (alreadyOnDisk)
 			{
 				episode.DownloadState = eDownloadState.Downloaded;
-				episode.m_bIsDirty = true;
 				return;
 			}
 
@@ -311,7 +310,6 @@ namespace Pulse.Podcasts
 			}
 
 			episode.DownloadState = eDownloadState.Downloading;
-			episode.m_bIsDirty = true;
 
 			string extension = ExtensionForMediaSourceUrl(episode.MediaSourceUrl);
 			string seriesDir = GetPodcastMediaDir(series);
@@ -322,7 +320,6 @@ namespace Pulse.Podcasts
 			if (File.Exists(targetPath))
 			{
 				episode.LocalPath = targetPath;
-				episode.m_bIsDirty = true;
 				return;
 			}
 
@@ -363,13 +360,11 @@ namespace Pulse.Podcasts
 					episode.DurationSeconds = ProbeDurationSeconds(targetPath);
 				}
 				episode.DownloadState = eDownloadState.Downloaded;
-				episode.m_bIsDirty = true;
 				Log.Info(-1, "Podcast downloaded: " + episode.Title);
 			}
 			catch (Exception ex)
 			{
 				episode.DownloadState = eDownloadState.Failed;
-				episode.m_bIsDirty = true;
 				Log.Warning(-1, "Podcast download failed: " + episode.Title + " -- " + ex.Message);
 				if (File.Exists(targetPath))
 				{
@@ -465,7 +460,6 @@ namespace Pulse.Podcasts
 			}
 			episode.LocalPath = "";
 			episode.DownloadState = eDownloadState.Discovered;
-			episode.m_bIsDirty = true;
 		}
 
 
@@ -853,7 +847,6 @@ namespace Pulse.Podcasts
 			podcast.Retention = retention;
 			podcast.RetentionValue = retentionValue;
 			podcast.AutoDownload = autoDownload;
-			podcast.m_bIsDirty = true;
 
 			Thread settingsThread = new Thread(RunSettingsApply);
 			settingsThread.IsBackground = true;

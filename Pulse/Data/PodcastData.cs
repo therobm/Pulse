@@ -123,6 +123,7 @@ namespace Pulse.Data
 			}
 			m_podcasts[podcast.Id] = podcast;
 			m_data.Save(eDataType.Podcast, podcast);
+			podcast.m_bIsDirty = false;
 		}
 
 		public void UpdateEpisode(Episode episode)
@@ -135,6 +136,7 @@ namespace Pulse.Data
 			}
 			m_episodes[episode.Id] = episode;
 			m_data.Save(eDataType.PodcastEpisode, episode);
+			episode.m_bIsDirty = false;
 		}
 
 		public void UpdateEpisodes(List<Episode> episodes)
@@ -151,6 +153,10 @@ namespace Pulse.Data
 				m_episodes[episode.Id] = episode;
 			}
 			m_data.SaveList(eDataType.PodcastEpisode, episodes);
+			for (int i = 0; i < episodes.Count; i++)
+			{
+				episodes[i].m_bIsDirty = false;
+			}
 		}
 
 		public Episode LoadEpisode(string episodeId)
