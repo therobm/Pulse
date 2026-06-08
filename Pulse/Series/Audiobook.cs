@@ -1,30 +1,15 @@
+using Pulse.DataStorage;
 using System.IO;
 
 namespace Pulse.Series
 {
-	public enum eDownloadState
-	{
-		Discovered,
-		Downloading,
-		Downloaded,
-		Failed
-	}
-
 	public enum eSeriesType
 	{
 		Podcast,
 		Audiobook
 	}
 
-	public enum eRetentionPolicy
-	{
-		KeepAll,
-		KeepN,
-		KeepDays,
-		KeepExisting, //no new downloads but don't evict old ones
-	}
-
-	public class SeriesTypes
+	public class Audiobook
 	{
 		public string Id = "";
 		public eSeriesType Type = eSeriesType.Podcast;
@@ -42,7 +27,7 @@ namespace Pulse.Series
 		public bool AutoDownload = false;
 	}
 
-	public class SeriesUserDataInfo
+	public class AudiobookUserDataInfo
 	{
 		public string SeriesId = "";
 		public string UserName = "";
@@ -52,7 +37,7 @@ namespace Pulse.Series
 		public string DateAdded = "";
 	}
 
-	public class SeriesItemInfo
+	public class Chapter
 	{
 		public string Id = "";
 		public string SeriesId = "";
@@ -89,7 +74,7 @@ namespace Pulse.Series
 		}
 	}
 
-	public class SeriesItemUserDataInfo
+	public class ChapterUserDataInfo
 	{
 		public string ItemId = "";
 		public string UserName = "";

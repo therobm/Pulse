@@ -1,11 +1,11 @@
+using Pulse.Data;
+using Pulse.DataStorage;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
-using Pulse.Database;
-using Pulse.DataStorage;
 
 namespace Pulse.Series
 {
@@ -16,10 +16,39 @@ namespace Pulse.Series
 	/// </summary>
 	public class AudiobookManager
 	{
-		private SeriesDB m_db;
+		/// <summary>A single chapter window pulled from a file's embedded markers.</summary>
+		private class ChapterMarker
+		{
+			public int StartMs = 0;
+			public int EndMs = 0;
+			public string Title = "";
+		}
 
-		private PulseDataStore m_audiobookData;
-		private PulseDataStore m_podcastData;
+		/// <summary>Payload bounds of an MP4 box located by FindBox.</summary>
+		private class BoxLocation
+		{
+			public long PayloadStart = 0;
+			public long End = 0;
+		}
+
+		/// <summary>One scanned audio file plus its parsed tags, before ordering.</summary>
+		private class AudiobookFileEntry
+		{
+			public string Path = "";
+			public AudiobookTags Tags = new AudiobookTags();
+		}
+
+		/// <summary>Tags pulled from one file during the scan.</summary>
+		private class AudiobookTags
+		{
+			public string Title = "";
+			public string Album = "";
+			public string Author = "";
+			public uint Track = 0;
+			public int DurationSeconds = 0;
+		}
+
+		private AudiobookData m_data;
 
 		private string m_audiobooksPath;
 		private string m_artCacheRoot;
@@ -56,32 +85,8 @@ namespace Pulse.Series
 			// library may be read-only and we don't want to litter it).
 			m_artCacheRoot = Path.Combine(config.PulseDataPath, "AudiobookArt");
 
-			string sqliteFileName = "pulse_series_" + environmentName.ToLowerInvariant() + ".db";
-			string sqlitePath = Path.Combine(config.PulseDataPath, sqliteFileName);
 
-			SeriesDBConnector connector = new SeriesDBConnector();
-			connector.SetDatabaseFilePath(sqlitePath);
-
-			SeriesDBMigrations migrations = new SeriesDBMigrations(connector);
-			migrations.RunMigrations();
-
-			m_db = new SeriesDB(connector);
-
-
-			string audiobookDB = "audiobooks.db";
-			string postcastDB = "podcasts.db";
-#if DEBUG
-			audiobookDB = "audiobooks_staging.db";
-			postcastDB = "podcasts_staging.db";
-#endif
-
-			string dbPath = Path.Combine(m_config.PulseDataPath, audiobookDB);
-			m_audiobookData = new PulseDataStore(dbPath);
-
-			dbPath = Path.Combine(m_config.PulseDataPath, postcastDB);
-			m_podcastData = new PulseDataStore(dbPath);
-
-
+			m_data = new AudiobookData(m_config);
 		}
 
 		/// <summary>
@@ -174,31 +179,28 @@ namespace Pulse.Series
 		{
 			int removedBooks = 0;
 			int removedChapters = 0;
-			List<SeriesTypes> existing = m_db.LoadAllSeriesByType(eSeriesType.Audiobook);
+			List<Audiobook> existing = m_data.LoadBooks();
 			for (int seriesIndex = 0; seriesIndex < existing.Count; seriesIndex++)
 			{
-				SeriesTypes series = existing[seriesIndex];
-				List<SeriesItemInfo> items = m_db.LoadItemsForSeries(series.Id);
-				if (!liveSeriesIds.Contains(series.Id))
+				Audiobook book = existing[seriesIndex];
+				List<Chapter> chatper = m_data.LoadChapters(book.Id);
+				if (!liveSeriesIds.Contains(book.Id))
 				{
-					for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
+					for (int i = 0; i < chatper.Count; i++)
 					{
-						string id = items[itemIndex].Id;
-						m_podcastData.Delete(id);
-						m_audiobookData.Delete(id);
-						m_db.DeleteItem(items[itemIndex].Id);
+						m_data.Delete(chatper[i]);
 						removedChapters++;
 					}
-					m_db.DeleteSeries(series.Id);
+					m_data.Delete(book);
 					removedBooks++;
 				}
 				else
 				{
-					for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
+					for (int itemIndex = 0; itemIndex < chatper.Count; itemIndex++)
 					{
-						if (!liveItemIds.Contains(items[itemIndex].Id))
+						if (!liveItemIds.Contains(chatper[itemIndex].Id))
 						{
-							m_db.DeleteItem(items[itemIndex].Id);
+							m_data.Delete(chatper[itemIndex]);
 							removedChapters++;
 						}
 					}
@@ -261,8 +263,8 @@ namespace Pulse.Series
 			{
 				idInput = folderRelative + "|" + AlbumKey(firstEntry.Tags.Album);
 			}
-			string seriesId = StableId("ab", idInput);
-			liveSeriesIds.Add(seriesId);
+			string bookId = StableId("ab", idInput);
+			liveSeriesIds.Add(bookId);
 
 			// When a folder yields several books it is acting as an author folder,
 			// so its name is the author fallback; a single-book folder is the book
@@ -277,50 +279,50 @@ namespace Pulse.Series
 				folderAuthorFallback = DeriveAuthorFromFolder(folder);
 			}
 
-			SeriesTypes series = new SeriesTypes();
-			series.Id = seriesId;
-			series.Type = eSeriesType.Audiobook;
-			series.Title = FirstNonEmpty(firstEntry.Tags.Album, Path.GetFileName(folder));
-			series.Author = FirstNonEmpty(firstEntry.Tags.Author, folderAuthorFallback);
-			series.Narrator = "";
-			series.Description = "";
-			series.ArtworkPath = ResolveCoverArt(folder, entries, seriesId);
-			series.DateAdded = DateTime.UtcNow.ToString("o");
-			m_db.UpdateSeries(series);
+			Audiobook book = new Audiobook();
+			book.Id = bookId;
+			book.Type = eSeriesType.Audiobook;
+			book.Title = FirstNonEmpty(firstEntry.Tags.Album, Path.GetFileName(folder));
+			book.Author = FirstNonEmpty(firstEntry.Tags.Author, folderAuthorFallback);
+			book.Narrator = "";
+			book.Description = "";
+			book.ArtworkPath = ResolveCoverArt(folder, entries, bookId);
+			book.DateAdded = DateTime.UtcNow.ToString("o");
+			m_data.UpdateBook(book);
 
-			List<SeriesItemInfo> items;
+			List<Chapter> chapters;
 			if (entries.Count == 1)
 			{
 				// A single file may carry embedded chapters; split it into one item
 				// per chapter (each a [start,end) window into the shared file).
-				items = BuildSingleFileItems(seriesId, entries[0], liveItemIds);
+				chapters = BuildSingleFileChapters(bookId, entries[0], liveItemIds);
 			}
 			else
 			{
 				// Multi-file book: one item per file, whole-file (no offsets).
-				items = new List<SeriesItemInfo>();
+				chapters = new List<Chapter>();
 				for (int index = 0; index < entries.Count; index++)
 				{
 					AudiobookFileEntry entry = entries[index];
-					SeriesItemInfo item = new SeriesItemInfo();
+					Chapter item = new Chapter();
 					item.Id = StableId("ch", MakeRelative(entry.Path));
-					item.SeriesId = seriesId;
+					item.SeriesId = bookId;
 					item.Title = FirstNonEmpty(entry.Tags.Title, "Chapter " + (index + 1).ToString());
 					item.OrderIndex = index;
 					item.DurationSeconds = entry.Tags.DurationSeconds;
 					item.LocalPath = entry.Path;
 					item.FileSizeBytes = FileSize(entry.Path);
 					item.DownloadState = eDownloadState.Downloaded;
-					items.Add(item);
+					chapters.Add(item);
 					liveItemIds.Add(item.Id);
 				}
 			}
-			m_db.UpdateItems(items);
+			m_data.UpdateChapters(chapters);
 		}
 
-		private List<SeriesItemInfo> BuildSingleFileItems(string seriesId, AudiobookFileEntry entry, HashSet<string> liveItemIds)
+		private List<Chapter> BuildSingleFileChapters(string seriesId, AudiobookFileEntry entry, HashSet<string> liveItemIds)
 		{
-			List<SeriesItemInfo> items = new List<SeriesItemInfo>();
+			List<Chapter> items = new List<Chapter>();
 			string relFile = MakeRelative(entry.Path);
 			long fileSize = FileSize(entry.Path);
 
@@ -329,7 +331,7 @@ namespace Pulse.Series
 			{
 				// No embedded chapters: the whole file is one item (whole-file id is
 				// kept stable so a rescan updates in place).
-				SeriesItemInfo whole = new SeriesItemInfo();
+				Chapter whole = new Chapter();
 				whole.Id = StableId("ch", relFile);
 				whole.SeriesId = seriesId;
 				whole.Title = FirstNonEmpty(entry.Tags.Title, "Chapter 1");
@@ -346,7 +348,7 @@ namespace Pulse.Series
 			for (int index = 0; index < chapters.Count; index++)
 			{
 				ChapterMarker marker = chapters[index];
-				SeriesItemInfo item = new SeriesItemInfo();
+				Chapter item = new Chapter();
 				item.Id = StableId("ch", relFile + "|" + index.ToString());
 				item.SeriesId = seriesId;
 				item.Title = FirstNonEmpty(marker.Title, "Chapter " + (index + 1).ToString());
@@ -378,27 +380,27 @@ namespace Pulse.Series
 		}
 
 		/// <summary>All catalogued audiobooks (every series of type Audiobook).</summary>
-		public List<SeriesTypes> GetAllAudiobooks()
+		public List<Audiobook> GetAllAudiobooks()
 		{
-			return m_db.LoadAllSeriesByType(eSeriesType.Audiobook);
+			return m_data.LoadBooks();
 		}
 
-		public SeriesTypes GetSeries(string seriesId)
+		public Audiobook GetBook(string bookId)
 		{
-			return m_db.LoadSeries(seriesId);
+			return m_data.LoadBook(bookId);
 		}
 
 		/// <summary>Chapters for an audiobook, ordered by chapter index.</summary>
-		public List<SeriesItemInfo> GetItems(string seriesId)
+		public List<Chapter> GetChapters(string bookId)
 		{
-			List<SeriesItemInfo> items = m_db.LoadItemsForSeries(seriesId);
+			List<Chapter> items = m_data.LoadChapters(bookId);
 			items.Sort(CompareByOrderIndex);
 			return items;
 		}
 
-		public SeriesItemInfo GetItem(string itemId)
+		public Chapter GetChatper(string chapterId)
 		{
-			return m_db.LoadItem(itemId);
+			return m_data.LoadChapter(chapterId);
 		}
 
 		/// <summary>
@@ -406,13 +408,13 @@ namespace Pulse.Series
 		/// art cache first (survives library moves), then falls back to the
 		/// ArtworkPath stored on the series row.
 		/// </summary>
-		public string GetCoverArtPath(string seriesId)
+		public string GetCoverArtPath(string bookId)
 		{
 			// Art cache is under PulseDataPath, not the library — stable across moves.
 			string[] extensions = new string[] { ".jpg", ".png", ".jpeg" };
 			for (int index = 0; index < extensions.Length; index++)
 			{
-				string cached = Path.Combine(m_artCacheRoot, seriesId, "cover" + extensions[index]);
+				string cached = Path.Combine(m_artCacheRoot, bookId, "cover" + extensions[index]);
 				if (File.Exists(cached))
 				{
 					return cached;
@@ -420,7 +422,7 @@ namespace Pulse.Series
 			}
 
 			// Fall back to the path stored at scan time (folder art next to the files).
-			SeriesTypes series = m_db.LoadSeries(seriesId);
+			Audiobook series = m_data.LoadBook(bookId);
 			if (series != null && !string.IsNullOrEmpty(series.ArtworkPath) && File.Exists(series.ArtworkPath))
 			{
 				return series.ArtworkPath;
@@ -428,17 +430,17 @@ namespace Pulse.Series
 			return "";
 		}
 
-		public SeriesUserDataInfo GetUserSeries(string seriesId, string userName)
+		public AudiobookUserDataInfo GetUserSeries(string seriesId, string userName)
 		{
-			return m_db.LoadUserSeries(seriesId, userName);
+			return m_data.LoadUserSeries(seriesId, userName);
 		}
 
-		public SeriesItemUserDataInfo GetProgress(string itemId, string userName)
+		public ChapterUserDataInfo GetProgress(string itemId, string userName)
 		{
-			return m_db.LoadProgress(itemId, userName);
+			return m_data.LoadProgress(itemId, userName);
 		}
 
-		private static int CompareByOrderIndex(SeriesItemInfo left, SeriesItemInfo right)
+		private static int CompareByOrderIndex(Chapter left, Chapter right)
 		{
 			return left.OrderIndex.CompareTo(right.OrderIndex);
 		}
@@ -979,38 +981,6 @@ namespace Pulse.Series
 				value = (value << 8) | (long)data[offset + index];
 			}
 			return value;
-		}
-
-		/// <summary>A single chapter window pulled from a file's embedded markers.</summary>
-		private class ChapterMarker
-		{
-			public int StartMs = 0;
-			public int EndMs = 0;
-			public string Title = "";
-		}
-
-		/// <summary>Payload bounds of an MP4 box located by FindBox.</summary>
-		private class BoxLocation
-		{
-			public long PayloadStart = 0;
-			public long End = 0;
-		}
-
-		/// <summary>One scanned audio file plus its parsed tags, before ordering.</summary>
-		private class AudiobookFileEntry
-		{
-			public string Path = "";
-			public AudiobookTags Tags = new AudiobookTags();
-		}
-
-		/// <summary>Tags pulled from one file during the scan.</summary>
-		private class AudiobookTags
-		{
-			public string Title = "";
-			public string Album = "";
-			public string Author = "";
-			public uint Track = 0;
-			public int DurationSeconds = 0;
 		}
 	}
 }

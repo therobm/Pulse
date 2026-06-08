@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -21,7 +21,7 @@ namespace Pulse.DataStorage
 
 	public abstract class PulseDataObject
 	{
-		public string Id { get; set; }
+		public string Id;
 
 		[JsonIgnore]
 		public bool m_bIsDirty = false;
@@ -32,39 +32,39 @@ namespace Pulse.DataStorage
 	{
 		public class ScoreData
 		{
-			public int PlayCount { get; set; }
-			public int SkipCount { get; set; }
-			public double TotalListenSeconds { get; set; }
-			public float WeightedScore { get; set; }
+			public int PlayCount;
+			public int SkipCount;
+			public double TotalListenSeconds;
+			public float WeightedScore;
 		}
 
-		public string LegacyId { get; set; }
-		public string Title { get; set; }
-		public string Artist { get; set; }
-		public string ArtistId { get; set; }
-		public string Album { get; set; }
-		public string AlbumId { get; set; }
-		public string Genre { get; set; }
-		public string FilePath { get; set; }
-		public string CoverArtId { get; set; }
-		public int TrackNumber { get; set; }
-		public int DiscNumber { get; set; }
-		public int Year { get; set; }
-		public int DurationSeconds { get; set; }
-		public long FileSizeBytes { get; set; }
-		public string ContentType { get; set; }
-		public string Suffix { get; set; }
+		public string LegacyId;
+		public string Title;
+		public string Artist;
+		public string ArtistId;
+		public string Album;
+		public string AlbumId;
+		public string Genre;
+		public string FilePath;
+		public string CoverArtId;
+		public int TrackNumber;
+		public int DiscNumber;
+		public int Year;
+		public int DurationSeconds;
+		public long FileSizeBytes;
+		public string ContentType;
+		public string Suffix;
 
-		public int Rating { get; set; }    
-		public Dictionary<string, bool> Starred { get; set; } = new Dictionary<string, bool>();
+		public int Rating;
+		public Dictionary<string, bool> Starred = new Dictionary<string, bool>();
 
-		public DateTime LastPlayed { get; set; }   
+		public DateTime LastPlayed;
 
-		public ScoreData Score { get; set; } = new ScoreData();
-		public Dictionary<string, ScoreData> UserScore { get; set; } = new Dictionary<string, ScoreData>();
+		public ScoreData Score = new ScoreData();
+		public Dictionary<string, ScoreData> UserScore = new Dictionary<string, ScoreData>();
 
 		[JsonIgnore]
-		public ArtistData ParentArtist { get; set; }
+		public ArtistData ParentArtist;
 
 		public float GetScore(string userName)
 		{
@@ -128,28 +128,27 @@ namespace Pulse.DataStorage
 
 	public class AlbumData : PulseDataObject
 	{
-		public string Name { get; set; }
-		public string ArtistName { get; set; }
-		public string ArtistId { get; set; }
-		public string Genre { get; set; }
-		public string CoverArtId { get; set; }
-		public int Year { get; set; }
+		public string Name;
+		public string ArtistName;
+		public string ArtistId;
+		public string Genre;
+		public string CoverArtId;
+		public int Year;
 
-		public Dictionary<string, bool> Starred { get; set; } = new Dictionary<string, bool>();
-		public List<TrackData> Tracks { get; set; } = new List<TrackData>();
+		public Dictionary<string, bool> Starred = new Dictionary<string, bool>();
+		public List<TrackData> Tracks = new List<TrackData>();
 	}
 
 	public class ArtistData : PulseDataObject
 	{
-		public string Name { get; set; }
-		public Dictionary<string, bool> Starred { get; set; } = new Dictionary<string, bool>();
-		public List<AlbumData> Albums { get; set; } = new List<AlbumData>();
+		public string Name;
+		public Dictionary<string, bool> Starred = new Dictionary<string, bool>();
+		public List<AlbumData> Albums = new List<AlbumData>();
 
-		public DateTime LastPlayed { get; set; }  // last time any of this artist's tracks was played
+		public DateTime LastPlayed;
 
-		// Dynamic data populated at runtime
-		public float WeightedScore { get; set; }
-		public Dictionary<string, float> UserWeightedScore { get; set; } = new Dictionary<string, float>();
+		public float WeightedScore;
+		public Dictionary<string, float> UserWeightedScore = new Dictionary<string, float>();
 
 		public float GetScore(string userName)
 		{
@@ -167,16 +166,16 @@ namespace Pulse.DataStorage
 
 	public class PlaylistData : PulseDataObject
 	{
-		public string Name { get; set; }
-		public string Comment { get; set; }
-		public List<string> TrackIds { get; set; }
+		public string Name;
+		public string Comment;
+		public List<string> TrackIds;
 		public int GetSongCount()
 		{
 			return TrackIds.Count;
 		}
-		public long DurationSeconds { get; set; }
-		public DateTime LastPlayed { get; set; }  // aggregate: bumped on every Play / Shuffle, any user
-		public Dictionary<string, DateTime> UserLastPlayed { get; set; } = new Dictionary<string, DateTime>();
+		public long DurationSeconds;
+		public DateTime LastPlayed;
+		public Dictionary<string, DateTime> UserLastPlayed = new Dictionary<string, DateTime>();
 
 		public DateTime GetLastPlayed(string userName)
 		{
@@ -201,7 +200,7 @@ namespace Pulse.DataStorage
 
 	public class PulseAnalyticsData : PulseDataObject
 	{
-		public List<string> RecentlyPlayed { get; set; } = new List<string>();
+		public List<string> RecentlyPlayed = new List<string>();
 		public PulseAnalyticsData()
 		{
 			Id = "analytics";
@@ -211,9 +210,9 @@ namespace Pulse.DataStorage
 
 	public class GenreData : PulseDataObject
 	{
-		public int TrackCount { get; set; }
-		public int AlbumCount { get; set; }
-		public string Name { get; set; }
+		public int TrackCount;
+		public int AlbumCount;
+		public string Name;
 	}
 
 }

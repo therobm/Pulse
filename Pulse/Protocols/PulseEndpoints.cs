@@ -258,6 +258,10 @@ namespace Pulse.Protocols
 		public IResult GetStream(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
+			string type = ""; //pass a damn parameter
+
+
+
 			TrackData track = m_musicManager.GetTrack(id);
 			if (track != null)
 			{
@@ -265,7 +269,7 @@ namespace Pulse.Protocols
 				return Results.File(fileStream, track.ContentType, enableRangeProcessing: true);
 			}
 
-			SeriesItemInfo item = m_podcastManager.GetItem(id);
+			Episode item = m_podcastManager.GetEpisode(id);
 			if (item != null && !string.IsNullOrEmpty(item.LocalPath) && File.Exists(item.LocalPath))
 			{
 				string contentType = "audio/mpeg";
@@ -365,11 +369,11 @@ namespace Pulse.Protocols
 				string seriesId = id.Substring(3);
 
 				// Podcasts: art lives as folder.jpg in the download directory.
-				SeriesTypes series = m_podcastManager.GetSeries(seriesId);
-				if (series != null && series.Type == eSeriesType.Podcast)
+				Podcast podcast = m_podcastManager.GetPodcast(seriesId);
+				if (podcast != null && podcast.Type == eSeriesType.Podcast)
 				{
-					string seriesDir = m_podcastManager.GetSeriesMediaDir(series);
-					string artworkPath = Path.Combine(seriesDir, "folder.jpg");
+					string podcastDir = m_podcastManager.GetPodcastMediaDir(podcast);
+					string artworkPath = Path.Combine(podcastDir, "folder.jpg");
 					if (File.Exists(artworkPath))
 					{
 						byte[] bytes = File.ReadAllBytes(artworkPath);
@@ -1487,7 +1491,7 @@ namespace Pulse.Protocols
 			public PulseObject Item;
 		}
 
-		private PulsePodcast BuildPulsePodcast(SeriesTypes series, string user)
+		private PulsePodcast BuildPulsePodcast(Podcast series, string user)
 		{
 			PulsePodcast pulsePodcast = new PulsePodcast();
 			pulsePodcast.Id = series.Id;
@@ -1499,12 +1503,12 @@ namespace Pulse.Protocols
 			pulsePodcast.CollectionIndex = series.CollectionIndex;
 			pulsePodcast.CoverArt = "se-" + series.Id;
 
-			List<SeriesItemInfo> downloaded = m_podcastManager.GetDownloadedItems(series.Id);
+			List<Episode> downloaded = m_podcastManager.GetDownloadedItems(series.Id);
 			pulsePodcast.EpisodeCount = downloaded.Count;
 			pulsePodcast.ItemCount = downloaded.Count;
 			pulsePodcast.UnplayedCount = m_podcastManager.GetUnplayedCount(series.Id, user);
 
-			SeriesUserDataInfo userSeries = m_podcastManager.GetUserSeries(series.Id, user);
+			PodcastUserDataInfo userSeries = m_podcastManager.GetUserSeries(series.Id, user);
 			if (userSeries != null)
 			{
 				pulsePodcast.Subscribed = userSeries.Subscribed;
@@ -1520,7 +1524,7 @@ namespace Pulse.Protocols
 			return pulsePodcast;
 		}
 
-		private PulsePodcastEpisode BuildPulsePodcastEpisode(SeriesItemInfo item, string user)
+		private PulsePodcastEpisode BuildPulsePodcastEpisode(Chapter item, string user)
 		{
 			PulsePodcastEpisode episode = new PulsePodcastEpisode();
 			episode.Id = item.Id;
@@ -1532,7 +1536,7 @@ namespace Pulse.Protocols
 			episode.Duration = item.DurationSeconds;
 			episode.CoverArt = "se-" + item.SeriesId;
 
-			SeriesItemUserDataInfo progress = m_podcastManager.GetProgress(item.Id, user);
+			EpisodeUserDataInfo progress = m_podcastManager.GetProgress(item.Id, user);
 			if (progress != null)
 			{
 				episode.PositionSeconds = progress.PositionSeconds;
@@ -1545,7 +1549,7 @@ namespace Pulse.Protocols
 		{
 			string user = QueryParameters.GetString(context, "u");
 
-			List<SeriesTypes> subscribed = m_podcastManager.GetSubscribedPodcasts(user);
+			List<Podcast> subscribed = m_podcastManager.GetSubscribedPodcasts(user);
 			List<PulsePodcast> pulsePodcasts = new List<PulsePodcast>();
 			for (int index = 0; index < subscribed.Count; index++)
 			{
@@ -1558,7 +1562,7 @@ namespace Pulse.Protocols
 		{
 			string user = QueryParameters.GetString(context, "u");
 
-			List<SeriesTypes> allSeries = m_podcastManager.GetAllPodcasts();
+			List<Podcast> allSeries = m_podcastManager.GetAllPodcasts();
 			List<PulsePodcast> pulsePodcasts = new List<PulsePodcast>();
 			for (int index = 0; index < allSeries.Count; index++)
 			{
@@ -1572,16 +1576,16 @@ namespace Pulse.Protocols
 			string id = QueryParameters.GetString(context, "id");
 			string user = QueryParameters.GetString(context, "u");
 
-			SeriesTypes series = m_podcastManager.GetSeries(id);
-			if (series == null)
+			Podcast podcast = m_podcastManager.GetPodcast(id);
+			if (podcast == null)
 			{
 				return RespondStatus(context, "not_found");
 			}
 
 			PulsePodcastDetails details = new PulsePodcastDetails();
-			details.Series = BuildPulsePodcast(series, user);
+			details.Series = BuildPulsePodcast(podcast, user);
 
-			List<SeriesItemInfo> downloaded = m_podcastManager.GetDownloadedItems(id);
+			List<Chapter> downloaded = m_podcastManager.GetDownloadedItems(id);
 			for (int index = 0; index < downloaded.Count; index++)
 			{
 				details.Episodes.Add(BuildPulsePodcastEpisode(downloaded[index], user));
@@ -1589,7 +1593,7 @@ namespace Pulse.Protocols
 			return RespondObject(context, details);
 		}
 
-		private PulseAudiobook BuildPulseAudiobook(SeriesTypes series, string user)
+		private PulseAudiobook BuildPulseAudiobook(Audiobook series, string user)
 		{
 			PulseAudiobook book = new PulseAudiobook();
 			book.Id = series.Id;
@@ -1601,7 +1605,7 @@ namespace Pulse.Protocols
 			book.CollectionIndex = series.CollectionIndex;
 			book.CoverArt = "se-" + series.Id;
 
-			List<SeriesItemInfo> chapters = m_audiobookManager.GetItems(series.Id);
+			List<Chapter> chapters = m_audiobookManager.GetChapters(series.Id);
 			book.ItemCount = chapters.Count;
 			int totalDuration = 0;
 			for (int index = 0; index < chapters.Count; index++)
@@ -1612,7 +1616,7 @@ namespace Pulse.Protocols
 			// Audiobooks don't track an unplayed badge in v1.
 			book.UnplayedCount = 0;
 
-			SeriesUserDataInfo userSeries = m_audiobookManager.GetUserSeries(series.Id, user);
+			AudiobookUserDataInfo userSeries = m_audiobookManager.GetUserSeries(series.Id, user);
 			if (userSeries != null)
 			{
 				book.Subscribed = userSeries.Subscribed;
@@ -1622,7 +1626,7 @@ namespace Pulse.Protocols
 			return book;
 		}
 
-		private PulseChapter BuildPulseChapter(SeriesItemInfo item, string user, string streamId)
+		private PulseChapter BuildPulseChapter(Chapter item, string user, string streamId)
 		{
 			PulseChapter chapter = new PulseChapter();
 			chapter.Id = item.Id;
@@ -1636,7 +1640,7 @@ namespace Pulse.Protocols
 			chapter.StreamId = streamId;
 			chapter.CoverArt = "se-" + item.SeriesId;
 
-			SeriesItemUserDataInfo progress = m_audiobookManager.GetProgress(item.Id, user);
+			EpisodeUserDataInfo progress = m_audiobookManager.GetProgress(item.Id, user);
 			if (progress != null)
 			{
 				chapter.PositionSeconds = progress.PositionSeconds;
@@ -1649,7 +1653,7 @@ namespace Pulse.Protocols
 		{
 			string user = QueryParameters.GetString(context, "u");
 
-			List<SeriesTypes> allBooks = m_audiobookManager.GetAllAudiobooks();
+			List<Audiobook> allBooks = m_audiobookManager.GetAllAudiobooks();
 			List<PulseAudiobook> pulseBooks = new List<PulseAudiobook>();
 			for (int index = 0; index < allBooks.Count; index++)
 			{
@@ -1663,7 +1667,7 @@ namespace Pulse.Protocols
 			string id = QueryParameters.GetString(context, "id");
 			string user = QueryParameters.GetString(context, "u");
 
-			SeriesTypes series = m_audiobookManager.GetSeries(id);
+			Audiobook series = m_audiobookManager.GetBook(id);
 			if (series == null)
 			{
 				return RespondStatus(context, "not_found");
@@ -1672,7 +1676,7 @@ namespace Pulse.Protocols
 			PulseAudiobookDetails details = new PulseAudiobookDetails();
 			details.Book = BuildPulseAudiobook(series, user);
 
-			List<SeriesItemInfo> chapters = m_audiobookManager.GetItems(id);
+			List<Chapter> chapters = m_audiobookManager.GetChapters(id);
 
 			// Group chapters by their underlying LocalPath and pick a canonical
 			// stream id per group: the Id of the chapter with the lowest
@@ -1685,7 +1689,7 @@ namespace Pulse.Protocols
 			Dictionary<string, int> lowestOrderIndexByPath = new Dictionary<string, int>();
 			for (int index = 0; index < chapters.Count; index++)
 			{
-				SeriesItemInfo chapter = chapters[index];
+				Chapter chapter = chapters[index];
 				string localPath = chapter.LocalPath;
 				if (string.IsNullOrEmpty(localPath))
 				{
@@ -1707,7 +1711,7 @@ namespace Pulse.Protocols
 
 			for (int index = 0; index < chapters.Count; index++)
 			{
-				SeriesItemInfo chapter = chapters[index];
+				Chapter chapter = chapters[index];
 				string streamId = chapter.Id;
 				if (!string.IsNullOrEmpty(chapter.LocalPath))
 				{
@@ -1733,12 +1737,12 @@ namespace Pulse.Protocols
 			bool subscribe = QueryParameters.GetBool(context, "subscribe");
 			string user = QueryParameters.GetString(context, "u");
 
-			SeriesTypes series = m_podcastManager.AddPodcast(feedUrl, user, subscribe);
-			if (series == null)
+			Podcast podcast = m_podcastManager.AddPodcast(feedUrl, user, subscribe);
+			if (podcast == null)
 			{
 				return RespondStatus(context, "add_failed");
 			}
-			return RespondObject(context, BuildPulsePodcast(series, user));
+			return RespondObject(context, BuildPulsePodcast(podcast, user));
 		}
 
 		/// <summary>
@@ -1795,7 +1799,7 @@ namespace Pulse.Protocols
 		{
 			string id = QueryParameters.GetString(context, "id");
 			string user = QueryParameters.GetString(context, "u");
-			SeriesTypes series = m_podcastManager.GetSeries(id);
+			Podcast series = m_podcastManager.GetPodcast(id);
 			if (series == null)
 			{
 				return RespondStatus(context, "not_found");
@@ -1816,7 +1820,7 @@ namespace Pulse.Protocols
 			bool autoDownload = QueryParameters.GetBool(context, "autoDownload");
 
 			m_podcastManager.UpdatePodcastSettings(id, retention, retentionValue, autoDownload);
-			SeriesTypes updated = m_podcastManager.GetSeries(id);
+			Podcast updated = m_podcastManager.GetPodcast(id);
 			return RespondObject(context, BuildPulsePodcast(updated, user));
 		}
 

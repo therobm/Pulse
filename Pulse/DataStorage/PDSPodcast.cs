@@ -19,47 +19,46 @@ namespace Pulse.DataStorage
 		Failed,
 	}
 
-	public class PodcastData : PulseDataObject
+	public class PodcastSeriesData : PulseDataObject
 	{
-		public string Title { get; set; } = "";
-		public string Author { get; set; } = "";
-		public string Description { get; set; } = "";
-		public string ArtworkPath { get; set; } = "";
-		public string FeedUrl { get; set; } = "";
-		public DateTime DateAdded { get; set; }
-		public eRetentionPolicy Retention { get; set; } = eRetentionPolicy.KeepAll;
-		public int RetentionValue { get; set; }
-		public bool AutoDownload { get; set; }
-		public Dictionary<string, PodcastUserState> UserState { get; set; } = new Dictionary<string, PodcastUserState>();
-	}
+		public class UserState
+		{
+			public bool Subscribed;
+			public string LastEpisodeId = "";
+			public DateTime LastPlayed;
+		}
 
-	public class PodcastUserState
-	{
-		public bool Subscribed { get; set; }
-		public string LastEpisodeId { get; set; } = "";
-		public DateTime LastPlayed { get; set; }
+		public string Title = "";
+		public string Author = "";
+		public string Description = "";
+		public string ArtworkPath = "";
+		public string FeedUrl = "";
+		public eRetentionPolicy Retention = eRetentionPolicy.KeepN;
+		public int RetentionValue;
+		public bool AutoDownload;
+		public Dictionary<string, UserState> Users = new Dictionary<string, UserState>();
 	}
 
 	public class PodcastEpisodeData : PulseDataObject
 	{
-		public string PodcastId { get; set; } = "";
-		public string Guid { get; set; } = "";
-		public string Title { get; set; } = "";
-		public string Description { get; set; } = "";
-		public int DurationSeconds { get; set; }
-		public int OrderIndex { get; set; }
-		public DateTime PublishedDate { get; set; }
-		public string MediaSourceUrl { get; set; } = "";
-		public string LocalPath { get; set; } = "";
-		public long FileSizeBytes { get; set; }
-		public eDownloadState DownloadState { get; set; } = eDownloadState.Discovered;
-		public Dictionary<string, EpisodeUserState> UserState { get; set; } = new Dictionary<string, EpisodeUserState>();
-	}
+		public class UserState
+		{
+			public int PositionSeconds;
+			public bool Completed;
+			public DateTime LastPlayed;
+		}
 
-	public class EpisodeUserState
-	{
-		public int PositionSeconds { get; set; }
-		public bool Completed { get; set; }
-		public DateTime LastPlayed { get; set; }
+		public string PodcastId = "";
+		public string Guid = "";
+		public string Title = "";
+		public string Description = "";
+		public int DurationSeconds;
+		public int OrderIndex;
+		public DateTime PublishedDate;
+		public string MediaSourceUrl = "";
+		public string LocalPath = "";
+		public long FileSizeBytes;
+		public eDownloadState DownloadState = eDownloadState.Discovered;
+		public Dictionary<string, UserState> Users = new Dictionary<string, UserState>();
 	}
 }
