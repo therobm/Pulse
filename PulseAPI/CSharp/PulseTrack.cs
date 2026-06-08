@@ -35,7 +35,7 @@ namespace PulseAPI.CSharp
 
 		public PulseTrack()
 		{
-			Kind = eDataType.Track;
+			Kind = ePulseWireType.Track;
 		}
 
 		public string GetImageId()

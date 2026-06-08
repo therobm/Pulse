@@ -5,33 +5,33 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using Pulse.Database;
+using Pulse.DataStorage;
 
 namespace Pulse.Series
 {
+	
 	/// <summary>
-	/// Audiobook half of the unified Series model, sibling to PodcastManager.
-	/// Where PodcastManager pulls items from RSS feeds, AudiobookManager scans a
-	/// local folder (PulseConfig.AudiobooksPath): every folder that directly
-	/// contains audio files is one audiobook, each file is one chapter (a single
-	/// file is a one-chapter book). Chapters are written as ordinary series_items
-	/// rows with LocalPath set and DownloadState = Downloaded, so the existing
-	/// stream / coverArt / progress endpoints resolve them unchanged. Points at
-	/// the same pulse_series_{env}.db the PodcastManager uses (audiobook rows are
-	/// distinguished by eSeriesType.Audiobook).
+	/// TODO FUCK THIS
+	/// Separate into a two data managers and scanners, this class is bloated as shit.
 	/// </summary>
 	public class AudiobookManager
 	{
-		private SeriesDBConnector m_connector;
 		private SeriesDB m_db;
+
+		private PulseDataStore m_audiobookData;
+		private PulseDataStore m_podcastData;
+
 		private string m_audiobooksPath;
 		private string m_artCacheRoot;
 		private Thread m_scanThread;
+		private PulseConfig m_config;
 
 		private static readonly string[] s_audioExtensions = new string[] { ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".wav", ".wma", ".aac", ".opus" };
 		private static readonly string[] s_coverNames = new string[] { "folder.jpg", "cover.jpg", "folder.png", "cover.png", "folder.jpeg", "cover.jpeg" };
 
 		public AudiobookManager(PulseConfig config)
 		{
+			m_config = config;
 			string environmentName = config.DatabaseEnvironment;
 			if (string.IsNullOrWhiteSpace(environmentName))
 			{
@@ -61,12 +61,27 @@ namespace Pulse.Series
 
 			SeriesDBConnector connector = new SeriesDBConnector();
 			connector.SetDatabaseFilePath(sqlitePath);
-			m_connector = connector;
 
 			SeriesDBMigrations migrations = new SeriesDBMigrations(connector);
 			migrations.RunMigrations();
 
 			m_db = new SeriesDB(connector);
+
+
+			string audiobookDB = "audiobooks.db";
+			string postcastDB = "podcasts.db";
+#if DEBUG
+			audiobookDB = "audiobooks_staging.db";
+			postcastDB = "podcasts_staging.db";
+#endif
+
+			string dbPath = Path.Combine(m_config.PulseDataPath, audiobookDB);
+			m_audiobookData = new PulseDataStore(dbPath);
+
+			dbPath = Path.Combine(m_config.PulseDataPath, postcastDB);
+			m_podcastData = new PulseDataStore(dbPath);
+
+
 		}
 
 		/// <summary>
@@ -168,6 +183,9 @@ namespace Pulse.Series
 				{
 					for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
 					{
+						string id = items[itemIndex].Id;
+						m_podcastData.Delete(id);
+						m_audiobookData.Delete(id);
 						m_db.DeleteItem(items[itemIndex].Id);
 						removedChapters++;
 					}

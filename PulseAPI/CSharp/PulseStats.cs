@@ -70,7 +70,7 @@ namespace PulseAPI.CSharp
 
 		public PulseStats()
 		{
-			Kind = eDataType.Stats;
+			Kind = ePulseWireType.Stats;
 		}
 	}
 }

@@ -38,7 +38,7 @@ namespace PulseAPI.CSharp
 
 		public PulsePodcast()
 		{
-			Kind = eDataType.Podcast;
+			Kind = ePulseWireType.Podcast;
 		}
 	}
 
@@ -52,7 +52,7 @@ namespace PulseAPI.CSharp
 
 		public PulseAudiobook()
 		{
-			Kind = eDataType.Audiobook;
+			Kind = ePulseWireType.Audiobook;
 		}
 	}
 }

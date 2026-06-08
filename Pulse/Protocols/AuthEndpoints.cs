@@ -12,7 +12,7 @@ using Pulse.MusicLibrary;
 using Pulse.Services;
 using PulseAPI.CSharp;
 
-namespace Pulse.Protocols.PulseAPI
+namespace Pulse.Protocols
 {
 	/// <summary>
 	/// P1 of the Pulse authentication epic (PLS129 / PLS132). Provides password

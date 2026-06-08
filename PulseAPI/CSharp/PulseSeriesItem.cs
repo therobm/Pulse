@@ -25,7 +25,7 @@ namespace PulseAPI.CSharp
 
 		public PulsePodcastEpisode()
 		{
-			Kind = eDataType.PodcastEpisode;
+			Kind = ePulseWireType.PodcastEpisode;
 		}
 	}
 
@@ -52,7 +52,7 @@ namespace PulseAPI.CSharp
 
 		public PulseChapter()
 		{
-			Kind = eDataType.Chapter;
+			Kind = ePulseWireType.Chapter;
 		}
 	}
 }
