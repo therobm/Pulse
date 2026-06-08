@@ -29,7 +29,7 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index, feed_url, last_polled, poll_interval_minutes, retention_policy, retention_value, auto_download FROM series;";
+				command.CommandText = "SELECT id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index, feed_url, retention_policy, retention_value, auto_download FROM series;";
 				SqliteDataReader reader = command.ExecuteReader();
 				try
 				{
@@ -58,7 +58,7 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index, feed_url, last_polled, poll_interval_minutes, retention_policy, retention_value, auto_download FROM series WHERE series_type = $series_type;";
+				command.CommandText = "SELECT id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index, feed_url, retention_policy, retention_value, auto_download FROM series WHERE series_type = $series_type;";
 				command.Parameters.AddWithValue("$series_type", type.ToString());
 
 				SqliteDataReader reader = command.ExecuteReader();
@@ -82,13 +82,7 @@ namespace Pulse.Database
 			return result;
 		}
 
-		/// <summary>
-		/// All series rows whose series_type is Podcast. Replaces the old
-		/// LoadAllPodcastFeeds: now that the feed columns live on series,
-		/// the podcast-specific subset is a single-table query and the poll
-		/// loop reads feed_url / last_polled / poll_interval_minutes /
-		/// retention / auto_download directly from the SeriesInfo.
-		/// </summary>
+		/// <summary>All series rows whose series_type is Podcast.</summary>
 		public List<SeriesTypes> LoadAllPodcastSeries()
 		{
 			return LoadAllSeriesByType(eSeriesType.Podcast);
@@ -106,7 +100,7 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index, feed_url, last_polled, poll_interval_minutes, retention_policy, retention_value, auto_download FROM series WHERE id = $id;";
+				command.CommandText = "SELECT id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index, feed_url, retention_policy, retention_value, auto_download FROM series WHERE id = $id;";
 				command.Parameters.AddWithValue("$id", id);
 
 				SqliteDataReader reader = command.ExecuteReader();
@@ -153,8 +147,8 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = @"INSERT INTO series (id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index, feed_url, last_polled, poll_interval_minutes, retention_policy, retention_value, auto_download)
-					VALUES ($id, $series_type, $title, $author, $description, $artwork_path, $date_added, $narrator, $collection, $collection_index, $feed_url, $last_polled, $poll_interval_minutes, $retention_policy, $retention_value, $auto_download)
+				command.CommandText = @"INSERT INTO series (id, series_type, title, author, description, artwork_path, date_added, narrator, collection, collection_index, feed_url, retention_policy, retention_value, auto_download)
+					VALUES ($id, $series_type, $title, $author, $description, $artwork_path, $date_added, $narrator, $collection, $collection_index, $feed_url,$retention_policy, $retention_value, $auto_download)
 					ON CONFLICT(id) DO UPDATE SET
 						series_type = excluded.series_type,
 						title = excluded.title,
@@ -166,8 +160,6 @@ namespace Pulse.Database
 						collection = excluded.collection,
 						collection_index = excluded.collection_index,
 						feed_url = excluded.feed_url,
-						last_polled = excluded.last_polled,
-						poll_interval_minutes = excluded.poll_interval_minutes,
 						retention_policy = excluded.retention_policy,
 						retention_value = excluded.retention_value,
 						auto_download = excluded.auto_download;";
@@ -195,13 +187,10 @@ namespace Pulse.Database
 
 		/// <summary>
 		/// Ingest-safe Update: INSERTs a new series row with default feed
-		/// columns and date_added taken from the supplied SeriesInfo, but on
-		/// CONFLICT(id) ONLY updates the metadata columns (title, author,
-		/// description, artwork_path, narrator, collection, collection_index)
-		/// -- date_added and every feed_* column are left alone. This is
-		/// what IngestFeedStream uses so a re-poll cannot clobber the user's
-		/// feed settings (PollIntervalMinutes, Retention, RetentionValue,
-		/// AutoDownload) or reset LastPolled.
+		/// columns, but on CONFLICT(id) ONLY updates the metadata columns
+		/// (title, author, description, artwork_path, narrator, collection,
+		/// collection_index) -- feed settings are left alone so a re-poll
+		/// cannot clobber the user's retention/auto-download preferences.
 		/// </summary>
 		public void UpdateSeriesMetadata(SeriesTypes series)
 		{
@@ -244,12 +233,10 @@ namespace Pulse.Database
 		}
 
 		/// <summary>
-		/// Sets the six feed columns on an existing series row in one
-		/// UPDATE. Called by AddPodcast the first time a feed is configured
-		/// -- subsequent re-polls leave these alone (see
-		/// UpdateSeriesMetadata) so user-set values survive.
+		/// Sets the feed columns on an existing series row. Called by
+		/// AddPodcast the first time a feed is configured.
 		/// </summary>
-		public void SetSeriesFeed(string seriesId, string feedUrl, int pollIntervalMinutes, eRetentionPolicy retention, int retentionValue, bool autoDownload, string lastPolledIso)
+		public void SetSeriesFeed(string seriesId, string feedUrl, eRetentionPolicy retention, int retentionValue, bool autoDownload)
 		{
 			if (string.IsNullOrEmpty(seriesId))
 			{
@@ -268,18 +255,14 @@ namespace Pulse.Database
 				SqliteCommand command = connection.CreateCommand();
 				command.CommandText = @"UPDATE series SET
 						feed_url = $feed_url,
-						poll_interval_minutes = $poll_interval_minutes,
 						retention_policy = $retention_policy,
 						retention_value = $retention_value,
-						auto_download = $auto_download,
-						last_polled = $last_polled
+						auto_download = $auto_download
 					WHERE id = $id;";
 				command.Parameters.AddWithValue("$feed_url", feedUrl);
-				command.Parameters.AddWithValue("$poll_interval_minutes", pollIntervalMinutes);
 				command.Parameters.AddWithValue("$retention_policy", retention.ToString());
 				command.Parameters.AddWithValue("$retention_value", retentionValue);
 				command.Parameters.AddWithValue("$auto_download", autoDownloadInt);
-				command.Parameters.AddWithValue("$last_polled", lastPolledIso);
 				command.Parameters.AddWithValue("$id", seriesId);
 				command.ExecuteNonQuery();
 			}
@@ -290,57 +273,29 @@ namespace Pulse.Database
 		}
 
 		/// <summary>
-		/// Targeted UPDATE for the four user-editable backlog settings
-		/// (poll_interval_minutes, retention_policy, retention_value,
-		/// auto_download) on one series row. Leaves feed_url, last_polled,
-		/// and every metadata column untouched so an updatePodcast call
-		/// from the client cannot disturb the feed identity or the poll
-		/// clock.
+		/// Targeted UPDATE for the user-editable backlog settings
+		/// (retention_policy, retention_value, auto_download) on one series
+		/// row. Leaves feed_url and every metadata column untouched.
 		/// </summary>
-		public void UpdateFeedSettings(string seriesId, int pollIntervalMinutes, eRetentionPolicy retention, int retentionValue, bool autoDownload)
-		{
-			if (string.IsNullOrEmpty(seriesId)) { return; }
-			int autoInt = 0;
-			if (autoDownload) { autoInt = 1; }
-			SqliteConnection connection = m_connector.OpenConnection();
-			try
-			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = @"UPDATE series SET poll_interval_minutes = $poll, retention_policy = $policy, retention_value = $value, auto_download = $auto WHERE id = $id;";
-				command.Parameters.AddWithValue("$poll", pollIntervalMinutes);
-				command.Parameters.AddWithValue("$policy", retention.ToString());
-				command.Parameters.AddWithValue("$value", retentionValue);
-				command.Parameters.AddWithValue("$auto", autoInt);
-				command.Parameters.AddWithValue("$id", seriesId);
-				command.ExecuteNonQuery();
-			}
-			finally
-			{
-				connection.Close();
-			}
-		}
-
-		/// <summary>
-		/// Targeted UPDATE that touches only the last_polled column for one
-		/// series. Used by the poll-refresh path so re-ingesting a feed does
-		/// not clobber user-set fields (PollIntervalMinutes, Retention,
-		/// RetentionValue, AutoDownload) the way a full UpdateSeries would.
-		/// Replaces the old SetFeedLastPolled now that the feed lives on the
-		/// series row.
-		/// </summary>
-		public void SetSeriesLastPolled(string seriesId, string lastPolledIso)
+		public void UpdateFeedSettings(string seriesId, eRetentionPolicy retention, int retentionValue, bool autoDownload)
 		{
 			if (string.IsNullOrEmpty(seriesId))
 			{
 				return;
 			}
-
+			int autoInt = 0;
+			if (autoDownload)
+			{
+				autoInt = 1;
+			}
 			SqliteConnection connection = m_connector.OpenConnection();
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "UPDATE series SET last_polled = $last_polled WHERE id = $id;";
-				command.Parameters.AddWithValue("$last_polled", lastPolledIso);
+				command.CommandText = @"UPDATE series SET retention_policy = $policy, retention_value = $value, auto_download = $auto WHERE id = $id;";
+				command.Parameters.AddWithValue("$policy", retention.ToString());
+				command.Parameters.AddWithValue("$value", retentionValue);
+				command.Parameters.AddWithValue("$auto", autoInt);
 				command.Parameters.AddWithValue("$id", seriesId);
 				command.ExecuteNonQuery();
 			}
@@ -892,7 +847,7 @@ namespace Pulse.Database
 			try
 			{
 				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = @"SELECT s.id, s.series_type, s.title, s.author, s.description, s.artwork_path, s.date_added, s.narrator, s.collection, s.collection_index, s.feed_url, s.last_polled, s.poll_interval_minutes, s.retention_policy, s.retention_value, s.auto_download
+				command.CommandText = @"SELECT s.id, s.series_type, s.title, s.author, s.description, s.artwork_path, s.date_added, s.narrator, s.collection, s.collection_index, s.feed_url, s.retention_policy, s.retention_value, s.auto_download
 					FROM series s
 					INNER JOIN series_user_data sud ON sud.series_id = s.id
 					WHERE sud.user_name = $user_name
@@ -1124,7 +1079,7 @@ namespace Pulse.Database
 			series.CollectionIndex = ReadInt(reader, 9, 0);
 			series.FeedUrl = ReadString(reader, 10);
 
-			string retentionString = ReadString(reader, 13);
+			string retentionString = ReadString(reader, 11);
 			eRetentionPolicy parsedRetention;
 			bool retentionParsed = Enum.TryParse<eRetentionPolicy>(retentionString, out parsedRetention);
 			if (retentionParsed)
@@ -1136,9 +1091,9 @@ namespace Pulse.Database
 				series.Retention = eRetentionPolicy.KeepAll;
 			}
 
-			series.RetentionValue = ReadInt(reader, 14, 0);
+			series.RetentionValue = ReadInt(reader, 12, 0);
 
-			int autoDownloadInt = ReadInt(reader, 15, 0);
+			int autoDownloadInt = ReadInt(reader, 13, 0);
 			if (autoDownloadInt != 0)
 			{
 				series.AutoDownload = true;

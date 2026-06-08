@@ -383,6 +383,33 @@ namespace Pulse.Series
 			return m_db.LoadItem(itemId);
 		}
 
+		/// <summary>
+		/// Resolves the cover art file for an audiobook. Checks the extracted
+		/// art cache first (survives library moves), then falls back to the
+		/// ArtworkPath stored on the series row.
+		/// </summary>
+		public string GetCoverArtPath(string seriesId)
+		{
+			// Art cache is under PulseDataPath, not the library — stable across moves.
+			string[] extensions = new string[] { ".jpg", ".png", ".jpeg" };
+			for (int index = 0; index < extensions.Length; index++)
+			{
+				string cached = Path.Combine(m_artCacheRoot, seriesId, "cover" + extensions[index]);
+				if (File.Exists(cached))
+				{
+					return cached;
+				}
+			}
+
+			// Fall back to the path stored at scan time (folder art next to the files).
+			SeriesTypes series = m_db.LoadSeries(seriesId);
+			if (series != null && !string.IsNullOrEmpty(series.ArtworkPath) && File.Exists(series.ArtworkPath))
+			{
+				return series.ArtworkPath;
+			}
+			return "";
+		}
+
 		public SeriesUserDataInfo GetUserSeries(string seriesId, string userName)
 		{
 			return m_db.LoadUserSeries(seriesId, userName);
