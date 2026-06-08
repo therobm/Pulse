@@ -230,8 +230,6 @@ namespace Pulse.Series
 
 			m_db.UpdateSeriesMetadata(series);
 
-			m_db.SetSeriesLastPolled(seriesId, nowIso);
-
 			List<string> existingGuids = m_db.LoadItemGuidsForSeries(seriesId);
 			HashSet<string> existingSet = new HashSet<string>(existingGuids);
 
@@ -279,14 +277,12 @@ namespace Pulse.Series
 		/// Fetches the feed at feedUrl over HTTP (follow-redirects, 60s
 		/// timeout, "Pulse/1.0" UA), routes the response stream into
 		/// IngestFeedStream (which creates the series row), then -- if this
-		/// is the first add for this feed -- stamps the default
-		/// PollIntervalMinutes / Retention / RetentionValue / AutoDownload
-		/// onto the series row via SetSeriesFeed. The seriesId is derived
-		/// deterministically from the feed URL so re-adding the same feed
-		/// lands on the same row, and the "FeedUrl already set" check keeps
-		/// re-adds from clobbering the user's settings. After ingest the
-		/// series artwork is cached locally and any already-eligible items
-		/// begin downloading.
+		/// is the first add for this feed -- stamps the default retention
+		/// and auto-download settings via SetSeriesFeed. The seriesId is
+		/// derived deterministically from the feed URL so re-adding the
+		/// same feed lands on the same row. After ingest the series artwork
+		/// is cached locally and any already-eligible items begin
+		/// downloading.
 		/// </summary>
 		public SeriesTypes AddPodcast(string feedUrl, string userName, bool subscribe)
 		{
@@ -322,7 +318,7 @@ namespace Pulse.Series
 
 			if (string.IsNullOrEmpty(series.FeedUrl))
 			{
-				m_db.SetSeriesFeed(seriesId, feedUrl, 60, eRetentionPolicy.KeepN, 10, true, nowIso);
+				m_db.SetSeriesFeed(seriesId, feedUrl, eRetentionPolicy.KeepN, 10, true);
 			}
 
 			bool shouldSubscribe = subscribe && !string.IsNullOrEmpty(userName);
@@ -687,11 +683,9 @@ namespace Pulse.Series
 
 		/// <summary>
 		/// Starts the single background poll thread. The thread walks every
-		/// podcast series row once per cycle, calls RefreshFeed on any
-		/// whose LastPolled is older than PollIntervalMinutes (treating an
-		/// empty or unparseable LastPolled as "due"), then sleeps 60s
-		/// before the next cycle. The infinite while-loop is the sanctioned
-		/// pattern for a worker thread (mirrors the analytics drain).
+		/// Polls all podcast series once per hour, calling RefreshFeed on
+		/// each. The infinite while-loop is the sanctioned pattern for a
+		/// worker thread (mirrors the analytics drain).
 		/// </summary>
 		public void Run()
 		{
@@ -998,19 +992,13 @@ namespace Pulse.Series
 		}
 
 		/// <summary>
-		/// Writes the four backlog settings (PollIntervalMinutes,
-		/// Retention, RetentionValue, AutoDownload) for one series via
-		/// SeriesDB.UpdateFeedSettings, then kicks a background thread
-		/// that runs ApplyRetention + DownloadPendingForFeed against the
-		/// new settings so the change takes effect immediately rather
-		/// than waiting for the next poll cycle. Mirrors the
-		/// guarded-thread pattern used by AddPodcast for the same
-		/// reason: a settings change can imply hundreds of MB of media
-		/// movement and must not block the request thread.
+		/// Writes retention and auto-download settings for one series,
+		/// then kicks a background thread that runs ApplyRetention +
+		/// DownloadPendingForFeed so the change takes effect immediately.
 		/// </summary>
-		public void UpdatePodcastSettings(string seriesId, int pollIntervalMinutes, eRetentionPolicy retention, int retentionValue, bool autoDownload)
+		public void UpdatePodcastSettings(string seriesId, eRetentionPolicy retention, int retentionValue, bool autoDownload)
 		{
-			m_db.UpdateFeedSettings(seriesId, pollIntervalMinutes, retention, retentionValue, autoDownload);
+			m_db.UpdateFeedSettings(seriesId, retention, retentionValue, autoDownload);
 			Thread settingsThread = new Thread(RunSettingsApply);
 			settingsThread.IsBackground = true;
 			settingsThread.Name = "Pulse.PodcastSettingsApply";

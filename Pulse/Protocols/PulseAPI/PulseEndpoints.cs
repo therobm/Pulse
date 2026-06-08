@@ -362,8 +362,10 @@ namespace Pulse.Protocols.PulseAPI
 			else if (id.StartsWith("se-", StringComparison.Ordinal))
 			{
 				string seriesId = id.Substring(3);
+
+				// Podcasts: art lives as folder.jpg in the download directory.
 				SeriesTypes series = m_podcastManager.GetSeries(seriesId);
-				if (series != null)
+				if (series != null && series.Type == eSeriesType.Podcast)
 				{
 					string seriesDir = m_podcastManager.GetSeriesMediaDir(series);
 					string artworkPath = Path.Combine(seriesDir, "folder.jpg");
@@ -374,6 +376,17 @@ namespace Pulse.Protocols.PulseAPI
 						return Results.Bytes(bytes, "image/jpeg");
 					}
 				}
+
+				// Audiobooks: art cache or folder art next to the audio files.
+				string audiobookArt = m_audiobookManager.GetCoverArtPath(seriesId);
+				if (!string.IsNullOrEmpty(audiobookArt))
+				{
+					byte[] bytes = File.ReadAllBytes(audiobookArt);
+					m_coverArtCache[id] = bytes;
+					string contentType = audiobookArt.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
+					return Results.Bytes(bytes, contentType);
+				}
+
 				return Results.Bytes(m_defaultCoverArt, "image/png");
 			}
 			else
@@ -1772,38 +1785,36 @@ namespace Pulse.Protocols.PulseAPI
 		}
 
 		/// <summary>
-		/// Updates a podcast's backlog settings (poll interval, retention
-		/// policy + value, auto-download). Reads query params, defaults
-		/// missing/invalid values (KeepAll / 0 / 60 / false), writes
-		/// through PodcastManager.UpdatePodcastSettings (which also kicks
-		/// a background apply so the new settings take effect immediately
-		/// rather than waiting for the next poll cycle), then returns the
-		/// updated PulsePodcast for the caller to reflect in their UI.
+		/// <summary>
+		/// Updates a podcast's backlog settings (retention policy + value,
+		/// auto-download). Writes through PodcastManager.UpdatePodcastSettings
+		/// which also kicks a background apply so changes take effect immediately.
 		/// </summary>
 		public IResult UpdatePodcast(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
 			string user = QueryParameters.GetString(context, "u");
-						SeriesTypes series = m_podcastManager.GetSeries(id);
-			if (series == null) { return RespondStatus(context, "not_found"); }
+			SeriesTypes series = m_podcastManager.GetSeries(id);
+			if (series == null)
+			{
+				return RespondStatus(context, "not_found");
+			}
 
 			string retentionRaw = QueryParameters.GetString(context, "retentionPolicy");
 			eRetentionPolicy retention = eRetentionPolicy.KeepAll;
 			bool retentionParsed = Enum.TryParse<eRetentionPolicy>(retentionRaw, out retention);
-			if (!retentionParsed) { retention = eRetentionPolicy.KeepAll; }
+			if (!retentionParsed)
+			{
+				retention = eRetentionPolicy.KeepAll;
+			}
 
 			string retentionValueRaw = QueryParameters.GetString(context, "retentionValue");
 			int retentionValue = 0;
 			int.TryParse(retentionValueRaw, out retentionValue);
 
-			string pollRaw = QueryParameters.GetString(context, "pollIntervalMinutes");
-			int pollInterval = 60;
-			bool pollParsed = int.TryParse(pollRaw, out pollInterval);
-			if (!pollParsed || pollInterval <= 0) { pollInterval = 60; }
-
 			bool autoDownload = QueryParameters.GetBool(context, "autoDownload");
 
-			m_podcastManager.UpdatePodcastSettings(id, pollInterval, retention, retentionValue, autoDownload);
+			m_podcastManager.UpdatePodcastSettings(id, retention, retentionValue, autoDownload);
 			SeriesTypes updated = m_podcastManager.GetSeries(id);
 			return RespondObject(context, BuildPulsePodcast(updated, user));
 		}

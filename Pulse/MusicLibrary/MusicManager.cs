@@ -552,7 +552,9 @@ namespace Pulse.MusicLibrary
 					return;
 				}
 
-				string libraryID = MusicManager.GenerateID(filePath);
+				//use a relative path in case the user relocates their library
+				string relativePath = Path.GetRelativePath(musicPath, filePath);
+				string libraryID = MusicManager.GenerateID(relativePath);
 				if (existingIds.Contains(libraryID))
 				{
 					Interlocked.Increment(ref skippedCount);
