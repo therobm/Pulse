@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices.Marshalling;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -188,8 +189,12 @@ namespace Pulse.Series
 
 			m_data.UpdatePodcast(series);
 
-			List<string> existingGuids = m_data.LoadItemGuidsForSeries(podcastId);
-			HashSet<string> existingSet = new HashSet<string>(existingGuids);
+			List<Episode> existingEpisdoes = m_data.LoadEpisodes(podcastId);
+			HashSet<string> existingSet = new HashSet<string>();
+			foreach (Episode ep in existingEpisdoes)
+			{
+				existingSet.Add(ep.Guid);
+			}
 
 			List<Episode> newItems = new List<Episode>();
 			int parsedItemCount = parsed.Items.Count;
@@ -266,13 +271,17 @@ namespace Pulse.Series
 
 			if (string.IsNullOrEmpty(podcast.FeedUrl))
 			{
-				m_data.SetSeriesFeed(podcastId, feedUrl, retention: eRetentionPolicy.KeepN, 10, true);
+				podcast.FeedUrl = feedUrl;
+				podcast.Retention = eRetentionPolicy.KeepN;
+				podcast.RetentionValue = 10;
+				podcast.AutoDownload = true;
+				
 			}
 
 			bool shouldSubscribe = subscribe && !string.IsNullOrEmpty(userName);
 			if (shouldSubscribe)
 			{
-				m_data.SetSubscribed(podcastId, userName, true, nowIso);
+				podcast.UserInfo[userName].Subscribed = true;
 			}
 
 			CacheArtwork(artworkUrl, podcast);
@@ -625,7 +634,7 @@ namespace Pulse.Series
 		{
 			try
 			{
-				List<Podcast> podcasts = m_data.LoadPodcasts();
+				List<Podcast> podcasts = m_data.GetPodcasts();
 				int podcastCount = podcasts.Count;
 				DateTime nowUtc = DateTime.UtcNow;
 				for (int i = 0; i < podcastCount; i++)
@@ -717,12 +726,22 @@ namespace Pulse.Series
 
 		public List<Podcast> GetSubscribedPodcasts(string userName)
 		{
-			return m_data.LoadSubscribedSeries(userName, eSeriesType.Podcast);
+			List<Podcast> podcasts = m_data.GetPodcasts();
+			List<Podcast> userSubscribed = new List<Podcast>();
+			foreach (Podcast podcast in podcasts)
+			{
+				if (podcast.UserInfo.TryGetValue(userName, out Podcast.UserData userData))
+				{
+					if (userData.Subscribed)
+						userSubscribed.Add(podcast);
+				}
+			}
+			return userSubscribed;
 		}
 
 		public List<Podcast> GetAllPodcasts()
 		{
-			return m_data.LoadAllSeriesByType(eSeriesType.Podcast);
+			return m_data.GetPodcasts();
 		}
 
 		
@@ -811,9 +830,17 @@ namespace Pulse.Series
 	
 		public List<Episode> GetDownloadedItems(string seriesId)
 		{
-			List<Episode> items = m_data.LoadDownloadedItemsForSeries(seriesId);
-			items.Sort(CompareByPublishedDescending);
-			return items;
+			List<Episode> items = m_data.LoadEpisodes(seriesId);
+
+
+			List<Episode> loaded = new List<Episode>();
+			foreach (Episode episode in items)
+			{
+				if (episode.DownloadState == eDownloadState.Downloaded)
+					loaded.Add(episode);
+			}
+			loaded.Sort(CompareByPublishedDescending);
+			return loaded;
 		}
 
 		public Episode GetEpisode(string episodeId)
@@ -821,18 +848,6 @@ namespace Pulse.Series
 			return m_data.LoadEpisode(episodeId);
 		}
 
-	
-		public PodcastUserDataInfo GetUserSeries(string seriesId, string userName)
-		{
-			return m_data.LoadUserSeries(seriesId, userName);
-		}
-
-		public EpisodeUserDataInfo GetProgress(string itemId, string userName)
-		{
-			return m_data.LoadProgress(itemId, userName);
-		}
-
-	
 		public int GetUnplayedCount(string seriesId, string userName)
 		{
 			List<Episode> downloaded = GetDownloadedItems(seriesId);
@@ -841,13 +856,13 @@ namespace Pulse.Series
 			for (int itemIndex = 0; itemIndex < downloadedCount; itemIndex++)
 			{
 				Episode item = downloaded[itemIndex];
-				EpisodeUserDataInfo progress = m_data.LoadProgress(item.Id, userName);
-				if (progress == null)
+
+				if (!item.UserInfo.ContainsKey(userName))
 				{
 					unplayed++;
 					continue;
 				}
-				if (!progress.Completed)
+				if (!item.UserInfo[userName].Completed)
 				{
 					unplayed++;
 				}
@@ -856,32 +871,36 @@ namespace Pulse.Series
 		}
 
 	
-		public void UpdatePodcastSettings(string seriesId, eRetentionPolicy retention, int retentionValue, bool autoDownload)
+		public void UpdatePodcastSettings(string postcastId, eRetentionPolicy retention, int retentionValue, bool autoDownload)
 		{
-			m_data.UpdateFeedSettings(seriesId, retention, retentionValue, autoDownload);
+			Podcast podcast = m_data.LoadPodcast(postcastId);
+			podcast.Retention = retention;
+			podcast.RetentionValue = retentionValue;	
+			podcast.AutoDownload = autoDownload;
+
 			Thread settingsThread = new Thread(RunSettingsApply);
 			settingsThread.IsBackground = true;
 			settingsThread.Name = "Pulse.PodcastSettingsApply";
-			settingsThread.Start(seriesId);
+			settingsThread.Start(postcastId);
 		}
 
-		private void RunSettingsApply(object seriesIdObject)
+		private void RunSettingsApply(object podcastIdString)
 		{
-			string seriesId = (string)seriesIdObject;
+			string podcastId = (string)podcastIdString;
 			try
 			{
-				EnforceRetention(seriesId);
+				EnforceRetention(podcastId);
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "Podcast settings apply failed for " + seriesId + ": " + ex.Message);
+				Log.Error(-1, "Podcast settings apply failed for " + podcastId + ": " + ex.Message);
 			}
 		}
 
 		public void SetSubscribed(string seriesId, string userName, bool subscribed)
 		{
-			string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
-			m_data.SetSubscribed(seriesId, userName, subscribed, nowIso);
+			Podcast podcast = m_data.LoadPodcast(seriesId);
+			podcast.UserInfo[userName].Subscribed = subscribed;
 		}
 
 		public void SaveProgress(string episodeId, string userName, int positionSeconds)
@@ -894,11 +913,11 @@ namespace Pulse.Series
 
 			string nowIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 
-			EpisodeUserDataInfo existing = m_data.LoadProgress(episodeId, userName);
+			
 			bool wasCompleted = false;
-			if (existing != null)
+			if (episode.UserInfo.ContainsKey(userName))
 			{
-				wasCompleted = existing.Completed;
+				wasCompleted = episode.UserInfo[userName].Completed;
 			}
 
 			bool passedThreshold = false;
@@ -911,22 +930,24 @@ namespace Pulse.Series
 				}
 			}
 
-			EpisodeUserDataInfo progress = new EpisodeUserDataInfo();
-			progress.ItemId = episodeId;
-			progress.UserName = userName;
-			progress.PositionSeconds = positionSeconds;
-			progress.LastPlayed = nowIso;
+			episode.UserInfo[userName] = new Episode.UserData();
+			episode.UserInfo[userName].ItemId = episodeId;
+			episode.UserInfo[userName].UserName = userName;
+			episode.UserInfo[userName].PositionSeconds = positionSeconds;
+			episode.UserInfo[userName].LastPlayed = nowIso;
 			if (wasCompleted || passedThreshold)
 			{
-				progress.Completed = true;
+				episode.UserInfo[userName].Completed = true;
 			}
 			else
 			{
-				progress.Completed = false;
+				episode.UserInfo[userName].Completed = false;
 			}
-			m_data.UpdateProgress(progress);
 
-			m_data.SetSeriesLastItem(episode.PodcastId, userName, episodeId, nowIso, nowIso);
+			Podcast parent = m_data.LoadPodcast(episode.PodcastId);
+			if (!parent.UserInfo.ContainsKey(userName))
+				parent.UserInfo[userName] = new Podcast.UserData();
+			parent.UserInfo[userName].LastEpisodeId = episodeId;
 		}
 
 		private string ExtensionForMediaSourceUrl(string mediaSourceUrl)

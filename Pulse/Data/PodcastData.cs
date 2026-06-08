@@ -22,7 +22,7 @@ namespace Pulse.Data
 			m_podcastData = new PulseDataStore(dbPath);
 		}
 
-		public List<Podcast> LoadPodcasts()
+		public List<Podcast> GetPodcasts()
 		{
 			return new List<Podcast>();
 		}

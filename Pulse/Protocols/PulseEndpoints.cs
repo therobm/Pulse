@@ -1508,11 +1508,12 @@ namespace Pulse.Protocols
 			pulsePodcast.ItemCount = downloaded.Count;
 			pulsePodcast.UnplayedCount = m_podcastManager.GetUnplayedCount(series.Id, user);
 
-			PodcastUserDataInfo userSeries = m_podcastManager.GetUserSeries(series.Id, user);
+			Podcast.UserData userSeries = null;
+			series.UserInfo.TryGetValue(user, out userSeries);
 			if (userSeries != null)
 			{
 				pulsePodcast.Subscribed = userSeries.Subscribed;
-				pulsePodcast.LastItemId = userSeries.LastItemId;
+				pulsePodcast.LastItemId = userSeries.LastEpisodeId;
 				pulsePodcast.LastPlayed = userSeries.LastPlayed;
 			}
 
@@ -1524,23 +1525,22 @@ namespace Pulse.Protocols
 			return pulsePodcast;
 		}
 
-		private PulsePodcastEpisode BuildPulsePodcastEpisode(Chapter item, string user)
+		private PulsePodcastEpisode BuildPulsePodcastEpisode(Episode item, string user)
 		{
 			PulsePodcastEpisode episode = new PulsePodcastEpisode();
 			episode.Id = item.Id;
-			episode.SeriesId = item.SeriesId;
+			episode.SeriesId = item.PodcastId;
 			episode.Title = item.Title;
 			episode.Description = item.Description;
 			episode.OrderIndex = item.OrderIndex;
 			episode.PublishedDate = item.PublishedDate;
 			episode.Duration = item.DurationSeconds;
-			episode.CoverArt = "se-" + item.SeriesId;
+			episode.CoverArt = "se-" + item.PodcastId;
 
-			EpisodeUserDataInfo progress = m_podcastManager.GetProgress(item.Id, user);
-			if (progress != null)
+			if (item.UserInfo.ContainsKey(user)) 
 			{
-				episode.PositionSeconds = progress.PositionSeconds;
-				episode.Completed = progress.Completed;
+				episode.PositionSeconds = item.UserInfo[user].PositionSeconds;
+				episode.Completed = item.UserInfo[user].Completed;
 			}
 			return episode;
 		}
@@ -1585,7 +1585,7 @@ namespace Pulse.Protocols
 			PulsePodcastDetails details = new PulsePodcastDetails();
 			details.Series = BuildPulsePodcast(podcast, user);
 
-			List<Chapter> downloaded = m_podcastManager.GetDownloadedItems(id);
+			List<Episode> downloaded = m_podcastManager.GetDownloadedItems(id);
 			for (int index = 0; index < downloaded.Count; index++)
 			{
 				details.Episodes.Add(BuildPulsePodcastEpisode(downloaded[index], user));
@@ -1640,7 +1640,7 @@ namespace Pulse.Protocols
 			chapter.StreamId = streamId;
 			chapter.CoverArt = "se-" + item.SeriesId;
 
-			EpisodeUserDataInfo progress = m_audiobookManager.GetProgress(item.Id, user);
+			ChapterUserDataInfo progress = m_audiobookManager.GetProgress(item.Id, user);
 			if (progress != null)
 			{
 				chapter.PositionSeconds = progress.PositionSeconds;
