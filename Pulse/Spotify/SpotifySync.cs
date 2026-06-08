@@ -46,7 +46,7 @@ namespace Pulse.Spotify
 			m_tokenExpiry = DateTime.MinValue;
 			m_syncIntervalHours = 12;
 			m_httpClient = new HttpClient();
-
+			m_httpClient.Timeout = TimeSpan.FromSeconds(10);
 			LoadCredentials();
 		}
 
