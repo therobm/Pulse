@@ -5,7 +5,7 @@ namespace PulseAPI.CSharp
 	/// 1:1 mapping of PulseObject type
 	/// useful for avoiding string comparisons and reflection
 	/// </summary>
-	public enum eDataType
+	public enum ePulseWireType
 	{
 		Track,
 		Album,
@@ -32,6 +32,6 @@ namespace PulseAPI.CSharp
 	public class PulseObject
 	{
 		public string Id;
-		public eDataType Kind;
+		public ePulseWireType Kind;
 	}
 }

@@ -5,7 +5,7 @@ using System.IO;
 using System.Text;
 using System.Xml;
 
-namespace Pulse.Series
+namespace Pulse.Podcasts
 {
 	/// <summary>
 	/// Channel-level metadata extracted from an RSS feed. Plain public-field

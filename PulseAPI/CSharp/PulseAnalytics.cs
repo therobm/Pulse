@@ -16,7 +16,7 @@ namespace PulseAPI.CSharp
 		}
 
 		public eAction Action;
-		public eDataType MediaType;
+		public ePulseWireType MediaType;
 		public string MediaId;
 	}
 }

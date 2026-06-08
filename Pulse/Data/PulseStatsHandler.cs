@@ -4,7 +4,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Net;
 using Pulse.MusicLibrary;
-using PulseAPI.CSharp; 
+using PulseAPI.CSharp;
+using Pulse.DataStorage;
 
 namespace Pulse.Data
 {
@@ -13,10 +14,10 @@ namespace Pulse.Data
 	public static class PulseStatsBuilder
 	{
 		public static PulseStats Build(
-			List<TrackInfo> allTracks,
-			List<AlbumInfo> allAlbums,
-			List<ArtistInfo> allArtists,
-			List<PlaylistInfo> allPlaylists,
+			List<TrackData> allTracks,
+			List<AlbumData> allAlbums,
+			List<ArtistData> allArtists,
+			List<PlaylistData> allPlaylists,
 			string userName)
 		{
 			PulseStats stats = new PulseStats();
@@ -49,7 +50,7 @@ namespace Pulse.Data
 
 			for (int i = 0; i < allTracks.Count; i++)
 			{
-				TrackInfo track = allTracks[i];
+				TrackData track = allTracks[i];
 
 				int playCount = track.Score.PlayCount;
 				int skipCount = track.Score.SkipCount;
@@ -222,16 +223,16 @@ namespace Pulse.Data
 
 			// Top 200 artists by per-user WeightedScore (falls back to global), scaled to 0..100
 			int artistLimit = 200;
-			List<KeyValuePair<ArtistInfo, float>> artistScored = new List<KeyValuePair<ArtistInfo, float>>();
+			List<KeyValuePair<ArtistData, float>> artistScored = new List<KeyValuePair<ArtistData, float>>();
 			for (int idx = 0; idx < allArtists.Count; idx++)
 			{
-				ArtistInfo artist = allArtists[idx];
-				artistScored.Add(new KeyValuePair<ArtistInfo, float>(artist, artist.GetScore(userName)));
+				ArtistData artist = allArtists[idx];
+				artistScored.Add(new KeyValuePair<ArtistData, float>(artist, artist.GetScore(userName)));
 			}
 			artistScored.Sort(CompareArtistScoredDescending);
 			for (int artistIndex = 0; artistIndex < artistScored.Count; artistIndex++)
 			{
-				KeyValuePair<ArtistInfo, float> pair = artistScored[artistIndex];
+				KeyValuePair<ArtistData, float> pair = artistScored[artistIndex];
 				if (artistIndex >= artistLimit || pair.Value <= 0)
 				{
 					break;
@@ -254,16 +255,16 @@ namespace Pulse.Data
 
 			// Highest scored tracks (per-user score if available, falls back to global), scaled to 0..100
 			int trackLimit = 200;
-			List<KeyValuePair<TrackInfo, float>> trackScored = new List<KeyValuePair<TrackInfo, float>>();
+			List<KeyValuePair<TrackData, float>> trackScored = new List<KeyValuePair<TrackData, float>>();
 			for (int idx = 0; idx < allTracks.Count; idx++)
 			{
-				TrackInfo track = allTracks[idx];
-				trackScored.Add(new KeyValuePair<TrackInfo, float>(track, track.GetScore(userName)));
+				TrackData track = allTracks[idx];
+				trackScored.Add(new KeyValuePair<TrackData, float>(track, track.GetScore(userName)));
 			}
 			trackScored.Sort(CompareTrackScoredDescending);
 			for (int trackIndex = 0; trackIndex < trackScored.Count; trackIndex++)
 			{
-				KeyValuePair<TrackInfo, float> pair = trackScored[trackIndex];
+				KeyValuePair<TrackData, float> pair = trackScored[trackIndex];
 				if (trackIndex >= trackLimit || pair.Value <= 0f)
 				{
 					break;
@@ -277,11 +278,11 @@ namespace Pulse.Data
 			}
 
 			// Most skipped tracks
-			List<TrackInfo> sortedBySkipCount = new List<TrackInfo>(allTracks);
+			List<TrackData> sortedBySkipCount = new List<TrackData>(allTracks);
 			sortedBySkipCount.Sort(CompareTrackBySkipCountDescending);
 			for (int trackIndex = 0; trackIndex < sortedBySkipCount.Count; trackIndex++)
 			{
-				TrackInfo track = sortedBySkipCount[trackIndex];
+				TrackData track = sortedBySkipCount[trackIndex];
 				if (trackIndex >= trackLimit || track.Score.SkipCount == 0)
 				{
 					break;
@@ -317,17 +318,17 @@ namespace Pulse.Data
 			return string.Compare(leftKey, rightKey, StringComparison.Ordinal);
 		}
 
-		private static int CompareArtistScoredDescending(KeyValuePair<ArtistInfo, float> left, KeyValuePair<ArtistInfo, float> right)
+		private static int CompareArtistScoredDescending(KeyValuePair<ArtistData, float> left, KeyValuePair<ArtistData, float> right)
 		{
 			return right.Value.CompareTo(left.Value);
 		}
 
-		private static int CompareTrackScoredDescending(KeyValuePair<TrackInfo, float> left, KeyValuePair<TrackInfo, float> right)
+		private static int CompareTrackScoredDescending(KeyValuePair<TrackData, float> left, KeyValuePair<TrackData, float> right)
 		{
 			return right.Value.CompareTo(left.Value);
 		}
 
-		private static int CompareTrackBySkipCountDescending(TrackInfo left, TrackInfo right)
+		private static int CompareTrackBySkipCountDescending(TrackData left, TrackData right)
 		{
 			return right.Score.SkipCount.CompareTo(left.Score.SkipCount);
 		}
