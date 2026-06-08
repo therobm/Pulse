@@ -1524,10 +1524,7 @@ namespace Pulse.Protocols
 			pulsePodcast.Id = series.Id;
 			pulsePodcast.Title = series.Title;
 			pulsePodcast.Author = series.Author;
-			pulsePodcast.Narrator = series.Narrator;
 			pulsePodcast.Description = series.Description;
-			pulsePodcast.Collection = series.Collection;
-			pulsePodcast.CollectionIndex = series.CollectionIndex;
 			pulsePodcast.CoverArt = "se-" + series.Id;
 
 			List<Episode> downloaded = m_podcastManager.GetDownloadedItems(series.Id);
@@ -1535,13 +1532,13 @@ namespace Pulse.Protocols
 			pulsePodcast.ItemCount = downloaded.Count;
 			pulsePodcast.UnplayedCount = m_podcastManager.GetUnplayedCount(series.Id, user);
 
-			Podcast.UserData userSeries = null;
-			series.UserInfo.TryGetValue(user, out userSeries);
-			if (userSeries != null)
+			Podcast.UserData userSeries;
+			bool hasUser = series.Users.TryGetValue(user, out userSeries);
+			if (hasUser)
 			{
 				pulsePodcast.Subscribed = userSeries.Subscribed;
 				pulsePodcast.LastItemId = userSeries.LastEpisodeId;
-				pulsePodcast.LastPlayed = userSeries.LastPlayed;
+				pulsePodcast.LastPlayed = userSeries.LastPlayed.ToString("o");
 			}
 
 			pulsePodcast.FeedUrl = series.FeedUrl;
@@ -1564,10 +1561,11 @@ namespace Pulse.Protocols
 			episode.Duration = item.DurationSeconds;
 			episode.CoverArt = "se-" + item.PodcastId;
 
-			if (item.UserInfo.ContainsKey(user)) 
+			Episode.UserData progress;
+			if (item.Users.TryGetValue(user, out progress))
 			{
-				episode.PositionSeconds = item.UserInfo[user].PositionSeconds;
-				episode.Completed = item.UserInfo[user].Completed;
+				episode.PositionSeconds = progress.PositionSeconds;
+				episode.Completed = progress.Completed;
 			}
 			return episode;
 		}

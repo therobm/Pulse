@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace Pulse.DataStorage
 {
@@ -19,9 +20,9 @@ namespace Pulse.DataStorage
 		Failed,
 	}
 
-	public class PodcastSeriesData : PulseDataObject
+	public class Podcast : PulseDataObject
 	{
-		public class UserState
+		public class UserData
 		{
 			public bool Subscribed;
 			public string LastEpisodeId = "";
@@ -32,16 +33,17 @@ namespace Pulse.DataStorage
 		public string Author = "";
 		public string Description = "";
 		public string ArtworkPath = "";
+		public string DateAdded = "";
 		public string FeedUrl = "";
-		public eRetentionPolicy Retention = eRetentionPolicy.KeepN;
+		public eRetentionPolicy Retention = eRetentionPolicy.KeepAll;
 		public int RetentionValue;
 		public bool AutoDownload;
-		public Dictionary<string, UserState> Users = new Dictionary<string, UserState>();
+		public Dictionary<string, UserData> Users = new Dictionary<string, UserData>();
 	}
 
-	public class PodcastEpisodeData : PulseDataObject
+	public class Episode : PulseDataObject
 	{
-		public class UserState
+		public class UserData
 		{
 			public int PositionSeconds;
 			public bool Completed;
@@ -54,11 +56,30 @@ namespace Pulse.DataStorage
 		public string Description = "";
 		public int DurationSeconds;
 		public int OrderIndex;
-		public DateTime PublishedDate;
+		public string PublishedDate = "";
 		public string MediaSourceUrl = "";
 		public string LocalPath = "";
 		public long FileSizeBytes;
 		public eDownloadState DownloadState = eDownloadState.Discovered;
-		public Dictionary<string, UserState> Users = new Dictionary<string, UserState>();
+		public int StartMs;
+		public int EndMs;
+		public Dictionary<string, UserData> Users = new Dictionary<string, UserData>();
+
+		public bool NeedsDownload()
+		{
+			if (DownloadState == eDownloadState.Downloading)
+			{
+				return false;
+			}
+			if (DownloadState != eDownloadState.Downloaded)
+			{
+				return true;
+			}
+			if (string.IsNullOrEmpty(LocalPath) || !File.Exists(LocalPath))
+			{
+				return true;
+			}
+			return false;
+		}
 	}
 }
