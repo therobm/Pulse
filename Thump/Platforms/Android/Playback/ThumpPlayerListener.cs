@@ -44,7 +44,7 @@ namespace Thump.Playback.AndroidOS
 		public void OnShuffleModeEnabledChanged(bool shuffleModeEnabled) { }
 		public void OnTimelineChanged(Timeline timeline, int reason) { }
 		public void OnTracksChanged(Tracks tracks) { }
-		public void OnVolumeChanged(float volume) { }
+		public void OnVolumeCh anged(float volume) { }
 		public void OnDeviceInfoChanged(DeviceInfo deviceInfo) { }
 		public void OnDeviceVolumeChanged(int volume, bool muted) { }
 		public void OnVideoSizeChanged(VideoSize videoSize) { }
@@ -56,6 +56,8 @@ namespace Thump.Playback.AndroidOS
 		public void OnPlaylistMetadataChanged(MediaMetadata mediaMetadata) { }
 		public void OnIsLoadingChanged(bool isLoading) { }
 		public void OnSurfaceSizeChanged(int width, int height) { }
+		public void OnPlayerStateChanged(bool playWhenReady, int playbackState) { }
+		public void OnLoadingChanged(bool isLoading) { }
 		//public void OnCues(CueGroup cueGroup) { }
 	}
 }

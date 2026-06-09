@@ -273,37 +273,37 @@ namespace Thump.Playback.AndroidOS
 			{
 				switch (pulseObject.Kind)
 				{
-					case eDataType.Album:
+					case ePulseWireType.Album:
 						{
 							PulseAlbum album = (PulseAlbum)pulseObject;
 							items.Add(BuildAlbumItem("album/" + album.Id, album.Name, album.Artist, album.CoverArt));
 							break;
 						}
-					case eDataType.Artist:
+					case ePulseWireType.Artist:
 						{
 							PulseArtist artist = (PulseArtist)pulseObject;
 							items.Add(BuildBrowsableItem("artist/" + artist.Id, artist.Name, artist.CoverArt));
 							break;
 						}
-					case eDataType.Playlist:
+					case ePulseWireType.Playlist:
 						{
 							PulsePlaylist playlist = (PulsePlaylist)pulseObject;
 							items.Add(BuildBrowsableItem("playlist/" + playlist.Id, playlist.Name, playlist.CoverArt));
 							break;
 						}
-					case eDataType.Track:
+					case ePulseWireType.Track:
 						{
 							PulseTrack track = (PulseTrack)pulseObject;
 							items.Add(BuildPlayableItem("track/" + track.Id, track.Title, track.Artist, track.CoverArt));
 							break;
 						}
-					case eDataType.Genre:
+					case ePulseWireType.Genre:
 						{
 							PulseGenre genre = (PulseGenre)pulseObject;
 							items.Add(BuildBrowsableItem("genre/" + genre.Name, genre.Name));
 							break;
 						}
-					case eDataType.Podcast:
+					case ePulseWireType.Podcast:
 						{
 							PulsePodcast podcast = (PulsePodcast)pulseObject;
 							items.Add(BuildBrowsableItem("podcast/" + podcast.Id, podcast.Title, podcast.CoverArt));
@@ -325,37 +325,37 @@ namespace Thump.Playback.AndroidOS
 			{
 				switch (pulseObject.Kind)
 				{
-					case eDataType.Album:
+					case ePulseWireType.Album:
 						{
 							PulseAlbum album = (PulseAlbum)pulseObject;
 							items.Add(BuildAlbumItemGrouped("album/" + album.Id, album.Name, album.Artist, album.CoverArt, groupTitle));
 							break;
 						}
-					case eDataType.Artist:
+					case ePulseWireType.Artist:
 						{
 							PulseArtist artist = (PulseArtist)pulseObject;
 							items.Add(BuildBrowsableItemGrouped("artist/" + artist.Id, artist.Name, artist.CoverArt, groupTitle));
 							break;
 						}
-					case eDataType.Playlist:
+					case ePulseWireType.Playlist:
 						{
 							PulsePlaylist playlist = (PulsePlaylist)pulseObject;
 							items.Add(BuildBrowsableItemGrouped("playlist/" + playlist.Id, playlist.Name, playlist.CoverArt, groupTitle));
 							break;
 						}
-					case eDataType.Track:
+					case ePulseWireType.Track:
 						{
 							PulseTrack track = (PulseTrack)pulseObject;
 							items.Add(BuildPlayableItemGrouped("track/" + track.Id, track.Title, track.Artist, track.CoverArt, groupTitle));
 							break;
 						}
-					case eDataType.Genre:
+					case ePulseWireType.Genre:
 						{
 							PulseGenre genre = (PulseGenre)pulseObject;
 							items.Add(BuildBrowsableItemGrouped("genre/" + genre.Name, genre.Name, null, groupTitle));
 							break;
 						}
-					case eDataType.Podcast:
+					case ePulseWireType.Podcast:
 						{
 							PulsePodcast podcast = (PulsePodcast)pulseObject;
 							items.Add(BuildBrowsableItemGrouped("podcast/" + podcast.Id, podcast.Title, podcast.CoverArt, groupTitle));
