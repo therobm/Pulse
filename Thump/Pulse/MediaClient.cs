@@ -58,7 +58,7 @@ namespace Thump.Pulse
 		ThumpCache m_cache;
 
 		private Thread m_thread;
-
+		protected WorkQueue m_workQueue;
 		protected string m_baseUrl;
 		protected string m_user;
 		private string m_apiParams;
@@ -100,6 +100,8 @@ namespace Thump.Pulse
 			m_audioData = new HttpQueue(this, 1);
 
 			m_httpClient = new Http();
+
+			m_workQueue = new WorkQueue();
 		}
 
 		public void SetStreamingStatus(bool isStreaming)

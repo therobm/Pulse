@@ -8,6 +8,10 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Thump.Data;
+using System.IO;
+using Microsoft.Maui.Storage;
+
+
 #if ANDROID
 using Android.Graphics;
 #endif
@@ -659,61 +663,62 @@ namespace Thump.Pulse
 
 		public override void GetCoverArt(string coverArtId, int size, Action<ImageSource> onComplete)
 		{
-			if (string.IsNullOrEmpty(coverArtId))
-			{
-				CompleteOnMain(onComplete, null);
-				return;
-			}
-
-
-
-
-			string url = BuildCoverArtUrl(coverArtId);
-
-			string cache_url = url + "_" + size.ToString();
-
-			ImageSource hot;
-			if (m_imageCache.TryGetValue(cache_url, out hot))
-			{
-				CompleteOnMain(onComplete, hot);
-				return;
-			}
-
-			//maybe we can make the right size
-			if (m_imageBytesCache.TryGetValue(url, out byte[] rawImage))
-			{
-				//make the small size they want now
-				ImageSource result = DecodeToSize(rawImage, size);
-				m_imageCache[cache_url] = result;
-				CompleteOnMain(onComplete, result);
-				return;
-			}
-
-
-			GetHTTPImage(url, (data) =>
-			{
-				try
+			m_workQueue.Enqueue(()=>
+			{ 
+				
+				if (string.IsNullOrEmpty(coverArtId))
 				{
-					if (data == null || data.Length <= 0)
-					{
-						Log.Error("Cover art fetch failed: " + url);
-						CompleteOnMain(onComplete, null);
-						return;
-					}
-					//cache the full size
-					m_imageBytesCache[url] = data;
-
-					//make the requested size
-					ImageSource result = DecodeToSize(data, size);
-					m_imageCache[cache_url] = result;
-					CompleteOnMain(onComplete, m_imageCache[cache_url]);
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
 					CompleteOnMain(onComplete, null);
+					return;
 				}
-			}, eMediaCacheStrategy.CacheFirst);
+
+				string url = BuildCoverArtUrl(coverArtId);
+
+				string cache_url = coverArtId + "_" + size.ToString();
+
+				ImageSource hot;
+				if (m_imageCache.TryGetValue(cache_url, out hot))
+				{
+					CompleteOnMain(onComplete, hot);
+					return;
+				}
+
+				//maybe we can make the right size
+				if (m_imageBytesCache.TryGetValue(url, out byte[] rawImage))
+				{
+					//make the small size they want now
+					ImageSource result = DecodeToSize(cache_url, rawImage, size);
+					m_imageCache[cache_url] = result;
+					CompleteOnMain(onComplete, result);
+					return;
+				}
+
+
+				GetHTTPImage(url, (data) =>
+				{
+					try
+					{
+						if (data == null || data.Length <= 0)
+						{
+							Log.Error("Cover art fetch failed: " + url);
+							CompleteOnMain(onComplete, null);
+							return;
+						}
+						//cache the full size
+						m_imageBytesCache[url] = data;
+
+						//make the requested size
+						ImageSource result = DecodeToSize(cache_url, data, size);
+						m_imageCache[cache_url] = result;
+						CompleteOnMain(onComplete, m_imageCache[cache_url]);
+					}
+					catch (Exception ex)
+					{
+						Log.Exception(ex);
+						CompleteOnMain(onComplete, null);
+					}
+				}, eMediaCacheStrategy.CacheFirst);
+			});
 		}
 
 
@@ -1045,7 +1050,7 @@ namespace Thump.Pulse
 			return string.Compare(first.Title, second.Title, StringComparison.OrdinalIgnoreCase);
 		}
 
-		private ImageSource DecodeToSize(byte[] data, int size)
+		private ImageSource DecodeToSize(string coverArtId, byte[] data, int size)
 		{
 			byte[] thumbBytes = null;
 #if ANDROID
@@ -1085,7 +1090,17 @@ namespace Thump.Pulse
 #else
 			thumbBytes = data;
 #endif
-			return ImageSource.FromStream(() => new System.IO.MemoryStream(thumbBytes));
+			//use an on-disk file cache for glide so it can skip the marshal reads
+			string filePath = System.IO.Path.Combine(FileSystem.CacheDirectory, coverArtId + ".jpg");
+			if (!File.Exists(filePath))
+			{
+				File.WriteAllBytes(filePath, data);
+			
+			}
+
+			ImageSource image = ImageSource.FromFile(filePath);
+			return image;
+			//return ImageSource.FromStream(() => new System.IO.MemoryStream(thumbBytes));
 		}
 	}
 }

@@ -34,6 +34,7 @@ namespace Thump.Views
 			m_image = new Image();
 			m_image.Aspect = Aspect.AspectFill;
 			m_image.IsVisible = false;
+		
 
 			m_border = new Border();
 			m_border.StrokeThickness = 0;
@@ -59,6 +60,7 @@ namespace Thump.Views
 
 		private void ApplyShape()
 		{
+			
 			if (m_shape == eArtShape.Circle)
 			{
 				m_border.StrokeShape = new Ellipse();
@@ -99,6 +101,7 @@ namespace Thump.Views
 				m_bLoadFailed = true;
 				return;
 			}
+			
 			MainView.MediaClient.GetCoverArt(coverArtId, m_artSize, (data)=>
 			{
 				OnArtLoaded(coverArtId, data);
