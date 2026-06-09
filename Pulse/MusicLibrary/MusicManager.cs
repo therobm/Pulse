@@ -15,6 +15,24 @@ using System.Threading.Tasks;
 
 namespace Pulse.MusicLibrary
 {
+	public class TrackDeduplicator
+	{
+		public string FilePath;
+		public List<TrackData> Duplicates = new List<TrackData>();
+		public TrackDeduplicator(string filePath)
+		{
+			FilePath = filePath;
+		}
+
+		public void AddTrack(TrackData track)
+		{
+			Duplicates.Add(track);
+		}
+		public bool HasDuplicates()
+		{
+			return Duplicates.Count > 1;	
+		}
+	}
 	public class PlaylistImportEntry
 	{
 		public string Artist { get; set; }
@@ -63,7 +81,7 @@ namespace Pulse.MusicLibrary
 				return;
 			}
 
-			DebugDuplicates();
+			CleanupDuplicates();
 			m_pendingScanPath = musicPath;
 			m_scanThread = new Thread(RunScanThread);
 			m_scanThread.IsBackground = true;
@@ -719,6 +737,10 @@ namespace Pulse.MusicLibrary
 			if (!m_scanningArtistCache.TryGetValue(scanned.ArtistId, out ArtistData))
 			{
 				ArtistData = m_database.GetOrCreateArtist(scanned.ArtistId, scanned.ArtistName);
+				if (ArtistData.Name.ToLower().Contains("apple"))
+				{
+					int asf = 0;
+				}
 				m_scanningArtistCache[scanned.ArtistId] = ArtistData;
 			}
 
@@ -779,24 +801,85 @@ namespace Pulse.MusicLibrary
 			}
 		}
 
-		private void DebugDuplicates()
+		private void CleanupDuplicates()
 		{
 			int duplicateAlbumTracks = 0;
 			int duplicateArtistAlbums = 0;
+
+			List<string> trackIdsToDelete = new List<string>();
 
 			List<AlbumData> albums = m_database.GetAllAlbums();
 			foreach (AlbumData album in albums)
 			{
 				HashSet<string> seenTrackIds = new HashSet<string>();
-				for (int index = 0; index < album.Tracks.Count; index++)
+				Dictionary<string, TrackDeduplicator> trackDuplicates = new Dictionary<string, TrackDeduplicator>();
+				for (int i = 0; i < album.Tracks.Count; i++)
 				{
-					if (!seenTrackIds.Add(album.Tracks[index].Id))
+					TrackData track = album.Tracks[i];
+					if (!trackDuplicates.ContainsKey(track.FilePath))
 					{
-						Log.Warning(-1, "Duplicate track in album \"" + album.Name + "\": " + album.Tracks[index].Title + " (" + album.Tracks[index].Id + ")");
+						trackDuplicates[track.FilePath] = new TrackDeduplicator(track.FilePath);
+					}
+					trackDuplicates[track.FilePath].AddTrack(track);
+					if (!seenTrackIds.Add(album.Tracks[i].Id))
+					{
+						Log.Warning(-1, "Duplicate track in album \"" + album.Name + "\": " + album.Tracks[i].Title + " (" + album.Tracks[i].Id + ")");
 						duplicateAlbumTracks++;
 					}
 				}
+
+				List<PlaylistData> playlists = m_database.GetGenericPlaylists();
+			
+				//remove duplicate tracks with legacy Ids
+				foreach (KeyValuePair<string, TrackDeduplicator> pair in trackDuplicates)
+				{
+					TrackDeduplicator dedup = pair.Value;
+					if (!dedup.HasDuplicates())
+						continue;
+
+					//find the authorative source
+					string relativePath = Path.GetRelativePath(m_config.MusicPath, pair.Key);
+					string correctId = MusicManager.GenerateID(relativePath);
+
+					TrackData keepTrack = null;
+					List<TrackData> removed = new List<TrackData>();
+					for (int i = 0; i < dedup.Duplicates.Count; i++)
+					{
+						if (keepTrack == null && dedup.Duplicates[i].Id == correctId)
+						{
+							keepTrack = dedup.Duplicates[i];
+							continue;
+						}
+						else
+						{
+							removed.Add(dedup.Duplicates[i]);	
+							m_database.RemoveTrack(dedup.Duplicates[i].Id);
+							Log.Warning(0, "Remove duplicate track: " + dedup.Duplicates[i].FilePath);
+						}
+					}
+					if (keepTrack == null)
+					{
+						Log.Error(0, "Error duplicates detected with no correct id");
+					}
+					else 
+					{
+						//fixup playlists
+						foreach (TrackData track in removed)
+						{
+							for (int j = 0; j < playlists.Count; j++)
+							{
+								PlaylistData playlist = playlists[j];
+								playlist.RepairTrackLinkID(track.Id, keepTrack.Id);
+							}
+						}
+					}
+				}
 			}
+			
+			
+
+
+
 
 			List<ArtistData> artists = m_database.GetAllArtists();
 			foreach (ArtistData artist in artists)

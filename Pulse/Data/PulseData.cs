@@ -172,7 +172,10 @@ namespace Pulse.Data
 			list.AddRange(m_autoPlaylists.Values);
 			return list;
 		}
-
+		public List<PlaylistData> GetGenericPlaylists()
+		{
+			return new List<PlaylistData>(m_playlists.Values);
+		}
 		public List<TrackData> GetPlaylistTracks(string playlistId)
 		{
 			PlaylistData playlist;
@@ -409,6 +412,10 @@ namespace Pulse.Data
 				List<AlbumData> albums = m_musicData.LoadList<AlbumData>(eDataType.Album);
 				for (int i = 0; i < albums.Count; i++)
 				{
+					if (albums[i].ArtistName.ToLower().Contains("apple"))
+					{
+						int asdf = 0;
+					}
 					m_albums[albums[i].Id] = albums[i];
 				}
 
