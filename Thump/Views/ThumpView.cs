@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using PulseAPI.CSharp;
+using Thump.Utility;
 
 namespace Thump.Views
 {
@@ -62,8 +63,9 @@ namespace Thump.Views
 			}
 		}
 
-		protected void Sort<T>(ObservableCollection<T> collection, Comparison<T> comparison)
+		protected void Sort<T>(QuietObservableCollection<T> collection, Comparison<T> comparison)
 		{
+			collection.BeginBatch();
 			List<T> sorted = new List<T>(collection);
 			sorted.Sort(comparison);
 
@@ -84,14 +86,16 @@ namespace Thump.Views
 					collection.Move(current, i);
 				}
 			}
+			collection.EndBatch();
 		}
 
-		protected void SyncFrom<T>(ObservableCollection<T> collection, List<T> incoming) where T : PulseObject
+		protected void SyncFrom<T>(QuietObservableCollection<T> collection, List<T> incoming) where T : PulseObject
 		{
 			SyncFrom<T>(collection, incoming, e => e.Id);
 		}
-		protected void SyncFrom<T>(ObservableCollection<T> collection, List<T> incoming, Func<T, string> getId)
+		protected void SyncFrom<T>(QuietObservableCollection<T> collection, List<T> incoming, Func<T, string> getId)
 		{
+			collection.BeginBatch();
 			HashSet<string> incomingIds = new HashSet<string>();
 			for (int i = 0; i < incoming.Count; i++)
 			{
@@ -133,14 +137,16 @@ namespace Thump.Views
 					collection.RemoveAt(i);
 				}
 			}
+			collection.EndBatch();
 		}
 
-		protected void SyncFromOrdered<T>(ObservableCollection<T> collection, List<T> incoming) where T : PulseObject
+		protected void SyncFromOrdered<T>(QuietObservableCollection<T> collection, List<T> incoming) where T : PulseObject
 		{
 			SyncFromOrdered<T>(collection, incoming, e => e.Id);
 		}
-		protected void SyncFromOrdered<T>(ObservableCollection<T> collection, List<T> incoming, Func<T, string> getId)
+		protected void SyncFromOrdered<T>(QuietObservableCollection<T> collection, List<T> incoming, Func<T, string> getId)
 		{
+			collection.BeginBatch();
 			// Remove items no longer present.
 			HashSet<string> incomingIds = new HashSet<string>();
 			for (int i = 0; i < incoming.Count; i++)
@@ -186,6 +192,7 @@ namespace Thump.Views
 					}
 				}
 			}
+			collection.EndBatch();
 		}
 
 		private static void CollectChildViews(IView element, List<IView> children)

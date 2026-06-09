@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.Metrics;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using PulseAPI.CSharp;
@@ -14,9 +15,9 @@ namespace Thump.Views.Tiles
 		private Label m_subtitleLabel;
 		private PulseArtist m_artist;
 
+		static int count = 0;
 		public ArtistRowTile() : base(MainView.Self)
 		{
-			
 		}
 
 		protected override void BuildLayout()
@@ -45,7 +46,7 @@ namespace Thump.Views.Tiles
 
 		private View BuildArt()
 		{
-			m_art = new ArtImage();
+			m_art = new ArtImage(56);
 			m_art.WidthRequest = 56;
 			m_art.HeightRequest = 56;
 			m_art.VerticalOptions = LayoutOptions.Center;

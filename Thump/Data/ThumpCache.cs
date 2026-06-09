@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.Maui.Storage;
@@ -129,17 +130,18 @@ namespace Thump.Data
 
 		public void CacheQueryResults(string url, string data)
 		{
-			if (string.IsNullOrEmpty(url) || data == null)
+			if (string.IsNullOrWhiteSpace(url) || data == null || data.Length == 0)
 			{
 				return;
 			}
+			Log.Info("Caching: URL: " + url + " DATA: " + data);
 			byte[] bytes = System.Text.Encoding.UTF8.GetBytes(data);
 			CacheBytes(url, bytes, false);
 		}
 
 		public void CacheQueryResults(string url, byte[] data)
 		{
-			if (string.IsNullOrEmpty(url) || data == null)
+			if (string.IsNullOrEmpty(url) || data == null || data.Length == 0)
 			{
 				return;
 			}
@@ -188,12 +190,11 @@ namespace Thump.Data
 
 		public bool GetCachedResults(string url, out byte[] data)
 		{
-			bool retVal = false;
 			byte[] retData = null;
 			data = null;
 			if (string.IsNullOrEmpty(url))
 			{
-				return retVal;
+				return false;
 			}
 			
 			ExecuteSync(()=>
@@ -203,15 +204,7 @@ namespace Thump.Data
 					cmd.CommandText = "SELECT data FROM http_cache WHERE url = $u";
 					cmd.Parameters.AddWithValue("$u", url);
 					object result = cmd.ExecuteScalar();
-					if (result == null)
-					{
-						retVal = false;
-					}
-					else if (result == DBNull.Value)
-					{
-						retVal = false;
-					}
-					else 
+					if (result != null && result != DBNull.Value)
 					{ 
 						retData = result as byte[];
 						if (retData == null || retData.Length <= 0)
@@ -354,14 +347,28 @@ namespace Thump.Data
 					}
 				}
 
-				for (int evictionIndex = 0; evictionIndex < urlsToEvict.Count; evictionIndex++)
+				if (urlsToEvict.Count == 0)
 				{
-					using (SqliteCommand cmd = m_connection.CreateCommand())
+					return;
+				}
+
+				using (SqliteCommand cmd = m_connection.CreateCommand())
+				{
+					StringBuilder sb = new StringBuilder();
+					sb.Append("DELETE FROM http_cache WHERE url IN (");
+					for (int i = 0; i < urlsToEvict.Count; i++)
 					{
-						cmd.CommandText = "DELETE FROM http_cache WHERE url = $u";
-						cmd.Parameters.AddWithValue("$u", urlsToEvict[evictionIndex]);
-						cmd.ExecuteNonQuery();
+						string paramName = "$u" + i;
+						if (i > 0)
+						{
+							sb.Append(",");
+						}
+						sb.Append(paramName);
+						cmd.Parameters.AddWithValue(paramName, urlsToEvict[i]);
 					}
+					sb.Append(")");
+					cmd.CommandText = sb.ToString();
+					cmd.ExecuteNonQuery();
 				}
 			}
 		}

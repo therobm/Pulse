@@ -116,7 +116,7 @@ namespace Thump.Playback.AndroidOS
 			m_controller.ClearMediaItems();
 
 			PulseTrack startTrack = m_queue[startIndex];
-			bool isOnline = m_data.IsOnline();
+			bool isOnline = Http.IsNetworkAvailable();
 
 			m_cacheQueue.Clear();
 

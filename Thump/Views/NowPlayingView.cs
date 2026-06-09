@@ -82,7 +82,7 @@ namespace Thump.Views
 
 		private View BuildArt()
 		{
-			m_art = new ArtImage();
+			m_art = new ArtImage(400);
 			m_art.SetAspect(Aspect.AspectFit);
 			m_art.Margin = new Thickness(24, 16, 24, 8);
 			m_art.HorizontalOptions = LayoutOptions.Fill;

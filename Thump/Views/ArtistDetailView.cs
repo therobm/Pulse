@@ -6,6 +6,7 @@ using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PulseAPI.CSharp;
 using Thump.Pulse;
+using Thump.Utility;
 using Thump.Views.Tiles;
 
 namespace Thump.Views
@@ -19,7 +20,7 @@ namespace Thump.Views
 		private PulseArtist m_artist;
 		// Bound to m_albumList once; OnAlbumsLoaded reconciles in place so a
 		// back-nav refresh only touches changed rows.
-		private ObservableCollection<PulseAlbum> m_albums = new ObservableCollection<PulseAlbum>();
+		private QuietObservableCollection<PulseAlbum> m_albums = new QuietObservableCollection<PulseAlbum>();
 
 		public ArtistDetailView(MainView mainView, PulseArtist artist) : base(mainView)
 		{
@@ -80,7 +81,7 @@ namespace Thump.Views
 
 		private View BuildArt()
 		{
-			m_art = new ArtImage();
+			m_art = new ArtImage(180);
 			m_art.HeightRequest = 180;
 			m_art.WidthRequest = 180;
 			m_art.HorizontalOptions = LayoutOptions.Center;

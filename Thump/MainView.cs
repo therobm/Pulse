@@ -77,6 +77,8 @@ namespace Thump
 		/// <summary>Once-per-second tick that decrements the sleep timer and pauses playback when it elapses.</summary>
 		private IDispatcherTimer m_sleepTimerTick;
 
+		private bool m_bIsOnline = true;
+
 		public MainView()
 		{
 			s_self = this;
@@ -164,6 +166,10 @@ namespace Thump
 		// the main thread before touching the banner's visibility.
 		public void OnOnlineStateChanged(bool online)
 		{
+			if (online == m_bIsOnline)
+				return;
+
+			m_bIsOnline = online;
 			string connectivityDetail = "offline";
 			if (online)
 			{

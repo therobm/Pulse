@@ -19,15 +19,14 @@ namespace Thump.Views
 		private eArtShape m_shape = eArtShape.RoundedRect;
 		private string m_coverArtId;
 		private bool m_bLoadFailed;
-
-		public ArtImage() : base(MainView.Self)
+		private int m_artSize;
+		public ArtImage(int artSize) : this(MainView.Self, artSize)
 		{
-
 		}
 
-		public ArtImage(MainView mainView) : base(mainView)
+		public ArtImage(MainView mainView, int artSize) : base(mainView)
 		{
-
+			m_artSize = artSize;
 		}
 
 		protected override void BuildLayout()
@@ -35,6 +34,7 @@ namespace Thump.Views
 			m_image = new Image();
 			m_image.Aspect = Aspect.AspectFill;
 			m_image.IsVisible = false;
+		
 
 			m_border = new Border();
 			m_border.StrokeThickness = 0;
@@ -60,6 +60,7 @@ namespace Thump.Views
 
 		private void ApplyShape()
 		{
+			
 			if (m_shape == eArtShape.Circle)
 			{
 				m_border.StrokeShape = new Ellipse();
@@ -100,7 +101,8 @@ namespace Thump.Views
 				m_bLoadFailed = true;
 				return;
 			}
-			MainView.MediaClient.GetCoverArt(coverArtId, (data)=>
+			
+			MainView.MediaClient.GetCoverArt(coverArtId, m_artSize, (data)=>
 			{
 				OnArtLoaded(coverArtId, data);
 			});
@@ -119,18 +121,18 @@ namespace Thump.Views
 			base.OnNavigatedTo();
 		}
 
-		private void OnArtLoaded(string artID, byte[] data)
+		private void OnArtLoaded(string artID, ImageSource data)
 		{
 			if (artID != m_coverArtId)
 				return;
 
-			if (data == null || data.Length == 0)
+			if (data == null)
 			{
 				m_bLoadFailed = true;
 				return;
 			}
 			m_bLoadFailed = false;
-			m_image.Source = ImageSource.FromStream(() => new System.IO.MemoryStream(data));
+			m_image.Source = data;
 			m_image.IsVisible = true;
 		}
 	}

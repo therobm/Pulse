@@ -61,7 +61,7 @@ namespace Thump.Views.Tiles
 			artGrid.HeightRequest = 44;
 			artGrid.VerticalOptions = LayoutOptions.Center;
 
-			m_art = new ArtImage();
+			m_art = new ArtImage(44);
 			m_art.WidthRequest = 44;
 			m_art.HeightRequest = 44;
 			artGrid.Children.Add(m_art);
@@ -163,7 +163,7 @@ namespace Thump.Views.Tiles
 
 		private void UpdateAvailability(PulseTrack track)
 		{
-			bool online = MainView.MediaClient.IsOnline();
+			bool online = Http.IsNetworkAvailable();
 			string id = track.Id;
 			System.Threading.Tasks.Task.Run(() =>
 			{

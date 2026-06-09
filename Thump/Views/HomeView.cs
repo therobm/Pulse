@@ -4,6 +4,7 @@ using Microsoft.Maui;
 using Microsoft.Maui.Controls;
 using PulseAPI.CSharp;
 using Thump.Pulse;
+using Thump.Utility;
 using Thump.Views.Tiles;
 
 namespace Thump.Views
@@ -19,10 +20,10 @@ namespace Thump.Views
 		private CollectionView m_popularArtists;
 		private CollectionView m_favorites;
 
-		private ObservableCollection<PulseObject> m_recentlyPlayedItems = new ObservableCollection<PulseObject>();
-		private ObservableCollection<PulsePlaylist> m_yourPlaylistsItems = new ObservableCollection<PulsePlaylist>();
-		private ObservableCollection<PulseArtist> m_popularArtistsItems = new ObservableCollection<PulseArtist>();
-		private ObservableCollection<PulseTrack> m_favoritesItems = new ObservableCollection<PulseTrack>();
+		private QuietObservableCollection<PulseObject> m_recentlyPlayedItems = new QuietObservableCollection<PulseObject>();
+		private QuietObservableCollection<PulsePlaylist> m_yourPlaylistsItems = new QuietObservableCollection<PulsePlaylist>();
+		private QuietObservableCollection<PulseArtist> m_popularArtistsItems = new QuietObservableCollection<PulseArtist>();
+		private QuietObservableCollection<PulseTrack> m_favoritesItems = new QuietObservableCollection<PulseTrack>();
 
 		public HomeView(MainView mainView) : base(mainView)
 		{

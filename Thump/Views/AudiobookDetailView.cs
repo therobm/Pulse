@@ -6,6 +6,7 @@ using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PulseAPI.CSharp;
 using Thump.Pulse;
+using Thump.Utility;
 using Thump.Views.Tiles;
 
 namespace Thump.Views
@@ -18,7 +19,7 @@ namespace Thump.Views
 		private CollectionView m_chapterList;
 		private PulseAudiobook m_audiobook;
 		// Bound to m_chapterList once; OnAudiobookLoaded reconciles in place.
-		private ObservableCollection<PulseChapter> m_chapters = new ObservableCollection<PulseChapter>();
+		private QuietObservableCollection<PulseChapter> m_chapters = new QuietObservableCollection<PulseChapter>();
 		// Chapters adapted to PulseTrack so the existing playback path can queue
 		// them. Rebuilt from m_chapters after each sync so SelectionChanged's
 		// index maps cleanly between the two lists.
@@ -81,7 +82,7 @@ namespace Thump.Views
 
 		private View BuildArt()
 		{
-			m_art = new ArtImage();
+			m_art = new ArtImage(220);
 			m_art.HeightRequest = 220;
 			m_art.WidthRequest = 220;
 			m_art.HorizontalOptions = LayoutOptions.Center;

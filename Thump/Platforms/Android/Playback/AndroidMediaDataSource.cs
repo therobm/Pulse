@@ -92,6 +92,7 @@ namespace Thump.Playback.AndroidOS
 		private string m_url;
 		private Stream m_readStream;
 		private HttpResponseMessage m_response;
+		private CancellationTokenSource m_cancellationToken;
 		/// <summary>
 		/// um.. starting queue?
 		/// </summary>
@@ -140,7 +141,16 @@ namespace Thump.Playback.AndroidOS
 			m_streamFinalized = false;
 
 			// 2. network stream
-			m_response = m_data.HttpGetStream(m_url, position);
+
+			//if the last stream didn't exit properly kill it now
+			if (m_cancellationToken != null)
+			{	
+				m_cancellationToken.Cancel();
+				m_cancellationToken.Dispose();
+			}
+
+			m_cancellationToken = new CancellationTokenSource();
+			m_response = m_data.HttpGetStream(m_url, position, m_cancellationToken.Token);
 			if (m_response == null || !m_response.IsSuccessStatusCode)
 			{
 				throw new IOException("stream open failed: " + m_trackId);
@@ -382,11 +392,20 @@ namespace Thump.Playback.AndroidOS
 				}
 				m_readStream = null;
 			}
+
 			m_memorySource = null;
+
 			if (m_response != null)
 			{
 				m_response.Dispose();
 				m_response = null;
+			}
+
+			if (m_cancellationToken != null)
+			{
+				m_cancellationToken.Cancel();
+				m_cancellationToken.Dispose();
+				m_cancellationToken = null;
 			}
 
 

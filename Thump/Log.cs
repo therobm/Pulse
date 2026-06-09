@@ -27,7 +27,9 @@ namespace Thump
 
 		public static void Perf(string message)
 		{
-			Write("PERF", message, false);
+#if DEBUG
+		//	Write("PERF", message, false);
+#endif
 		}
 
 		public static void Exception(Exception ex)

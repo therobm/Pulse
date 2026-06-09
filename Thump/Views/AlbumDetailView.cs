@@ -6,6 +6,7 @@ using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PulseAPI.CSharp;
 using Thump.Pulse;
+using Thump.Utility;
 using Thump.Views.Tiles;
 
 namespace Thump.Views
@@ -20,7 +21,7 @@ namespace Thump.Views
 		private PulseAlbum m_album;
 		// Bound to m_trackList once; OnTracksLoaded reconciles in place. The play
 		// actions snapshot it to a List since OnPlayTracks(...) takes List<PulseTrack>.
-		private ObservableCollection<PulseTrack> m_tracks = new ObservableCollection<PulseTrack>();
+		private QuietObservableCollection<PulseTrack> m_tracks = new QuietObservableCollection<PulseTrack>();
 
 		public AlbumDetailView(MainView mainView, PulseAlbum album) : base(mainView)
 		{
@@ -80,7 +81,7 @@ namespace Thump.Views
 
 		private View BuildArt()
 		{
-			m_art = new ArtImage();
+			m_art = new ArtImage(220);
 			m_art.HeightRequest = 220;
 			m_art.WidthRequest = 220;
 			m_art.HorizontalOptions = LayoutOptions.Center;

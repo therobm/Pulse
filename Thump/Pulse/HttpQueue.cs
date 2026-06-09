@@ -10,31 +10,24 @@ namespace Thump.Pulse
 		public Action<byte[]> m_onBinaryComplete;
 		public Action<string> m_onStringComplete;
 		public string m_url;
-		public eMediaCacheStrategy m_cacheStrategy;
 		public bool m_bIsBinary;
-		public bool m_bLogPerf;
-		public HttpReq(string url, Action<byte[]> onComplete, eMediaCacheStrategy cacheStrategy, bool logPerf)
+		public HttpReq(string url, Action<byte[]> onComplete)
 		{
 			m_url = url;
 			m_onBinaryComplete = onComplete;
 			m_bIsBinary = true;
-			m_cacheStrategy = cacheStrategy;
-			m_bLogPerf = logPerf;
 		}
-		public HttpReq(string url, Action<string> onComplete, eMediaCacheStrategy cacheStrategy, bool logPerf)
+		public HttpReq(string url, Action<string> onComplete)
 		{
 			m_url = url;
 			m_onStringComplete = onComplete;
 			m_bIsBinary = false;
-			m_cacheStrategy = cacheStrategy;
-			m_bLogPerf = logPerf;
 		}
 	}
 
 	public class HttpQueue
 	{
-		private Thread m_thread;
-		public int m_maxRequests = 1;
+		private int m_threadCount = 0;
 		public object m_queueLock = new object();
 		Queue<HttpReq> m_requests = new Queue<HttpReq>();
 		MediaClient m_mediaClient;
@@ -44,14 +37,18 @@ namespace Thump.Pulse
 		private object m_cancellationLock = new object();
 		private SemaphoreSlim m_signal = new SemaphoreSlim(0);
 		private HttpReq m_inFlight;
+		private volatile bool m_shutdown = false;
 
-		public HttpQueue(MediaClient mediaClient, int maxRequests)
+		public HttpQueue(MediaClient mediaClient, int maxConcurrent)
 		{
-			m_maxRequests = maxRequests;
 			m_mediaClient = mediaClient;
-			m_thread = new Thread(Process);
-			m_thread.IsBackground = true;
-			m_thread.Start();
+			m_threadCount = maxConcurrent;
+			for (int i = 0; i < m_threadCount; i++)
+			{
+				Thread thread = new Thread(Process);
+				thread.IsBackground = true;
+				thread.Start();
+			}
 		}
 
 		public void Suspend()
@@ -86,6 +83,9 @@ namespace Thump.Pulse
 			while (true)
 			{
 				m_signal.Wait();
+				if (m_shutdown)
+					return;
+
 				if (m_suspended)
 				{
 					m_signal.Release();
@@ -93,48 +93,43 @@ namespace Thump.Pulse
 					continue;
 				}
 
-				for (int i = 0; i < m_maxRequests; i++)
+			
+				HttpReq next = null;
+				lock (m_queueLock)
 				{
-					HttpReq next = null;
-					if (m_inFlight != null)
+					if (m_requests.Count == 0)
 					{
-						next = m_inFlight;
-						m_inFlight = null;
-					}
-					else
-					{
-						lock (m_queueLock)
-						{
-							if (m_requests.Count == 0)
-							{
-								break;
-							}
-							next = m_requests.Dequeue();
-						}
-					}
-
-					if (m_suspended)
-					{
-						m_inFlight = next;   // lost the race before starting; hold it, no callback
 						break;
 					}
-					try
+					next = m_requests.Dequeue();
+				}
+				
+				if (m_suspended)
+				{
+					lock (m_queueLock)
 					{
-						ProcessRequest(next);
+						m_requests.Enqueue(m_inFlight);
 					}
-					catch(Exception ex)
-					{
-						Log.Exception(ex);
-					}
+					break;
+				}
+
+				try
+				{
+					ProcessRequest(next);
+				}
+				catch(Exception ex)
+				{
+					Log.Exception(ex);
 				}
 			}
+			
 		}
 		private void ProcessRequest(HttpReq req)
 		{
 			CancellationToken token = CurrentToken();
 			if (req.m_bIsBinary)
 			{
-				byte[] data = m_mediaClient.HttpGetBinary(req.m_url, req.m_cacheStrategy, token);
+				byte[] data = m_mediaClient.HttpGetBinary(req.m_url, token);
 				if (token.IsCancellationRequested)
 				{
 					m_inFlight = req;   // suspended mid-flight: retry on resume, don't fire callback
@@ -147,7 +142,7 @@ namespace Thump.Pulse
 			}
 			else
 			{
-				string data = m_mediaClient.HttpGet(req.m_url, req.m_cacheStrategy, req.m_bLogPerf, false);
+				string data = m_mediaClient.HttpGet(req.m_url, false, token);
 				if (req.m_onStringComplete != null)
 				{
 					req.m_onStringComplete(data);
