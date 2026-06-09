@@ -81,7 +81,7 @@ namespace Thump.Views.Tiles
 			}
 			m_item = item;
 
-			if (item.Kind == eDataType.Track)
+			if (item.Kind == ePulseWireType.Track)
 			{
 				PulseTrack track = item as PulseTrack;
 				if (track != null)
@@ -92,7 +92,7 @@ namespace Thump.Views.Tiles
 					m_art.SetCoverArt(track.CoverArt);
 				}
 			}
-			else if (item.Kind == eDataType.Album)
+			else if (item.Kind == ePulseWireType.Album)
 			{
 				PulseAlbum album = item as PulseAlbum;
 				if (album != null)
@@ -103,7 +103,7 @@ namespace Thump.Views.Tiles
 					m_art.SetCoverArt(album.CoverArt);
 				}
 			}
-			else if (item.Kind == eDataType.Playlist)
+			else if (item.Kind == ePulseWireType.Playlist)
 			{
 				PulsePlaylist playlist = item as PulsePlaylist;
 				if (playlist != null)
@@ -114,7 +114,7 @@ namespace Thump.Views.Tiles
 					m_art.SetCoverArt(playlist.CoverArt);
 				}
 			}
-			else if (item.Kind == eDataType.Artist)
+			else if (item.Kind == ePulseWireType.Artist)
 			{
 				PulseArtist artist = item as PulseArtist;
 				if (artist != null)

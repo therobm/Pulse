@@ -73,18 +73,18 @@ namespace Thump
 		}
 
 		/// <summary>Record an action attributed to a content object (e.g. Play a playlist, Browse an artist).</summary>
-		public void Event(eAction action, eResult result, eDataType objectType, string objectId)
+		public void Event(eAction action, eResult result, ePulseWireType objectType, string objectId)
 		{
 			Record(action, result, ObjectTypeName(objectType), objectId, s_noDuration, "");
 		}
 
 		/// <summary>Record a timed action against a content object, with detail (e.g. TrackLoad, TrackStream).</summary>
-		public void Event(eAction action, eResult result, eDataType objectType, string objectId, long durationMs, string detail)
+		public void Event(eAction action, eResult result, ePulseWireType objectType, string objectId, long durationMs, string detail)
 		{
 			Record(action, result, ObjectTypeName(objectType), objectId, durationMs, detail);
 		}
 
-		private static string ObjectTypeName(eDataType objectType)
+		private static string ObjectTypeName(ePulseWireType objectType)
 		{
 			return objectType.ToString().ToLowerInvariant();
 		}

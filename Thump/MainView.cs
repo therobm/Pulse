@@ -334,7 +334,7 @@ namespace Thump
 
 		public void OnHomeItemSelected(PulseObject item)
 		{
-			if (item.Kind == eDataType.Album)
+			if (item.Kind == ePulseWireType.Album)
 			{
 				PulseAlbum album = item as PulseAlbum;
 				if (album != null)
@@ -342,7 +342,7 @@ namespace Thump
 					OnAlbumSelected(album);
 				}
 			}
-			else if (item.Kind == eDataType.Playlist)
+			else if (item.Kind == ePulseWireType.Playlist)
 			{
 				PulsePlaylist playlist = item as PulsePlaylist;
 				if (playlist != null)
@@ -350,7 +350,7 @@ namespace Thump
 					OnPlaylistSelected(playlist);
 				}
 			}
-			else if (item.Kind == eDataType.Artist)
+			else if (item.Kind == ePulseWireType.Artist)
 			{
 				PulseArtist artist = item as PulseArtist;
 				if (artist != null)
@@ -358,7 +358,7 @@ namespace Thump
 					OnArtistSelected(artist);
 				}
 			}
-			else if (item.Kind == eDataType.Track)
+			else if (item.Kind == ePulseWireType.Track)
 			{
 				PulseTrack track = item as PulseTrack;
 				if (track != null)
@@ -404,13 +404,13 @@ namespace Thump
 			switch (source)
 			{
 				case eQueueSource.Album:
-					m_mediaClient.ReportAnalytics(sourceId, eDataType.Album, PulseAnalytics.eAction.Started);
+					m_mediaClient.ReportAnalytics(sourceId, ePulseWireType.Album, PulseAnalytics.eAction.Started);
 					break;
 				case eQueueSource.Artist:
-					m_mediaClient.ReportAnalytics(sourceId, eDataType.Artist, PulseAnalytics.eAction.Started);
+					m_mediaClient.ReportAnalytics(sourceId, ePulseWireType.Artist, PulseAnalytics.eAction.Started);
 					break;
 				case eQueueSource.Playlist:
-					m_mediaClient.ReportAnalytics(sourceId, eDataType.Playlist, PulseAnalytics.eAction.Started);
+					m_mediaClient.ReportAnalytics(sourceId, ePulseWireType.Playlist, PulseAnalytics.eAction.Started);
 					break;
 			}
 		}

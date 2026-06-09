@@ -373,7 +373,7 @@ namespace Thump.Views
 			m_settingsStatusLabel.Text = "Saving…";
 			// Auto-download is no longer surfaced in the UI; preserve whatever the
 			// feed already had so saving the backlog doesn't change it.
-			MainView.MediaClient.UpdatePodcast(m_podcast.Id, policy, retentionValue, m_podcast.PollIntervalMinutes, m_podcast.AutoDownload, (updated) =>
+			MainView.MediaClient.UpdatePodcast(m_podcast.Id, policy, retentionValue, m_podcast.AutoDownload, (updated) =>
 			{
 				if (updated == null)
 				{

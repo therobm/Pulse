@@ -196,6 +196,23 @@ namespace Pulse.DataStorage
 			return LastPlayed;
 		}
 
+		/// <summary>
+		/// If the bad ID is in our track list we'll replace it with the good id
+		/// </summary>
+		/// <param name="badId"></param>
+		/// <param name="goodId"></param>
+		public void RepairTrackLinkID(string badId, string goodId)
+		{
+			for (int i = 0; i < TrackIds.Count; i++)
+			{
+				if (TrackIds[i] == badId)
+				{
+					TrackIds[i] = goodId;
+					m_bIsDirty = true;
+				}
+			}
+		}
+
 		public PlaylistData()
 		{
 			TrackIds = new List<string>();

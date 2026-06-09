@@ -370,12 +370,11 @@ namespace Thump.Pulse
 			CompleteOnMain(onComplete, true);
 		}
 
-		public override void UpdatePodcast(string podcastId, string retentionPolicy, int retentionValue, int pollIntervalMinutes, bool autoDownload, Action<PulsePodcast> onComplete)
+		public override void UpdatePodcast(string podcastId, string retentionPolicy, int retentionValue,  bool autoDownload, Action<PulsePodcast> onComplete)
 		{
 			string param = "id=" + Uri.EscapeDataString(podcastId)
 				+ "&retentionPolicy=" + Uri.EscapeDataString(retentionPolicy)
 				+ "&retentionValue=" + retentionValue
-				+ "&pollIntervalMinutes=" + pollIntervalMinutes
 				+ "&autoDownload=" + (autoDownload ? "1" : "0");
 			FetchObject<PulsePodcast>(BuildPulseUrl("updatePodcast", param), eMediaCacheStrategy.NetworkOnly, (podcast) =>
 			{
@@ -813,7 +812,7 @@ namespace Thump.Pulse
 			});
 		}
 
-		public override void ReportAnalytics(string mediaId, PulseAPI.CSharp.eDataType mediaType, PulseAnalytics.eAction action)
+		public override void ReportAnalytics(string mediaId, PulseAPI.CSharp.ePulseWireType mediaType, PulseAnalytics.eAction action)
 		{
 			if (string.IsNullOrEmpty(mediaId))
 			{
@@ -890,17 +889,17 @@ namespace Thump.Pulse
 			}
 			switch (probe.Kind)
 			{
-				case eDataType.Track:
+				case ePulseWireType.Track:
 					return PulseWire.Parse<PulseTrack>(raw);
-				case eDataType.Album:
+				case ePulseWireType.Album:
 					return PulseWire.Parse<PulseAlbum>(raw);
-				case eDataType.Playlist:
+				case ePulseWireType.Playlist:
 					return PulseWire.Parse<PulsePlaylist>(raw);
-				case eDataType.Artist:
+				case ePulseWireType.Artist:
 					return PulseWire.Parse<PulseArtist>(raw);
-				case eDataType.Genre:
+				case ePulseWireType.Genre:
 					return PulseWire.Parse<PulseGenre>(raw);
-				case eDataType.Podcast:
+				case ePulseWireType.Podcast:
 					return PulseWire.Parse<PulsePodcast>(raw);
 				default:
 					return probe;
