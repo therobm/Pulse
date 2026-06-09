@@ -55,9 +55,6 @@ namespace Thump.Pulse
 			return true;
 		}
 
-		ThumpCache m_cache;
-
-		private Thread m_thread;
 		protected WorkQueue m_workQueue;
 		protected string m_baseUrl;
 		protected string m_user;
@@ -67,8 +64,6 @@ namespace Thump.Pulse
 		private object m_httpClientLock = new object();
 
 		private bool m_bInitialized = false;
-		private volatile bool m_bIsOnline = false;
-		private int m_pingFailureCount = 0;
 
 		/// <summary>
 		/// True when we're streaming music directly off the wire
@@ -87,13 +82,9 @@ namespace Thump.Pulse
 		HttpQueue m_imageData;
 		HttpQueue m_audioData;
 
-		public MediaClient(ThumpCache cache, IMediaClientHost host)
+		public MediaClient( IMediaClientHost host)
 		{
-			m_cache = cache;
 			m_host = host;
-			m_thread = new Thread(ConnectionLoop);
-			m_thread.IsBackground = true;
-			m_thread.Start();
 
 			m_metaData = new HttpQueue(this, 2);
 			m_imageData = new HttpQueue(this, 2);
@@ -101,7 +92,7 @@ namespace Thump.Pulse
 
 			m_httpClient = new Http();
 
-			m_workQueue = new WorkQueue();
+			m_workQueue = new WorkQueue(3);
 		}
 
 		public void SetStreamingStatus(bool isStreaming)
@@ -139,17 +130,7 @@ namespace Thump.Pulse
 		}
 		public void OnPingResult(bool success)
 		{
-			if (success)
-			{
-				m_pingFailureCount = 0;
-				SetOnline(true);
-			}
-			else
-			{
-				m_pingFailureCount++;
-				if (m_pingFailureCount > 3)
-					SetOnline(false);
-			}
+			
 		}
 
 		public virtual void SetServerParams(string ip, string port, string username, string password,  bool enableSSL)
@@ -195,25 +176,6 @@ namespace Thump.Pulse
 			return Ping(out response);
 		}
 
-		public bool IsOnline()
-		{
-			return m_bIsOnline;
-		}
-
-		// Single choke point for online-state changes. Subclasses (Ping) and the
-		// HTTP failure paths route through here so the OnlineStateChanged event
-		// fires once per transition rather than on every poll.
-		protected void SetOnline(bool online)
-		{
-			if (m_host != null)
-				m_host.OnOnlineStateChanged(online);
-			if (m_bIsOnline == online)
-			{
-				return;
-			}
-			m_bIsOnline = online;
-		
-		}
 
 		public string BuildStreamUrl(string trackId)
 		{
@@ -316,63 +278,48 @@ namespace Thump.Pulse
 		{
 		}
 	
-		public byte[] GetTrackAudioFromCache(string trackId)
+		public virtual byte[] GetTrackAudioFromCache(string trackId)
 		{
-			if (string.IsNullOrEmpty(trackId))
-			{
-				return null;
-			}
-
-			//todo this needs to be the query url not some random bullshit
-			string url = GetTrackAudioURL(trackId);
-
-			//we only stream from disk, whoever wanted this should have cached ahead
-			byte[] trackData = m_cache.GetTrackAudioFromCache(url);
-			return trackData;
+			return null;
+		}
+		public virtual bool IsTrackCached(string trackID)
+		{
+			return false;
 		}
 
-		public void GetHTTPAudio(string url, Action<byte[]> onComplete, eMediaCacheStrategy cacheStrategy)
+		public virtual  void CacheQueryResults(string url, byte[] data)
 		{
-			m_audioData.QueueRequest(new HttpReq(url, onComplete, cacheStrategy, true));
 		}
-		public void GetHTTPImage(string url, Action<byte[]> onComplete, eMediaCacheStrategy cacheStrategy)
+		public virtual bool GetCachedResults(string url, out byte[] data)
 		{
-			m_imageData.QueueRequest(new HttpReq(url, onComplete, cacheStrategy, true));
-		}
-		public void GetHTTP(string url, Action<string> onComplete, eMediaCacheStrategy cacheStrategy, bool logPerf)
-		{
-			m_metaData.QueueRequest(new HttpReq(url, onComplete, cacheStrategy, logPerf));
+			data = null;
+			return false;
 		}
 
-		public byte[] HttpGetBinary(string url, eMediaCacheStrategy cacheStrategy, CancellationToken token)
-		{
-			bool tryCacheFirst = !IsOnline() || cacheStrategy == eMediaCacheStrategy.CacheFirst;
 
+
+		public void GetHTTPAudio(string url, Action<byte[]> onComplete)
+		{
+			m_audioData.QueueRequest(new HttpReq(url, onComplete));
+		}
+		public void GetHTTPImage(string url, Action<byte[]> onComplete)
+		{
+			m_imageData.QueueRequest(new HttpReq(url, onComplete));
+		}
+		public void GetHTTP(string url, Action<string> onComplete)
+		{
+			m_metaData.QueueRequest(new HttpReq(url, onComplete));
+		}
+
+		public byte[] HttpGetBinary(string url,  CancellationToken token)
+		{
 			byte[] retVal = null;
-			if (tryCacheFirst && GetCachedResults(url, out retVal))
-			{
-				return retVal;
-			}
+			
 
 			HttpResponseMessage response = null;
 			try
 			{
 				response = m_httpClient.HttpGet(url, Http.eRequestType.BinaryData, token, false, 120);
-
-				if (cacheStrategy != eMediaCacheStrategy.NetworkOnly && !response.IsSuccessStatusCode)
-				{
-					//try our offline cache
-					if (!GetCachedResults(url, out retVal))
-					{ 
-						Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
-						return null;
-					}
-					else
-					{
-						return retVal;
-					}
-				}
-			
 				retVal = ReadBinaryBodyWithStallTimeout(response, 30, token);
 			}
 			catch (Exception ex)
@@ -386,24 +333,12 @@ namespace Thump.Pulse
 				if (response != null)
 					response.Dispose();
 			}
-			if (retVal != null)
-				CacheQueryResults(url, retVal);
 			return retVal;
 		}
 
-		public string HttpGet(string url, eMediaCacheStrategy cacheStrategy, bool logPerf, bool ignoreOnline, CancellationToken token, float timeoutSeconds = 8)
+		public string HttpGet(string url, bool ignoreOnline, CancellationToken token, float timeoutSeconds = 8)
 		{
-			bool tryCacheFirst = !IsOnline() || cacheStrategy == eMediaCacheStrategy.CacheFirst;
-			
-			//never permit cache reads for network only calls (ping is impacted)
-			if (cacheStrategy == eMediaCacheStrategy.NetworkOnly)
-				tryCacheFirst = false;
-
 			string retVal = null;
-			if (tryCacheFirst && GetCachedResults(url, out retVal))
-			{
-				return retVal;
-			}
 			HttpResponseMessage response = null;
 			
 			try
@@ -411,16 +346,7 @@ namespace Thump.Pulse
 				response = m_httpClient.HttpGet(url, Http.eRequestType.MetaData, token, ignoreOnline, timeoutSeconds);
 				if (!response.IsSuccessStatusCode)
 				{
-					//try our offline cache
-					if (cacheStrategy != eMediaCacheStrategy.NetworkOnly && !GetCachedResults(url, out retVal))
-					{
-						Log.Error("HTTP request failed: " + url + " status: " + response.StatusCode);
-						return null;
-					}
-					else
-					{
-						return retVal;
-					}
+					return retVal;
 				}
 				else
 				{
@@ -437,9 +363,6 @@ namespace Thump.Pulse
 				if (response != null)
 					response.Dispose();
 			}
-
-			if (retVal != null)
-				CacheQueryResults(url, retVal);
 			return retVal;
 		}
 
@@ -565,32 +488,6 @@ namespace Thump.Pulse
 			return result;
 		}
 
-		public bool IsTrackCached(string trackID)
-		{
-			if (string.IsNullOrEmpty(trackID))
-			{
-				return false;
-			}
-			string url = GetTrackAudioURL(trackID);
-			return m_cache.HasCachedResults(url);
-		}
-		public void CacheQueryResults(string url, byte[] data)
-		{
-			m_cache.CacheQueryResults(url, data);
-		}
-		public bool GetCachedResults(string url, out byte[] data)
-		{
-			return m_cache.GetCachedResults(url, out data);
-		}
-		public void CacheQueryResults(string url, string data)
-		{
-			m_cache.CacheQueryResults(url, data);
-		}
-
-		public bool GetCachedResults(string url, out string data)
-		{
-			return m_cache.GetCachedResults(url, out data);
-		}
 
 		protected void CompleteOnMain<T>(Action<T> onComplete, T value)
 		{

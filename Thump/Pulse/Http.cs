@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Maui.Networking;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
@@ -44,7 +45,10 @@ namespace Thump.Pulse
 			if (!isOnline)
 				m_bConnectionFailures++;
 			else
+			{
 				m_bConnectionFailures = 0;
+				m_bIsOnline = true;
+			}
 
 			if(m_bConnectionFailures > 5)	
 				m_bIsOnline = false;
@@ -126,12 +130,23 @@ namespace Thump.Pulse
 			}
 		}
 
+		public static bool IsNetworkAvailable()
+		{
+			bool isNetworkAvailable = Connectivity.Current.NetworkAccess == NetworkAccess.Internet;
+			return isNetworkAvailable;
+		}
 
 		public HttpResponseMessage HttpGet(string url, eRequestType requestType, CancellationToken token, bool ignoreOnline, float timeoutSeconds)
 		{
+			bool isNetworkAvailable = IsNetworkAvailable();
+
+			if (!isNetworkAvailable)
+				return new HttpResponseMessage(System.Net.HttpStatusCode.GatewayTimeout);
+
 			if (!ignoreOnline && !m_bIsOnline)
 				return new HttpResponseMessage(System.Net.HttpStatusCode.GatewayTimeout);
 
+			
 			HttpClient client;
 			lock (m_httpLock)
 			{

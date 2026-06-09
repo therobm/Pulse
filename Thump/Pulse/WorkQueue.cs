@@ -1,4 +1,4 @@
-﻿using Microsoft.Maui.ApplicationModel;
+﻿
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -13,16 +13,19 @@ namespace Thump.Pulse
 
 	public class WorkQueue
 	{
-		private Thread m_thread;
 		private Queue<WorkItem> m_queue = new Queue<WorkItem>();
 		private object m_queueLock = new object();
 		private SemaphoreSlim m_signal = new SemaphoreSlim(0);
-
-		public WorkQueue()
+		private int m_workerThreads = 1;
+		public WorkQueue(int concurrent)
 		{
-			m_thread = new Thread(Process);
-			m_thread.IsBackground = true;
-			m_thread.Start();
+			m_workerThreads = concurrent;
+			for(int i = 0; i < m_workerThreads; i++)
+			{
+				Thread thread = new Thread(Process);
+				thread.IsBackground = true;
+				thread.Start();
+			}
 		}
 
 		private void Process()

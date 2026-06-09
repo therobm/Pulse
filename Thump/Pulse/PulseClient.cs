@@ -12,6 +12,7 @@ using System.IO;
 using Microsoft.Maui.Storage;
 
 
+
 #if ANDROID
 using Android.Graphics;
 #endif
@@ -33,8 +34,11 @@ namespace Thump.Pulse
 		private ConcurrentDictionary<string, ImageSource> m_imageCache = new ConcurrentDictionary<string, ImageSource>();
 		private ConcurrentDictionary<string, byte[]> m_imageBytesCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseClient(ThumpCache cache, IMediaClientHost host) : base(cache, host)
+		ThumpCache m_cache;
+
+		public PulseClient(ThumpCache cache, IMediaClientHost host) : base(host)
 		{
+			m_cache = cache;
 		}
 
 		private string BuildPulseUrl(string endpoint, string extraParams)
@@ -52,42 +56,60 @@ namespace Thump.Pulse
 			return url;
 		}
 
+		public override byte[] GetTrackAudioFromCache(string trackId)
+		{
+			if (string.IsNullOrEmpty(trackId))
+			{
+				return null;
+			}
 
+			//todo this needs to be the query url not some random bullshit
+			string url = GetTrackAudioURL(trackId);
+
+			//we only stream from disk, whoever wanted this should have cached ahead
+			byte[] trackData = m_cache.GetTrackAudioFromCache(url);
+			return trackData;
+		}
 		private void FetchListObject<T>(string url, eMediaCacheStrategy cacheStrategy, Action<List<T>> onComplete) where T : PulseObject
 		{
+			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedPulseData<T>(url, out List<T> data))
+			{
+				CompleteOnMain(onComplete, data);
+				return;
+			}
 			GetHTTP(url, (json) =>
 			{
-				List<T> contents = new List<T>();
+				List<T> contents = null;
 
-				if (string.IsNullOrEmpty(json))
+				if (!string.IsNullOrEmpty(json))
 				{
-					CompleteOnMain(onComplete, contents);
-					return;
-				}
-				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+					PulseResponse response = PulseWire.Parse<PulseResponse>(json);
 
-				if (response == null || response.contents == null)
-				{
-					Log.Error("Unparseable pulse response: " + url);
-				}
-				else if (response.status != "ok")
-				{
-					Log.Error("Pulse endpoint returned status '" + response.status + "': " + url);
-				}
-				else
-				{
-					JsonElement jsonElement = (JsonElement)response.contents;
-					if (jsonElement.ValueKind == JsonValueKind.Undefined || jsonElement.ValueKind == JsonValueKind.Null)
+					if (response != null && response.contents != null)
 					{
-						Log.Error("Unparseable pulse response: " + url);
-					}
-					else
-					{
-						contents = PulseWire.Parse<List<T>>(jsonElement.GetRawText());
+						JsonElement jsonElement = (JsonElement)response.contents;
+						if (jsonElement.ValueKind != JsonValueKind.Undefined && jsonElement.ValueKind != JsonValueKind.Null)
+						{
+							contents = PulseWire.Parse<List<T>>(jsonElement.GetRawText());
+						}
+						else
+						{
+							Log.Error("Unparseable pulse response: " + url);
+						}
 					}
 				}
+			
+				if(contents != null)
+				{
+					CacheQueryPulseData(url, contents);
+				}
+				else if (cacheStrategy != eMediaCacheStrategy.NetworkOnly)
+				{
+					GetCachedPulseData<T>(url, out contents);
+				}
+
 				CompleteOnMain(onComplete, contents);
-			}, cacheStrategy, true);
+			});
 		}
 
 		
@@ -103,32 +125,45 @@ namespace Thump.Pulse
 			{
 				return;
 			}
+			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedPulseData<T>(url, out T data))
+			{
+				CompleteOnMain(onComplete, data);
+				return;
+			}
 
 			GetHTTP(url, (json) =>
 			{
 				T contents = null;
-				if (string.IsNullOrEmpty(json))
+				if (!string.IsNullOrEmpty(json))
 				{
-					CompleteOnMain(onComplete, contents);
-					return;
-				}
-				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+					PulseResponse response = PulseWire.Parse<PulseResponse>(json);
 
-				if (response == null || response.contents == null)
-				{
-					Log.Error("Unparseable pulse response: " + url);
+					if (response == null || response.contents == null)
+					{
+						Log.Error("Unparseable pulse response: " + url);
+					}
+					else if (response.status != "ok")
+					{
+						Log.Error("Pulse endpoint returned status '" + response.status + "': " + url);
+					}
+					else
+					{
+						JsonElement rawContents = (JsonElement)response.contents;
+						contents = PulseWire.Parse<T>(rawContents.GetRawText());
+					}
 				}
-				else if (response.status != "ok")
+
+				if (contents != null)
 				{
-					Log.Error("Pulse endpoint returned status '" + response.status + "': " + url);
+					CacheQueryPulseData(url, contents);
 				}
-				else
+				else if (cacheStrategy != eMediaCacheStrategy.NetworkOnly)
 				{
-					JsonElement rawContents = (JsonElement)response.contents;
-					contents = PulseWire.Parse<T>(rawContents.GetRawText());
+					GetCachedPulseData<T>(url, out contents);
 				}
+
 				CompleteOnMain(onComplete, contents);
-			}, cacheStrategy, true);
+			});
 
 		}
 
@@ -145,57 +180,79 @@ namespace Thump.Pulse
 		// callers must run it inside their own Task.Run.
 		private bool FetchListObjectSync<T>(string url, eMediaCacheStrategy cacheStrategy, CancellationToken token,  out List<T> value) where T : PulseObject
 		{
-			value = new List<T>();
-			string json = HttpGet(url, cacheStrategy, true, false, token);
-			if (string.IsNullOrEmpty(json))
+			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedPulseData<T>(url, out value))
 			{
-				return false;
+				return true;
 			}
-			PulseResponse response = PulseWire.Parse<PulseResponse>(json);
-			if (response == null)
+
+			value = null;
+			string json = HttpGet(url, false, token);
+			if (!string.IsNullOrEmpty(json))
 			{
-				Log.Error("Unparseable pulse response: " + url);
-				return false;
+				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+				if (response != null)
+				{
+					JsonElement contents = (JsonElement)response.contents;
+					if (contents.ValueKind != JsonValueKind.Undefined && contents.ValueKind != JsonValueKind.Null)
+					{
+						value = PulseWire.Parse<List<T>>(contents.GetRawText());
+					}
+					else
+					{
+						Log.Error("Unparseable pulse response: " + url);
+
+					}
+				}
 			}
-			if (response.status != "ok")
+
+			if (value != null)
 			{
-				Log.Error("Pulse endpoint returned status '" + response.status + "': " + url);
-				return false;
+				CacheQueryPulseData(url, value);
 			}
-			JsonElement contents = (JsonElement)response.contents;
-			if (contents.ValueKind == JsonValueKind.Undefined || contents.ValueKind == JsonValueKind.Null)
+			else if (cacheStrategy != eMediaCacheStrategy.NetworkOnly)
 			{
-				return false;
+				GetCachedPulseData<T>(url, out value);
 			}
-			value = PulseWire.Parse<List<T>>(contents.GetRawText());
-			return true;
+
+			return value != null;
 		}
 		private bool FetchObjectSync<T>(string url, eMediaCacheStrategy cacheStrategy, CancellationToken token, out T value) where T : PulseObject
 		{
+			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedPulseData<T>(url, out value))
+			{
+				return true;
+			}
+
 			value = default(T);
-			string json = HttpGet(url, cacheStrategy, true, false, token);
-			if (string.IsNullOrEmpty(json))
+
+			string json = HttpGet(url, false, token);
+			if (!string.IsNullOrEmpty(json))
 			{
-				return false;
+				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+				if (response != null)
+				{
+					JsonElement contents = (JsonElement)response.contents;
+					if (contents.ValueKind != JsonValueKind.Undefined && contents.ValueKind != JsonValueKind.Null)
+					{
+						value = PulseWire.Parse<T>(contents.GetRawText());
+					}
+					else
+					{
+						Log.Error("Unparseable pulse response: " + url);
+					}
+				}
 			}
-			PulseResponse response = PulseWire.Parse<PulseResponse>(json);
-			if (response == null)
+
+			if (value != null)
 			{
-				Log.Error("Unparseable pulse response: " + url);
-				return false;
+				CacheQueryPulseData(url, value);
 			}
-			if (response.status != "ok")
+			else if (cacheStrategy != eMediaCacheStrategy.NetworkOnly)
 			{
-				Log.Error("Pulse endpoint returned status '" + response.status + "': " + url);
-				return false;
+				GetCachedPulseData<T>(url, out value);
 			}
-			JsonElement contents = (JsonElement)response.contents;
-			if (contents.ValueKind == JsonValueKind.Undefined || contents.ValueKind == JsonValueKind.Null)
-			{
-				return false;
-			}
-			value = PulseWire.Parse<T>(contents.GetRawText());
-			return true;
+
+			return value != default(T);
 		}
 		protected override bool Ping(out JsonElement response)
 		{
@@ -203,7 +260,7 @@ namespace Thump.Pulse
 			try
 			{
 				string url = BuildPulseUrl("ping", "");
-				string json = HttpGet(url, eMediaCacheStrategy.NetworkOnly, false, true, CancellationToken.None);
+				string json = HttpGet(url, true, CancellationToken.None);
 				if (string.IsNullOrEmpty(json))
 				{
 					OnPingResult(false);
@@ -774,7 +831,16 @@ namespace Thump.Pulse
 					return;
 				}
 
-
+				byte[] cachedData = GetCachedCoverArt(coverArtId);
+				if (cachedData != null)
+				{
+					m_imageBytesCache[url] = cachedData;
+					ImageSource result = DecodeToSize(cache_url, cachedData, size);
+					m_imageCache[cache_url] = result;
+					CompleteOnMain(onComplete, m_imageCache[cache_url]);
+					return;
+				}
+				
 				GetHTTPImage(url, (data) =>
 				{
 					try
@@ -798,7 +864,7 @@ namespace Thump.Pulse
 						Log.Exception(ex);
 						CompleteOnMain(onComplete, null);
 					}
-				}, eMediaCacheStrategy.CacheFirst);
+				});
 			});
 		}
 
@@ -821,7 +887,17 @@ namespace Thump.Pulse
 		{
 			m_workQueue.Enqueue(() =>
 			{
+
 				string url = GetTrackAudioURL(trackId);
+
+
+				if (GetCachedResults(url, out byte[] data))
+				{
+					CompleteOnMain(onComplete, data);
+					return;
+				}
+
+
 				GetHTTPAudio(url, (data) =>
 				{
 					try
@@ -833,6 +909,7 @@ namespace Thump.Pulse
 							return;
 						}
 						byte[] captured = data;
+						CacheQueryResults(url, data);
 						CompleteOnMain(onComplete, captured);
 					}
 					catch (Exception ex)
@@ -840,7 +917,7 @@ namespace Thump.Pulse
 						Log.Exception(ex);
 						CompleteOnMain(onComplete, null);
 					}
-				}, eMediaCacheStrategy.CacheFirst);
+				});
 			});
 		}
 
@@ -849,7 +926,6 @@ namespace Thump.Pulse
 			m_workQueue.Enqueue(() =>
 			{
 				string url = BuildPulseUrl("recentlyPlayed", "count=50");
-
 				FetchMultiTypedItems(url, eMediaCacheStrategy.NetworkFirst, (contents) =>
 				{
 					List<PulseObject> results = contents;
@@ -1092,46 +1168,148 @@ namespace Thump.Pulse
 		// Delivers the filtered list through the callback FetchObject.
 		private void FetchMultiTypedItems(string url, eMediaCacheStrategy cacheStrategy, Action<List<PulseObject>> onComplete)
 		{
-			GetHTTP(url, (json) =>
+			List<PulseObject> contents = null;
+			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedResults(url, out byte[] data))
 			{
-				List<PulseObject> contents = new List<PulseObject>();
-
-				if (string.IsNullOrEmpty(json))
+				string json = System.Text.Encoding.UTF8.GetString(data);
+				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+				if (response != null && response.contents != null)
 				{
+					JsonElement jsonElement = (JsonElement)response.contents;
+					contents = MapArray(jsonElement);
 					CompleteOnMain(onComplete, contents);
 					return;
 				}
-				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+			}
 
-				if (response == null || response.contents == null)
+			GetHTTP(url, (json) =>
+			{
+				if (!string.IsNullOrEmpty(json))
 				{
-					Log.Error("Unparseable pulse response: " + url);
-				}
-				else if (response.status != "ok")
-				{
-					Log.Error("Pulse endpoint returned status '" + response.status + "': " + url);
-				}
-				else
-				{
-					JsonElement jsonElement = (JsonElement)response.contents;
-					if (jsonElement.ValueKind == JsonValueKind.Array)
+					PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+			
+					if (response != null && response.contents != null)
 					{
-						foreach (JsonElement element in jsonElement.EnumerateArray())
+						JsonElement jsonElement = (JsonElement)response.contents;
+						contents = MapArray(jsonElement);
+						if  (contents == null)
 						{
-							PulseObject mapped = MapMixedObject(element);
-							if (mapped != null)
-							{
-								contents.Add(mapped);
-							}
+							Log.Error("Unparseable pulse response: " + url);
 						}
 					}
 				}
+
+				if (contents != null)
+				{
+					//special case for mixed object types, we're saving the blob
+					byte[] bytes = System.Text.Encoding.UTF8.GetBytes(json);
+					CacheQueryResults(url, bytes);
+				}
+				else if (cacheStrategy != eMediaCacheStrategy.NetworkOnly)
+				{
+					if (GetCachedResults(url, out byte[] data))
+					{
+						json = System.Text.Encoding.UTF8.GetString(data);
+						PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+						if (response != null && response.contents != null)
+						{ 
+							JsonElement jsonElement = (JsonElement)response.contents;
+							contents = MapArray(jsonElement);
+						}
+					}
+				}
+
+				if (contents == null)
+					contents = new List<PulseObject>();
 				CompleteOnMain(onComplete, contents);
-			}, cacheStrategy, true);
+			});
 
 		}
 
-		
+		private List<PulseObject> MapArray(JsonElement array)
+		{
+			if (array.ValueKind == JsonValueKind.Array)
+			{
+				List<PulseObject> list = new List<PulseObject>();
+				foreach (JsonElement element in array.EnumerateArray())
+				{
+					PulseObject mapped = MapMixedObject(element);
+					if (mapped != null)
+					{
+						list.Add(mapped);
+					}
+				}
+				return list;
+			}
+			else
+			{
+				return null;
+			}
+		}
+
+		public override bool IsTrackCached(string trackID)
+		{
+			if (string.IsNullOrEmpty(trackID))
+			{
+				return false;
+			}
+			string url = GetTrackAudioURL(trackID);
+			return m_cache.HasCachedResults(url);
+		}
+
+		public override void CacheQueryResults(string url, byte[] data)
+		{
+			m_cache.CacheQueryResults(url, data);
+		}
+
+		public override bool GetCachedResults(string url, out byte[] data)
+		{
+			return m_cache.GetCachedResults(url, out data);
+		}
+
+		public void CacheQueryPulseData(string url, PulseObject pulseObject)
+		{
+			string data = PulseWire.Serialize(pulseObject);
+			m_cache.CacheQueryResults(url, data);
+		}
+
+		public void CacheQueryPulseData<T>(string url, List<T> pulseObject) where T : PulseObject
+		{
+			string data = PulseWire.Serialize(pulseObject);
+			m_cache.CacheQueryResults(url, data);
+		}
+
+		public bool GetCachedPulseData<T>(string url, out T pulseObject) where T : PulseObject
+		{
+			if (m_cache.GetCachedResults(url, out string data))
+			{
+				pulseObject = PulseWire.Parse<T>(data);
+				if (pulseObject == null)
+				{
+					Log.Warn("Warning bad data was cached for " + url);
+				}
+				return pulseObject != null;
+			}
+			pulseObject = null;
+			return false;
+		}
+
+		public bool GetCachedPulseData<T>(string url, out List<T> pulseObject) where T : PulseObject
+		{
+			if (m_cache.GetCachedResults(url, out string data))
+			{
+				
+				pulseObject = PulseWire.Parse<List<T>>(data);
+				if (pulseObject == null) 
+				{
+					Log.Warn("Warning bad data was cached for " + url);
+				}
+				return pulseObject != null;
+			}
+			pulseObject = null;
+			return false;
+		}
+
 
 		private static int CompareArtistByName(PulseArtist first, PulseArtist second)
 		{

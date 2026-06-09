@@ -10,24 +10,18 @@ namespace Thump.Pulse
 		public Action<byte[]> m_onBinaryComplete;
 		public Action<string> m_onStringComplete;
 		public string m_url;
-		public eMediaCacheStrategy m_cacheStrategy;
 		public bool m_bIsBinary;
-		public bool m_bLogPerf;
-		public HttpReq(string url, Action<byte[]> onComplete, eMediaCacheStrategy cacheStrategy, bool logPerf)
+		public HttpReq(string url, Action<byte[]> onComplete)
 		{
 			m_url = url;
 			m_onBinaryComplete = onComplete;
 			m_bIsBinary = true;
-			m_cacheStrategy = cacheStrategy;
-			m_bLogPerf = logPerf;
 		}
-		public HttpReq(string url, Action<string> onComplete, eMediaCacheStrategy cacheStrategy, bool logPerf)
+		public HttpReq(string url, Action<string> onComplete)
 		{
 			m_url = url;
 			m_onStringComplete = onComplete;
 			m_bIsBinary = false;
-			m_cacheStrategy = cacheStrategy;
-			m_bLogPerf = logPerf;
 		}
 	}
 
@@ -135,7 +129,7 @@ namespace Thump.Pulse
 			CancellationToken token = CurrentToken();
 			if (req.m_bIsBinary)
 			{
-				byte[] data = m_mediaClient.HttpGetBinary(req.m_url, req.m_cacheStrategy, token);
+				byte[] data = m_mediaClient.HttpGetBinary(req.m_url, token);
 				if (token.IsCancellationRequested)
 				{
 					m_inFlight = req;   // suspended mid-flight: retry on resume, don't fire callback
@@ -148,7 +142,7 @@ namespace Thump.Pulse
 			}
 			else
 			{
-				string data = m_mediaClient.HttpGet(req.m_url, req.m_cacheStrategy, req.m_bLogPerf, false, token);
+				string data = m_mediaClient.HttpGet(req.m_url, false, token);
 				if (req.m_onStringComplete != null)
 				{
 					req.m_onStringComplete(data);

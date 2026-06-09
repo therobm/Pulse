@@ -134,6 +134,7 @@ namespace Thump.Data
 			{
 				return;
 			}
+			Log.Info("Caching: URL: " + url + " DATA: " + data);
 			byte[] bytes = System.Text.Encoding.UTF8.GetBytes(data);
 			CacheBytes(url, bytes, false);
 		}
@@ -203,7 +204,7 @@ namespace Thump.Data
 					cmd.CommandText = "SELECT data FROM http_cache WHERE url = $u";
 					cmd.Parameters.AddWithValue("$u", url);
 					object result = cmd.ExecuteScalar();
-					if (result != null && result == DBNull.Value)
+					if (result != null && result != DBNull.Value)
 					{ 
 						retData = result as byte[];
 						if (retData == null || retData.Length <= 0)

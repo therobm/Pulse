@@ -364,7 +364,7 @@ namespace Thump.Playback.AndroidOS
 					return;
 				}
 
-				bool isOnline = s_mediaClient.IsOnline();
+				bool isOnline = Http.IsNetworkAvailable();
 
 				//grab all our tracks at once
 				Task<List<PulseTrack>>[] fetchedTracks = new Task<List<PulseTrack>>[items.Count];

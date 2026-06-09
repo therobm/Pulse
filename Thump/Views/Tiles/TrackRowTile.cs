@@ -163,7 +163,7 @@ namespace Thump.Views.Tiles
 
 		private void UpdateAvailability(PulseTrack track)
 		{
-			bool online = MainView.MediaClient.IsOnline();
+			bool online = Http.IsNetworkAvailable();
 			string id = track.Id;
 			System.Threading.Tasks.Task.Run(() =>
 			{
