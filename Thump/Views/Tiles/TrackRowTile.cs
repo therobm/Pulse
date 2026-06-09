@@ -61,7 +61,7 @@ namespace Thump.Views.Tiles
 			artGrid.HeightRequest = 44;
 			artGrid.VerticalOptions = LayoutOptions.Center;
 
-			m_art = new ArtImage();
+			m_art = new ArtImage(44);
 			m_art.WidthRequest = 44;
 			m_art.HeightRequest = 44;
 			artGrid.Children.Add(m_art);

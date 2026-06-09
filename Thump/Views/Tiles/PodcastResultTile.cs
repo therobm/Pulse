@@ -50,7 +50,7 @@ namespace Thump.Views.Tiles
 
 		private View BuildArt()
 		{
-			m_art = new ArtImage();
+			m_art = new ArtImage(56);
 			m_art.WidthRequest = 56;
 			m_art.HeightRequest = 56;
 			m_art.VerticalOptions = LayoutOptions.Center;

@@ -81,7 +81,7 @@ namespace Thump.Views
 
 		private View BuildArt()
 		{
-			m_art = new ArtImage();
+			m_art = new ArtImage(180);
 			m_art.HeightRequest = 180;
 			m_art.WidthRequest = 180;
 			m_art.HorizontalOptions = LayoutOptions.Center;

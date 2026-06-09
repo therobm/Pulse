@@ -1,3 +1,4 @@
+using Microsoft.Maui.Controls;
 using PulseAPI.CSharp;
 using System;
 using System.Collections.Concurrent;
@@ -7,6 +8,9 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Thump.Data;
+#if ANDROID
+using Android.Graphics;
+#endif
 
 namespace Thump.Pulse
 {
@@ -22,7 +26,8 @@ namespace Thump.Pulse
 		// (L2, via ThumpCache). Keyed by the resolved cover-art URL so repeated
 		// requests for visible tiles return instantly without a queue hop or a
 		// SQLite read.
-		private ConcurrentDictionary<string, byte[]> m_imageCache = new ConcurrentDictionary<string, byte[]>();
+		private ConcurrentDictionary<string, ImageSource> m_imageCache = new ConcurrentDictionary<string, ImageSource>();
+		private ConcurrentDictionary<string, byte[]> m_imageBytesCache = new ConcurrentDictionary<string, byte[]>();
 
 		public PulseClient(ThumpCache cache, IMediaClientHost host) : base(cache, host)
 		{
@@ -115,7 +120,8 @@ namespace Thump.Pulse
 				}
 				else
 				{
-					contents = response.contents as T;
+					JsonElement rawContents = (JsonElement)response.contents;
+					contents = PulseWire.Parse<T>(rawContents.GetRawText());
 				}
 				CompleteOnMain(onComplete, contents);
 			}, cacheStrategy, true);
@@ -651,20 +657,39 @@ namespace Thump.Pulse
 		}
 
 
-		public override void GetCoverArt(string coverArtId, Action<byte[]> onComplete)
+		public override void GetCoverArt(string coverArtId, int size, Action<ImageSource> onComplete)
 		{
 			if (string.IsNullOrEmpty(coverArtId))
 			{
 				CompleteOnMain(onComplete, null);
 				return;
 			}
+
+
+
+
 			string url = BuildCoverArtUrl(coverArtId);
-			byte[] hot;
-			if (m_imageCache.TryGetValue(url, out hot))
+
+			string cache_url = url + "_" + size.ToString();
+
+			ImageSource hot;
+			if (m_imageCache.TryGetValue(cache_url, out hot))
 			{
 				CompleteOnMain(onComplete, hot);
 				return;
 			}
+
+			//maybe we can make the right size
+			if (m_imageBytesCache.TryGetValue(url, out byte[] rawImage))
+			{
+				//make the small size they want now
+				ImageSource result = DecodeToSize(rawImage, size);
+				m_imageCache[cache_url] = result;
+				CompleteOnMain(onComplete, result);
+				return;
+			}
+
+
 			GetHTTPImage(url, (data) =>
 			{
 				try
@@ -675,8 +700,13 @@ namespace Thump.Pulse
 						CompleteOnMain(onComplete, null);
 						return;
 					}
-					m_imageCache[url] = data;
-					CompleteOnMain(onComplete, data);
+					//cache the full size
+					m_imageBytesCache[url] = data;
+
+					//make the requested size
+					ImageSource result = DecodeToSize(data, size);
+					m_imageCache[cache_url] = result;
+					CompleteOnMain(onComplete, m_imageCache[cache_url]);
 				}
 				catch (Exception ex)
 				{
@@ -685,6 +715,8 @@ namespace Thump.Pulse
 				}
 			}, eMediaCacheStrategy.CacheFirst);
 		}
+
+
 		public override byte[] GetCachedCoverArt(string coverArtId)
 		{
 			if (string.IsNullOrEmpty(coverArtId))
@@ -693,11 +725,10 @@ namespace Thump.Pulse
 			}
 			string url = BuildCoverArtUrl(coverArtId);
 
-			byte[] cached;
-			if (m_imageCache.TryGetValue(url, out cached))
-				return cached;
-			if (GetCachedResults(url, out cached))
-				return cached;
+			if (GetCachedResults(url, out byte[] byteData))
+			{
+				return byteData;
+			}
 			return null;
 		}
 		public override void GetTrackAudio(string trackId, Action<byte[]> onComplete)
@@ -1012,6 +1043,49 @@ namespace Thump.Pulse
 		private static int CompareTrackByTitle(PulseTrack first, PulseTrack second)
 		{
 			return string.Compare(first.Title, second.Title, StringComparison.OrdinalIgnoreCase);
+		}
+
+		private ImageSource DecodeToSize(byte[] data, int size)
+		{
+			byte[] thumbBytes = null;
+#if ANDROID
+			Android.Graphics.BitmapFactory.Options bounds = new Android.Graphics.BitmapFactory.Options();
+			bounds.InJustDecodeBounds = true;
+			Android.Graphics.BitmapFactory.DecodeByteArray(data, 0, data.Length, bounds);
+
+			int sampleSize = 1;
+			int width = bounds.OutWidth;
+			int height = bounds.OutHeight;
+			while (width / (sampleSize * 2) >= size && height / (sampleSize * 2) >= size)
+			{
+				sampleSize = sampleSize * 2;
+			}
+
+			Android.Graphics.BitmapFactory.Options decodeOptions = new Android.Graphics.BitmapFactory.Options();
+			decodeOptions.InSampleSize = sampleSize;
+			Android.Graphics.Bitmap sampled = Android.Graphics.BitmapFactory.DecodeByteArray(data, 0, data.Length, decodeOptions);
+
+			Android.Graphics.Bitmap finalBitmap = sampled;
+			if (sampled.Width > size || sampled.Height > size)
+			{
+				float scale = (float)size / Math.Max(sampled.Width, sampled.Height);
+				int targetWidth = (int)(sampled.Width * scale);
+				int targetHeight = (int)(sampled.Height * scale);
+				finalBitmap = Android.Graphics.Bitmap.CreateScaledBitmap(sampled, targetWidth, targetHeight, true);
+				if (finalBitmap != sampled)
+				{
+					sampled.Recycle();
+				}
+			}
+
+			System.IO.MemoryStream stream = new System.IO.MemoryStream();
+			finalBitmap.Compress(Android.Graphics.Bitmap.CompressFormat.Png, 90, stream);
+			finalBitmap.Recycle();
+			thumbBytes = stream.ToArray();
+#else
+			thumbBytes = data;
+#endif
+			return ImageSource.FromStream(() => new System.IO.MemoryStream(thumbBytes));
 		}
 	}
 }

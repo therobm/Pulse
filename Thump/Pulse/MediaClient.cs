@@ -1,5 +1,6 @@
 
 using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.Controls;
 using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
@@ -270,7 +271,7 @@ namespace Thump.Pulse
 		public abstract void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<PulseTrack> newOrder, Action<bool> onComplete);
 		public abstract void GetPlaylists(Action<List<PulsePlaylist>> onComplete);
 		public abstract void GetPlaylist(string playlistId, Action<PulsePlaylistDetails> onComplete);
-		public abstract void GetCoverArt(string coverArtId, Action<byte[]> onComplete);
+		public abstract void GetCoverArt(string coverArtId, int size, Action<ImageSource> onComplete);
 		public abstract byte[] GetCachedCoverArt(string coverArtId);
 		public abstract void GetTrackAudio(string trackId, Action<byte[]> onComplete);
 		public void CacheTrackAudio(string trackId, Action<bool> onComplete)
