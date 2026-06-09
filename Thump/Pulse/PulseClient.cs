@@ -240,205 +240,247 @@ namespace Thump.Pulse
 
 		public override void GetTrack(string trackId, Action<PulseTrack> onComplete)
 		{
-			string url = BuildPulseUrl("track", "id=" + Uri.EscapeDataString(trackId));
-			FetchObject<PulseTrack>(url, eMediaCacheStrategy.NetworkFirst, (track) =>
+			m_workQueue.Enqueue(() =>
 			{
-				if (onComplete != null)
+				string url = BuildPulseUrl("track", "id=" + Uri.EscapeDataString(trackId));
+				FetchObject<PulseTrack>(url, eMediaCacheStrategy.NetworkFirst, (track) =>
 				{
-					onComplete(track);
-				}
+					if (onComplete != null)
+					{
+						onComplete(track);
+					}
+				});
 			});
 		}
 
 		public override void GetArtists(Action<List<PulseArtist>> onComplete)
 		{
-			string url = BuildPulseUrl("artists", null);
-			FetchListObject<PulseArtist>(url, eMediaCacheStrategy.NetworkFirst, (data) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulseArtist> results = new List<PulseArtist>();
-				if (data != null)
+				string url = BuildPulseUrl("artists", null);
+				FetchListObject<PulseArtist>(url, eMediaCacheStrategy.NetworkFirst, (data) =>
 				{
-					results = data;
-				}
-				results.Sort(CompareArtistByName);
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
+					List<PulseArtist> results = new List<PulseArtist>();
+					if (data != null)
+					{
+						results = data;
+					}
+					results.Sort(CompareArtistByName);
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
 		public override void GetArtist(string artistId, Action<PulseArtistDetails> onComplete)
 		{
-			string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
-			FetchObject<PulseArtistDetails>(url, eMediaCacheStrategy.NetworkFirst, (artistDetails) =>
+			m_workQueue.Enqueue(() =>
 			{
-				if (onComplete != null)
+				string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
+				FetchObject<PulseArtistDetails>(url, eMediaCacheStrategy.NetworkFirst, (artistDetails) =>
 				{
-					onComplete(artistDetails);
-				}
+					if (onComplete != null)
+					{
+						onComplete(artistDetails);
+					}
+				});
 			});
 		}
 
 		public override void GetArtistTracks(string artistId, Action<List<PulseTrack>> onComplete)
 		{
-			string url = BuildPulseUrl("artistTracks", "id=" + Uri.EscapeDataString(artistId));
-			FetchObject<PulseArtistFullDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulseTrack> results = new List<PulseTrack>();
-				if (details != null && details.AlbumDetails != null)
+				string url = BuildPulseUrl("artistTracks", "id=" + Uri.EscapeDataString(artistId));
+				FetchObject<PulseArtistFullDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
 				{
-					for (int albumIndex = 0; albumIndex < details.AlbumDetails.Count; albumIndex++)
+					List<PulseTrack> results = new List<PulseTrack>();
+					if (details != null && details.AlbumDetails != null)
 					{
-						PulseAlbumDetails album = details.AlbumDetails[albumIndex];
-						if (album == null || album.Tracks == null)
+						for (int albumIndex = 0; albumIndex < details.AlbumDetails.Count; albumIndex++)
 						{
-							continue;
-						}
-						for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
-						{
-							results.Add(album.Tracks[trackIndex]);
+							PulseAlbumDetails album = details.AlbumDetails[albumIndex];
+							if (album == null || album.Tracks == null)
+							{
+								continue;
+							}
+							for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+							{
+								results.Add(album.Tracks[trackIndex]);
+							}
 						}
 					}
-				}
-				results.Sort(CompareTrackByTitle);
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
+					results.Sort(CompareTrackByTitle);
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
 		public override void GetPodcasts(Action<List<PulsePodcast>> onComplete)
 		{
-			string url = BuildPulseUrl("podcasts", null);
-			FetchListObject<PulsePodcast>(url, eMediaCacheStrategy.NetworkFirst, (channels) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulsePodcast> results = new List<PulsePodcast>();
-				if (channels != null)
+				string url = BuildPulseUrl("podcasts", null);
+				FetchListObject<PulsePodcast>(url, eMediaCacheStrategy.NetworkFirst, (channels) =>
 				{
-					results = channels;
-				}
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
+					List<PulsePodcast> results = new List<PulsePodcast>();
+					if (channels != null)
+					{
+						results = channels;
+					}
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
 		public override void GetAllPodcasts(Action<List<PulsePodcast>> onComplete)
 		{
-			string url = BuildPulseUrl("allPodcasts", null);
-			FetchListObject<PulsePodcast>(url, eMediaCacheStrategy.NetworkFirst, (channels) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulsePodcast> results = new List<PulsePodcast>();
-				if (channels != null)
+				string url = BuildPulseUrl("allPodcasts", null);
+				FetchListObject<PulsePodcast>(url, eMediaCacheStrategy.NetworkFirst, (channels) =>
 				{
-					results = channels;
-				}
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
+					List<PulsePodcast> results = new List<PulsePodcast>();
+					if (channels != null)
+					{
+						results = channels;
+					}
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
 		public override void GetPodcast(string podcastId, Action<PulsePodcastDetails> onComplete)
 		{
-			string url = BuildPulseUrl("podcast", "id=" + Uri.EscapeDataString(podcastId));
-			FetchObject<PulsePodcastDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
+			m_workQueue.Enqueue(() =>
 			{
-				if (onComplete != null)
+				string url = BuildPulseUrl("podcast", "id=" + Uri.EscapeDataString(podcastId));
+				FetchObject<PulsePodcastDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
 				{
-					onComplete(details);
-				}
+					if (onComplete != null)
+					{
+						onComplete(details);
+					}
+				});
 			});
 		}
 
 		public override void GetAudiobooks(Action<List<PulseAudiobook>> onComplete)
 		{
-			string url = BuildPulseUrl("audiobooks", null);
-			FetchListObject<PulseAudiobook>(url, eMediaCacheStrategy.NetworkFirst, (books) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulseAudiobook> results = new List<PulseAudiobook>();
-				if (books != null)
+				string url = BuildPulseUrl("audiobooks", null);
+				FetchListObject<PulseAudiobook>(url, eMediaCacheStrategy.NetworkFirst, (books) =>
 				{
-					results = books;
-				}
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
+					List<PulseAudiobook> results = new List<PulseAudiobook>();
+					if (books != null)
+					{
+						results = books;
+					}
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
 		public override void GetAudiobook(string audiobookId, Action<PulseAudiobookDetails> onComplete)
 		{
-			string url = BuildPulseUrl("audiobook", "id=" + Uri.EscapeDataString(audiobookId));
-			FetchObject<PulseAudiobookDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
+			m_workQueue.Enqueue(() =>
 			{
-				if (onComplete != null)
+				string url = BuildPulseUrl("audiobook", "id=" + Uri.EscapeDataString(audiobookId));
+				FetchObject<PulseAudiobookDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
 				{
-					onComplete(details);
-				}
+					if (onComplete != null)
+					{
+						onComplete(details);
+					}
+				});
 			});
 		}
 
 		public override void SearchPodcasts(string query, Action<List<PulsePodcast>> onComplete)
 		{
-			string url = BuildPulseUrl("searchPodcasts", "query=" + Uri.EscapeDataString(query));
-			FetchListObject<PulsePodcast>(url, eMediaCacheStrategy.NetworkFirst, (hits) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulsePodcast> results = new List<PulsePodcast>();
-				if (hits != null)
+				string url = BuildPulseUrl("searchPodcasts", "query=" + Uri.EscapeDataString(query));
+				FetchListObject<PulsePodcast>(url, eMediaCacheStrategy.NetworkFirst, (hits) =>
 				{
-					results = hits;
-				}
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
+					List<PulsePodcast> results = new List<PulsePodcast>();
+					if (hits != null)
+					{
+						results = hits;
+					}
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
 		public override void AddPodcast(string feedUrl, bool subscribe, Action<PulsePodcast> onComplete)
 		{
-			string url = BuildPulseUrl("addPodcast", "feedUrl=" + Uri.EscapeDataString(feedUrl) + "&subscribe=" + (subscribe ? "1" : "0"));
-			FetchObject<PulsePodcast>(url, eMediaCacheStrategy.NetworkOnly, (podcast) =>
+			m_workQueue.Enqueue(() =>
 			{
-				if (onComplete != null)
+				string url = BuildPulseUrl("addPodcast", "feedUrl=" + Uri.EscapeDataString(feedUrl) + "&subscribe=" + (subscribe ? "1" : "0"));
+				FetchObject<PulsePodcast>(url, eMediaCacheStrategy.NetworkOnly, (podcast) =>
 				{
-					onComplete(podcast);
-				}
+					if (onComplete != null)
+					{
+						onComplete(podcast);
+					}
+				});
 			});
 		}
 
 		public override void SubscribePodcast(string podcastId, Action<bool> onComplete)
 		{
-			string param = "id=" + Uri.EscapeDataString(podcastId);
-			RunCommand(BuildPulseUrl("subscribePodcast", param));
-			CompleteOnMain(onComplete, true);
+			m_workQueue.Enqueue(() =>
+			{
+				string param = "id=" + Uri.EscapeDataString(podcastId);
+				RunCommand(BuildPulseUrl("subscribePodcast", param));
+				CompleteOnMain(onComplete, true);
+			});
 		}
 
 		public override void UnsubscribePodcast(string podcastId, Action<bool> onComplete)
 		{
-			string param = "id=" + Uri.EscapeDataString(podcastId);
-			RunCommand(BuildPulseUrl("unsubscribePodcast", param));
-			CompleteOnMain(onComplete, true);
+			m_workQueue.Enqueue(() =>
+			{
+				string param = "id=" + Uri.EscapeDataString(podcastId);
+				RunCommand(BuildPulseUrl("unsubscribePodcast", param));
+				CompleteOnMain(onComplete, true);
+			});
 		}
 
 		public override void UpdatePodcast(string podcastId, string retentionPolicy, int retentionValue,  bool autoDownload, Action<PulsePodcast> onComplete)
 		{
-			string param = "id=" + Uri.EscapeDataString(podcastId)
-				+ "&retentionPolicy=" + Uri.EscapeDataString(retentionPolicy)
-				+ "&retentionValue=" + retentionValue
-				+ "&autoDownload=" + (autoDownload ? "1" : "0");
-			FetchObject<PulsePodcast>(BuildPulseUrl("updatePodcast", param), eMediaCacheStrategy.NetworkOnly, (podcast) =>
+			m_workQueue.Enqueue(() =>
 			{
-				if (onComplete != null)
+				string param = "id=" + Uri.EscapeDataString(podcastId)
+					+ "&retentionPolicy=" + Uri.EscapeDataString(retentionPolicy)
+					+ "&retentionValue=" + retentionValue
+					+ "&autoDownload=" + (autoDownload ? "1" : "0");
+				FetchObject<PulsePodcast>(BuildPulseUrl("updatePodcast", param), eMediaCacheStrategy.NetworkOnly, (podcast) =>
 				{
-					onComplete(podcast);
-				}
+					if (onComplete != null)
+					{
+						onComplete(podcast);
+					}
+				});
 			});
 		}
 
@@ -450,54 +492,63 @@ namespace Thump.Pulse
 
 		public override void Search(string query, Action<PulseSearchData> onComplete)
 		{
-			string param = "query=" + Uri.EscapeDataString(query)
-				+ "&artistCount=10"
-				+ "&albumCount=20"
-				+ "&songCount=30";
-			string url = BuildPulseUrl("search", param);
-			FetchObject<PulseSearchData>(url, eMediaCacheStrategy.NetworkFirst, (data) =>
+			m_workQueue.Enqueue(() =>
 			{
-				PulseSearchData result = new PulseSearchData();
-				if (data != null)
+				string param = "query=" + Uri.EscapeDataString(query)
+					+ "&artistCount=10"
+					+ "&albumCount=20"
+					+ "&songCount=30";
+				string url = BuildPulseUrl("search", param);
+				FetchObject<PulseSearchData>(url, eMediaCacheStrategy.NetworkFirst, (data) =>
 				{
-					result = data;
-				}
-				if (onComplete != null)
-				{
-					onComplete(result);
-				}
+					PulseSearchData result = new PulseSearchData();
+					if (data != null)
+					{
+						result = data;
+					}
+					if (onComplete != null)
+					{
+						onComplete(result);
+					}
+				});
 			});
 		}
 
 		public override void GetArtistAlbums(string artistId, Action<List<PulseAlbum>> onComplete)
 		{
-			string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
-			FetchObject<PulseArtistDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulseAlbum> results = new List<PulseAlbum>();
-				if (details != null && details.Albums != null)
+				string url = BuildPulseUrl("artist", "id=" + Uri.EscapeDataString(artistId));
+				FetchObject<PulseArtistDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
 				{
-					for (int index = 0; index < details.Albums.Count; index++)
+					List<PulseAlbum> results = new List<PulseAlbum>();
+					if (details != null && details.Albums != null)
 					{
-						results.Add(details.Albums[index]);
+						for (int index = 0; index < details.Albums.Count; index++)
+						{
+							results.Add(details.Albums[index]);
+						}
 					}
-				}
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
 		public override void GetAlbum(string albumId, Action<PulseAlbumDetails> onComplete)
 		{
-			string url = BuildPulseUrl("album", "id=" + Uri.EscapeDataString(albumId));
-			FetchObject<PulseAlbumDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
+			m_workQueue.Enqueue(() =>
 			{
-				if (onComplete != null)
+				string url = BuildPulseUrl("album", "id=" + Uri.EscapeDataString(albumId));
+				FetchObject<PulseAlbumDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
 				{
-					onComplete(details);
-				}
+					if (onComplete != null)
+					{
+						onComplete(details);
+					}
+				});
 			});
 		}
 
@@ -541,122 +592,152 @@ namespace Thump.Pulse
 
 		public override void CreatePlaylist(string name, Action<PulsePlaylist> onComplete)
 		{
-			string url = BuildPulseUrl("createPlaylist", "name=" + Uri.EscapeDataString(name));
-			FetchObject<PulsePlaylistDetails>(url, eMediaCacheStrategy.NetworkOnly, (details) =>
+			m_workQueue.Enqueue(() =>
 			{
-				PulsePlaylist created = null;
-				if (details != null && details.Playlist != null)
+				string url = BuildPulseUrl("createPlaylist", "name=" + Uri.EscapeDataString(name));
+				FetchObject<PulsePlaylistDetails>(url, eMediaCacheStrategy.NetworkOnly, (details) =>
 				{
-					created = details.Playlist;
-				}
-				if (onComplete != null)
-				{
-					onComplete(created);
-				}
+					PulsePlaylist created = null;
+					if (details != null && details.Playlist != null)
+					{
+						created = details.Playlist;
+					}
+					if (onComplete != null)
+					{
+						onComplete(created);
+					}
+				});
 			});
 		}
 
 		public override void RenamePlaylist(string playlistId, string newName, Action<bool> onComplete)
 		{
-			string param = "playlistId=" + Uri.EscapeDataString(playlistId)
-				+ "&name=" + Uri.EscapeDataString(newName);
-			RunCommand(BuildPulseUrl("updatePlaylist", param));
-			CompleteOnMain(onComplete, true);
+			m_workQueue.Enqueue(() =>
+			{
+				string param = "playlistId=" + Uri.EscapeDataString(playlistId)
+					+ "&name=" + Uri.EscapeDataString(newName);
+				RunCommand(BuildPulseUrl("updatePlaylist", param));
+				CompleteOnMain(onComplete, true);
+			});
 		}
 
 		public override void Favorite(string trackId, Action<bool> onComplete)
 		{
-			string param = "id=" + Uri.EscapeDataString(trackId) + "&type=track";
-			RunCommand(BuildPulseUrl("favorite", param));
-			CompleteOnMain(onComplete, true);
+			m_workQueue.Enqueue(() =>
+			{
+				string param = "id=" + Uri.EscapeDataString(trackId) + "&type=track";
+				RunCommand(BuildPulseUrl("favorite", param));
+				CompleteOnMain(onComplete, true);
+			});
 		}
 
 		public override void Unfavorite(string trackId, Action<bool> onComplete)
 		{
-			string param = "id=" + Uri.EscapeDataString(trackId) + "&type=track";
-			RunCommand(BuildPulseUrl("unfavorite", param));
-			CompleteOnMain(onComplete, true);
+			m_workQueue.Enqueue(() =>
+			{
+				string param = "id=" + Uri.EscapeDataString(trackId) + "&type=track";
+				RunCommand(BuildPulseUrl("unfavorite", param));
+				CompleteOnMain(onComplete, true);
+			});
 		}
 
 		public override void DeletePlaylist(string playlistId, Action<bool> onComplete)
 		{
-			string param = "id=" + Uri.EscapeDataString(playlistId);
-			RunCommand(BuildPulseUrl("deletePlaylist", param));
-			CompleteOnMain(onComplete, true);
+			m_workQueue.Enqueue(() =>
+			{
+				string param = "id=" + Uri.EscapeDataString(playlistId);
+				RunCommand(BuildPulseUrl("deletePlaylist", param));
+				CompleteOnMain(onComplete, true);
+			});
 		}
 
 		public override void AddTrackToPlaylist(string playlistId, string songId, Action<bool> onComplete)
 		{
-			string param = "playlistId=" + Uri.EscapeDataString(playlistId)
-				+ "&songIdToAdd=" + Uri.EscapeDataString(songId);
-			RunCommand(BuildPulseUrl("updatePlaylist", param));
-			CompleteOnMain(onComplete, true);
+			m_workQueue.Enqueue(() =>
+			{
+				string param = "playlistId=" + Uri.EscapeDataString(playlistId)
+					+ "&songIdToAdd=" + Uri.EscapeDataString(songId);
+				RunCommand(BuildPulseUrl("updatePlaylist", param));
+				CompleteOnMain(onComplete, true);
+			});
 		}
 
 		public override void RemoveTrackFromPlaylist(string playlistId, int songIndex, Action<bool> onComplete)
 		{
-			string param = "playlistId=" + Uri.EscapeDataString(playlistId)
-				+ "&songIndexToRemove=" + songIndex;
-			RunCommand(BuildPulseUrl("updatePlaylist", param));
-			CompleteOnMain(onComplete, true);
+			m_workQueue.Enqueue(() =>
+			{
+				string param = "playlistId=" + Uri.EscapeDataString(playlistId)
+					+ "&songIndexToRemove=" + songIndex;
+				RunCommand(BuildPulseUrl("updatePlaylist", param));
+				CompleteOnMain(onComplete, true);
+			});
 		}
 
 		public override void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<PulseTrack> newOrder, Action<bool> onComplete)
 		{
-			// Same strategy as the Subsonic client: remove every entry from the
-			// first changed index to the end (high index first), then re-add the
-			// new tail in order. updatePlaylist accepts repeated
-			// songIndexToRemove and songIdToAdd parameters.
-			int divergence = fromIndex;
-			if (toIndex < divergence)
+			m_workQueue.Enqueue(() =>
 			{
-				divergence = toIndex;
-			}
-			StringBuilder param = new StringBuilder();
-			param.Append("playlistId=").Append(Uri.EscapeDataString(playlistId));
-			for (int index = newOrder.Count - 1; index >= divergence; index--)
-			{
-				param.Append("&songIndexToRemove=").Append(index);
-			}
-			for (int index = divergence; index < newOrder.Count; index++)
-			{
-				param.Append("&songIdToAdd=").Append(Uri.EscapeDataString(newOrder[index].Id));
-			}
-			RunCommand(BuildPulseUrl("updatePlaylist", param.ToString()));
-			CompleteOnMain(onComplete, true);
+				// Same strategy as the Subsonic client: remove every entry from the
+				// first changed index to the end (high index first), then re-add the
+				// new tail in order. updatePlaylist accepts repeated
+				// songIndexToRemove and songIdToAdd parameters.
+				int divergence = fromIndex;
+				if (toIndex < divergence)
+				{
+					divergence = toIndex;
+				}
+				StringBuilder param = new StringBuilder();
+				param.Append("playlistId=").Append(Uri.EscapeDataString(playlistId));
+				for (int index = newOrder.Count - 1; index >= divergence; index--)
+				{
+					param.Append("&songIndexToRemove=").Append(index);
+				}
+				for (int index = divergence; index < newOrder.Count; index++)
+				{
+					param.Append("&songIdToAdd=").Append(Uri.EscapeDataString(newOrder[index].Id));
+				}
+				RunCommand(BuildPulseUrl("updatePlaylist", param.ToString()));
+				CompleteOnMain(onComplete, true);
+			});
 		}
 
 		public override void GetPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
-			string url = BuildPulseUrl("playlists", null);
-			FetchListObject<PulsePlaylist>(url, eMediaCacheStrategy.NetworkFirst, (playlists) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulsePlaylist> results = new List<PulsePlaylist>();
-				if (playlists != null)
+				string url = BuildPulseUrl("playlists", null);
+				FetchListObject<PulsePlaylist>(url, eMediaCacheStrategy.NetworkFirst, (playlists) =>
 				{
-					for (int index = 0; index < playlists.Count; index++)
+					List<PulsePlaylist> results = new List<PulsePlaylist>();
+					if (playlists != null)
 					{
-						results.Add(playlists[index]);
+						for (int index = 0; index < playlists.Count; index++)
+						{
+							results.Add(playlists[index]);
+						}
 					}
-				}
-				results.Sort(ComparePlaylistByName);
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
+					results.Sort(ComparePlaylistByName);
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
 		public override void GetPlaylist(string playlistId, Action<PulsePlaylistDetails> onComplete)
 		{
-			string url = BuildPulseUrl("playlist", "id=" + Uri.EscapeDataString(playlistId));
-			FetchObject<PulsePlaylistDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
+			m_workQueue.Enqueue(() =>
 			{
-				
-				if (onComplete != null)
+				string url = BuildPulseUrl("playlist", "id=" + Uri.EscapeDataString(playlistId));
+				FetchObject<PulsePlaylistDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
 				{
-					onComplete(details);
-				}
+
+					if (onComplete != null)
+					{
+						onComplete(details);
+					}
+				});
 			});
 		}
 
@@ -738,150 +819,177 @@ namespace Thump.Pulse
 		}
 		public override void GetTrackAudio(string trackId, Action<byte[]> onComplete)
 		{
-			string url = GetTrackAudioURL(trackId);
-			GetHTTPAudio(url, (data) =>
+			m_workQueue.Enqueue(() =>
 			{
-				try
+				string url = GetTrackAudioURL(trackId);
+				GetHTTPAudio(url, (data) =>
 				{
-					if (data == null || data.Length <= 0)
+					try
 					{
-						Log.Error("Audio fetch failed: " + url);
-						CompleteOnMain(onComplete, null);
-						return;
+						if (data == null || data.Length <= 0)
+						{
+							Log.Error("Audio fetch failed: " + url);
+							CompleteOnMain(onComplete, null);
+							return;
+						}
+						byte[] captured = data;
+						CompleteOnMain(onComplete, captured);
 					}
-					byte[] captured = data;
-					CompleteOnMain(onComplete, captured);
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-					CompleteOnMain(onComplete, null);
-				}
-			}, eMediaCacheStrategy.CacheFirst);
+					catch (Exception ex)
+					{
+						Log.Exception(ex);
+						CompleteOnMain(onComplete, null);
+					}
+				}, eMediaCacheStrategy.CacheFirst);
+			});
 		}
 
 		public override void GetRecentlyPlayed(Action<List<PulseObject>> onComplete)
 		{
-			string url = BuildPulseUrl("recentlyPlayed", "count=50");
-
-			FetchMultiTypedItems(url, eMediaCacheStrategy.NetworkFirst, (contents) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulseObject> results = contents;
-				if (onComplete != null)
+				string url = BuildPulseUrl("recentlyPlayed", "count=50");
+
+				FetchMultiTypedItems(url, eMediaCacheStrategy.NetworkFirst, (contents) =>
 				{
-					onComplete(results);
-				}
+					List<PulseObject> results = contents;
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
 		public override void GetPopularArtists(Action<List<PulseArtist>> onComplete)
 		{
-			string url = BuildPulseUrl("topItems", "types=artist&count=20");
-			FetchListObject<PulseArtist>(url, eMediaCacheStrategy.NetworkFirst, (items) =>
+			m_workQueue.Enqueue(() =>
 			{
-				if (onComplete != null)
+				string url = BuildPulseUrl("topItems", "types=artist&count=20");
+				FetchListObject<PulseArtist>(url, eMediaCacheStrategy.NetworkFirst, (items) =>
 				{
-					onComplete(items);
-				}
+					if (onComplete != null)
+					{
+						onComplete(items);
+					}
+				});
 			});
 		}
 
 		public override void GetTopPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
-			string url = BuildPulseUrl("topItems", "types=playlist&count=20");
-			FetchListObject<PulsePlaylist>(url, eMediaCacheStrategy.NetworkFirst, (items) =>
+			m_workQueue.Enqueue(() =>
 			{
-				if (onComplete != null)
+				string url = BuildPulseUrl("topItems", "types=playlist&count=20");
+				FetchListObject<PulsePlaylist>(url, eMediaCacheStrategy.NetworkFirst, (items) =>
 				{
-					onComplete(items);
-				}
+					if (onComplete != null)
+					{
+						onComplete(items);
+					}
+				});
 			});
 		}
 
 		public override void GetRecentPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
-			string url = BuildPulseUrl("recentlyPlayed", "types=playlist&count=20");
-			FetchListObject<PulsePlaylist>(url , eMediaCacheStrategy.NetworkFirst, (items) =>
+			m_workQueue.Enqueue(() =>
 			{
-				if (onComplete != null)
+				string url = BuildPulseUrl("recentlyPlayed", "types=playlist&count=20");
+				FetchListObject<PulsePlaylist>(url , eMediaCacheStrategy.NetworkFirst, (items) =>
 				{
-					onComplete(items);
-				}
+					if (onComplete != null)
+					{
+						onComplete(items);
+					}
+				});
 			});
 		}
 
 		public override void GetGenres(Action<List<PulseGenre>> onComplete)
 		{
-			string url = BuildPulseUrl("genres", null);
-			FetchListObject<PulseGenre>(url, eMediaCacheStrategy.NetworkFirst, (genres) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulseGenre> results = new List<PulseGenre>();
-				if (genres != null)
+				string url = BuildPulseUrl("genres", null);
+				FetchListObject<PulseGenre>(url, eMediaCacheStrategy.NetworkFirst, (genres) =>
 				{
-					for (int index = 0; index < genres.Count; index++)
+					List<PulseGenre> results = new List<PulseGenre>();
+					if (genres != null)
 					{
-						results.Add(genres[index]);
+						for (int index = 0; index < genres.Count; index++)
+						{
+							results.Add(genres[index]);
+						}
 					}
-				}
-				results.Sort(CompareGenreByName);
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
+					results.Sort(CompareGenreByName);
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
 		public override void GetTopItems(Action<List<PulseObject>> onComplete)
 		{
-			string url = BuildPulseUrl("topItems", "count=50");
-			FetchMultiTypedItems(url,eMediaCacheStrategy.NetworkFirst, (items) =>
+			m_workQueue.Enqueue(() =>
 			{
-				if (onComplete != null)
+				string url = BuildPulseUrl("topItems", "count=50");
+				FetchMultiTypedItems(url,eMediaCacheStrategy.NetworkFirst, (items) =>
 				{
-					onComplete(items);
-				}
+					if (onComplete != null)
+					{
+						onComplete(items);
+					}
+				});
 			});
 		}
 
 		public override void GetTracksForGenre(string genre, Action<List<PulseTrack>> onComplete)
 		{
-			string param = "genre=" + Uri.EscapeDataString(genre) + "&count=500&offset=0";
-			string url = BuildPulseUrl("genreTracks", param);
-			FetchObject<PulseGenreDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulseTrack> results = new List<PulseTrack>();
-				if (details != null && details.Tracks != null)
+				string param = "genre=" + Uri.EscapeDataString(genre) + "&count=500&offset=0";
+				string url = BuildPulseUrl("genreTracks", param);
+				FetchObject<PulseGenreDetails>(url, eMediaCacheStrategy.NetworkFirst, (details) =>
 				{
-					for (int index = 0; index < details.Tracks.Count; index++)
+					List<PulseTrack> results = new List<PulseTrack>();
+					if (details != null && details.Tracks != null)
 					{
-						results.Add(details.Tracks[index]);
+						for (int index = 0; index < details.Tracks.Count; index++)
+						{
+							results.Add(details.Tracks[index]);
+						}
 					}
-				}
-				results.Sort(CompareTrackByTitle);
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
+					results.Sort(CompareTrackByTitle);
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
 		public override void GetFavorites(Action<List<PulseTrack>> onComplete)
 		{
-			string url = BuildPulseUrl("favorites", null);
-			FetchObject<PulseSearchData>(url, eMediaCacheStrategy.NetworkFirst, (data) =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulseTrack> results = new List<PulseTrack>();
-				if (data != null && data.Tracks != null)
+				string url = BuildPulseUrl("favorites", null);
+				FetchObject<PulseSearchData>(url, eMediaCacheStrategy.NetworkFirst, (data) =>
 				{
-					for (int index = 0; index < data.Tracks.Count; index++)
+					List<PulseTrack> results = new List<PulseTrack>();
+					if (data != null && data.Tracks != null)
 					{
-						results.Add(data.Tracks[index]);
+						for (int index = 0; index < data.Tracks.Count; index++)
+						{
+							results.Add(data.Tracks[index]);
+						}
 					}
-				}
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 
