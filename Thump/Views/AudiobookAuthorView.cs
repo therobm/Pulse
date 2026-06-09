@@ -6,6 +6,7 @@ using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PulseAPI.CSharp;
 using Thump.Pulse;
+using Thump.Utility;
 using Thump.Views.Tiles;
 
 namespace Thump.Views
@@ -17,7 +18,7 @@ namespace Thump.Views
 		private string m_authorName;
 		private Label m_titleLabel;
 		private CollectionView m_bookList;
-		private ObservableCollection<PulseAudiobook> m_books = new ObservableCollection<PulseAudiobook>();
+		private QuietObservableCollection<PulseAudiobook> m_books = new QuietObservableCollection<PulseAudiobook>();
 
 		public AudiobookAuthorView(MainView mainView, string authorName) : base(mainView)
 		{

@@ -6,6 +6,7 @@ using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PulseAPI.CSharp;
 using Thump.Pulse;
+using Thump.Utility;
 using Thump.Views.Tiles;
 
 namespace Thump.Views
@@ -18,7 +19,7 @@ namespace Thump.Views
 		private PulseGenre m_genre;
 		// Bound to m_trackList once; OnTracksLoaded reconciles in place. Play
 		// actions snapshot it to a List for OnPlayTracks(...).
-		private ObservableCollection<PulseTrack> m_tracks = new ObservableCollection<PulseTrack>();
+		private QuietObservableCollection<PulseTrack> m_tracks = new QuietObservableCollection<PulseTrack>();
 
 		public GenreDetailView(MainView mainView, PulseGenre genre) : base(mainView)
 		{

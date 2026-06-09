@@ -68,6 +68,7 @@ namespace Thump.Playback.AndroidOS
 		// shuffles within the same second don't get identically seeded.
 		private static Random s_shuffleRand = new Random();
 
+		private bool m_bIsOnline = true;
 		// Two-step search: OnSearch kicks off the async fetch and parks the
 		// resolved items under the query string; OnGetSearchResult reads them
 		// out. Keyed by exact query text since AA calls back with the same
@@ -174,6 +175,11 @@ namespace Thump.Playback.AndroidOS
 		//Custom call for online management
 		public void OnOnlineStateChanged(bool online)
 		{
+			if (online == m_bIsOnline)
+				return;
+
+			m_bIsOnline = online;
+
 			if (!online)
 			{
 				return;
@@ -188,12 +194,14 @@ namespace Thump.Playback.AndroidOS
 				{
 					return;
 				}
+
 				// re-cache the stalled current item, then re-prepare from where it died
 				MediaItem current = m_player.CurrentMediaItem;
 				if (current == null || string.IsNullOrEmpty(current.MediaId))
 				{
 					return;
 				}
+
 				string trackId = AAutoHelper.StripTrackPrefix(current.MediaId);
 				s_mediaClient.CacheTrackAudio(trackId, (success) =>
 				{

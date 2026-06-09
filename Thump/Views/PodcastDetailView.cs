@@ -6,6 +6,7 @@ using Microsoft.Maui.Controls;
 using Microsoft.Maui.Graphics;
 using PulseAPI.CSharp;
 using Thump.Pulse;
+using Thump.Utility;
 using Thump.Views.Tiles;
 
 namespace Thump.Views
@@ -26,7 +27,7 @@ namespace Thump.Views
 		private PulsePodcast m_podcast;
 		// Bound to m_episodeList once; OnPodcastLoaded reconciles it in place then
 		// sorts newest-first, so a back-nav refresh only touches changed rows.
-		private ObservableCollection<PulsePodcastEpisode> m_episodes = new ObservableCollection<PulsePodcastEpisode>();
+		private QuietObservableCollection<PulsePodcastEpisode> m_episodes = new QuietObservableCollection<PulsePodcastEpisode>();
 		// Episodes adapted to PulseTrack so the existing playback path can
 		// queue them. Rebuilt from m_episodes after each sync so SelectionChanged's
 		// index maps cleanly between the two lists.

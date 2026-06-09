@@ -1,10 +1,10 @@
-using Microsoft.Maui.ApplicationModel;
 using PulseAPI.CSharp;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Thump.Data;
 
@@ -43,40 +43,13 @@ namespace Thump.Pulse
 			return url;
 		}
 
-		private void FetchObject<T>(string url, eMediaCacheStrategy cacheStrategy, Action<T> onComplete)
+
+		private void FetchListObject<T>(string url, eMediaCacheStrategy cacheStrategy, Action<List<T>> onComplete) where T : PulseObject
 		{
-			FetchObject(url, cacheStrategy, (contents) =>
-			{
-				T value = default(T);
-				if (contents != null)
-				{
-					JsonElement jsonElement = (JsonElement)contents;
-					string json = jsonElement.GetRawText();
-					if (!string.IsNullOrEmpty(json))
-					{
-						value = PulseWire.Parse<T>(json);
-					}
-				}
-
-				onComplete(value);
-			});
-		}
-
-		// Pull the contents element out of a PulseResponse envelope. Returns
-		// false when the request failed, the envelope was unparseable, the
-		// status wasn't "ok", or there was no payload. On success the boxed
-		// contents (System.Text.Json hands back a JsonElement for an object
-		// field) is unwrapped so callers can re-parse it into a concrete type.
-		private void FetchObject(string url, eMediaCacheStrategy cacheStrategy, Action<object> onComplete)
-		{
-			if (onComplete == null)
-			{
-				return;
-			}
-
 			GetHTTP(url, (json) =>
 			{
-				object contents = null;
+				List<T> contents = new List<T>();
+
 				if (string.IsNullOrEmpty(json))
 				{
 					CompleteOnMain(onComplete, contents);
@@ -94,7 +67,55 @@ namespace Thump.Pulse
 				}
 				else
 				{
-					contents = response.contents;
+					JsonElement jsonElement = (JsonElement)response.contents;
+					if (jsonElement.ValueKind == JsonValueKind.Undefined || jsonElement.ValueKind == JsonValueKind.Null)
+					{
+						Log.Error("Unparseable pulse response: " + url);
+					}
+					else
+					{
+						contents = PulseWire.Parse<List<T>>(jsonElement.GetRawText());
+					}
+				}
+				CompleteOnMain(onComplete, contents);
+			}, cacheStrategy, true);
+		}
+
+		
+
+		// Pull the contents element out of a PulseResponse envelope. Returns
+		// false when the request failed, the envelope was unparseable, the
+		// status wasn't "ok", or there was no payload. On success the boxed
+		// contents (System.Text.Json hands back a JsonElement for an object
+		// field) is unwrapped so callers can re-parse it into a concrete type.
+		private void FetchObject<T>(string url, eMediaCacheStrategy cacheStrategy, Action<T> onComplete) where T : PulseObject
+		{
+			if (onComplete == null)
+			{
+				return;
+			}
+
+			GetHTTP(url, (json) =>
+			{
+				T contents = null;
+				if (string.IsNullOrEmpty(json))
+				{
+					CompleteOnMain(onComplete, contents);
+					return;
+				}
+				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+
+				if (response == null || response.contents == null)
+				{
+					Log.Error("Unparseable pulse response: " + url);
+				}
+				else if (response.status != "ok")
+				{
+					Log.Error("Pulse endpoint returned status '" + response.status + "': " + url);
+				}
+				else
+				{
+					contents = response.contents as T;
 				}
 				CompleteOnMain(onComplete, contents);
 			}, cacheStrategy, true);
@@ -106,16 +127,43 @@ namespace Thump.Pulse
 		// wait on the result. FetchObject logs a non-ok envelope on its own.
 		private void RunCommand(string url)
 		{
-			FetchObject(url, eMediaCacheStrategy.NetworkOnly, (contents) => { });
+			FetchObject<PulseObject>(url, eMediaCacheStrategy.NetworkOnly, (contents) => { });
 		}
 
 		// Synchronous fetch+parse for the few callers that page in a loop and so
 		// can't drive the callback FetchObject. Blocks on the calling thread, so
 		// callers must run it inside their own Task.Run.
-		private bool FetchObjectSync<T>(string url, eMediaCacheStrategy cacheStrategy, out T value)
+		private bool FetchListObjectSync<T>(string url, eMediaCacheStrategy cacheStrategy, CancellationToken token,  out List<T> value) where T : PulseObject
+		{
+			value = new List<T>();
+			string json = HttpGet(url, cacheStrategy, true, false, token);
+			if (string.IsNullOrEmpty(json))
+			{
+				return false;
+			}
+			PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+			if (response == null)
+			{
+				Log.Error("Unparseable pulse response: " + url);
+				return false;
+			}
+			if (response.status != "ok")
+			{
+				Log.Error("Pulse endpoint returned status '" + response.status + "': " + url);
+				return false;
+			}
+			JsonElement contents = (JsonElement)response.contents;
+			if (contents.ValueKind == JsonValueKind.Undefined || contents.ValueKind == JsonValueKind.Null)
+			{
+				return false;
+			}
+			value = PulseWire.Parse<List<T>>(contents.GetRawText());
+			return true;
+		}
+		private bool FetchObjectSync<T>(string url, eMediaCacheStrategy cacheStrategy, CancellationToken token, out T value) where T : PulseObject
 		{
 			value = default(T);
-			string json = HttpGet(url, cacheStrategy, true, false);
+			string json = HttpGet(url, cacheStrategy, true, false, token);
 			if (string.IsNullOrEmpty(json))
 			{
 				return false;
@@ -139,14 +187,13 @@ namespace Thump.Pulse
 			value = PulseWire.Parse<T>(contents.GetRawText());
 			return true;
 		}
-
 		protected override bool Ping(out JsonElement response)
 		{
 			response = default(JsonElement);
 			try
 			{
 				string url = BuildPulseUrl("ping", "");
-				string json = HttpGet(url, eMediaCacheStrategy.NetworkOnly, false, true);
+				string json = HttpGet(url, eMediaCacheStrategy.NetworkOnly, false, true, CancellationToken.None);
 				if (string.IsNullOrEmpty(json))
 				{
 					OnPingResult(false);
@@ -196,7 +243,7 @@ namespace Thump.Pulse
 		public override void GetArtists(Action<List<PulseArtist>> onComplete)
 		{
 			string url = BuildPulseUrl("artists", null);
-			FetchObject<List<PulseArtist>>(url, eMediaCacheStrategy.NetworkFirst, (data) =>
+			FetchListObject<PulseArtist>(url, eMediaCacheStrategy.NetworkFirst, (data) =>
 			{
 				List<PulseArtist> results = new List<PulseArtist>();
 				if (data != null)
@@ -255,7 +302,7 @@ namespace Thump.Pulse
 		public override void GetPodcasts(Action<List<PulsePodcast>> onComplete)
 		{
 			string url = BuildPulseUrl("podcasts", null);
-			FetchObject<List<PulsePodcast>>(url, eMediaCacheStrategy.NetworkFirst, (channels) =>
+			FetchListObject<PulsePodcast>(url, eMediaCacheStrategy.NetworkFirst, (channels) =>
 			{
 				List<PulsePodcast> results = new List<PulsePodcast>();
 				if (channels != null)
@@ -272,7 +319,7 @@ namespace Thump.Pulse
 		public override void GetAllPodcasts(Action<List<PulsePodcast>> onComplete)
 		{
 			string url = BuildPulseUrl("allPodcasts", null);
-			FetchObject<List<PulsePodcast>>(url, eMediaCacheStrategy.NetworkFirst, (channels) =>
+			FetchListObject<PulsePodcast>(url, eMediaCacheStrategy.NetworkFirst, (channels) =>
 			{
 				List<PulsePodcast> results = new List<PulsePodcast>();
 				if (channels != null)
@@ -301,7 +348,7 @@ namespace Thump.Pulse
 		public override void GetAudiobooks(Action<List<PulseAudiobook>> onComplete)
 		{
 			string url = BuildPulseUrl("audiobooks", null);
-			FetchObject<List<PulseAudiobook>>(url, eMediaCacheStrategy.NetworkFirst, (books) =>
+			FetchListObject<PulseAudiobook>(url, eMediaCacheStrategy.NetworkFirst, (books) =>
 			{
 				List<PulseAudiobook> results = new List<PulseAudiobook>();
 				if (books != null)
@@ -330,7 +377,7 @@ namespace Thump.Pulse
 		public override void SearchPodcasts(string query, Action<List<PulsePodcast>> onComplete)
 		{
 			string url = BuildPulseUrl("searchPodcasts", "query=" + Uri.EscapeDataString(query));
-			FetchObject<List<PulsePodcast>>(url, eMediaCacheStrategy.NetworkFirst, (hits) =>
+			FetchListObject<PulsePodcast>(url, eMediaCacheStrategy.NetworkFirst, (hits) =>
 			{
 				List<PulsePodcast> results = new List<PulsePodcast>();
 				if (hits != null)
@@ -461,7 +508,7 @@ namespace Thump.Pulse
 						string param = "type=alphabeticalbyname&size=" + pageSize + "&offset=" + offset;
 						string url = BuildPulseUrl("albums", param);
 						List<PulseAlbum> albums;
-						if (!FetchObjectSync(url, eMediaCacheStrategy.NetworkFirst, out albums) || albums == null || albums.Count == 0)
+						if (!FetchListObjectSync(url, eMediaCacheStrategy.NetworkFirst, CancellationToken.None, out albums) || albums == null || albums.Count == 0)
 						{
 							break;
 						}
@@ -572,7 +619,7 @@ namespace Thump.Pulse
 		public override void GetPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
 			string url = BuildPulseUrl("playlists", null);
-			FetchObject<List<PulsePlaylist>>(url, eMediaCacheStrategy.NetworkFirst, (playlists) =>
+			FetchListObject<PulsePlaylist>(url, eMediaCacheStrategy.NetworkFirst, (playlists) =>
 			{
 				List<PulsePlaylist> results = new List<PulsePlaylist>();
 				if (playlists != null)
@@ -680,24 +727,10 @@ namespace Thump.Pulse
 		public override void GetRecentlyPlayed(Action<List<PulseObject>> onComplete)
 		{
 			string url = BuildPulseUrl("recentlyPlayed", "count=50");
-			FetchObject(url, eMediaCacheStrategy.NetworkFirst, (contents) =>
+
+			FetchMultiTypedItems(url, eMediaCacheStrategy.NetworkFirst, (contents) =>
 			{
-				List<PulseObject> results = new List<PulseObject>();
-				if (contents != null)
-				{
-					JsonElement jsonElement = (JsonElement)contents;
-					if (jsonElement.ValueKind == JsonValueKind.Array)
-					{
-						foreach (JsonElement element in jsonElement.EnumerateArray())
-						{
-							PulseObject mapped = MapMixedObject(element);
-							if (mapped != null)
-							{
-								results.Add(mapped);
-							}
-						}
-					}
-				}
+				List<PulseObject> results = contents;
 				if (onComplete != null)
 				{
 					onComplete(results);
@@ -707,7 +740,8 @@ namespace Thump.Pulse
 
 		public override void GetPopularArtists(Action<List<PulseArtist>> onComplete)
 		{
-			FetchTypedItems<PulseArtist>("topItems", "types=artist&count=20", (items) =>
+			string url = BuildPulseUrl("topItems", "types=artist&count=20");
+			FetchListObject<PulseArtist>(url, eMediaCacheStrategy.NetworkFirst, (items) =>
 			{
 				if (onComplete != null)
 				{
@@ -718,7 +752,8 @@ namespace Thump.Pulse
 
 		public override void GetTopPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
-			FetchTypedItems<PulsePlaylist>("topItems", "types=playlist&count=20", (items) =>
+			string url = BuildPulseUrl("topItems", "types=playlist&count=20");
+			FetchListObject<PulsePlaylist>(url, eMediaCacheStrategy.NetworkFirst, (items) =>
 			{
 				if (onComplete != null)
 				{
@@ -729,7 +764,8 @@ namespace Thump.Pulse
 
 		public override void GetRecentPlaylists(Action<List<PulsePlaylist>> onComplete)
 		{
-			FetchTypedItems<PulsePlaylist>("recentlyPlayed", "types=playlist&count=20", (items) =>
+			string url = BuildPulseUrl("recentlyPlayed", "types=playlist&count=20");
+			FetchListObject<PulsePlaylist>(url , eMediaCacheStrategy.NetworkFirst, (items) =>
 			{
 				if (onComplete != null)
 				{
@@ -741,7 +777,7 @@ namespace Thump.Pulse
 		public override void GetGenres(Action<List<PulseGenre>> onComplete)
 		{
 			string url = BuildPulseUrl("genres", null);
-			FetchObject<List<PulseGenre>>(url, eMediaCacheStrategy.NetworkFirst, (genres) =>
+			FetchListObject<PulseGenre>(url, eMediaCacheStrategy.NetworkFirst, (genres) =>
 			{
 				List<PulseGenre> results = new List<PulseGenre>();
 				if (genres != null)
@@ -761,7 +797,8 @@ namespace Thump.Pulse
 
 		public override void GetTopItems(Action<List<PulseObject>> onComplete)
 		{
-			FetchTypedItems<PulseObject>("topItems", "count=50", (items) =>
+			string url = BuildPulseUrl("topItems", "count=50");
+			FetchMultiTypedItems(url,eMediaCacheStrategy.NetworkFirst, (items) =>
 			{
 				if (onComplete != null)
 				{
@@ -829,7 +866,7 @@ namespace Thump.Pulse
 
 					string url = BuildPulseUrl("reportAnalytics", null);
 					string json = PulseWire.Serialize(analytics);
-					HttpPostJson(url, json, true);
+					HttpPostJson(url, json);
 				}
 				catch (Exception ex)
 				{
@@ -860,7 +897,7 @@ namespace Thump.Pulse
 					string url = BuildPulseUrl("ingestAnalytics", null);
 					string json = PulseWire.Serialize(batch);
 					// logPerf=false: analytics POSTs must not spam the perf log.
-					HttpPostJson(url, json, false);
+					HttpPostJson(url, json);
 				}
 				catch (Exception ex)
 				{
@@ -909,34 +946,45 @@ namespace Thump.Pulse
 		// Fetches a heterogeneous item feed (topItems / recentlyPlayed) and keeps
 		// only the elements whose Kind maps to the requested concrete type.
 		// Delivers the filtered list through the callback FetchObject.
-		private void FetchTypedItems<T>(string route, string param, Action<List<T>> onComplete) where T : PulseObject
+		private void FetchMultiTypedItems(string url, eMediaCacheStrategy cacheStrategy, Action<List<PulseObject>> onComplete)
 		{
-			string url = BuildPulseUrl(route, param);
-			FetchObject(url, eMediaCacheStrategy.NetworkFirst, (contents) =>
+			GetHTTP(url, (json) =>
 			{
+				List<PulseObject> contents = new List<PulseObject>();
 
-				List<T> results = new List<T>();
-				if (contents != null)
+				if (string.IsNullOrEmpty(json))
 				{
-					JsonElement jsonElement = (JsonElement)contents;
+					CompleteOnMain(onComplete, contents);
+					return;
+				}
+				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
+
+				if (response == null || response.contents == null)
+				{
+					Log.Error("Unparseable pulse response: " + url);
+				}
+				else if (response.status != "ok")
+				{
+					Log.Error("Pulse endpoint returned status '" + response.status + "': " + url);
+				}
+				else
+				{
+					JsonElement jsonElement = (JsonElement)response.contents;
 					if (jsonElement.ValueKind == JsonValueKind.Array)
 					{
 						foreach (JsonElement element in jsonElement.EnumerateArray())
 						{
 							PulseObject mapped = MapMixedObject(element);
-							T typed = mapped as T;
-							if (typed != null)
+							if (mapped != null)
 							{
-								results.Add(typed);
+								contents.Add(mapped);
 							}
 						}
 					}
 				}
-				if (onComplete != null)
-				{
-					onComplete(results);
-				}
-			});
+				CompleteOnMain(onComplete, contents);
+			}, cacheStrategy, true);
+
 		}
 
 		

@@ -7,6 +7,7 @@ using Microsoft.Maui.Controls.Shapes;
 using Microsoft.Maui.Graphics;
 using PulseAPI.CSharp;
 using Thump.Pulse;
+using Thump.Utility;
 using Thump.Views.Tiles;
 
 namespace Thump.Views
@@ -68,13 +69,13 @@ namespace Thump.Views
 		private CollectionView m_genresList;
 		private Grid m_letterOverlay;
 
-		private ObservableCollection<PulseArtist> m_artists;
-		private ObservableCollection<PulseAlbum> m_albums;
-		private ObservableCollection<PulsePlaylist> m_playlists;
-		private ObservableCollection<PulsePodcast> m_podcasts;
-		private ObservableCollection<PulseAudiobook> m_audiobooks;
-		private ObservableCollection<AudiobookAuthor> m_audiobookAuthors;
-		private ObservableCollection<PulseGenre> m_genres;
+		private QuietObservableCollection<PulseArtist> m_artists;
+		private QuietObservableCollection<PulseAlbum> m_albums;
+		private QuietObservableCollection<PulsePlaylist> m_playlists;
+		private QuietObservableCollection<PulsePodcast> m_podcasts;
+		private QuietObservableCollection<PulseAudiobook> m_audiobooks;
+		private QuietObservableCollection<AudiobookAuthor> m_audiobookAuthors;
+		private QuietObservableCollection<PulseGenre> m_genres;
 
 		public LibraryView(MainView mainView) : base(mainView)
 		{
@@ -402,13 +403,13 @@ namespace Thump.Views
 			ApplyLayout();
 			SetActiveButton(eLibraryButton.Artists);
 			SetActiveSort(eLibrarySort.Alphabetical);
-			m_artists = new ObservableCollection<PulseArtist>();
-			m_albums = new ObservableCollection<PulseAlbum>();
-			m_playlists = new ObservableCollection<PulsePlaylist>();
-			m_podcasts = new ObservableCollection<PulsePodcast>();
-			m_audiobooks = new ObservableCollection<PulseAudiobook>();
-			m_audiobookAuthors = new ObservableCollection<AudiobookAuthor>();
-			m_genres = new ObservableCollection<PulseGenre>();
+			m_artists = new QuietObservableCollection<PulseArtist>();
+			m_albums = new QuietObservableCollection<PulseAlbum>();
+			m_playlists = new QuietObservableCollection<PulsePlaylist>();
+			m_podcasts = new QuietObservableCollection<PulsePodcast>();
+			m_audiobooks = new QuietObservableCollection<PulseAudiobook>();
+			m_audiobookAuthors = new QuietObservableCollection<AudiobookAuthor>();
+			m_genres = new QuietObservableCollection<PulseGenre>();
 			base.Initialize();
 		}
 		

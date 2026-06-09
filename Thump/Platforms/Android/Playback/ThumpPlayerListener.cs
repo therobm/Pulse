@@ -44,7 +44,7 @@ namespace Thump.Playback.AndroidOS
 		public void OnShuffleModeEnabledChanged(bool shuffleModeEnabled) { }
 		public void OnTimelineChanged(Timeline timeline, int reason) { }
 		public void OnTracksChanged(Tracks tracks) { }
-		public void OnVolumeCh anged(float volume) { }
+		public void OnVolumeChanged(float volume) { }
 		public void OnDeviceInfoChanged(DeviceInfo deviceInfo) { }
 		public void OnDeviceVolumeChanged(int volume, bool muted) { }
 		public void OnVideoSizeChanged(VideoSize videoSize) { }
