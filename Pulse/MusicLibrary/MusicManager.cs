@@ -606,7 +606,11 @@ namespace Pulse.MusicLibrary
 			Log.Info("Scanning for deleted tracks...");
 			for (int index = 0; index < allTracks.Count; index++)
 			{
-				if (!File.Exists(allTracks[index].FilePath))
+				string trackPath = GetTrackFilePath(allTracks[index]);
+				// Only treat a track as dead when we can resolve its path AND the file
+				// is genuinely gone -- never remove a track whose path can't be
+				// resolved (e.g. no RelativeFilePath), or a false negative deletes it.
+				if (!string.IsNullOrEmpty(trackPath) && !File.Exists(trackPath))
 				{
 					string artistId = allTracks[index].ArtistId;
 					m_database.RemoveTrack(allTracks[index].Id);
@@ -615,7 +619,7 @@ namespace Pulse.MusicLibrary
 					{
 						artist.m_bIsDirty = true;
 					}
-					Log.Info("Pulse: Removed dead track: " + allTracks[index].FilePath);
+					Log.Info("Pulse: Removed dead track: " + trackPath);
 				}
 			}
 
@@ -862,7 +866,7 @@ namespace Pulse.MusicLibrary
 						{
 							removed.Add(dedup.Duplicates[i]);	
 							m_database.RemoveTrack(dedup.Duplicates[i].Id);
-							Log.Warning("Remove duplicate track: " + dedup.Duplicates[i].FilePath);
+							Log.Warning("Remove duplicate track: " + dedup.Duplicates[i].RelativeFilePath);
 						}
 					}
 					if (keepTrack == null)
@@ -1139,6 +1143,21 @@ namespace Pulse.MusicLibrary
 			m_database.DeleteUser(userName);
 		}
 
+		/// <summary>
+		/// Resolves a track's on-disk path from its RelativeFilePath against the
+		/// configured MusicPath. RelativeFilePath is the source of truth now (FilePath
+		/// is retired); resolving at access time keeps the path correct across a
+		/// library relocation. Returns null when the track has no relative path.
+		/// </summary>
+		public string GetTrackFilePath(TrackData track)
+		{
+			if (track == null || string.IsNullOrEmpty(track.RelativeFilePath))
+			{
+				return null;
+			}
+			return Path.Combine(m_config.MusicPath, track.RelativeFilePath);
+		}
+
 		public bool GetAlbumCover(AlbumData album, out byte[] bytes, out string contentType)
 		{
 			bytes = null;
@@ -1150,9 +1169,14 @@ namespace Pulse.MusicLibrary
 
 			for (int index = 0; index < album.Tracks.Count; index++)
 			{
+				string trackPath = GetTrackFilePath(album.Tracks[index]);
+				if (string.IsNullOrEmpty(trackPath))
+				{
+					continue;
+				}
 				try
 				{
-					TagLib.File tagFile = TagLib.File.Create(album.Tracks[index].FilePath);
+					TagLib.File tagFile = TagLib.File.Create(trackPath);
 					if (tagFile.Tag.Pictures.Length > 0)
 					{
 						bytes = tagFile.Tag.Pictures[0].Data.Data;
@@ -1167,7 +1191,12 @@ namespace Pulse.MusicLibrary
 				}
 			}
 
-			string albumDir = Path.GetDirectoryName(album.Tracks[0].FilePath);
+			string firstTrackPath = GetTrackFilePath(album.Tracks[0]);
+			if (string.IsNullOrEmpty(firstTrackPath))
+			{
+				return false;
+			}
+			string albumDir = Path.GetDirectoryName(firstTrackPath);
 			string[] artFileNames = new string[] { "cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png", "album.jpg", "album.png" };
 			for (int artIndex = 0; artIndex < artFileNames.Length; artIndex++)
 			{

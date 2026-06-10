@@ -273,8 +273,12 @@ namespace Pulse.Protocols
 			TrackData track = m_musicManager.GetTrack(id);
 			if (track != null)
 			{
-				FileStream fileStream = new FileStream(track.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-				return Results.File(fileStream, track.ContentType, enableRangeProcessing: true);
+				string trackPath = m_musicManager.GetTrackFilePath(track);
+				if (!string.IsNullOrEmpty(trackPath))
+				{
+					FileStream fileStream = new FileStream(trackPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+					return Results.File(fileStream, track.ContentType, enableRangeProcessing: true);
+				}
 			}
 
 			//try podcast
