@@ -223,7 +223,7 @@ namespace Thump.Pulse
 				return true;
 			}
 
-			value = default(T);
+			value = null;
 
 			string json = HttpGet(url, false, token);
 			if (!string.IsNullOrEmpty(json))

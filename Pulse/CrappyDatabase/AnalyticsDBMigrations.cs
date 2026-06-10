@@ -94,12 +94,12 @@ namespace Pulse.Database
 				record.ExecuteNonQuery();
 
 				transaction.Commit();
-				Log.Info(-1, "Applied analytics schema migration v" + step.Version);
+				Log.Info("Applied analytics schema migration v" + step.Version);
 			}
 			catch (Exception ex)
 			{
 				transaction.Rollback();
-				Log.Error(-1, "analytics migration v" + step.Version + " failed: " + ex.Message);
+				Log.Error("analytics migration v" + step.Version + " failed: " + ex.Message);
 				throw;
 			}
 		}

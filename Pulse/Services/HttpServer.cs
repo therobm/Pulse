@@ -114,11 +114,11 @@ namespace Assistant.Services
 			if (!string.IsNullOrEmpty(certPath) && File.Exists(certPath))
 			{
 				listenOptions.UseHttps(certPath);
-				Log.Info(-1, "HTTPS is enabled");
+				Log.Info("HTTPS is enabled");
 			}
 			else
 			{
-				Log.Warning(-1, "HTTPS is disabled");
+				Log.Warning("HTTPS is disabled");
 			}
 		}
 
@@ -196,7 +196,7 @@ namespace Assistant.Services
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "Request failed: " + context.Request.Path + " - " + ex.Message + "\n" + ex.StackTrace);
+				Log.Error("Request failed: " + context.Request.Path + " - " + ex.Message + "\n" + ex.StackTrace);
 				context.Response.StatusCode = 500;
 				return Task.CompletedTask;
 			}
@@ -228,7 +228,7 @@ namespace Assistant.Services
 		{
 			if (!File.Exists(filePath))
 			{
-				Log.Error(-1, "Missing file: " + filePath);
+				Log.Error("Missing file: " + filePath);
 				context.Response.StatusCode = 404;
 				return;
 			}

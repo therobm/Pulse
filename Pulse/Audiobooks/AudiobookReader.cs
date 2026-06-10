@@ -73,7 +73,7 @@ namespace Pulse.Audiobooks
 			}
 			catch (Exception ex)
 			{
-				Log.Warning(-1, "Audiobook tag read failed for " + path + ": " + ex.Message);
+				Log.Warning("Audiobook tag read failed for " + path + ": " + ex.Message);
 			}
 			return result;
 		}
@@ -91,7 +91,7 @@ namespace Pulse.Audiobooks
 			}
 			catch (Exception ex)
 			{
-				Log.Warning(-1, "Audiobook chapter extract failed for " + path + ": " + ex.Message);
+				Log.Warning("Audiobook chapter extract failed for " + path + ": " + ex.Message);
 				markers = new List<ChapterMarker>();
 			}
 			if (markers.Count > 0)
@@ -139,7 +139,7 @@ namespace Pulse.Audiobooks
 			}
 			catch (Exception ex)
 			{
-				Log.Warning(-1, "Audiobook cover extract failed for " + path + ": " + ex.Message);
+				Log.Warning("Audiobook cover extract failed for " + path + ": " + ex.Message);
 				return "";
 			}
 		}

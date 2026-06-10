@@ -46,7 +46,9 @@ namespace Pulse.DataStorage
 		public string Album;
 		public string AlbumId;
 		public string Genre;
+		[Obsolete("Replaced by RelativeFilePath")]
 		public string FilePath;
+		public string RelativeFilePath;
 		public string CoverArtId;
 		public int TrackNumber;
 		public int DiscNumber;

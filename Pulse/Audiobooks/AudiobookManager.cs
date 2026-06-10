@@ -71,7 +71,7 @@ namespace Pulse.Series
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "Audiobook scan thread failed: " + ex.Message);
+				Log.Error("Audiobook scan thread failed: " + ex.Message);
 			}
 		}
 
@@ -79,12 +79,12 @@ namespace Pulse.Series
 		{
 			if (string.IsNullOrWhiteSpace(m_audiobooksPath))
 			{
-				Log.Info(-1, "AudiobooksPath not configured; skipping audiobook scan.");
+				Log.Info("AudiobooksPath not configured; skipping audiobook scan.");
 				return;
 			}
 			if (!Directory.Exists(m_audiobooksPath))
 			{
-				Log.Warning(-1, "AudiobooksPath does not exist: " + m_audiobooksPath);
+				Log.Warning("AudiobooksPath does not exist: " + m_audiobooksPath);
 				return;
 			}
 
@@ -123,13 +123,13 @@ namespace Pulse.Series
 				}
 				catch (Exception ex)
 				{
-					Log.Warning(-1, "Audiobook scan failed for " + pair.Key + ": " + ex.Message);
+					Log.Warning("Audiobook scan failed for " + pair.Key + ": " + ex.Message);
 				}
 			}
 
 			PruneRemoved(liveBookIds, liveChapterIds);
 
-			Log.Info(-1, "Audiobook scan complete: " + liveBookIds.Count + " book(s) from " + folderCount + " folder(s) under " + m_audiobooksPath);
+			Log.Info("Audiobook scan complete: " + liveBookIds.Count + " book(s) from " + folderCount + " folder(s) under " + m_audiobooksPath);
 		}
 
 		private void PruneRemoved(HashSet<string> liveBookIds, HashSet<string> liveChapterIds)
@@ -165,7 +165,7 @@ namespace Pulse.Series
 			}
 			if (removedBooks > 0 || removedChapters > 0)
 			{
-				Log.Info(-1, "Audiobook prune: removed " + removedBooks + " book(s) and " + removedChapters + " chapter(s) no longer on disk.");
+				Log.Info("Audiobook prune: removed " + removedBooks + " book(s) and " + removedChapters + " chapter(s) no longer on disk.");
 			}
 		}
 
@@ -469,7 +469,7 @@ namespace Pulse.Series
 			}
 			catch (Exception ex)
 			{
-				Log.Warning(-1, "Audiobook file size read failed for " + path + ": " + ex.Message);
+				Log.Warning("Audiobook file size read failed for " + path + ": " + ex.Message);
 				return 0;
 			}
 		}

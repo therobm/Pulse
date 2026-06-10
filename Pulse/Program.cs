@@ -16,12 +16,12 @@ namespace Pulse
 			List<string> configErrors = config.Validate();
 			if (configErrors.Count > 0)
 			{
-				Log.Error(-1, "Pulse: invalid configuration in " + PulseConfig.GetConfigPath());
+				Log.Error("Pulse: invalid configuration in " + PulseConfig.GetConfigPath());
 				for (int idx = 0; idx < configErrors.Count; idx++)
 				{
-					Log.Error(-1, "  - " + configErrors[idx]);
+					Log.Error("  - " + configErrors[idx]);
 				}
-				Log.Error(-1, "Fix the config and restart.");
+				Log.Error("Fix the config and restart.");
 				return;
 			}
 
@@ -41,9 +41,9 @@ namespace Pulse
 			AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
 			s_shutdown.Wait();
 
-			Log.Info(-1, "Shutting down...");
+			Log.Info("Shutting down...");
 			m_pulse.Shutdown();
-			Log.Info(-1, "Server has shutdown.");
+			Log.Info("Server has shutdown.");
 		}
 
 		static void OnCancelKeyPress(object sender, ConsoleCancelEventArgs e)

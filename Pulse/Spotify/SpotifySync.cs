@@ -86,7 +86,7 @@ namespace Pulse.Spotify
 					if (!response.IsSuccessStatusCode)
 					{
 						string errorBody = ReadResponseBody(response);
-						Log.Error(-1, "Spotify: Token exchange failed - " + response.StatusCode + " - " + errorBody);
+						Log.Error("Spotify: Token exchange failed - " + response.StatusCode + " - " + errorBody);
 						return false;
 					}
 
@@ -100,7 +100,7 @@ namespace Pulse.Spotify
 					m_tokenExpiry = DateTime.UtcNow.AddSeconds(expiresIn - 60);
 
 					SaveCredentials();
-					Log.Info(-1, "Spotify: Authorization complete");
+					Log.Info("Spotify: Authorization complete");
 					return true;
 				}
 			}
@@ -118,7 +118,7 @@ namespace Pulse.Spotify
 			if (!IsAuthorized())
 			{
 				//https://pulse.mccoder.com:32458/spotify/authorize/yourNameHere
-				Log.Warning(-1, "Spotify: Not authorized. Visit: " + GetAuthorizationUrl("yourNameHere"));
+				Log.Warning("Spotify: Not authorized. Visit: " + GetAuthorizationUrl("yourNameHere"));
 				return;
 			}
 
@@ -136,7 +136,7 @@ namespace Pulse.Spotify
 
 		private void SyncLoop()
 		{
-			Log.Info(-1, "Spotify: Sync loop started, interval " + m_syncIntervalHours + " hours");
+			Log.Info("Spotify: Sync loop started, interval " + m_syncIntervalHours + " hours");
 			for (;;)
 			{
 				if (!m_running)
@@ -149,7 +149,7 @@ namespace Pulse.Spotify
 				}
 				catch (Exception ex)
 				{
-					Log.Error(-1, "Spotify: Sync error - " + ex.Message + "\n" + ex.StackTrace);
+					Log.Error("Spotify: Sync error - " + ex.Message + "\n" + ex.StackTrace);
 				}
 
 				for (int waited = 0; waited < m_syncIntervalHours * 60 * 60 && m_running; waited++)
@@ -157,26 +157,26 @@ namespace Pulse.Spotify
 					Thread.Sleep(1000);
 				}
 			}
-			Log.Info(-1, "Spotify: Sync loop stopped");
+			Log.Info("Spotify: Sync loop stopped");
 		}
 
 		private void SyncAllPlaylists()
 		{
-			Log.Info(-1, "Spotify: SyncAllPlaylists v2");
+			Log.Info("Spotify: SyncAllPlaylists v2");
 			if (!EnsureToken())
 			{
-				Log.Error(-1, "Spotify: Failed to refresh token");
+				Log.Error("Spotify: Failed to refresh token");
 				return;
 			}
 
 			List<SpotifyPlaylistEntry> playlists = FetchUserPlaylists();
-			Log.Info(-1, "Spotify: Found " + playlists.Count + " playlists");
+			Log.Info("Spotify: Found " + playlists.Count + " playlists");
 			foreach (SpotifyPlaylistEntry entry in playlists)
 			{
 				List<PlaylistImportEntry> tracks = FetchPlaylistTracks(entry.Id);
 				if (tracks.Count == 0)
 				{
-					Log.Warning(-1, "Importing playlist: No Tracks found in list!");
+					Log.Warning("Importing playlist: No Tracks found in list!");
 					continue;
 				}
 				m_musicManager.ImportPlaylist(entry.Name, tracks);
@@ -312,7 +312,7 @@ namespace Pulse.Spotify
 					if (!response.IsSuccessStatusCode)
 					{
 						string errorBody = ReadResponseBody(response);
-						Log.Error(-1, "Spotify: GET failed " + response.StatusCode + " - " + url + " - " + errorBody);
+						Log.Error("Spotify: GET failed " + response.StatusCode + " - " + url + " - " + errorBody);
 						return null;
 					}
 
@@ -348,7 +348,7 @@ namespace Pulse.Spotify
 					if (!response.IsSuccessStatusCode)
 					{
 						string errorBody = ReadResponseBody(response);
-						Log.Error(-1, "Spotify: Token refresh failed - " + response.StatusCode + " - " + errorBody);
+						Log.Error("Spotify: Token refresh failed - " + response.StatusCode + " - " + errorBody);
 						return false;
 					}
 
@@ -417,11 +417,11 @@ namespace Pulse.Spotify
 				}
 
 				doc.Dispose();
-				Log.Info(-1, "Spotify: Loaded saved credentials");
+				Log.Info("Spotify: Loaded saved credentials");
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "Spotify: Failed to load credentials - " + ex.Message);
+				Log.Error("Spotify: Failed to load credentials - " + ex.Message);
 			}
 		}
 

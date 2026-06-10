@@ -104,7 +104,7 @@ namespace Pulse.Database
 #if DEBUG
 			if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
 			{
-				Log.Warning(-1, "Debugger attached: forcing Staging environment for analytics DB (config said '" + environmentName + "').");
+				Log.Warning("Debugger attached: forcing Staging environment for analytics DB (config said '" + environmentName + "').");
 			}
 			environmentName = "Staging";
 #endif
@@ -122,7 +122,7 @@ namespace Pulse.Database
 
 			AnalyticsDBMigrations analyticsMigrations = new AnalyticsDBMigrations(m_connector);
 			analyticsMigrations.RunMigrations();
-			Log.Info(-1, "Pulse analytics DB: env=" + environmentName + " path=" + analyticsPath);
+			Log.Info("Pulse analytics DB: env=" + environmentName + " path=" + analyticsPath);
 
 			m_queue = new BlockingCollection<AnalyticsBatchItem>();
 			m_takeTimeout = TimeSpan.FromMinutes(1);
@@ -226,7 +226,7 @@ namespace Pulse.Database
 				}
 				catch (Exception ex)
 				{
-					Log.Error(-1, "AnalyticsDB drain failed: " + ex.Message);
+					Log.Error("AnalyticsDB drain failed: " + ex.Message);
 				}
 			}
 		}
@@ -270,7 +270,7 @@ namespace Pulse.Database
 				catch (Exception ex)
 				{
 					transaction.Rollback();
-					Log.Error(-1, "AnalyticsDB.WriteBatch failed: " + ex.Message);
+					Log.Error("AnalyticsDB.WriteBatch failed: " + ex.Message);
 				}
 			}
 			finally
@@ -394,7 +394,7 @@ namespace Pulse.Database
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "AnalyticsDB prune failed: " + ex.Message);
+				Log.Error("AnalyticsDB prune failed: " + ex.Message);
 			}
 			m_lastPruneUtc = DateTime.UtcNow;
 		}
@@ -412,7 +412,7 @@ namespace Pulse.Database
 				int deleted = command.ExecuteNonQuery();
 				if (deleted > 0)
 				{
-					Log.Info(-1, "Analytics retention prune removed " + deleted + " event(s) older than " + cutoff);
+					Log.Info("Analytics retention prune removed " + deleted + " event(s) older than " + cutoff);
 				}
 			}
 			finally

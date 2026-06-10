@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Pulse.Data
 {
@@ -377,7 +378,7 @@ namespace Pulse.Data
 			//Enforce debug builds never touch production
 			if (!string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase))
 			{
-				Log.Warning(-1, "Debugger attached: forcing Staging environment (config said '" + environmentName + "'). Debug sessions never touch production data.");
+				Log.Warning("Debugger attached: forcing Staging environment (config said '" + environmentName + "'). Debug sessions never touch production data.");
 			}
 			environmentName = "Staging";
 #endif
@@ -394,7 +395,7 @@ namespace Pulse.Data
 			string sqlitePath = Path.Combine(m_config.PulseDataPath, sqliteFileName);
 			Pulse.Database.PulseDBConnector.SetDatabaseFilePath(sqlitePath);
 			Pulse.Database.PulseDBMigrations.RunMigrations();
-			Log.Info(-1, "Pulse DB: env=" + environmentName + " path=" + sqlitePath);
+			Log.Info("Pulse DB: env=" + environmentName + " path=" + sqlitePath);
 
 
 			Stopwatch sw = Stopwatch.StartNew();
@@ -442,11 +443,12 @@ namespace Pulse.Data
 				MigrateFromLegacyDB();
 			}
 
+			MigrateFields();
 			WireUpReferences();
 			CalculateArtistScores();
 
 			sw.Stop();
-			Log.Info(-1, "PulseData loaded in " + sw.ElapsedMilliseconds + "ms: "
+			Log.Info("PulseData loaded in " + sw.ElapsedMilliseconds + "ms: "
 				+ m_tracks.Count + " tracks, " + m_albums.Count + " albums, "
 				+ m_artists.Count + " artists, " + m_playlists.Count + " playlists");
 
@@ -459,7 +461,7 @@ namespace Pulse.Data
 		/// </summary>
 		private void MigrateFromLegacyDB()
 		{
-			Log.Info(-1, "PulseDataStore empty — migrating from PulseDB");
+			Log.Info("PulseDataStore empty — migrating from PulseDB");
 
 			List<ArtistData> artists = m_db.LoadArtists();
 			for (int i = 0; i < artists.Count; i++)
@@ -567,7 +569,7 @@ namespace Pulse.Data
 			foreach (PlaylistData playlist in m_playlists.Values) { playlist.m_bIsDirty = false; }
 			m_analytics.m_bIsDirty = false;
 
-			Log.Info(-1, "PulseDataStore migration complete");
+			Log.Info("PulseDataStore migration complete");
 		}
 
 		/// <summary>
@@ -656,14 +658,75 @@ namespace Pulse.Data
 			try
 			{
 				Save();
-				Log.Info(-1, "PulseData: shutdown flush complete");
+				Log.Info("PulseData: shutdown flush complete");
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "PulseData: shutdown flush failed - " + ex.Message);
+				Log.Error("PulseData: shutdown flush failed - " + ex.Message);
 			}
 		}
 
+		private void MigrateFields()
+		{
+			List<string> tracksToRemove = new List<string>();
+			List<TrackData> tracksToAdd = new List<TrackData>();
+			foreach(KeyValuePair<string, TrackData> trackPair in m_tracks)
+			{
+				TrackData track = trackPair.Value;
+
+				//add relative path
+				if (string.IsNullOrEmpty(track.RelativeFilePath))
+				{
+					string absPath = track.FilePath;
+					if (!string.IsNullOrEmpty(absPath))
+					{
+						string legacyId = MusicManager.GenerateID(absPath);
+						if (track.Id == legacyId)
+						{
+							Log.Error("Legacy id detected: " + track.FilePath);
+						}
+
+						string relativePath = Path.GetRelativePath(m_config.MusicPath, absPath);
+						if (!relativePath.StartsWith("..") && !Path.IsPathRooted(relativePath))
+						{
+
+							track.RelativeFilePath = relativePath;
+							track.m_bIsDirty = true;
+
+						}
+						else
+						{
+							Log.Warning("Track FilePath not under MusicPath, skipping relative backfill: " + absPath);
+						}
+					}
+				}
+
+				//track ID migration - playlists will fix themselves up on re-import so don't worry about em
+				string newId = MusicManager.GenerateTrackID(track.Artist, track.Album, track.DiscNumber, track.TrackNumber, track.Title);
+				if (track.Id != newId)
+				{
+					tracksToRemove.Add(track.Id);
+					m_musicData.Delete(eDataType.Track, track.Id);
+
+					track.Id = newId;
+					m_musicData.Save(eDataType.Track, track);
+					tracksToAdd.Add(track);
+				}
+				
+
+			}
+
+			foreach (string deadId in tracksToRemove)
+			{
+				if (m_tracks.ContainsKey(deadId))
+					m_tracks.Remove(deadId, out TrackData toss);
+			}
+			foreach (TrackData newTrack in tracksToAdd)
+			{
+				m_tracks[newTrack.Id] = newTrack;
+			}
+			Save();
+		}
 		/// <summary>
 		/// Wire AlbumData.Tracks and ArtistData.Albums lists from the foreign-key
 		/// columns now that all rows are loaded.

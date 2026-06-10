@@ -178,7 +178,7 @@ namespace Pulse.Protocols
 			string sessionId = m_sessions.CreateSession(request.Username, isAdmin, request.RememberMe);
 			AppendSessionCookie(context, sessionId, request.RememberMe);
 
-			Log.Info(-1, "Auth: login for '" + request.Username + "'");
+			Log.Info("Auth: login for '" + request.Username + "'");
 
 			PulseLoginResult result = new PulseLoginResult();
 			result.Username = request.Username;
@@ -276,7 +276,7 @@ namespace Pulse.Protocols
 			string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, 12);
 			m_pulseData.SetUserPassword(request.Username, passwordHash);
 
-			Log.Info(-1, "Auth: password set for '" + request.Username + "'");
+			Log.Info("Auth: password set for '" + request.Username + "'");
 			return Respond("ok", HttpStatusCode.OK);
 		}
 
@@ -320,7 +320,7 @@ namespace Pulse.Protocols
 			{
 				return Respond(error, HttpStatusCode.OK);
 			}
-			Log.Info(-1, "Settings: created user '" + name + "'");
+			Log.Info("Settings: created user '" + name + "'");
 			return Respond(HttpStatusCode.OK);
 		}
 
@@ -341,7 +341,7 @@ namespace Pulse.Protocols
 			{
 				return Respond(error, HttpStatusCode.OK);
 			}
-			Log.Info(-1, "Settings: updated user '" + oldName + "' (now '" + newName + "')");
+			Log.Info("Settings: updated user '" + oldName + "' (now '" + newName + "')");
 			return Respond(HttpStatusCode.OK);
 		}
 
@@ -356,7 +356,7 @@ namespace Pulse.Protocols
 				return Respond("Missing user", HttpStatusCode.OK);
 			}
 			m_pulseData.DeleteUser(userName);
-			Log.Info(-1, "Settings: deleted user '" + userName + "'");
+			Log.Info("Settings: deleted user '" + userName + "'");
 			return Respond(HttpStatusCode.OK);
 		}
 
@@ -415,7 +415,7 @@ namespace Pulse.Protocols
 
 			m_rateLimiter.RecordSuccess(clientIp);
 
-			Log.Info(-1, "Auth: created token for '" + request.Username + "' label='" + label + "'");
+			Log.Info("Auth: created token for '" + request.Username + "' label='" + label + "'");
 
 			PulseToken result = new PulseToken();
 			result.Token = token;
@@ -489,7 +489,7 @@ namespace Pulse.Protocols
 			}
 
 			m_pulseData.DeleteToken(request.Token);
-			Log.Info(-1, "Auth: revoked token");
+			Log.Info("Auth: revoked token");
 			return Respond("ok", HttpStatusCode.OK);
 		}
 
