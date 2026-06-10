@@ -1073,7 +1073,8 @@ namespace Pulse.Protocols
 				playlist.Name = name;
 			}
 
-			if (!string.IsNullOrEmpty(comment))
+			bool commentProvided = context.Request.Query.ContainsKey("comment");
+			if (commentProvided)
 			{
 				playlist.Comment = comment;
 			}
