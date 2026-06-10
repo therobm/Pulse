@@ -254,6 +254,7 @@ namespace Pulse.Protocols
 				pulseTrack.Artist = podcast.Title;
 			}
 			pulseTrack.Starred = false;
+			pulseTrack.IsSeries = true;
 			return pulseTrack;
 		}
 
@@ -277,6 +278,7 @@ namespace Pulse.Protocols
 				pulseTrack.Artist = book.Title;
 			}
 			pulseTrack.Starred = false;
+			pulseTrack.IsSeries = true;
 			return pulseTrack;
 		}
 
