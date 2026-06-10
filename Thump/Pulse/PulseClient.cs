@@ -216,44 +216,6 @@ namespace Thump.Pulse
 
 			return value != null;
 		}
-		private bool FetchObjectSync<T>(string url, eMediaCacheStrategy cacheStrategy, CancellationToken token, out T value) where T : PulseObject
-		{
-			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedPulseData<T>(url, out value))
-			{
-				return true;
-			}
-
-			value = null;
-
-			string json = HttpGet(url, false, token);
-			if (!string.IsNullOrEmpty(json))
-			{
-				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
-				if (response != null)
-				{
-					JsonElement contents = (JsonElement)response.contents;
-					if (contents.ValueKind != JsonValueKind.Undefined && contents.ValueKind != JsonValueKind.Null)
-					{
-						value = PulseWire.Parse<T>(contents.GetRawText());
-					}
-					else
-					{
-						Log.Error("Unparseable pulse response: " + url);
-					}
-				}
-			}
-
-			if (value != null)
-			{
-				CacheQueryPulseData(url, value);
-			}
-			else if (cacheStrategy != eMediaCacheStrategy.NetworkOnly)
-			{
-				GetCachedPulseData<T>(url, out value);
-			}
-
-			return value != default(T);
-		}
 		protected override bool Ping(out JsonElement response)
 		{
 			response = default(JsonElement);
