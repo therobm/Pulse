@@ -282,7 +282,7 @@ namespace Pulse.Podcasts
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "Initial podcast download failed for " + seriesId + ": " + ex.Message);
+				Log.Error("Initial podcast download failed for " + seriesId + ": " + ex.Message);
 			}
 		}
 
@@ -360,12 +360,12 @@ namespace Pulse.Podcasts
 					episode.DurationSeconds = ProbeDurationSeconds(targetPath);
 				}
 				episode.DownloadState = eDownloadState.Downloaded;
-				Log.Info(-1, "Podcast downloaded: " + episode.Title);
+				Log.Info("Podcast downloaded: " + episode.Title);
 			}
 			catch (Exception ex)
 			{
 				episode.DownloadState = eDownloadState.Failed;
-				Log.Warning(-1, "Podcast download failed: " + episode.Title + " -- " + ex.Message);
+				Log.Warning("Podcast download failed: " + episode.Title + " -- " + ex.Message);
 				if (File.Exists(targetPath))
 				{
 					try
@@ -374,7 +374,7 @@ namespace Pulse.Podcasts
 					}
 					catch (Exception deleteEx)
 					{
-						Log.Warning(-1, "Podcast partial delete failed: " + targetPath + " -- " + deleteEx.Message);
+						Log.Warning("Podcast partial delete failed: " + targetPath + " -- " + deleteEx.Message);
 					}
 				}
 			}
@@ -399,7 +399,7 @@ namespace Pulse.Podcasts
 			}
 			catch (Exception ex)
 			{
-				Log.Warning(-1, "Podcast duration probe failed: " + filePath + " -- " + ex.Message);
+				Log.Warning("Podcast duration probe failed: " + filePath + " -- " + ex.Message);
 				return 0;
 			}
 		}
@@ -455,7 +455,7 @@ namespace Pulse.Podcasts
 				}
 				catch (Exception ex)
 				{
-					Log.Warning(-1, "Podcast retention delete failed: " + episode.LocalPath + " -- " + ex.Message);
+					Log.Warning("Podcast retention delete failed: " + episode.LocalPath + " -- " + ex.Message);
 				}
 			}
 			episode.LocalPath = "";
@@ -512,7 +512,7 @@ namespace Pulse.Podcasts
 			}
 			catch (Exception ex)
 			{
-				Log.Warning(-1, "Podcast artwork cache failed: " + series.Title + " -- " + ex.Message);
+				Log.Warning("Podcast artwork cache failed: " + series.Title + " -- " + ex.Message);
 				if (File.Exists(artworkPath))
 				{
 					try
@@ -521,7 +521,7 @@ namespace Pulse.Podcasts
 					}
 					catch (Exception deleteEx)
 					{
-						Log.Warning(-1, "Podcast artwork partial delete failed: " + artworkPath + " -- " + deleteEx.Message);
+						Log.Warning("Podcast artwork partial delete failed: " + artworkPath + " -- " + deleteEx.Message);
 					}
 				}
 			}
@@ -571,7 +571,7 @@ namespace Pulse.Podcasts
 			}
 			catch (Exception ex)
 			{
-				Log.Warning(-1, "Podcast feed refresh failed: " + podcastId + " -- " + ex.Message);
+				Log.Warning("Podcast feed refresh failed: " + podcastId + " -- " + ex.Message);
 			}
 		}
 
@@ -623,7 +623,7 @@ namespace Pulse.Podcasts
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "Podcast poll cycle failed: " + ex.Message);
+				Log.Error("Podcast poll cycle failed: " + ex.Message);
 			}
 		}
 
@@ -741,7 +741,7 @@ namespace Pulse.Podcasts
 				HttpResponseMessage response = s_httpClient.GetAsync(url).GetAwaiter().GetResult();
 				if (!response.IsSuccessStatusCode)
 				{
-					Log.Warning(-1, "Podcast search failed (" + ((int)response.StatusCode).ToString() + ") for query '" + query + "'");
+					Log.Warning("Podcast search failed (" + ((int)response.StatusCode).ToString() + ") for query '" + query + "'");
 					return results;
 				}
 
@@ -784,7 +784,7 @@ namespace Pulse.Podcasts
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "Podcast search error for query '" + query + "': " + ex.Message);
+				Log.Error("Podcast search error for query '" + query + "': " + ex.Message);
 			}
 			return results;
 		}
@@ -871,7 +871,7 @@ namespace Pulse.Podcasts
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "Podcast settings apply failed for " + podcastId + ": " + ex.Message);
+				Log.Error("Podcast settings apply failed for " + podcastId + ": " + ex.Message);
 			}
 		}
 

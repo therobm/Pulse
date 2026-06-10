@@ -61,29 +61,25 @@ public class Log
 		}
 	}
 
-	static void LogInternal(int device, string message, LogType logType, string filePath, string memberName)
+	static void LogInternal(string message, LogType logType, string filePath, string memberName)
 	{
-		LogInternalWithColor(device, message, logType, filePath, memberName, ConsoleColor.Gray, false);
+		LogInternalWithColor(message, logType, filePath, memberName, ConsoleColor.Gray, false);
 	}
 
-	static void LogInternal(int device, string message, LogType logType, string filePath, string memberName, ConsoleColor color)
+	static void LogInternal(string message, LogType logType, string filePath, string memberName, ConsoleColor color)
 	{
-		LogInternalWithColor(device, message, logType, filePath, memberName, color, true);
+		LogInternalWithColor(message, logType, filePath, memberName, color, true);
 	}
 
-	static void LogInternalWithColor(int device, string message, LogType logType, string filePath, string memberName, ConsoleColor color, bool useColor)
+	static void LogInternalWithColor(string message, LogType logType, string filePath, string memberName, ConsoleColor color, bool useColor)
 	{
 		lock (s_consoleLock)
 		{
 			string caller = Path.GetFileNameWithoutExtension(filePath);
 			string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
 
-			string deviceID = "[dID" + device.ToString() + "]";
-			if (device < 0)
-			{
-				deviceID = "[HOST]";
-			}
-			string line = deviceID + "[" + logType.ToString() + "][" + timestamp + "][" + caller + "." + memberName + "] " + message;
+		
+			string line = "[" + logType.ToString() + "][" + timestamp + "][" + caller + "." + memberName + "] " + message;
 			if (useColor)
 			{
 				Console.ForegroundColor = color;
@@ -96,18 +92,18 @@ public class Log
 			WriteToFile(line);
 		}
 	}
-	public static void Info(int device, string message, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
+	public static void Info(string message, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 	{
-		LogInternal(device, message, LogType.INFO, filePath, memberName);
+		LogInternal(message, LogType.INFO, filePath, memberName);
 	}
 
-	public static void Warning(int device, string message, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
+	public static void Warning(string message, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 	{
-		LogInternal(device, message, LogType.WARN, filePath, memberName, ConsoleColor.Yellow);
+		LogInternal(message, LogType.WARN, filePath, memberName, ConsoleColor.Yellow);
 	}
 
-	public static void Error(int device, string message, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
+	public static void Error(string message, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 	{
-		LogInternal(device, message, LogType.ERROR, filePath, memberName, ConsoleColor.Red);
+		LogInternal(message, LogType.ERROR, filePath, memberName, ConsoleColor.Red);
 	}
 }

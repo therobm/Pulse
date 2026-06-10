@@ -7,6 +7,7 @@ using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -44,6 +45,10 @@ namespace Pulse.MusicLibrary
 		public Dictionary<string, ArtistData> m_scanningArtistCache = new Dictionary<string, ArtistData>();
 		public Dictionary<string, AlbumData> m_scanningAlbumCache = new Dictionary<string, AlbumData>();
 
+		public static string GenerateTrackID(string artist, string album, int disc, int trackNumber, string title)
+		{
+			return GenerateID(artist + "/" + album + "/" + disc + "/" + trackNumber + "/" + title);
+		}
 		public static string GenerateID(string input)
 		{
 			using (System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create())
@@ -53,6 +58,7 @@ namespace Pulse.MusicLibrary
 				return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
 			}
 		}
+		
 
 		private PulseData m_database;
 		private object m_missingLock = new object();
@@ -171,7 +177,7 @@ namespace Pulse.MusicLibrary
 					{
 						skipSuffix = " SKIPPED";
 					}
-					Log.Info(-1, "Finalized: " + previousTrack.Artist + ":" + previousTrack.Title
+					Log.Info("Finalized: " + previousTrack.Artist + ":" + previousTrack.Title
 						+ " elapsed=" + elapsedSeconds.ToString("F1") + "s"
 						+ " duration=" + previousTrack.DurationSeconds + "s"
 						+ " listen=" + listenSeconds.ToString("F1") + "s"
@@ -194,7 +200,7 @@ namespace Pulse.MusicLibrary
 				{
 					user = userName;
 				}
-				Log.Info(-1, "[" + user + "] Streaming: " + newTrack.Artist + ":" + newTrack.Title);
+				Log.Info("[" + user + "] Streaming: " + newTrack.Artist + ":" + newTrack.Title);
 			}
 		}
 
@@ -526,9 +532,9 @@ namespace Pulse.MusicLibrary
 
 			List<TrackData> allTracks = m_database.GetAllTracks();
 
-			HashSet<string> existingIds = new HashSet<string>();
+			HashSet<string> knownFiles = new HashSet<string>();
 			for (int i = 0; i < allTracks.Count; i++)
-				existingIds.Add(allTracks[i].Id);
+				knownFiles.Add(allTracks[i].RelativeFilePath);
 
 			m_scanningAlbumCache.Clear();
 			m_scanningArtistCache.Clear();
@@ -565,8 +571,7 @@ namespace Pulse.MusicLibrary
 
 				//use a relative path in case the user relocates their library
 				string relativePath = Path.GetRelativePath(musicPath, filePath);
-				string libraryID = MusicManager.GenerateID(relativePath);
-				if (existingIds.Contains(libraryID))
+				if (knownFiles.Contains(relativePath))
 				{
 					Interlocked.Increment(ref skippedCount);
 					return;
@@ -592,13 +597,13 @@ namespace Pulse.MusicLibrary
 				}
 				catch (Exception exception)
 				{
-					Log.Error(-1, "Scan failed: " + filePath + " - " + exception.Message);
+					Log.Error("Scan failed: " + filePath + " - " + exception.Message);
 				}
 			});
 
 
 			//remove missing files
-			Log.Info(-1, "Scanning for deleted tracks...");
+			Log.Info("Scanning for deleted tracks...");
 			for (int index = 0; index < allTracks.Count; index++)
 			{
 				if (!File.Exists(allTracks[index].FilePath))
@@ -610,13 +615,13 @@ namespace Pulse.MusicLibrary
 					{
 						artist.m_bIsDirty = true;
 					}
-					Log.Info(-1, "Pulse: Removed dead track: " + allTracks[index].FilePath);
+					Log.Info("Pulse: Removed dead track: " + allTracks[index].FilePath);
 				}
 			}
 
 
 
-			Log.Info(-1, "Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_database.GetTrackCount());
+			Log.Info("Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_database.GetTrackCount());
 			m_scanning = false;
 			SaveDB();
 		}
@@ -695,7 +700,7 @@ namespace Pulse.MusicLibrary
 
 			TrackData track = new TrackData();
 			string relPath = Path.GetRelativePath(musicRoot, filePath);
-			track.Id = MusicManager.GenerateID(relPath);
+			track.Id = MusicManager.GenerateTrackID(artist, album, (int)tagFile.Tag.Disc, (int)tagFile.Tag.Track, title);
 			track.Title = title;
 			track.Artist = artist;
 			track.ArtistId = artistId;
@@ -703,6 +708,7 @@ namespace Pulse.MusicLibrary
 			track.AlbumId = albumId;
 			track.Genre = tagFile.Tag.FirstGenre ?? "";
 			track.FilePath = filePath;
+			track.RelativeFilePath = relPath;
 			track.CoverArtId = albumId;
 			track.TrackNumber = (int)tagFile.Tag.Track;
 			track.DiscNumber = (int)tagFile.Tag.Disc;
@@ -772,7 +778,6 @@ namespace Pulse.MusicLibrary
 			for (int index = 0; index < tracks.Count; index++)
 			{
 				TrackData track = tracks[index];
-
 				m_database.GetOrCreateArtist(track.ArtistId, track.Artist);
 				AlbumData album = m_database.GetOrCreateAlbum(track.AlbumId, track.Album, track.ArtistId, track.Artist, track.Year, track.Genre);
 
@@ -796,7 +801,7 @@ namespace Pulse.MusicLibrary
 
 			if (relinked > 0)
 			{
-				Log.Info(-1, "Pulse: Library repair re-linked " + relinked + " track(s) to rebuilt albums.");
+				Log.Info("Pulse: Library repair re-linked " + relinked + " track(s) to rebuilt albums.");
 				SaveDB();
 			}
 		}
@@ -816,14 +821,18 @@ namespace Pulse.MusicLibrary
 				for (int i = 0; i < album.Tracks.Count; i++)
 				{
 					TrackData track = album.Tracks[i];
-					if (!trackDuplicates.ContainsKey(track.FilePath))
+					// Group by the canonical, tag-derived id: two rows with the same
+					// artist/album/disc/track/title ARE the same track under the new scheme.
+					// Grouping by the stored track.Id can never collide (it's the dictionary key).
+					string canonicalId = MusicManager.GenerateTrackID(track.Artist, track.Album, track.DiscNumber, track.TrackNumber, track.Title);
+					if (!trackDuplicates.ContainsKey(canonicalId))
 					{
-						trackDuplicates[track.FilePath] = new TrackDeduplicator(track.FilePath);
+						trackDuplicates[canonicalId] = new TrackDeduplicator(canonicalId);
 					}
-					trackDuplicates[track.FilePath].AddTrack(track);
-					if (!seenTrackIds.Add(album.Tracks[i].Id))
+					trackDuplicates[canonicalId].AddTrack(track);
+					if (!seenTrackIds.Add(track.Id))
 					{
-						Log.Warning(-1, "Duplicate track in album \"" + album.Name + "\": " + album.Tracks[i].Title + " (" + album.Tracks[i].Id + ")");
+						Log.Warning("Duplicate track in album \"" + album.Name + "\": " + track.Title + " (" + track.Id + ")");
 						duplicateAlbumTracks++;
 					}
 				}
@@ -837,9 +846,8 @@ namespace Pulse.MusicLibrary
 					if (!dedup.HasDuplicates())
 						continue;
 
-					//find the authorative source
-					string relativePath = Path.GetRelativePath(m_config.MusicPath, pair.Key);
-					string correctId = MusicManager.GenerateID(relativePath);
+					//the correct id IS the canonical tag-based group key
+					string correctId = pair.Key;
 
 					TrackData keepTrack = null;
 					List<TrackData> removed = new List<TrackData>();
@@ -854,12 +862,12 @@ namespace Pulse.MusicLibrary
 						{
 							removed.Add(dedup.Duplicates[i]);	
 							m_database.RemoveTrack(dedup.Duplicates[i].Id);
-							Log.Warning(0, "Remove duplicate track: " + dedup.Duplicates[i].FilePath);
+							Log.Warning("Remove duplicate track: " + dedup.Duplicates[i].FilePath);
 						}
 					}
 					if (keepTrack == null)
 					{
-						Log.Error(0, "Error duplicates detected with no correct id");
+						Log.Error("Error duplicates detected with no correct id");
 					}
 					else 
 					{
@@ -889,7 +897,7 @@ namespace Pulse.MusicLibrary
 				{
 					if (!seenAlbumIds.Add(artist.Albums[index].Id))
 					{
-						Log.Warning(-1, "Duplicate album in artist \"" + artist.Name + "\": " + artist.Albums[index].Name + " (" + artist.Albums[index].Id + ")");
+						Log.Warning("Duplicate album in artist \"" + artist.Name + "\": " + artist.Albums[index].Name + " (" + artist.Albums[index].Id + ")");
 						duplicateArtistAlbums++;
 					}
 				}
@@ -901,7 +909,7 @@ namespace Pulse.MusicLibrary
 				totalTracksInAlbums = totalTracksInAlbums + album.Tracks.Count;
 			}
 
-			Log.Info(-1, "Pulse: Tracks in dictionary: " + m_database.GetTrackCount() + ", tracks across albums: " + totalTracksInAlbums + ", duplicate tracks: " + duplicateAlbumTracks + ", duplicate albums: " + duplicateArtistAlbums);
+			Log.Info("Pulse: Tracks in dictionary: " + m_database.GetTrackCount() + ", tracks across albums: " + totalTracksInAlbums + ", duplicate tracks: " + duplicateAlbumTracks + ", duplicate albums: " + duplicateArtistAlbums);
 		}
 
 		public void RecalculateScore(TrackData track)
@@ -1155,7 +1163,7 @@ namespace Pulse.MusicLibrary
 				}
 				catch (Exception ex)
 				{
-					Log.Error(-1, "TryGetAlbumCoverBytes: failed to read embedded art - " + ex.Message);
+					Log.Error("TryGetAlbumCoverBytes: failed to read embedded art - " + ex.Message);
 				}
 			}
 

@@ -117,11 +117,11 @@ namespace Pulse.Data
 			try
 			{
 				Save();
-				Log.Info(-1, "AudiobookData: shutdown flush complete");
+				Log.Info("AudiobookData: shutdown flush complete");
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "AudiobookData: shutdown flush failed - " + ex.Message);
+				Log.Error("AudiobookData: shutdown flush failed - " + ex.Message);
 			}
 		}
 

@@ -373,7 +373,7 @@ namespace Pulse.Protocols
 						}
 						catch (Exception ex)
 						{
-							Log.Error(-1, "PulseEndpoints.GetCoverArt: failed to compose - " + ex.Message);
+							Log.Error("PulseEndpoints.GetCoverArt: failed to compose - " + ex.Message);
 						}
 					}
 				}

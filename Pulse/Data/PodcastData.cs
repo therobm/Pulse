@@ -115,11 +115,11 @@ namespace Pulse.Data
 			try
 			{
 				Save();
-				Log.Info(-1, "PodcastData: shutdown flush complete");
+				Log.Info("PodcastData: shutdown flush complete");
 			}
 			catch (Exception ex)
 			{
-				Log.Error(-1, "PodcastData: shutdown flush failed - " + ex.Message);
+				Log.Error("PodcastData: shutdown flush failed - " + ex.Message);
 			}
 		}
 
