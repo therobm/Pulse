@@ -142,11 +142,11 @@ namespace Thump.Pulse
 			ip = ip.Trim().Replace("http://", "").Replace("https://", "").TrimEnd('/');
 
 			//save the real ip in case this is a domain name to skip future dns lookups
-			System.Net.IPAddress[] addresses = System.Net.Dns.GetHostAddresses(ip);
+			/*System.Net.IPAddress[] addresses = System.Net.Dns.GetHostAddresses(ip);
 			if (addresses.Length > 0)
 			{
 				ip = addresses[0].ToString();
-			}
+			}*/
 
 
 
