@@ -58,6 +58,7 @@ namespace Pulse.Protocols
 			RegisterRoute("artist", GetArtist);
 			RegisterRoute("artistTracks", GetArtistTracks);
 			RegisterRoute("albums", GetAlbums);
+			RegisterRoute("albumsLite", GetAlbumsLite);
 			RegisterRoute("album", GetAlbum);
 			RegisterRoute("track", GetTrack);
 
@@ -201,6 +202,23 @@ namespace Pulse.Protocols
 			return pulseAlbum;
 		}
 
+		/// <summary>
+		/// Trimmed PulseAlbum projection for the grid/jump-bar view. Sets only
+		/// the fields those views need (Id, Name, Artist, CoverArt, Year);
+		/// ArtistId, TrackCount, and Duration are left unset because the detail
+		/// view fetches the full album separately.
+		/// </summary>
+		private PulseAlbum BuildAlbumLite(AlbumData album)
+		{
+			PulseAlbum pulseAlbum = new PulseAlbum();
+			pulseAlbum.Id = album.Id;
+			pulseAlbum.Name = album.Name;
+			pulseAlbum.Artist = album.ArtistName;
+			pulseAlbum.CoverArt = album.CoverArtId;
+			pulseAlbum.Year = album.Year;
+			return pulseAlbum;
+		}
+
 		private PulseTrack BuildTrack(TrackData track, string user)
 		{
 			PulseTrack pulseTrack = new PulseTrack();
@@ -213,6 +231,52 @@ namespace Pulse.Protocols
 			pulseTrack.CoverArt = track.CoverArtId;
 			pulseTrack.Duration = track.DurationSeconds;
 			pulseTrack.Starred = track.IsStarredBy(user);
+			return pulseTrack;
+		}
+
+		/// <summary>
+		/// Builds a PulseTrack envelope from a podcast episode so the /track
+		/// endpoint can resolve episode ids the same way /stream does. Cover
+		/// art uses the series-art prefix; Artist carries the show title when
+		/// the parent series is in the in-memory cache.
+		/// </summary>
+		private PulseTrack BuildTrackFromEpisode(Episode episode, string user)
+		{
+			PulseTrack pulseTrack = new PulseTrack();
+			pulseTrack.Id = episode.Id;
+			pulseTrack.Title = episode.Title;
+			pulseTrack.Duration = episode.DurationSeconds;
+			pulseTrack.CoverArt = "se-" + episode.PodcastId;
+			pulseTrack.Artist = "";
+			Podcast podcast = m_podcastManager.GetPodcast(episode.PodcastId);
+			if (podcast != null)
+			{
+				pulseTrack.Artist = podcast.Title;
+			}
+			pulseTrack.Starred = false;
+			return pulseTrack;
+		}
+
+		/// <summary>
+		/// Builds a PulseTrack envelope from an audiobook chapter so the
+		/// /track endpoint can resolve chapter ids the same way /stream does.
+		/// Cover art uses the series-art prefix; Artist carries the audiobook
+		/// title when the parent book is in the in-memory cache.
+		/// </summary>
+		private PulseTrack BuildTrackFromChapter(Chapter chapter, string user)
+		{
+			PulseTrack pulseTrack = new PulseTrack();
+			pulseTrack.Id = chapter.Id;
+			pulseTrack.Title = chapter.Title;
+			pulseTrack.Duration = chapter.DurationSeconds;
+			pulseTrack.CoverArt = "se-" + chapter.AudiobookId;
+			pulseTrack.Artist = "";
+			Audiobook book = m_audiobookManager.GetBook(chapter.AudiobookId);
+			if (book != null)
+			{
+				pulseTrack.Artist = book.Title;
+			}
+			pulseTrack.Starred = false;
 			return pulseTrack;
 		}
 
@@ -713,6 +777,25 @@ namespace Pulse.Protocols
 			return RespondList(context, pulseAlbums);
 		}
 
+		/// <summary>
+		/// Returns the entire album catalog (no paging) with a trimmed field set,
+		/// sorted alphabetically by name. Serves the Thump album grid, which
+		/// renders every tile at once and lazy-loads cover images. Response
+		/// compression makes a single whole-catalog payload cheaper than paging.
+		/// </summary>
+		public IResult GetAlbumsLite(HttpContext context)
+		{
+			List<AlbumData> allAlbums = m_musicManager.GetAllAlbums();
+			allAlbums.Sort(MusicComparers.CompareAlbumByName);
+
+			List<PulseAlbum> pulseAlbums = new List<PulseAlbum>();
+			for (int index = 0; index < allAlbums.Count; index++)
+			{
+				pulseAlbums.Add(BuildAlbumLite(allAlbums[index]));
+			}
+			return RespondList(context, pulseAlbums);
+		}
+
 		public IResult GetAlbum(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
@@ -737,17 +820,38 @@ namespace Pulse.Protocols
 			return RespondObject(context, details);
 		}
 
+		/// <summary>
+		/// Resolves the requested id to a track envelope. Mirrors the
+		/// resolution order of /stream: music track first, then podcast
+		/// episode, then audiobook chapter. Returns not_found if none match.
+		/// Android Auto calls this endpoint to turn a tapped item into a play
+		/// queue, so podcast episodes and audiobook chapters must resolve
+		/// here too — otherwise AA cannot play them.
+		/// </summary>
 		public IResult GetTrack(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
 			string user = QueryParameters.GetString(context, "u");
 
 			TrackData track = m_musicManager.GetTrack(id);
-			if (track == null)
+			if (track != null)
 			{
-				return RespondStatus(context, "not_found");
+				return RespondObject(context, BuildTrack(track, user));
 			}
-			return RespondObject(context, BuildTrack(track, user));
+
+			Episode episode = m_podcastManager.GetEpisode(id);
+			if (episode != null)
+			{
+				return RespondObject(context, BuildTrackFromEpisode(episode, user));
+			}
+
+			Chapter chapter = m_audiobookManager.GetChapter(id);
+			if (chapter != null)
+			{
+				return RespondObject(context, BuildTrackFromChapter(chapter, user));
+			}
+
+			return RespondStatus(context, "not_found");
 		}
 
 

@@ -336,7 +336,7 @@ namespace Thump.Pulse
 			return retVal;
 		}
 
-		public string HttpGet(string url, bool ignoreOnline, CancellationToken token, float timeoutSeconds = 8)
+		public string HttpGet(string url, bool ignoreOnline, CancellationToken token, float timeoutSeconds = 30)
 		{
 			string retVal = null;
 			HttpResponseMessage response = null;
@@ -471,9 +471,9 @@ namespace Thump.Pulse
 		// HttpGet's offline handling: a dropped/refused connection marks the
 		// client offline and returns null rather than unwinding to the thread
 		// root. Returns the response body on success, null on failure.
-		protected string HttpPostJson(string url, string json, float timeoutSeconds = 8)
-		{ 
-			using HttpResponseMessage response = m_httpClient.HttpPostJson_Internal(url, Http.eRequestType.MetaData, json, timeoutSeconds = 8); 
+		protected string HttpPostJson(string url, string json, float timeoutSeconds = 30)
+		{
+			using HttpResponseMessage response = m_httpClient.HttpPostJson_Internal(url, Http.eRequestType.MetaData, json, timeoutSeconds);
 			if (response == null )
 			{
 				Log.Error("HTTP POST failed: " + url);

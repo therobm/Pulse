@@ -175,85 +175,6 @@ namespace Thump.Pulse
 			FetchObject<PulseObject>(url, eMediaCacheStrategy.NetworkOnly, (contents) => { });
 		}
 
-		// Synchronous fetch+parse for the few callers that page in a loop and so
-		// can't drive the callback FetchObject. Blocks on the calling thread, so
-		// callers must run it inside their own Task.Run.
-		private bool FetchListObjectSync<T>(string url, eMediaCacheStrategy cacheStrategy, CancellationToken token,  out List<T> value) where T : PulseObject
-		{
-			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedPulseData<T>(url, out value))
-			{
-				return true;
-			}
-
-			value = null;
-			string json = HttpGet(url, false, token);
-			if (!string.IsNullOrEmpty(json))
-			{
-				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
-				if (response != null)
-				{
-					JsonElement contents = (JsonElement)response.contents;
-					if (contents.ValueKind != JsonValueKind.Undefined && contents.ValueKind != JsonValueKind.Null)
-					{
-						value = PulseWire.Parse<List<T>>(contents.GetRawText());
-					}
-					else
-					{
-						Log.Error("Unparseable pulse response: " + url);
-
-					}
-				}
-			}
-
-			if (value != null)
-			{
-				CacheQueryPulseData(url, value);
-			}
-			else if (cacheStrategy != eMediaCacheStrategy.NetworkOnly)
-			{
-				GetCachedPulseData<T>(url, out value);
-			}
-
-			return value != null;
-		}
-		private bool FetchObjectSync<T>(string url, eMediaCacheStrategy cacheStrategy, CancellationToken token, out T value) where T : PulseObject
-		{
-			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedPulseData<T>(url, out value))
-			{
-				return true;
-			}
-
-			value = null;
-
-			string json = HttpGet(url, false, token);
-			if (!string.IsNullOrEmpty(json))
-			{
-				PulseResponse response = PulseWire.Parse<PulseResponse>(json);
-				if (response != null)
-				{
-					JsonElement contents = (JsonElement)response.contents;
-					if (contents.ValueKind != JsonValueKind.Undefined && contents.ValueKind != JsonValueKind.Null)
-					{
-						value = PulseWire.Parse<T>(contents.GetRawText());
-					}
-					else
-					{
-						Log.Error("Unparseable pulse response: " + url);
-					}
-				}
-			}
-
-			if (value != null)
-			{
-				CacheQueryPulseData(url, value);
-			}
-			else if (cacheStrategy != eMediaCacheStrategy.NetworkOnly)
-			{
-				GetCachedPulseData<T>(url, out value);
-			}
-
-			return value != default(T);
-		}
 		protected override bool Ping(out JsonElement response)
 		{
 			response = default(JsonElement);
@@ -611,39 +532,26 @@ namespace Thump.Pulse
 
 		public override void GetAlbums(Action<List<PulseAlbum>> onComplete)
 		{
-			Task.Run(() =>
+			m_workQueue.Enqueue(() =>
 			{
-				List<PulseAlbum> results = new List<PulseAlbum>();
-				try
+				// One trimmed whole-catalog fetch (albumsLite) rather than paging
+				// the full album rows. The grid renders every tile and lazy-loads
+				// cover images, so the lean payload (compressed) arrives in a
+				// single request instead of several blocking pages.
+				string url = BuildPulseUrl("albumsLite", null);
+				FetchListObject<PulseAlbum>(url, eMediaCacheStrategy.NetworkFirst, (data) =>
 				{
-					// Page until the server stops handing back rows. Advance the
-					// offset by the count actually returned so a server-side size
-					// cap (returning fewer than requested) doesn't truncate us.
-					int pageSize = 500;
-					int offset = 0;
-					for (int page = 0; page < 1000; page++)
+					List<PulseAlbum> results = new List<PulseAlbum>();
+					if (data != null)
 					{
-						string param = "type=alphabeticalbyname&size=" + pageSize + "&offset=" + offset;
-						string url = BuildPulseUrl("albums", param);
-						List<PulseAlbum> albums;
-						if (!FetchListObjectSync(url, eMediaCacheStrategy.NetworkFirst, CancellationToken.None, out albums) || albums == null || albums.Count == 0)
-						{
-							break;
-						}
-						for (int index = 0; index < albums.Count; index++)
-						{
-							results.Add(albums[index]);
-						}
-						offset = offset + albums.Count;
+						results = data;
 					}
-				}
-				catch (Exception ex)
-				{
-					Log.Exception(ex);
-				}
-				results.Sort(CompareAlbumByName);
-				List<PulseAlbum> captured = results;
-				CompleteOnMain(onComplete, captured);
+					results.Sort(CompareAlbumByName);
+					if (onComplete != null)
+					{
+						onComplete(results);
+					}
+				});
 			});
 		}
 

@@ -267,7 +267,7 @@ namespace Thump.Pulse
 			return response;
 		}
 
-		public HttpResponseMessage HttpPostJson_Internal(string url, eRequestType requestType, string json, float timeoutSeconds = 8)
+		public HttpResponseMessage HttpPostJson_Internal(string url, eRequestType requestType, string json, float timeoutSeconds = 30)
 		{
 			if (!m_bIsOnline)
 				return new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway);

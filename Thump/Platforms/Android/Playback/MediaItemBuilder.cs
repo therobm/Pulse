@@ -180,11 +180,17 @@ namespace Thump.Playback.AndroidOS
 
 		public static List<MediaItem> BuildContainerChildren(eAAObject objectType, string objectId, List<PulseTrack> tracks)
 		{
-			string playMediaId = BuildPlayMediaId(objectType, objectId);
-			string shuffleMediaId = BuildShuffleMediaId(objectType, objectId);
 			List<MediaItem> items = new List<MediaItem>();
-			items.Add(BuildPlayableItem(playMediaId, "Play all", ""));
-			items.Add(BuildPlayableItem(shuffleMediaId, "Shuffle", ""));
+			// Podcasts deliberately omit Play all / Shuffle: queueing a whole
+			// show is not a sensible way to listen, and resolving it would force
+			// a fetch of the entire episode list. Episodes are played one at a time.
+			if (objectType != eAAObject.Podcast)
+			{
+				string playMediaId = BuildPlayMediaId(objectType, objectId);
+				string shuffleMediaId = BuildShuffleMediaId(objectType, objectId);
+				items.Add(BuildPlayableItem(playMediaId, "Play all", ""));
+				items.Add(BuildPlayableItem(shuffleMediaId, "Shuffle", ""));
+			}
 			List<MediaItem> trackItems = BuildTrackItems(tracks);
 			for (int idx = 0; idx < trackItems.Count; idx++)
 			{
