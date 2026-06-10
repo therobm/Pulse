@@ -34,4 +34,17 @@ namespace PulseAPI.CSharp
 		public string Username;
 		public bool IsAdmin;
 	}
+
+	/// <summary>
+	/// Wire body for POST /pulse/setupAdmin -- the first-run bootstrap that
+	/// creates the initial admin account and signs the caller in. Same
+	/// PascalCase rule as the other auth requests; DisplayName is optional
+	/// and falls back to Username server-side when blank.
+	/// </summary>
+	public class PulseSetupAdminRequest : PulseObject
+	{
+		public string Username;
+		public string DisplayName;
+		public string Password;
+	}
 }
