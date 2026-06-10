@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.Logging;
 using Pulse;
 using Microsoft.Extensions.DependencyInjection;
@@ -81,8 +82,18 @@ namespace Assistant.Services
 				options.SerializerOptions.PropertyNamingPolicy = null;
 				options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
 			});
+			// Enable compression over HTTPS too. Pulse is a personal music server;
+			// the JSON metadata it serves is not secret, so the BREACH side-channel
+			// concern that motivates the default-off behaviour does not apply here.
+			builder.Services.AddResponseCompression(options =>
+			{
+				options.EnableForHttps = true;
+				options.Providers.Add<BrotliCompressionProvider>();
+				options.Providers.Add<GzipCompressionProvider>();
+			});
 
 			m_app = builder.Build();
+			m_app.UseResponseCompression();
 			m_app.UseWebSockets();
 			m_app.UseCors(ConfigureCors);
 
@@ -218,7 +229,6 @@ namespace Assistant.Services
 			context.Response.StatusCode = 503;
 			context.Response.Headers["Retry-After"] = "2";
 			context.Response.ContentType = "text/html; charset=utf-8";
-			context.Response.ContentLength = data.Length;
 			context.Response.Body.Write(data, 0, data.Length);
 			context.Response.Body.Flush();
 			context.Response.CompleteAsync().Wait();
@@ -235,7 +245,6 @@ namespace Assistant.Services
 
 			byte[] data = File.ReadAllBytes(filePath);
 			context.Response.ContentType = contentType;
-			context.Response.ContentLength = data.Length;
 			context.Response.Body.Write(data, 0, data.Length);
 			context.Response.Body.Flush();
 			context.Response.CompleteAsync().Wait();
