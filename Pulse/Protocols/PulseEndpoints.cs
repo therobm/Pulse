@@ -58,6 +58,7 @@ namespace Pulse.Protocols
 			RegisterRoute("artist", GetArtist);
 			RegisterRoute("artistTracks", GetArtistTracks);
 			RegisterRoute("albums", GetAlbums);
+			RegisterRoute("albumsLite", GetAlbumsLite);
 			RegisterRoute("album", GetAlbum);
 			RegisterRoute("track", GetTrack);
 
@@ -198,6 +199,23 @@ namespace Pulse.Protocols
 				duration = duration + album.Tracks[index].DurationSeconds;
 			}
 			pulseAlbum.Duration = duration;
+			return pulseAlbum;
+		}
+
+		/// <summary>
+		/// Trimmed PulseAlbum projection for the grid/jump-bar view. Sets only
+		/// the fields those views need (Id, Name, Artist, CoverArt, Year);
+		/// ArtistId, TrackCount, and Duration are left unset because the detail
+		/// view fetches the full album separately.
+		/// </summary>
+		private PulseAlbum BuildAlbumLite(AlbumData album)
+		{
+			PulseAlbum pulseAlbum = new PulseAlbum();
+			pulseAlbum.Id = album.Id;
+			pulseAlbum.Name = album.Name;
+			pulseAlbum.Artist = album.ArtistName;
+			pulseAlbum.CoverArt = album.CoverArtId;
+			pulseAlbum.Year = album.Year;
 			return pulseAlbum;
 		}
 
@@ -755,6 +773,25 @@ namespace Pulse.Protocols
 			for (int index = offset; index < end; index++)
 			{
 				pulseAlbums.Add(BuildAlbum(allAlbums[index]));
+			}
+			return RespondList(context, pulseAlbums);
+		}
+
+		/// <summary>
+		/// Returns the entire album catalog (no paging) with a trimmed field set,
+		/// sorted alphabetically by name. Serves the Thump album grid, which
+		/// renders every tile at once and lazy-loads cover images. Response
+		/// compression makes a single whole-catalog payload cheaper than paging.
+		/// </summary>
+		public IResult GetAlbumsLite(HttpContext context)
+		{
+			List<AlbumData> allAlbums = m_musicManager.GetAllAlbums();
+			allAlbums.Sort(MusicComparers.CompareAlbumByName);
+
+			List<PulseAlbum> pulseAlbums = new List<PulseAlbum>();
+			for (int index = 0; index < allAlbums.Count; index++)
+			{
+				pulseAlbums.Add(BuildAlbumLite(allAlbums[index]));
 			}
 			return RespondList(context, pulseAlbums);
 		}
