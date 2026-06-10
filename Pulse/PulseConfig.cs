@@ -98,7 +98,7 @@ namespace Pulse
 				writeOptions.IncludeFields = true;
 				writeOptions.WriteIndented = true;
 				File.WriteAllText(path, JsonSerializer.Serialize(empty, writeOptions));
-				Log.Warning(-1, "Pulse: wrote blank config to " + path + " - fill it in and restart.");
+				Log.Warning("Pulse: wrote blank config to " + path + " - fill it in and restart.");
 				return empty;
 			}
 

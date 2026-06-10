@@ -352,7 +352,7 @@ namespace Pulse.Database
 						int written = artists + albums + tracks + playlists + analyticsWritten;
 						if (written > 0)
 						{
-							Log.Info(-1, "PulseDatabase saved " + written + " dirty rows in " + sw.ElapsedMilliseconds + "ms"
+							Log.Info("PulseDatabase saved " + written + " dirty rows in " + sw.ElapsedMilliseconds + "ms"
 								+ " [" + reason + "]"
 								+ " (artists=" + artists + " albums=" + albums + " tracks=" + tracks
 								+ " playlists=" + playlists + " analytics=" + analyticsWritten + ")");
@@ -361,7 +361,7 @@ namespace Pulse.Database
 					catch (Exception ex)
 					{
 						transaction.Rollback();
-						Log.Error(-1, "Save failed, rolled back: " + ex.Message);
+						Log.Error("Save failed, rolled back: " + ex.Message);
 						throw;
 					}
 				}
@@ -1263,13 +1263,13 @@ namespace Pulse.Database
 				catch (SqliteException ex)
 				{
 					transaction.Rollback();
-					Log.Warning(-1, "UpdateUser '" + oldName + "' -> '" + newName + "' failed: " + ex.Message);
+					Log.Warning("UpdateUser '" + oldName + "' -> '" + newName + "' failed: " + ex.Message);
 					return "Rename failed -- another row would collide on this name. " + ex.Message;
 				}
 				catch (Exception ex)
 				{
 					transaction.Rollback();
-					Log.Error(-1, "UpdateUser unexpected error: " + ex.Message);
+					Log.Error("UpdateUser unexpected error: " + ex.Message);
 					throw;
 				}
 			}
@@ -1336,7 +1336,7 @@ namespace Pulse.Database
 				catch (Exception ex)
 				{
 					transaction.Rollback();
-					Log.Error(-1, "DeleteUser failed for '" + userName + "', rolled back: " + ex.Message);
+					Log.Error("DeleteUser failed for '" + userName + "', rolled back: " + ex.Message);
 					throw;
 				}
 			}
