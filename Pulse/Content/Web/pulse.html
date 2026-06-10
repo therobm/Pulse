@@ -1712,6 +1712,7 @@
 			<div id="header-nav">
 				<button class="nav-btn" id="nav-stats" title="Library stats" data-action="nav-stats"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></button>
 				<button class="nav-btn" id="nav-settings" title="Settings" data-action="nav-settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+				<button class="nav-btn" id="nav-logout" title="Log out"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
 			</div>
 			<span id="clock"></span>
 		</div>
@@ -1943,8 +1944,8 @@
 	</div>
 	<script src="/web/pulse-api.js"></script>
 	<script>
-		let API_USER = 'Rob';
-		let pulse = PulseAPI.create({ user: API_USER, client: 'PulseWeb' });
+		let API_USER = '';
+		let pulse = null;
 
 		/* The pulse_v1 contract is the wire ("object is the wire"): fields are
 		   PascalCase. These adapters map contract objects onto the lowercase shape
@@ -3166,7 +3167,8 @@
 				if (tagEl) { tagEl.textContent = 'v' + data.version; }
 			}).catch(function (err) { logApiError('version', err); });
 		}
-		document.addEventListener('DOMContentLoaded', function () {
+		function initApp() {
+			pulse = PulseAPI.create({ user: API_USER, client: 'PulseWeb' });
 			wireUpStaticHandlers();
 			document.body.addEventListener('click', handleDelegatedClick);
 			document.body.addEventListener('click', onBodyClickForDrawer);
@@ -3175,11 +3177,36 @@
 			loadVersionTag();
 			document.getElementById('nav-stats').addEventListener('click', onNavStats);
 			document.getElementById('nav-settings').addEventListener('click', onNavSettings);
+			document.getElementById('nav-logout').addEventListener('click', onNavLogout);
 			document.getElementById('logo').addEventListener('click', onNavPulse);
 			window.addEventListener('popstate', onPopState);
 			let initial = readPageFromUrl();
 			routeTo(initial.page, initial.u, true);
-		});
+		}
+		function onNavLogout() {
+			fetch('/pulse_v1/logout', { method: 'POST', credentials: 'same-origin' }).then(function () {
+				window.location.replace('/web/login.html');
+			}).catch(function () {
+				window.location.replace('/web/login.html');
+			});
+		}
+		function bootstrapFromSession() {
+			fetch('/pulse_v1/whoami', { credentials: 'same-origin' }).then(function (response) {
+				return response.text();
+			}).then(function (text) {
+				let parsed = null;
+				try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
+				if (parsed && parsed.contents && parsed.contents.Username) {
+					API_USER = parsed.contents.Username;
+					initApp();
+					return;
+				}
+				window.location.replace('/web/login.html');
+			}).catch(function () {
+				window.location.replace('/web/login.html');
+			});
+		}
+		document.addEventListener('DOMContentLoaded', bootstrapFromSession);
 	</script>
 	<div id="pulse-version-tag" class="version-tag"></div>
 </body>

@@ -76,6 +76,8 @@ namespace Pulse.Protocols
 			RegisterRoute("login", Login);
 			RegisterRoute("logout", Logout);
 			RegisterRoute("setPassword", SetPassword);
+			RegisterRoute("whoami", WhoAmI);
+			RegisterRoute("setupAdmin", SetupAdmin);
 
 			RegisterRoute("listUsers", ListUsers);
 			RegisterRoute("createUser", CreateUser);
@@ -184,6 +186,108 @@ namespace Pulse.Protocols
 			result.Username = request.Username;
 			result.IsAdmin = isAdmin;
 
+			return Respond(result);
+		}
+
+		/// <summary>
+		/// GET -> the state probe the web wall calls on load. Returns
+		/// status="needs_setup" when the system has no passwords yet (the
+		/// first-run setup form should be shown), status="ok" with a
+		/// PulseLoginResult body when a valid session is presented (the
+		/// caller is signed in), and status="not_signed_in" otherwise (the
+		/// login form should be shown).
+		/// </summary>
+		private IResult WhoAmI(HttpContext context)
+		{
+			if (!m_pulseData.AnyUserHasPassword())
+			{
+				return Respond("needs_setup", HttpStatusCode.OK);
+			}
+
+			string userName;
+			bool isAdmin;
+			bool valid = GetSessionUser(context, out userName, out isAdmin);
+			if (valid)
+			{
+				PulseLoginResult result = new PulseLoginResult();
+				result.Username = userName;
+				result.IsAdmin = isAdmin;
+				return Respond(result);
+			}
+
+			return Respond("not_signed_in", HttpStatusCode.OK);
+		}
+
+		/// <summary>
+		/// POST body Username/DisplayName/Password -> first-run only.
+		/// Creates (or adopts) the named user as an admin, sets their
+		/// password, and signs them in via the session cookie. Refuses with
+		/// status="already_initialized" once any user has a password -- the
+		/// setup window is closed by then.
+		/// </summary>
+		private IResult SetupAdmin(HttpContext context)
+		{
+			string body = ReadRequestBody(context);
+			if (string.IsNullOrEmpty(body))
+			{
+				return Respond("missing_body", HttpStatusCode.BadRequest);
+			}
+
+			PulseSetupAdminRequest request;
+			try
+			{
+				request = PulseWire.Parse<PulseSetupAdminRequest>(body);
+			}
+			catch (Exception)
+			{
+				request = null;
+			}
+
+			if (request == null || string.IsNullOrEmpty(request.Username) || request.Password == null)
+			{
+				return Respond("missing_fields", HttpStatusCode.BadRequest);
+			}
+
+			if (m_pulseData.AnyUserHasPassword())
+			{
+				return Respond("already_initialized", HttpStatusCode.OK);
+			}
+
+			string displayName = request.DisplayName;
+			if (string.IsNullOrEmpty(displayName))
+			{
+				displayName = request.Username;
+			}
+
+			UserRecord existing = m_pulseData.GetUser(request.Username);
+			if (existing == null)
+			{
+				string createError = m_pulseData.CreateUser(request.Username, displayName, true);
+				if (!string.IsNullOrEmpty(createError))
+				{
+					return Respond(createError, HttpStatusCode.OK);
+				}
+			}
+			else
+			{
+				string updateError = m_pulseData.UpdateUser(request.Username, request.Username, displayName, true);
+				if (!string.IsNullOrEmpty(updateError))
+				{
+					return Respond(updateError, HttpStatusCode.OK);
+				}
+			}
+
+			string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, 12);
+			m_pulseData.SetUserPassword(request.Username, passwordHash);
+
+			string sessionId = m_sessions.CreateSession(request.Username, true, false);
+			AppendSessionCookie(context, sessionId, false);
+
+			Log.Info("Auth: admin account set up for '" + request.Username + "'");
+
+			PulseLoginResult result = new PulseLoginResult();
+			result.Username = request.Username;
+			result.IsAdmin = true;
 			return Respond(result);
 		}
 

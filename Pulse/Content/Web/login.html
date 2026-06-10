@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Pulse</title>
+	<style>
+		html, body {
+			margin: 0;
+			padding: 0;
+			background: #0e0e12;
+			color: #e8e6f0;
+			font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+			min-height: 100vh;
+		}
+		body {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+		.card {
+			background: #16161e;
+			border: 1px solid #24242e;
+			border-radius: 10px;
+			padding: 32px 28px;
+			width: 320px;
+			max-width: calc(100vw - 32px);
+			box-shadow: 0 6px 28px rgba(0, 0, 0, 0.45);
+		}
+		.brand {
+			text-align: center;
+			margin-bottom: 22px;
+		}
+		.brand h1 {
+			margin: 0;
+			font-size: 26px;
+			font-weight: 300;
+			letter-spacing: 3px;
+			text-transform: uppercase;
+		}
+		.brand h1 span {
+			color: #6c5ce7;
+			font-weight: 600;
+		}
+		.brand .subtitle {
+			color: #8a88a0;
+			font-size: 12px;
+			margin-top: 6px;
+			letter-spacing: 0.5px;
+		}
+		.field {
+			margin-bottom: 14px;
+		}
+		.field label {
+			display: block;
+			font-size: 12px;
+			color: #8a88a0;
+			margin-bottom: 6px;
+			letter-spacing: 0.3px;
+		}
+		.field input[type="text"],
+		.field input[type="password"] {
+			width: 100%;
+			box-sizing: border-box;
+			padding: 9px 10px;
+			background: #0e0e12;
+			border: 1px solid #2a2a36;
+			border-radius: 6px;
+			color: #e8e6f0;
+			font-size: 14px;
+			outline: none;
+		}
+		.field input[type="text"]:focus,
+		.field input[type="password"]:focus {
+			border-color: #6c5ce7;
+		}
+		.remember {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			font-size: 13px;
+			color: #c0bed3;
+			margin-bottom: 16px;
+		}
+		button.primary {
+			width: 100%;
+			padding: 10px 12px;
+			background: #6c5ce7;
+			color: #ffffff;
+			border: none;
+			border-radius: 6px;
+			font-size: 14px;
+			font-weight: 600;
+			letter-spacing: 0.4px;
+			cursor: pointer;
+		}
+		button.primary:hover {
+			background: #7d6dee;
+		}
+		button.primary:disabled {
+			background: #3b3856;
+			cursor: default;
+		}
+		.error {
+			min-height: 18px;
+			margin-top: 12px;
+			color: #ff6b6b;
+			font-size: 13px;
+			text-align: center;
+		}
+		.hidden {
+			display: none;
+		}
+		.hint {
+			color: #8a88a0;
+			font-size: 12px;
+			margin-top: 14px;
+			text-align: center;
+		}
+	</style>
+</head>
+<body>
+	<div class="card">
+		<div class="brand">
+			<h1><span>Pulse</span></h1>
+			<div class="subtitle" id="subtitle">Signing in&hellip;</div>
+		</div>
+
+		<form id="login-form" class="hidden" autocomplete="on">
+			<div class="field">
+				<label for="login-username">Username</label>
+				<input type="text" id="login-username" autocomplete="username" />
+			</div>
+			<div class="field">
+				<label for="login-password">Password</label>
+				<input type="password" id="login-password" autocomplete="current-password" />
+			</div>
+			<label class="remember">
+				<input type="checkbox" id="login-remember" />
+				<span>Remember me</span>
+			</label>
+			<button type="submit" class="primary" id="login-submit">Sign in</button>
+			<div class="error" id="login-error"></div>
+		</form>
+
+		<form id="setup-form" class="hidden" autocomplete="off">
+			<div class="hint" style="margin-bottom:14px;margin-top:0;">No account exists yet. Create the first admin to begin.</div>
+			<div class="field">
+				<label for="setup-username">Username</label>
+				<input type="text" id="setup-username" autocomplete="username" />
+			</div>
+			<div class="field">
+				<label for="setup-display">Display name <span style="color:#5a586e">(optional)</span></label>
+				<input type="text" id="setup-display" />
+			</div>
+			<div class="field">
+				<label for="setup-password">Password</label>
+				<input type="password" id="setup-password" autocomplete="new-password" />
+			</div>
+			<button type="submit" class="primary" id="setup-submit">Create admin account</button>
+			<div class="error" id="setup-error"></div>
+		</form>
+	</div>
+
+	<script>
+		function parseAuthEnvelope(responseText) {
+			let parsed = null;
+			try {
+				parsed = JSON.parse(responseText);
+			}
+			catch (e) {
+				parsed = null;
+			}
+			return parsed;
+		}
+
+		function describeAuthStatus(status) {
+			if (status === 'password_too_short') {
+				return "Password does not meet the server's requirements";
+			}
+			if (status === 'invalid_credentials') {
+				return 'Invalid credentials';
+			}
+			if (status === 'not_signed_in') {
+				return 'Sign in first';
+			}
+			if (status === 'forbidden') {
+				return 'Not allowed';
+			}
+			if (status === 'unknown_user') {
+				return 'Unknown user';
+			}
+			if (status === 'missing_fields') {
+				return 'Username and password are required.';
+			}
+			if (status === 'missing_body') {
+				return 'Missing request body';
+			}
+			if (status === 'rate_limited') {
+				return 'Too many attempts. Try again in a few minutes.';
+			}
+			if (status === 'already_initialized') {
+				return 'Setup is already complete. Please sign in.';
+			}
+			return 'Request failed';
+		}
+
+		function goToApp() {
+			window.location.replace('/web/pulse.html');
+		}
+
+		function showLogin() {
+			document.getElementById('subtitle').textContent = 'Sign in to continue';
+			document.getElementById('setup-form').classList.add('hidden');
+			document.getElementById('login-form').classList.remove('hidden');
+			document.getElementById('login-username').focus();
+		}
+
+		function showSetup() {
+			document.getElementById('subtitle').textContent = 'First-run setup';
+			document.getElementById('login-form').classList.add('hidden');
+			document.getElementById('setup-form').classList.remove('hidden');
+			document.getElementById('setup-username').focus();
+		}
+
+		function runWhoAmI(callback) {
+			fetch('/pulse_v1/whoami', { credentials: 'same-origin' }).then(function (response) {
+				return response.text();
+			}).then(function (text) {
+				let parsed = parseAuthEnvelope(text);
+				callback(parsed);
+			}).catch(function () {
+				callback(null);
+			});
+		}
+
+		function submitLogin(event) {
+			event.preventDefault();
+			let username = document.getElementById('login-username').value.trim();
+			let password = document.getElementById('login-password').value;
+			let rememberMe = document.getElementById('login-remember').checked;
+			let errEl = document.getElementById('login-error');
+			errEl.textContent = '';
+			if (!username || !password) {
+				errEl.textContent = 'Username and password are required.';
+				return;
+			}
+			let button = document.getElementById('login-submit');
+			button.disabled = true;
+			let payload = JSON.stringify({ Username: username, Password: password, RememberMe: rememberMe });
+			fetch('/pulse_v1/login', {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: { 'Content-Type': 'application/json' },
+				body: payload
+			}).then(function (response) {
+				return response.text();
+			}).then(function (text) {
+				let parsed = parseAuthEnvelope(text);
+				if (parsed && parsed.status === 'ok' && parsed.contents && parsed.contents.Username) {
+					goToApp();
+					return;
+				}
+				let message = 'Invalid credentials';
+				if (parsed && parsed.status) {
+					message = describeAuthStatus(parsed.status);
+				}
+				errEl.textContent = message;
+				button.disabled = false;
+			}).catch(function () {
+				errEl.textContent = 'Network error';
+				button.disabled = false;
+			});
+		}
+
+		function submitSetup(event) {
+			event.preventDefault();
+			let username = document.getElementById('setup-username').value.trim();
+			let displayName = document.getElementById('setup-display').value.trim();
+			let password = document.getElementById('setup-password').value;
+			let errEl = document.getElementById('setup-error');
+			errEl.textContent = '';
+			if (!username || !password) {
+				errEl.textContent = 'Username and password are required.';
+				return;
+			}
+			let button = document.getElementById('setup-submit');
+			button.disabled = true;
+			let payload = JSON.stringify({ Username: username, DisplayName: displayName, Password: password });
+			fetch('/pulse_v1/setupAdmin', {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: { 'Content-Type': 'application/json' },
+				body: payload
+			}).then(function (response) {
+				return response.text();
+			}).then(function (text) {
+				let parsed = parseAuthEnvelope(text);
+				if (parsed && parsed.status === 'ok' && parsed.contents && parsed.contents.Username) {
+					goToApp();
+					return;
+				}
+				let message = 'Setup failed';
+				if (parsed && parsed.status) {
+					message = describeAuthStatus(parsed.status);
+				}
+				errEl.textContent = message;
+				button.disabled = false;
+			}).catch(function () {
+				errEl.textContent = 'Network error';
+				button.disabled = false;
+			});
+		}
+
+		function bootstrap() {
+			document.getElementById('login-form').addEventListener('submit', submitLogin);
+			document.getElementById('setup-form').addEventListener('submit', submitSetup);
+			runWhoAmI(function (parsed) {
+				if (parsed && parsed.contents && parsed.contents.Username) {
+					goToApp();
+					return;
+				}
+				if (parsed && parsed.status === 'needs_setup') {
+					showSetup();
+					return;
+				}
+				showLogin();
+			});
+		}
+
+		document.addEventListener('DOMContentLoaded', bootstrap);
+	</script>
+</body>
+</html>
