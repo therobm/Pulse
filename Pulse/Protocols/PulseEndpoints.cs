@@ -216,6 +216,52 @@ namespace Pulse.Protocols
 			return pulseTrack;
 		}
 
+		/// <summary>
+		/// Builds a PulseTrack envelope from a podcast episode so the /track
+		/// endpoint can resolve episode ids the same way /stream does. Cover
+		/// art uses the series-art prefix; Artist carries the show title when
+		/// the parent series is in the in-memory cache.
+		/// </summary>
+		private PulseTrack BuildTrackFromEpisode(Episode episode, string user)
+		{
+			PulseTrack pulseTrack = new PulseTrack();
+			pulseTrack.Id = episode.Id;
+			pulseTrack.Title = episode.Title;
+			pulseTrack.Duration = episode.DurationSeconds;
+			pulseTrack.CoverArt = "se-" + episode.PodcastId;
+			pulseTrack.Artist = "";
+			Podcast podcast = m_podcastManager.GetPodcast(episode.PodcastId);
+			if (podcast != null)
+			{
+				pulseTrack.Artist = podcast.Title;
+			}
+			pulseTrack.Starred = false;
+			return pulseTrack;
+		}
+
+		/// <summary>
+		/// Builds a PulseTrack envelope from an audiobook chapter so the
+		/// /track endpoint can resolve chapter ids the same way /stream does.
+		/// Cover art uses the series-art prefix; Artist carries the audiobook
+		/// title when the parent book is in the in-memory cache.
+		/// </summary>
+		private PulseTrack BuildTrackFromChapter(Chapter chapter, string user)
+		{
+			PulseTrack pulseTrack = new PulseTrack();
+			pulseTrack.Id = chapter.Id;
+			pulseTrack.Title = chapter.Title;
+			pulseTrack.Duration = chapter.DurationSeconds;
+			pulseTrack.CoverArt = "se-" + chapter.AudiobookId;
+			pulseTrack.Artist = "";
+			Audiobook book = m_audiobookManager.GetBook(chapter.AudiobookId);
+			if (book != null)
+			{
+				pulseTrack.Artist = book.Title;
+			}
+			pulseTrack.Starred = false;
+			return pulseTrack;
+		}
+
 		private PulsePlaylist BuildPlaylist(PlaylistData playlist, string user)
 		{
 			PulsePlaylist pulsePlaylist = new PulsePlaylist();
@@ -737,17 +783,38 @@ namespace Pulse.Protocols
 			return RespondObject(context, details);
 		}
 
+		/// <summary>
+		/// Resolves the requested id to a track envelope. Mirrors the
+		/// resolution order of /stream: music track first, then podcast
+		/// episode, then audiobook chapter. Returns not_found if none match.
+		/// Android Auto calls this endpoint to turn a tapped item into a play
+		/// queue, so podcast episodes and audiobook chapters must resolve
+		/// here too — otherwise AA cannot play them.
+		/// </summary>
 		public IResult GetTrack(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
 			string user = QueryParameters.GetString(context, "u");
 
 			TrackData track = m_musicManager.GetTrack(id);
-			if (track == null)
+			if (track != null)
 			{
-				return RespondStatus(context, "not_found");
+				return RespondObject(context, BuildTrack(track, user));
 			}
-			return RespondObject(context, BuildTrack(track, user));
+
+			Episode episode = m_podcastManager.GetEpisode(id);
+			if (episode != null)
+			{
+				return RespondObject(context, BuildTrackFromEpisode(episode, user));
+			}
+
+			Chapter chapter = m_audiobookManager.GetChapter(id);
+			if (chapter != null)
+			{
+				return RespondObject(context, BuildTrackFromChapter(chapter, user));
+			}
+
+			return RespondStatus(context, "not_found");
 		}
 
 
