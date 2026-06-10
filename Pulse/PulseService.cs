@@ -152,6 +152,7 @@ namespace Pulse
 			host.RegisterResultRoute("pulse/version", HandleVersion);
 
 			//web pages
+			host.RegisterRoute("web/pulse.html", HandlePulsePage);
 			host.RegisterRoute("web/stats.html", HandleStatsPage);
 			host.RegisterRoute("web/settings.html", HandleSettingsPage);
 
@@ -291,6 +292,43 @@ namespace Pulse
 			return Results.Json(new { version = GetServerVersion() });
 		}
 
+		/// <summary>
+		/// Returns true when the request carries a valid session. Otherwise issues
+		/// a 302 to the unauthenticated login wall and returns false. Page handlers
+		/// call this before serving any protected web HTML; the data API is not gated.
+		/// </summary>
+		private bool RequireWebSession(HttpContext context)
+		{
+			string sessionUser;
+			bool isAdmin;
+			bool valid = m_authEndpoints.GetSessionUser(context, out sessionUser, out isAdmin);
+			if (valid)
+			{
+				return true;
+			}
+			context.Response.Redirect("/web/login.html");
+			return false;
+		}
+
+		private void HandlePulsePage(HttpContext context)
+		{
+			if (!RequireWebSession(context))
+			{
+				return;
+			}
+			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "pulse.html");
+			if (!File.Exists(htmlPath))
+			{
+				context.Response.StatusCode = 404;
+				byte[] notFound = System.Text.Encoding.UTF8.GetBytes("Pulse page not found");
+				context.Response.Body.Write(notFound, 0, notFound.Length);
+				return;
+			}
+			byte[] htmlBytes = File.ReadAllBytes(htmlPath);
+			context.Response.ContentType = "text/html";
+			context.Response.Body.Write(htmlBytes, 0, htmlBytes.Length);
+		}
+
 		private void HandleStatsPage(HttpContext context)
 		{
 			if (!QueryParameters.GetBool(context, "embed"))
@@ -302,6 +340,10 @@ namespace Pulse
 					redirect = redirect + "&u=" + System.Uri.EscapeDataString(user);
 				}
 				context.Response.Redirect(redirect);
+				return;
+			}
+			if (!RequireWebSession(context))
+			{
 				return;
 			}
 			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "stats.html");
@@ -322,6 +364,10 @@ namespace Pulse
 			if (!QueryParameters.GetBool(context, "embed"))
 			{
 				context.Response.Redirect("/web/pulse.html?view=settings");
+				return;
+			}
+			if (!RequireWebSession(context))
+			{
 				return;
 			}
 			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "settings.html");
