@@ -86,7 +86,7 @@ namespace Thump.Pulse
 		{
 			m_host = host;
 
-			m_metaData = new HttpQueue(this, 2);
+			m_metaData = new HttpQueue(this, 10);
 			m_imageData = new HttpQueue(this, 2);
 			m_audioData = new HttpQueue(this, 1);
 
@@ -336,7 +336,7 @@ namespace Thump.Pulse
 			return retVal;
 		}
 
-		public string HttpGet(string url, bool ignoreOnline, CancellationToken token, float timeoutSeconds = 30)
+		public string HttpGet(string url, bool ignoreOnline, CancellationToken token, float timeoutSeconds = Http.s_defaultTimeout)
 		{
 			string retVal = null;
 			HttpResponseMessage response = null;
@@ -471,7 +471,7 @@ namespace Thump.Pulse
 		// HttpGet's offline handling: a dropped/refused connection marks the
 		// client offline and returns null rather than unwinding to the thread
 		// root. Returns the response body on success, null on failure.
-		protected string HttpPostJson(string url, string json, float timeoutSeconds = 30)
+		protected string HttpPostJson(string url, string json, float timeoutSeconds = Http.s_defaultTimeout)
 		{
 			using HttpResponseMessage response = m_httpClient.HttpPostJson_Internal(url, Http.eRequestType.MetaData, json, timeoutSeconds);
 			if (response == null )

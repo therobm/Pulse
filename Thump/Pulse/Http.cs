@@ -11,6 +11,8 @@ namespace Thump.Pulse
 {
 	public class Http
 	{
+		public const int s_defaultTimeout = 10;
+
 		private static int s_requestCounter = 0;
 		/// <summary>
 		/// Total number of attempts (initial + retries) the HTTP GET path will make
@@ -267,7 +269,7 @@ namespace Thump.Pulse
 			return response;
 		}
 
-		public HttpResponseMessage HttpPostJson_Internal(string url, eRequestType requestType, string json, float timeoutSeconds = 30)
+		public HttpResponseMessage HttpPostJson_Internal(string url, eRequestType requestType, string json, float timeoutSeconds = s_defaultTimeout)
 		{
 			if (!m_bIsOnline)
 				return new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway);

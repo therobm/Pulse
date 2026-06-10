@@ -8,6 +8,7 @@ namespace Thump.Playback.AndroidOS
 {
 	public class TrackResolver : Java.Lang.Object, ResolvingDataSource.IResolver
 	{
+		static int s_tempId = 0;
 		private MediaClient m_data;
 		private string m_cacheDir;
 
@@ -26,7 +27,10 @@ namespace Thump.Playback.AndroidOS
 			byte[] raw;
 			if (m_data.GetCachedResults(url, out raw) && raw != null)
 			{
-				string tempPath = Path.Combine(m_cacheDir, "playing.tmp");
+				s_tempId++;
+				if (s_tempId > 20)
+					s_tempId = 1;
+				string tempPath = Path.Combine(m_cacheDir, "playing_"+s_tempId+".tmp");
 				using (FileStream fs = new FileStream(tempPath, FileMode.Create))
 				{
 					fs.Write(raw, 0, raw.Length);
