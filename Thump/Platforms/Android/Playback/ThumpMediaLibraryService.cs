@@ -92,7 +92,7 @@ namespace Thump.Playback.AndroidOS
 			builder.SetHandleAudioBecomingNoisy(true);
 
 			int minBufferSize = 1000 * 30; //30 sec
-			int maxBufferSize = 1000 * 300; //5mins
+			int maxBufferSize = 1000 * 60; //60 sec
 			int minBufferStart = (int)(1000 * 2.5f);
 			int minBufferRestart = (int)(1000 * 5.0f);
 
