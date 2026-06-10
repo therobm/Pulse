@@ -306,10 +306,6 @@
 		return this.request('unfavorite', { id: id, type: type });
 	};
 
-	PulseClient.prototype.reportTrackAnalytics = function (id) {
-		return this.request('reportTrackAnalytics', { id: id });
-	};
-
 	// -- podcasts ---------------------------------------------------------
 
 	// The podcasts this user is subscribed to. Resolves to an array of
