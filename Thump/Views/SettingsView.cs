@@ -32,6 +32,8 @@ namespace Thump.Views
 		private Label m_usageLabel;
 		private Label m_entriesLabel;
 		private Label m_oldestLabel;
+		private Button m_refreshCacheButton;
+		private Button m_clearCacheButton;
 
 		private Entry m_serverIpEntry;
 		private Entry m_serverPortEntry;
@@ -201,27 +203,27 @@ namespace Thump.Views
 			cacheButtonRow.ColumnDefinitions.Add(cacheRefreshColumn);
 			cacheButtonRow.ColumnDefinitions.Add(cacheClearColumn);
 
-			Button refreshButton = new Button();
-			refreshButton.Text = "Refresh";
-			refreshButton.TextColor = ThumpColors.OnBackground;
-			refreshButton.BackgroundColor = ThumpColors.Surface;
-			refreshButton.CornerRadius = 8;
-			refreshButton.FontSize = 15;
-			refreshButton.HeightRequest = 44;
-			refreshButton.Clicked += OnRefreshCacheClicked;
-			Grid.SetColumn(refreshButton, 0);
-			cacheButtonRow.Children.Add(refreshButton);
+			m_refreshCacheButton = new Button();
+			m_refreshCacheButton.Text = "Refresh";
+			m_refreshCacheButton.TextColor = ThumpColors.OnBackground;
+			m_refreshCacheButton.BackgroundColor = ThumpColors.Surface;
+			m_refreshCacheButton.CornerRadius = 8;
+			m_refreshCacheButton.FontSize = 15;
+			m_refreshCacheButton.HeightRequest = 44;
+			m_refreshCacheButton.Clicked += OnRefreshCacheClicked;
+			Grid.SetColumn(m_refreshCacheButton, 0);
+			cacheButtonRow.Children.Add(m_refreshCacheButton);
 
-			Button clearButton = new Button();
-			clearButton.Text = "Clear Cache";
-			clearButton.TextColor = ThumpColors.OnBackground;
-			clearButton.BackgroundColor = ThumpColors.Surface;
-			clearButton.CornerRadius = 8;
-			clearButton.FontSize = 15;
-			clearButton.HeightRequest = 44;
-			clearButton.Clicked += OnClearCacheClicked;
-			Grid.SetColumn(clearButton, 1);
-			cacheButtonRow.Children.Add(clearButton);
+			m_clearCacheButton = new Button();
+			m_clearCacheButton.Text = "Clear Cache";
+			m_clearCacheButton.TextColor = ThumpColors.OnBackground;
+			m_clearCacheButton.BackgroundColor = ThumpColors.Surface;
+			m_clearCacheButton.CornerRadius = 8;
+			m_clearCacheButton.FontSize = 15;
+			m_clearCacheButton.HeightRequest = 44;
+			m_clearCacheButton.Clicked += OnClearCacheClicked;
+			Grid.SetColumn(m_clearCacheButton, 1);
+			cacheButtonRow.Children.Add(m_clearCacheButton);
 
 			section.Children.Add(cacheButtonRow);
 
@@ -444,11 +446,25 @@ namespace Thump.Views
 
 		private void OnRefreshCacheClicked(object sender, EventArgs e)
 		{
-			RefreshCacheStats();
+			SetCacheButtonsEnabled(false);
+			m_refreshCacheButton.Text = "Refreshing...";
+			ThumpCache cache = MainView.Self.GetCache();
+			cache.ExecuteAsync(() =>
+			{
+				ThumpCacheStats stats = cache.GetCacheStats();
+				MainThread.BeginInvokeOnMainThread(() =>
+				{
+					ApplyCacheStats(stats);
+					m_refreshCacheButton.Text = "Refresh";
+					SetCacheButtonsEnabled(true);
+				});
+			});
 		}
 
 		private void OnClearCacheClicked(object sender, EventArgs e)
 		{
+			SetCacheButtonsEnabled(false);
+			m_clearCacheButton.Text = "Clearing...";
 			ThumpCache cache = MainView.Self.GetCache();
 			cache.ExecuteAsync(() =>
 			{
@@ -457,8 +473,26 @@ namespace Thump.Views
 				MainThread.BeginInvokeOnMainThread(() =>
 				{
 					ApplyCacheStats(stats);
+					m_clearCacheButton.Text = "Clear Cache";
+					SetCacheButtonsEnabled(true);
 				});
 			});
+		}
+
+		// Both cache buttons share a busy state: a click disables both until the
+		// background cache op completes and the meter is refreshed, so a slow op
+		// (lock contention behind ongoing cache writes) reads as in-progress
+		// rather than ignored.
+		private void SetCacheButtonsEnabled(bool enabled)
+		{
+			if (m_refreshCacheButton != null)
+			{
+				m_refreshCacheButton.IsEnabled = enabled;
+			}
+			if (m_clearCacheButton != null)
+			{
+				m_clearCacheButton.IsEnabled = enabled;
+			}
 		}
 
 		private async void OnExportLogsClicked(object sender, EventArgs e)
