@@ -225,6 +225,67 @@ namespace Thump.Data
 			return data != null && data.Length > 0;
 		}
 
+		/// <summary>
+		/// Age-aware string overload. Mirrors the non-age string overload but only
+		/// returns a hit when the cached row is younger than maxAgeSeconds. A miss
+		/// or a too-old row reports as a normal cache miss (out null, return false).
+		/// </summary>
+		public bool GetCachedResults(string url, int maxAgeSeconds, out string data)
+		{
+			data = null;
+			byte[] bytes;
+			if (!GetCachedResults(url, maxAgeSeconds, out bytes))
+			{
+				return false;
+			}
+			data = System.Text.Encoding.UTF8.GetString(bytes);
+			return true;
+		}
+
+		/// <summary>
+		/// Age-aware byte[] read. Same connection/locking/command shape as the
+		/// non-age overload but adds a fetched_at >= $min filter so a row older
+		/// than maxAgeSeconds reports as a normal cache miss (out null, return false).
+		/// </summary>
+		public bool GetCachedResults(string url, int maxAgeSeconds, out byte[] data)
+		{
+			byte[] retData = null;
+			data = null;
+			if (string.IsNullOrEmpty(url))
+			{
+				return false;
+			}
+			long min = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - maxAgeSeconds;
+
+			ExecuteSync(()=>
+			{
+				using (SqliteCommand cmd = m_connection.CreateCommand())
+				{
+					cmd.CommandText = "SELECT data FROM http_cache WHERE url = $u AND fetched_at >= $min";
+					cmd.Parameters.AddWithValue("$u", url);
+					cmd.Parameters.AddWithValue("$min", min);
+					object result = cmd.ExecuteScalar();
+					if (result != null && result != DBNull.Value)
+					{
+						retData = result as byte[];
+						if (retData == null || retData.Length <= 0)
+						{
+							Log.Error("Invalid data cached for " + url);
+							using (SqliteCommand deleteCmd = m_connection.CreateCommand())
+							{
+								deleteCmd.CommandText = "DELETE FROM http_cache WHERE url = $u";
+								deleteCmd.Parameters.AddWithValue("$u", url);
+								deleteCmd.ExecuteNonQuery();
+							}
+						}
+					}
+				}
+			});
+
+			data = retData;
+			return data != null && data.Length > 0;
+		}
+
 
 		public byte[] GetTrackAudioFromCache(string url)
 		{
