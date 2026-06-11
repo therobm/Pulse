@@ -415,12 +415,6 @@ namespace Thump.Views
 		
 		protected override void RefreshData()
 		{
-			MainView.MediaClient.GetArtists(OnArtistsLoaded);
-			MainView.MediaClient.GetAlbums(OnAlbumsLoaded);
-			MainView.MediaClient.GetPlaylists(OnPlaylistsLoaded);
-			MainView.MediaClient.GetPodcasts(OnPodcastsLoaded);
-			MainView.MediaClient.GetAudiobooks(OnAudiobooksLoaded);
-			MainView.MediaClient.GetGenres(OnGenresLoaded);
 			base.RefreshData();
 		}
 
@@ -632,36 +626,42 @@ namespace Thump.Views
 
 			if (button == eLibraryButton.Artists)
 			{
+				MainView.MediaClient.GetArtists(OnArtistsLoaded);
 				m_buttonArtists.BackgroundColor = s_buttonActiveBackground;
 				m_buttonArtists.TextColor = s_buttonActiveText;
 				m_artistsList.IsVisible = true;
 			}
 			else if (button == eLibraryButton.Albums)
 			{
+				MainView.MediaClient.GetAlbums(OnAlbumsLoaded);
 				m_buttonAlbums.BackgroundColor = s_buttonActiveBackground;
 				m_buttonAlbums.TextColor = s_buttonActiveText;
 				m_albumsList.IsVisible = true;
 			}
 			else if (button == eLibraryButton.Playlists)
 			{
+				MainView.MediaClient.GetPlaylists(OnPlaylistsLoaded);
 				m_buttonPlaylists.BackgroundColor = s_buttonActiveBackground;
 				m_buttonPlaylists.TextColor = s_buttonActiveText;
 				m_playlistsList.IsVisible = true;
 			}
 			else if (button == eLibraryButton.Podcasts)
 			{
+				MainView.MediaClient.GetPodcasts(OnPodcastsLoaded);
 				m_buttonPodcasts.BackgroundColor = s_buttonActiveBackground;
 				m_buttonPodcasts.TextColor = s_buttonActiveText;
 				m_podcastsList.IsVisible = true;
 			}
 			else if (button == eLibraryButton.Audiobooks)
 			{
+				MainView.MediaClient.GetAudiobooks(OnAudiobooksLoaded);
 				m_buttonAudiobooks.BackgroundColor = s_buttonActiveBackground;
 				m_buttonAudiobooks.TextColor = s_buttonActiveText;
 				m_audiobooksList.IsVisible = true;
 			}
 			else if (button == eLibraryButton.Genres)
 			{
+				MainView.MediaClient.GetGenres(OnGenresLoaded);
 				m_buttonGenres.BackgroundColor = s_buttonActiveBackground;
 				m_buttonGenres.TextColor = s_buttonActiveText;
 				m_genresList.IsVisible = true;
