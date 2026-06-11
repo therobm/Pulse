@@ -27,6 +27,13 @@ namespace Thump.Pulse
 	// the payload (a single PulseObject or a list of them).
 	public class PulseClient : MediaClient
 	{
+		/// <summary>
+		/// Maximum age, in seconds, that a NetworkFirst cache entry can be and
+		/// still be served without a network round-trip. Older entries fall through
+		/// to the normal NetworkFirst path (network, then stale cache on failure).
+		/// </summary>
+		public const int s_cacheFreshnessSeconds = 60;
+
 		// In-memory hot cache (L1) for cover art, in front of the on-disk cache
 		// (L2, via ThumpCache). Keyed by the resolved cover-art URL so repeated
 		// requests for visible tiles return instantly without a queue hop or a
@@ -75,6 +82,11 @@ namespace Thump.Pulse
 			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedPulseData<T>(url, out List<T> data))
 			{
 				CompleteOnMain(onComplete, data);
+				return;
+			}
+			if (cacheStrategy == eMediaCacheStrategy.NetworkFirst && GetFreshCachedPulseData<T>(url, s_cacheFreshnessSeconds, out List<T> freshData))
+			{
+				CompleteOnMain(onComplete, freshData);
 				return;
 			}
 			GetHTTP(url, (json) =>
@@ -128,6 +140,11 @@ namespace Thump.Pulse
 			if (cacheStrategy == eMediaCacheStrategy.CacheFirst && GetCachedPulseData<T>(url, out T data))
 			{
 				CompleteOnMain(onComplete, data);
+				return;
+			}
+			if (cacheStrategy == eMediaCacheStrategy.NetworkFirst && GetFreshCachedPulseData<T>(url, s_cacheFreshnessSeconds, out T freshData))
+			{
+				CompleteOnMain(onComplete, freshData);
 				return;
 			}
 
@@ -1209,6 +1226,47 @@ namespace Thump.Pulse
 				
 				pulseObject = PulseWire.Parse<List<T>>(data);
 				if (pulseObject == null) 
+				{
+					Log.Warn("Warning bad data was cached for " + url);
+				}
+				return pulseObject != null;
+			}
+			pulseObject = null;
+			return false;
+		}
+
+		/// <summary>
+		/// Fresh-cache parse for a single PulseObject. Returns true and the parsed
+		/// object only when the cache entry for the URL is no older than
+		/// maxAgeSeconds. Mirrors GetCachedPulseData but routes through the
+		/// age-aware ThumpCache read.
+		/// </summary>
+		public bool GetFreshCachedPulseData<T>(string url, int maxAgeSeconds, out T pulseObject) where T : PulseObject
+		{
+			if (m_cache.GetCachedResults(url, maxAgeSeconds, out string data))
+			{
+				pulseObject = PulseWire.Parse<T>(data);
+				if (pulseObject == null)
+				{
+					Log.Warn("Warning bad data was cached for " + url);
+				}
+				return pulseObject != null;
+			}
+			pulseObject = null;
+			return false;
+		}
+
+		/// <summary>
+		/// Fresh-cache parse for a List of PulseObjects. Same semantics as the
+		/// single overload, returning a parsed list only when the cached row is
+		/// fresh.
+		/// </summary>
+		public bool GetFreshCachedPulseData<T>(string url, int maxAgeSeconds, out List<T> pulseObject) where T : PulseObject
+		{
+			if (m_cache.GetCachedResults(url, maxAgeSeconds, out string data))
+			{
+				pulseObject = PulseWire.Parse<List<T>>(data);
+				if (pulseObject == null)
 				{
 					Log.Warn("Warning bad data was cached for " + url);
 				}
