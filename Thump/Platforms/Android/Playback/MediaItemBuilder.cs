@@ -13,6 +13,7 @@ namespace Thump.Playback.AndroidOS
 		Home,
 		Library,
 		Podcasts,
+		Audiobooks,
 		Albums,
 		Playlists,
 		Artists,
@@ -28,7 +29,8 @@ namespace Thump.Playback.AndroidOS
 		Playlist,
 		Genre,
 		Track,
-		Podcast
+		Podcast,
+		Audiobook
 	}
 
 	public class MediaItemBuilder
@@ -39,6 +41,7 @@ namespace Thump.Playback.AndroidOS
 			{ eAADirectory.Home, "home" },
 			{ eAADirectory.Library, "library" },
 			{ eAADirectory.Podcasts, "podcasts" },
+			{ eAADirectory.Audiobooks, "audiobooks" },
 			{ eAADirectory.Albums, "albums" },
 			{ eAADirectory.Playlists, "playlists" },
 			{ eAADirectory.Artists, "artists" },
@@ -54,7 +57,13 @@ namespace Thump.Playback.AndroidOS
 			{ eAAObject.Playlist, "playlist" },
 			{ eAAObject.Genre, "genre" },
 			{ eAAObject.Podcast, "podcast" },
+			{ eAAObject.Audiobook, "audiobook" },
 		};
+
+		// Audiobook chapter ids carry the owning book id so a tapped chapter
+		// can re-resolve through the whole book (preserving each chapter's clip
+		// window / shared StreamId). Shape: "chapter/<bookId>/<chapterId>".
+		private const string s_chapterPrefix = "chapter/";
 
 		public static MediaLibraryService.LibraryParams BuildContentStyleParams()
 		{
@@ -162,6 +171,36 @@ namespace Thump.Playback.AndroidOS
 			return false;
 		}
 
+		// A tapped audiobook chapter must re-resolve through its book so the
+		// chapter's clip window and shared StreamId survive (a plain
+		// "track/<chapterId>" would round-trip through getSong and lose them).
+		// The id therefore carries both the book id and the chapter id.
+		public static string BuildChapterMediaId(string bookId, string chapterId)
+		{
+			return s_chapterPrefix + bookId + "/" + chapterId;
+		}
+
+		// Inverse of BuildChapterMediaId. Returns false (outs left null) for
+		// anything that isn't a "chapter/<bookId>/<chapterId>" id.
+		public static bool TryParseChapterMediaId(string mediaId, out string bookId, out string chapterId)
+		{
+			bookId = null;
+			chapterId = null;
+			if (string.IsNullOrEmpty(mediaId) || !mediaId.StartsWith(s_chapterPrefix))
+			{
+				return false;
+			}
+			string rest = mediaId.Substring(s_chapterPrefix.Length);
+			int slash = rest.IndexOf('/');
+			if (slash < 0)
+			{
+				return false;
+			}
+			bookId = rest.Substring(0, slash);
+			chapterId = rest.Substring(slash + 1);
+			return !string.IsNullOrEmpty(bookId) && !string.IsNullOrEmpty(chapterId);
+		}
+
 
 		public static List<MediaItem> BuildTrackItems(List<PulseTrack> tracks)
 		{
@@ -180,6 +219,26 @@ namespace Thump.Playback.AndroidOS
 
 		public static List<MediaItem> BuildContainerChildren(eAAObject objectType, string objectId, List<PulseTrack> tracks)
 		{
+			// Audiobooks get a single "Play book" header (no Shuffle — shuffling
+			// a narrative is nonsense) followed by the chapters. Chapters carry a
+			// chapter/<bookId>/<chapterId> id rather than track/<id> so a tap
+			// re-resolves through the book and keeps the chapter's clip window /
+			// shared StreamId.
+			if (objectType == eAAObject.Audiobook)
+			{
+				List<MediaItem> bookItems = new List<MediaItem>();
+				bookItems.Add(BuildPlayableItem(BuildPlayMediaId(eAAObject.Audiobook, objectId), "Play book", ""));
+				if (tracks != null)
+				{
+					for (int idx = 0; idx < tracks.Count; idx++)
+					{
+						PulseTrack chapter = tracks[idx];
+						bookItems.Add(BuildPlayableItem(BuildChapterMediaId(objectId, chapter.Id), chapter.Title, chapter.Artist, chapter.CoverArt));
+					}
+				}
+				return bookItems;
+			}
+
 			List<MediaItem> items = new List<MediaItem>();
 			// Podcasts deliberately omit Play all / Shuffle: queueing a whole
 			// show is not a sensible way to listen, and resolving it would force
@@ -315,6 +374,12 @@ namespace Thump.Playback.AndroidOS
 							items.Add(BuildBrowsableItem("podcast/" + podcast.Id, podcast.Title, podcast.CoverArt));
 							break;
 						}
+					case ePulseWireType.Audiobook:
+						{
+							PulseAudiobook audiobook = (PulseAudiobook)pulseObject;
+							items.Add(BuildAlbumItem("audiobook/" + audiobook.Id, audiobook.Title, audiobook.Author, audiobook.CoverArt));
+							break;
+						}
 				}
 			}
 			return items;
@@ -365,6 +430,12 @@ namespace Thump.Playback.AndroidOS
 						{
 							PulsePodcast podcast = (PulsePodcast)pulseObject;
 							items.Add(BuildBrowsableItemGrouped("podcast/" + podcast.Id, podcast.Title, podcast.CoverArt, groupTitle));
+							break;
+						}
+					case ePulseWireType.Audiobook:
+						{
+							PulseAudiobook audiobook = (PulseAudiobook)pulseObject;
+							items.Add(BuildAlbumItemGrouped("audiobook/" + audiobook.Id, audiobook.Title, audiobook.Author, audiobook.CoverArt, groupTitle));
 							break;
 						}
 				}
