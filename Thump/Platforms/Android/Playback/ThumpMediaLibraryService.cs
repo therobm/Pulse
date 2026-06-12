@@ -224,7 +224,8 @@ namespace Thump.Playback.AndroidOS
 			{
 				return;
 			}
-			PausePlayback();
+			Log.Error("OnPhoneDisconnected - todo  pause now");
+			//PausePlayback();
 		}
 
 		public MediaItem OnGetLibraryRoot(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, MediaLibraryService.LibraryParams libraryParams)
@@ -257,6 +258,7 @@ namespace Thump.Playback.AndroidOS
 				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Playlists), "Playlists"));
 				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Library), "Library"));
 				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Podcasts), "Podcasts"));
+				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Audiobooks), "Audiobooks"));
 
 				AAutoHelper.LoadJavaObjectFunc loadHome = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfItemList(categories, MediaItemBuilder.BuildContentStyleParams()));
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadHome);
@@ -497,6 +499,40 @@ namespace Thump.Playback.AndroidOS
 				return;
 			}
 
+			// Audiobook chapter tapped: queue from this chapter to the end of
+			// the book so chapters auto-advance. Re-fetch the book to rebuild
+			// every chapter's clip window / shared StreamId (a plain getTrack on
+			// the chapter id would lose them), then slice from the tapped one.
+			string chapterBookId;
+			string chapterId;
+			if (MediaItemBuilder.TryParseChapterMediaId(mediaId, out chapterBookId, out chapterId))
+			{
+				s_mediaClient.GetAudiobook(chapterBookId, (details) =>
+				{
+					List<PulseTrack> allChapters = BuildAudiobookChapterTracks(details);
+					List<PulseTrack> fromChapter = new List<PulseTrack>();
+					int start = -1;
+					for (int i = 0; i < allChapters.Count; i++)
+					{
+						if (allChapters[i].Id == chapterId)
+						{
+							start = i;
+							break;
+						}
+					}
+					if (start < 0)
+					{
+						start = 0;
+					}
+					for (int i = start; i < allChapters.Count; i++)
+					{
+						fromChapter.Add(allChapters[i]);
+					}
+					onComplete(fromChapter);
+				});
+				return;
+			}
+
 			eAAObject objectType;
 			string objectId;
 			bool isShuffle;
@@ -578,6 +614,12 @@ namespace Thump.Playback.AndroidOS
 						onDataComplete(BuildPodcastEpisodeTracks(details));
 					});
 					break;
+				case eAAObject.Audiobook:
+					s_mediaClient.GetAudiobook(objectId, (details) =>
+					{
+						onDataComplete(BuildAudiobookChapterTracks(details));
+					});
+					break;
 				default:
 					onDataComplete(new List<PulseTrack>());
 					break;
@@ -620,6 +662,58 @@ namespace Thump.Playback.AndroidOS
 				}
 				track.Duration = episode.Duration;
 				track.IsSeries = true;
+				tracks.Add(track);
+			}
+			return tracks;
+		}
+
+		// Adapter from the audiobook details wire-type to the PulseTrack list the
+		// player/queue expects, mirroring the in-app AudiobookDetailView. Each
+		// chapter carries its clip window (StartMs/EndMs) and StreamId so
+		// MediaItemBuilder.Build clips single-file books to the chapter and
+		// collapses every chapter of one file onto a single cached stream.
+		// IsSeries flags them for the ±10s seek behaviour on the media buttons.
+		private List<PulseTrack> BuildAudiobookChapterTracks(PulseAudiobookDetails details)
+		{
+			List<PulseTrack> tracks = new List<PulseTrack>();
+			if (details == null || details.Chapters == null)
+			{
+				return tracks;
+			}
+			string bookTitle = "";
+			string bookAuthor = "";
+			string bookArt = "";
+			if (details.Book != null)
+			{
+				bookTitle = details.Book.Title;
+				bookAuthor = details.Book.Author;
+				bookArt = details.Book.CoverArt;
+			}
+			// The wire order isn't guaranteed; play in chapter order (matches the
+			// in-app AudiobookDetailView, which sorts by OrderIndex).
+			List<PulseChapter> ordered = new List<PulseChapter>(details.Chapters);
+			ordered.Sort((first, second) => first.OrderIndex.CompareTo(second.OrderIndex));
+			for (int index = 0; index < ordered.Count; index++)
+			{
+				PulseChapter chapter = ordered[index];
+				PulseTrack track = new PulseTrack();
+				track.Id = chapter.Id;
+				track.Title = chapter.Title;
+				track.Artist = bookAuthor;
+				track.Album = bookTitle;
+				if (string.IsNullOrEmpty(chapter.CoverArt))
+				{
+					track.CoverArt = bookArt;
+				}
+				else
+				{
+					track.CoverArt = chapter.CoverArt;
+				}
+				track.Duration = chapter.Duration;
+				track.IsSeries = true;
+				track.StartMs = chapter.StartMs;
+				track.EndMs = chapter.EndMs;
+				track.StreamId = chapter.StreamId;
 				tracks.Add(track);
 			}
 			return tracks;
@@ -687,6 +781,15 @@ namespace Thump.Playback.AndroidOS
 						s_mediaClient.GetPodcasts((podcasts) =>
 						{
 							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(podcasts);
+							request.OnComplete(items);
+						});
+						break;
+					}
+				case eAADirectory.Audiobooks:
+					{
+						s_mediaClient.GetAudiobooks((audiobooks) =>
+						{
+							List<MediaItem> items = MediaItemBuilder.BuildMixedItems(audiobooks);
 							request.OnComplete(items);
 						});
 						break;
@@ -805,6 +908,13 @@ namespace Thump.Playback.AndroidOS
 						request.OnComplete<PulseAlbum>(episodeTracks, objectType, objectID);
 					});
 					break;
+				case eAAObject.Audiobook:
+					s_mediaClient.GetAudiobook(objectID, (details) =>
+					{
+						List<PulseTrack> chapterTracks = BuildAudiobookChapterTracks(details);
+						request.OnComplete<PulseAlbum>(chapterTracks, objectType, objectID);
+					});
+					break;
 			}
 		}
 
@@ -910,6 +1020,10 @@ namespace Thump.Playback.AndroidOS
 				{
 					return;
 				}
+
+				Log.Error("CarConnectionReceiver OnReceive - todo  pause now");
+				return;
+
 				if (m_onDisconnected == null)
 				{
 					return;
