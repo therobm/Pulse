@@ -92,7 +92,7 @@ namespace Thump.Pulse
 
 			m_httpClient = new Http();
 
-			m_workQueue = new WorkQueue(3);
+			m_workQueue = new WorkQueue(10);
 		}
 
 		public void SetStreamingStatus(bool isStreaming)
