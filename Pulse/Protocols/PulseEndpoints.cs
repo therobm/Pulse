@@ -32,18 +32,16 @@ namespace Pulse.Protocols
 		IPulseRouteHost m_host;
 		PulseService m_pulseService;
 		MusicManager m_musicManager;
-		AnalyticsDB m_analyticsDB;
 		DiagnosticsData m_diagnosticsData;
 		PodcastManager m_podcastManager;
 		AudiobookManager m_audiobookManager;
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB, DiagnosticsData diagnosticsData, PodcastManager podcastManager, AudiobookManager audiobookManager)
+		public PulseEndpoints(PulseService pulse, MusicManager musicManager, DiagnosticsData diagnosticsData, PodcastManager podcastManager, AudiobookManager audiobookManager)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
-			m_analyticsDB = analyticsDB;
 			m_diagnosticsData = diagnosticsData;
 			m_podcastManager = podcastManager;
 			m_audiobookManager = audiobookManager;
@@ -1997,6 +1995,7 @@ namespace Pulse.Protocols
 		/// server clock and hands the item to AnalyticsDB -- the request thread
 		/// never touches the database.
 		/// </summary>
+		[Obsolete("Analytics path is gone, this is just so clients don't get upset")]
 		public IResult PostIngestAnalytics(HttpContext context)
 		{
 			string body;
@@ -2025,7 +2024,6 @@ namespace Pulse.Protocols
 			}
 
 			string receivedAt = DateTime.UtcNow.ToString("o");
-			m_analyticsDB.Enqueue(batch, receivedAt);
 			return Respond(context, new PulseResponse());
 		}
 
@@ -2035,6 +2033,7 @@ namespace Pulse.Protocols
 		/// ordered by client timestamp. With ?device_id=... returns every
 		/// session for that device, most recent first.
 		/// </summary>
+		[Obsolete("Analytics path is gone, this is just so clients don't get upset")]
 		public IResult GetAnalytics(HttpContext context)
 		{
 			string sessionId = QueryParameters.GetString(context, "session_id");
@@ -2045,7 +2044,7 @@ namespace Pulse.Protocols
 				string categoryFilter = QueryParameters.GetString(context, "category");
 				string actionFilter = QueryParameters.GetString(context, "action");
 				string resultFilter = QueryParameters.GetString(context, "result");
-				List<PulseAnalyticsEvent> events = m_analyticsDB.GetEventsForSession(sessionId, categoryFilter, actionFilter, resultFilter);
+				List<PulseAnalyticsEvent> events = new List<PulseAnalyticsEvent>();
 				AnalyticsEventsResponse response = new AnalyticsEventsResponse();
 				response.SessionId = sessionId;
 				response.Events = events;
@@ -2054,7 +2053,7 @@ namespace Pulse.Protocols
 
 			if (!string.IsNullOrEmpty(deviceId))
 			{
-				List<PulseAnalyticsSession> sessions = m_analyticsDB.GetSessionsForDevice(deviceId);
+				List<PulseAnalyticsSession> sessions = new List<PulseAnalyticsSession>();
 				AnalyticsSessionsResponse response = new AnalyticsSessionsResponse();
 				response.DeviceId = deviceId;
 				response.Sessions = sessions;
