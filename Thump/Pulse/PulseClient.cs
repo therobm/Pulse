@@ -1054,6 +1054,32 @@ namespace Thump.Pulse
 			});
 		}
 
+		/// <summary>
+		/// POST a single diagnostic event to the server's pulse_v1/ingestDiagnostics
+		/// route. Swallows its own failures: the diagnostics path must never feed
+		/// errors back into Log.* or it loops.
+		/// </summary>
+		public override void PostDiagnostics(PulseDiagnosticsEvent diagnosticsEvent)
+		{
+			if (diagnosticsEvent == null)
+			{
+				return;
+			}
+			Task.Run(() =>
+			{
+				try
+				{
+					string url = BuildPulseUrl("ingestDiagnostics", null);
+					string json = PulseWire.Serialize(diagnosticsEvent);
+					HttpPostJson(url, json);
+				}
+				catch (Exception ex)
+				{
+					System.Diagnostics.Debug.WriteLine("[diagnostics] PostDiagnostics failed: " + ex.Message);
+				}
+			});
+		}
+
 		// The recentlyPlayed feed is heterogeneous: each element carries its own
 		// Kind discriminator. Probe Kind off the raw element, then re-parse into
 		// the matching concrete PulseObject subtype.

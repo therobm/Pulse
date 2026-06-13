@@ -277,7 +277,16 @@ namespace Thump.Pulse
 		public virtual void PostAnalytics(PulseAnalyticsBatch batch)
 		{
 		}
-	
+
+		/// <summary>
+		/// Ship a single diagnostic event to the server. Base implementation is a
+		/// no-op; the Pulse client overrides it to POST. Fire-and-forget, like
+		/// PostAnalytics.
+		/// </summary>
+		public virtual void PostDiagnostics(PulseDiagnosticsEvent diagnosticsEvent)
+		{
+		}
+
 		public virtual byte[] GetTrackAudioFromCache(string trackId)
 		{
 			return null;

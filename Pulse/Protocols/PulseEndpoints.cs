@@ -31,16 +31,18 @@ namespace Pulse.Protocols
 		PulseService m_pulseService;
 		MusicManager m_musicManager;
 		AnalyticsDB m_analyticsDB;
+		DiagnosticsDB m_diagnosticsDB;
 		PodcastManager m_podcastManager;
 		AudiobookManager m_audiobookManager;
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB, PodcastManager podcastManager, AudiobookManager audiobookManager)
+		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB, DiagnosticsDB diagnosticsDB, PodcastManager podcastManager, AudiobookManager audiobookManager)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
 			m_analyticsDB = analyticsDB;
+			m_diagnosticsDB = diagnosticsDB;
 			m_podcastManager = podcastManager;
 			m_audiobookManager = audiobookManager;
 			m_defaultCoverArt = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png"));
@@ -80,6 +82,9 @@ namespace Pulse.Protocols
 
 			RegisterRoute("ingestAnalytics", PostIngestAnalytics);
 			RegisterRoute("analytics", GetAnalytics);
+
+			RegisterRoute("ingestDiagnostics", PostIngestDiagnostics);
+			RegisterRoute("diagnostics", GetDiagnostics);
 
 			RegisterRoute("topItems", GetTop);
 
@@ -2057,6 +2062,61 @@ namespace Pulse.Protocols
 			return RespondStatus(context, "missing_id");
 		}
 
+		/// <summary>
+		/// Diagnostics intake. Clients POST a single PulseDiagnosticsEvent -- errors
+		/// are not batched, each ships on its own so the one before a crash still
+		/// gets out. The handler stamps received_at on the server clock and hands it
+		/// to DiagnosticsDB; the request thread never touches the database.
+		/// </summary>
+		public IResult PostIngestDiagnostics(HttpContext context)
+		{
+			string body;
+			using (StreamReader reader = new StreamReader(context.Request.Body))
+			{
+				body = reader.ReadToEnd();
+			}
+
+			if (string.IsNullOrEmpty(body))
+			{
+				return RespondStatus(context, "missing_body");
+			}
+
+			PulseDiagnosticsEvent diagnosticsEvent = PulseWire.Parse<PulseDiagnosticsEvent>(body);
+			if (diagnosticsEvent == null)
+			{
+				return RespondStatus(context, "missing_body");
+			}
+
+			string receivedAt = DateTime.UtcNow.ToString("o");
+			m_diagnosticsDB.Enqueue(diagnosticsEvent, receivedAt);
+			return Respond(context, new PulseResponse());
+		}
+
+		/// <summary>
+		/// Diagnostics read endpoint. Returns recent diagnostic events newest-first
+		/// by server received_at. Optional ?device_id=... filters to one device;
+		/// ?limit=... caps the row count (default 200).
+		/// </summary>
+		public IResult GetDiagnostics(HttpContext context)
+		{
+			string deviceId = QueryParameters.GetString(context, "device_id");
+			int limit = 200;
+			string limitText = QueryParameters.GetString(context, "limit");
+			if (!string.IsNullOrEmpty(limitText))
+			{
+				int parsedLimit = 0;
+				if (int.TryParse(limitText, out parsedLimit) && parsedLimit > 0)
+				{
+					limit = parsedLimit;
+				}
+			}
+
+			List<PulseDiagnosticsEvent> events = m_diagnosticsDB.GetRecent(deviceId, limit);
+			DiagnosticsEventsResponse response = new DiagnosticsEventsResponse();
+			response.Events = events;
+			return Results.Text(PulseWire.Serialize(response), "application/json");
+		}
+
 		private IResult GetStats(HttpContext context)
 		{
 			string userName = QueryParameters.GetString(context, "u");
@@ -2094,6 +2154,14 @@ namespace Pulse.Protocols
 		{
 			public string DeviceId;
 			public List<PulseAnalyticsSession> Sessions;
+		}
+
+		/// <summary>
+		/// Response envelope for the /diagnostics read query.
+		/// </summary>
+		public class DiagnosticsEventsResponse
+		{
+			public List<PulseDiagnosticsEvent> Events;
 		}
 	}
 }
