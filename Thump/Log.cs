@@ -23,8 +23,7 @@ namespace Thump
 
 		public static void Error(string message, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 		{
-			string location = Path.GetFileNameWithoutExtension(filePath) + "." + memberName;
-			MainView.Analytics.DiagnosticEvent(message, "", "", location);
+			MainView.Analytics.DiagnosticEvent(message, "", filePath, memberName);
 			Write("ERROR", message, filePath, memberName);
 		}
 

@@ -108,14 +108,14 @@ namespace Thump.Pulse
 		/// <summary>
 		/// Path for diagnostic error events
 		/// </summary>
-		public void DiagnosticEvent(string errorMessage, string notes, string errorType, string location)
+		public void DiagnosticEvent(string errorMessage, string notes, string filePath, string memberName)
 		{
 			List<PulseAnalyticsEvent> historyCopy = null;
 			lock(m_bufferLock)
 			{
 				historyCopy = new List<PulseAnalyticsEvent>(m_eventHistory);
 			}
-			m_diagnostics.ReportErrorEvent(errorMessage, notes, errorType, location, historyCopy);
+			m_diagnostics.ReportErrorEvent(errorMessage, notes, filePath, memberName, historyCopy);
 		}
 
 		private static string ObjectTypeName(ePulseWireType objectType)

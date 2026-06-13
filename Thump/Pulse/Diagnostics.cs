@@ -20,7 +20,7 @@ namespace Thump.Pulse
 			m_sessionId = sessionId;
 		}
 
-		public void ReportErrorEvent(string errorMessage, string notes, string errorType, string location, List<PulseAnalyticsEvent> eventHistory)
+		public void ReportErrorEvent(string errorMessage, string notes, string filePath, string memberName, List<PulseAnalyticsEvent> eventHistory)
 		{
 			try
 			{
@@ -60,8 +60,6 @@ namespace Thump.Pulse
 				diagEvent.SessionId = m_sessionId;
 				diagEvent.User = ThumpSettings.GetUsername();
 				diagEvent.AppVersion = "";
-				diagEvent.ErrorType = errorType;
-				diagEvent.Location = location;
 				diagEvent.Detail = detail.ToString();
 				diagEvent.Timestamp = DateTime.UtcNow.ToString("o");
 
