@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -271,6 +272,17 @@ namespace Thump.Views
 
 			section.Children.Add(logButtonRow);
 
+			Button viewAnalyticsButton = new Button();
+			viewAnalyticsButton.Text = "View Analytics Log";
+			viewAnalyticsButton.TextColor = ThumpColors.OnBackground;
+			viewAnalyticsButton.BackgroundColor = ThumpColors.Surface;
+			viewAnalyticsButton.CornerRadius = 8;
+			viewAnalyticsButton.FontSize = 15;
+			viewAnalyticsButton.HeightRequest = 44;
+			viewAnalyticsButton.Margin = new Thickness(0, 8, 0, 0);
+			viewAnalyticsButton.Clicked += OnViewAnalyticsLogClicked;
+			section.Children.Add(viewAnalyticsButton);
+
 			return section;
 		}
 
@@ -514,6 +526,71 @@ namespace Thump.Views
 		{
 			Log.Reset();
 			Log.Info("Log reset by user.");
+		}
+
+		// Opens the local analytics log in a read-only scrollable page. The file is
+		// rewritten fresh each launch, so this shows the current session's events.
+		private async void OnViewAnalyticsLogClicked(object sender, EventArgs e)
+		{
+			string contents = "";
+			try
+			{
+				string path = MainView.Analytics.GetAnalyticsLogFilePath();
+				if (!string.IsNullOrEmpty(path) && File.Exists(path))
+				{
+					contents = File.ReadAllText(path);
+				}
+			}
+			catch (Exception ex)
+			{
+				Log.Exception(ex);
+			}
+			if (string.IsNullOrEmpty(contents))
+			{
+				contents = "No analytics events recorded yet this session.";
+			}
+
+			Grid layout = new Grid();
+			RowDefinition closeRow = new RowDefinition();
+			closeRow.Height = GridLength.Auto;
+			RowDefinition bodyRow = new RowDefinition();
+			bodyRow.Height = GridLength.Star;
+			layout.RowDefinitions.Add(closeRow);
+			layout.RowDefinitions.Add(bodyRow);
+
+			Button closeButton = new Button();
+			closeButton.Text = "Close";
+			closeButton.TextColor = ThumpColors.OnBackground;
+			closeButton.BackgroundColor = ThumpColors.Surface;
+			closeButton.CornerRadius = 8;
+			closeButton.FontSize = 15;
+			closeButton.HeightRequest = 44;
+			closeButton.Margin = new Thickness(12, 12, 12, 0);
+			closeButton.Clicked += OnCloseAnalyticsLogClicked;
+			Grid.SetRow(closeButton, 0);
+			layout.Children.Add(closeButton);
+
+			Editor logEditor = new Editor();
+			logEditor.Text = contents;
+			logEditor.IsReadOnly = true;
+			logEditor.FontSize = 12;
+			logEditor.TextColor = ThumpColors.OnBackground;
+			logEditor.BackgroundColor = ThumpColors.Background;
+			logEditor.Margin = new Thickness(12);
+			Grid.SetRow(logEditor, 1);
+			layout.Children.Add(logEditor);
+
+			ContentPage page = new ContentPage();
+			page.Title = "Analytics Log";
+			page.BackgroundColor = ThumpColors.Background;
+			page.Content = layout;
+
+			await MainView.Self.Navigation.PushModalAsync(page);
+		}
+
+		private async void OnCloseAnalyticsLogClicked(object sender, EventArgs e)
+		{
+			await MainView.Self.Navigation.PopModalAsync();
 		}
 
 		private string ValidateAndNormalizeServer(ref string ip, ref string port)

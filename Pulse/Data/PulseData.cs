@@ -22,6 +22,7 @@ namespace Pulse.Data
 		private ConcurrentDictionary<string, PlaylistData> m_autoPlaylists = new ConcurrentDictionary<string, PlaylistData>();
 		private PulseAnalyticsData m_analytics = new PulseAnalyticsData();
 
+		[Obsolete]
 		private PulseDB m_db = new PulseDB();
 		private PulseDataStore m_musicData;
 		private PulseDataStore m_userData;

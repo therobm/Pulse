@@ -26,7 +26,8 @@ namespace PulseAPI.CSharp
 		Chapter,
 		AudiobookDetails,
 		Stats,
-		Version
+		Version,
+		Invalid,
 	}
 
 	public class PulseObject
