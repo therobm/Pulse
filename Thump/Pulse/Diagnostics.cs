@@ -1,6 +1,7 @@
 ﻿using PulseAPI.CSharp;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Devices;
+using Microsoft.Maui.Networking;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -83,6 +84,83 @@ namespace Thump.Pulse
 				catch
 				{
 					diagEvent.Platform = "Android";
+				}
+
+				diagEvent.BuildNumber = 0;
+				try
+				{
+					int parsedBuild = 0;
+					if (int.TryParse(AppInfo.BuildString, out parsedBuild))
+					{
+						diagEvent.BuildNumber = parsedBuild;
+					}
+				}
+				catch
+				{
+					diagEvent.BuildNumber = 0;
+				}
+
+				diagEvent.OsVersion = "";
+				try
+				{
+					diagEvent.OsVersion = DeviceInfo.VersionString;
+				}
+				catch
+				{
+					diagEvent.OsVersion = "";
+				}
+
+				diagEvent.DeviceModel = "";
+				try
+				{
+					diagEvent.DeviceModel = DeviceInfo.Manufacturer + " " + DeviceInfo.Model;
+				}
+				catch
+				{
+					diagEvent.DeviceModel = "";
+				}
+
+				diagEvent.NetworkType = "unknown";
+				try
+				{
+					bool hasCellular = false;
+					bool hasWifi = false;
+					bool hasEthernet = false;
+					foreach (ConnectionProfile profile in Connectivity.Current.ConnectionProfiles)
+					{
+						if (profile == ConnectionProfile.Cellular)
+						{
+							hasCellular = true;
+						}
+						if (profile == ConnectionProfile.WiFi)
+						{
+							hasWifi = true;
+						}
+						if (profile == ConnectionProfile.Ethernet)
+						{
+							hasEthernet = true;
+						}
+					}
+					if (hasCellular)
+					{
+						diagEvent.NetworkType = "cellular";
+					}
+					else if (hasWifi)
+					{
+						diagEvent.NetworkType = "wifi";
+					}
+					else if (hasEthernet)
+					{
+						diagEvent.NetworkType = "ethernet";
+					}
+					else
+					{
+						diagEvent.NetworkType = "none";
+					}
+				}
+				catch
+				{
+					diagEvent.NetworkType = "unknown";
 				}
 
 				m_client.PostDiagnostics(diagEvent);

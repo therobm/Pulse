@@ -95,8 +95,12 @@ namespace PulseAPI.CSharp
 		public string DeviceId;
 		public string SessionId;
 		public string AppVersion;
+		public int BuildNumber;
 		public string User;
 		public string Platform;
+		public string OsVersion;
+		public string DeviceModel;
+		public string NetworkType;
 		public string Caller;
 		public string MemberName;
 		public string ErrorMessage;
