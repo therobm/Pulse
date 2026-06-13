@@ -97,8 +97,9 @@ namespace PulseAPI.CSharp
 		public string AppVersion;
 		public string User;
 		public string Platform;
-		public string ErrorType;
-		public string Location;
+		public string Caller;
+		public string MemberName;
+		public string ErrorMessage;
 		public string Detail;
 		public string Timestamp;
 	}

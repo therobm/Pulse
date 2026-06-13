@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using Thump.Data;
+using System.IO;
 
 namespace Thump.Pulse
 {
@@ -24,8 +25,8 @@ namespace Thump.Pulse
 		{
 			try
 			{
+				string caller = Path.GetFileNameWithoutExtension(filePath);
 				StringBuilder detail = new StringBuilder();
-				detail.AppendLine("ERROR: " + errorMessage);
 				if (!string.IsNullOrEmpty(notes))
 				{
 					detail.AppendLine("NOTES: " + notes);
@@ -60,9 +61,11 @@ namespace Thump.Pulse
 				diagEvent.SessionId = m_sessionId;
 				diagEvent.User = ThumpSettings.GetUsername();
 				diagEvent.AppVersion = "";
+				diagEvent.ErrorMessage = errorMessage;
 				diagEvent.Detail = detail.ToString();
 				diagEvent.Timestamp = DateTime.UtcNow.ToString("o");
-
+				diagEvent.Caller = caller;
+				diagEvent.MemberName = memberName;
 			
 				try
 				{

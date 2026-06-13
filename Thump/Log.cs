@@ -36,20 +36,7 @@ namespace Thump
 
 		public static void Exception(Exception ex, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 		{
-			string errorType = ex.GetType().Name;
-			string location = Path.GetFileNameWithoutExtension(filePath) + "." + memberName;
-			if (ex.TargetSite != null)
-			{
-				string declaringType = "";
-				if (ex.TargetSite.DeclaringType != null)
-				{
-					declaringType = ex.TargetSite.DeclaringType.Name + ".";
-				}
-				location = declaringType + ex.TargetSite.Name;
-			}
-
-			MainView.Analytics.DiagnosticEvent(ex.Message, ex.ToString(), errorType, location);
-
+			MainView.Analytics.DiagnosticEvent(ex.Message, ex.ToString(), filePath, memberName);
 			Write("EXCEPTION", ex.ToString(), filePath, memberName);
 		}
 
@@ -81,7 +68,6 @@ namespace Thump
 
 		private static void Write(string level, string message, string filePath, string memberName, bool saveToDisk = true)
 		{
-
 			string caller = Path.GetFileNameWithoutExtension(filePath);
 			string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " [" + level + "][" + caller + "." + memberName + "] " + message;
 			Debug.WriteLine(line);
