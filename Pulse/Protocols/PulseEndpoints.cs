@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Pulse.Database;
+using Pulse.Data;
 using Pulse.DataStorage;
 using Pulse.MusicLibrary;
 using Pulse.Podcasts;
@@ -31,18 +32,18 @@ namespace Pulse.Protocols
 		PulseService m_pulseService;
 		MusicManager m_musicManager;
 		AnalyticsDB m_analyticsDB;
-		DiagnosticsDB m_diagnosticsDB;
+		DiagnosticsData m_diagnosticsData;
 		PodcastManager m_podcastManager;
 		AudiobookManager m_audiobookManager;
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB, DiagnosticsDB diagnosticsDB, PodcastManager podcastManager, AudiobookManager audiobookManager)
+		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsDB analyticsDB, DiagnosticsData diagnosticsData, PodcastManager podcastManager, AudiobookManager audiobookManager)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
 			m_analyticsDB = analyticsDB;
-			m_diagnosticsDB = diagnosticsDB;
+			m_diagnosticsData = diagnosticsData;
 			m_podcastManager = podcastManager;
 			m_audiobookManager = audiobookManager;
 			m_defaultCoverArt = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Content", "Media", "pulseLogo.png"));
@@ -2065,8 +2066,8 @@ namespace Pulse.Protocols
 		/// <summary>
 		/// Diagnostics intake. Clients POST a single PulseDiagnosticsEvent -- errors
 		/// are not batched, each ships on its own so the one before a crash still
-		/// gets out. The handler stamps received_at on the server clock and hands it
-		/// to DiagnosticsDB; the request thread never touches the database.
+		/// gets out. The handler stamps received_at on the server clock and hands the
+		/// record to DiagnosticsData (in-memory, persisted through PulseDataStore).
 		/// </summary>
 		public IResult PostIngestDiagnostics(HttpContext context)
 		{
@@ -2087,8 +2088,25 @@ namespace Pulse.Protocols
 				return RespondStatus(context, "missing_body");
 			}
 
-			string receivedAt = DateTime.UtcNow.ToString("o");
-			m_diagnosticsDB.Enqueue(diagnosticsEvent, receivedAt);
+			DiagnosticRecord record = new DiagnosticRecord();
+			record.Id = Guid.NewGuid().ToString();
+			record.DeviceId = diagnosticsEvent.DeviceId;
+			record.SessionId = diagnosticsEvent.SessionId;
+			record.AppVersion = diagnosticsEvent.AppVersion;
+			record.BuildNumber = diagnosticsEvent.BuildNumber;
+			record.User = diagnosticsEvent.User;
+			record.Platform = diagnosticsEvent.Platform;
+			record.OsVersion = diagnosticsEvent.OsVersion;
+			record.DeviceModel = diagnosticsEvent.DeviceModel;
+			record.NetworkType = diagnosticsEvent.NetworkType;
+			record.Caller = diagnosticsEvent.Caller;
+			record.MemberName = diagnosticsEvent.MemberName;
+			record.ErrorMessage = diagnosticsEvent.ErrorMessage;
+			record.Detail = diagnosticsEvent.Detail;
+			record.Timestamp = diagnosticsEvent.Timestamp;
+			record.ReceivedAt = DateTime.UtcNow.ToString("o");
+
+			m_diagnosticsData.Add(record);
 			return Respond(context, new PulseResponse());
 		}
 
@@ -2111,9 +2129,29 @@ namespace Pulse.Protocols
 				}
 			}
 
-			List<PulseDiagnosticsEvent> events = m_diagnosticsDB.GetRecent(deviceId, limit);
+			List<DiagnosticRecord> records = m_diagnosticsData.GetRecent(deviceId, limit);
 			DiagnosticsEventsResponse response = new DiagnosticsEventsResponse();
-			response.Events = events;
+			response.Events = new List<PulseDiagnosticsEvent>();
+			for (int index = 0; index < records.Count; index++)
+			{
+				DiagnosticRecord record = records[index];
+				PulseDiagnosticsEvent evt = new PulseDiagnosticsEvent();
+				evt.DeviceId = record.DeviceId;
+				evt.SessionId = record.SessionId;
+				evt.AppVersion = record.AppVersion;
+				evt.BuildNumber = record.BuildNumber;
+				evt.User = record.User;
+				evt.Platform = record.Platform;
+				evt.OsVersion = record.OsVersion;
+				evt.DeviceModel = record.DeviceModel;
+				evt.NetworkType = record.NetworkType;
+				evt.Caller = record.Caller;
+				evt.MemberName = record.MemberName;
+				evt.ErrorMessage = record.ErrorMessage;
+				evt.Detail = record.Detail;
+				evt.Timestamp = record.Timestamp;
+				response.Events.Add(evt);
+			}
 			return Results.Text(PulseWire.Serialize(response), "application/json");
 		}
 

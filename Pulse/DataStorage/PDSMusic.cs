@@ -18,6 +18,7 @@ namespace Pulse.DataStorage
 		PodcastEpisode,
 		Audiobook,
 		AudiobookChapter,
+		Diagnostic,
 	}
 
 	public abstract class PulseDataObject
