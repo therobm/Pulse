@@ -17,9 +17,16 @@ namespace PulseAPI.CSharp
 	public static class PulseWire
 	{
 		static JsonSerializerOptions s_options = BuildOptions();
+		static JsonSerializerOptions s_optionsIndented;
 
 		static JsonSerializerOptions BuildOptions()
 		{
+			s_optionsIndented = new JsonSerializerOptions();
+			s_optionsIndented.IncludeFields = true;
+			s_optionsIndented.WriteIndented = true;
+			s_optionsIndented.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+			s_optionsIndented.Converters.Add(new JsonStringEnumConverter());
+
 			JsonSerializerOptions options = new JsonSerializerOptions();
 			options.IncludeFields = true;
 			options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
@@ -27,9 +34,13 @@ namespace PulseAPI.CSharp
 			return options;
 		}
 
-		public static string Serialize(object value)
+		public static string Serialize(object value, bool indended = false)
 		{
-			return JsonSerializer.Serialize(value, s_options);
+			JsonSerializerOptions options = s_options;
+			if (indended)
+				options = s_optionsIndented;
+
+			return JsonSerializer.Serialize(value, options);
 		}
 
 		public static T Parse<T>(string json)

@@ -14,6 +14,7 @@ using System.IO;
 using System.Net;
 using System.Text;
 using TagLib.IFD.Tags;
+using System.Text.Json;
 
 namespace Pulse.Protocols
 {
@@ -2104,7 +2105,6 @@ namespace Pulse.Protocols
 			record.ErrorMessage = diagnosticsEvent.ErrorMessage;
 			record.Detail = diagnosticsEvent.Detail;
 			record.Timestamp = diagnosticsEvent.Timestamp;
-			record.ReceivedAt = DateTime.UtcNow.ToString("o");
 
 			m_diagnosticsData.Add(record);
 			return Respond(context, new PulseResponse());
@@ -2120,6 +2120,8 @@ namespace Pulse.Protocols
 			string deviceId = QueryParameters.GetString(context, "device_id");
 			int limit = 200;
 			string limitText = QueryParameters.GetString(context, "limit");
+			bool indented = QueryParameters.GetBool(context, "indented", true);
+
 			if (!string.IsNullOrEmpty(limitText))
 			{
 				int parsedLimit = 0;
@@ -2152,7 +2154,9 @@ namespace Pulse.Protocols
 				evt.Timestamp = record.Timestamp;
 				response.Events.Add(evt);
 			}
-			return Results.Text(PulseWire.Serialize(response), "application/json");
+
+			string json = PulseWire.Serialize(response, indented);
+			return Results.Text(json, "application/json");
 		}
 
 		private IResult GetStats(HttpContext context)

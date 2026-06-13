@@ -22,6 +22,5 @@ namespace Pulse.DataStorage
 		public string ErrorMessage = "";
 		public string Detail = "";
 		public string Timestamp = "";
-		public string ReceivedAt = "";
 	}
 }

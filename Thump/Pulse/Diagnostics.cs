@@ -26,7 +26,7 @@ namespace Thump.Pulse
 		{
 			try
 			{
-				string caller = Path.GetFileNameWithoutExtension(filePath);
+				string caller = GetFileName(filePath);
 				StringBuilder detail = new StringBuilder();
 				if (!string.IsNullOrEmpty(notes))
 				{
@@ -169,6 +169,22 @@ namespace Thump.Pulse
 			{
 				Debug.WriteLine("[diagnostics] report failed: " + ex.Message);
 			}
+		}
+
+		private string GetFileName(string filePath)
+		{
+			int separatorIndex = filePath.LastIndexOfAny(new char[] { '\\', '/' });
+			string caller = filePath;
+			if (separatorIndex >= 0)
+			{
+				caller = filePath.Substring(separatorIndex + 1);
+			}
+			int dotIndex = caller.LastIndexOf('.');
+			if (dotIndex > 0)
+			{
+				caller = caller.Substring(0, dotIndex);
+			}
+			return caller;
 		}
 	}
 }

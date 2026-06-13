@@ -485,12 +485,12 @@ namespace Thump.Pulse
 			using HttpResponseMessage response = m_httpClient.HttpPostJson_Internal(url, Http.eRequestType.MetaData, json, timeoutSeconds);
 			if (response == null )
 			{
-				Log.Error("HTTP POST failed: " + url);
+				Log.Error("HTTP POST failed: " + url, false);
 				return null;
 			}
 			if (!response.IsSuccessStatusCode)
 			{
-				Log.Error("HTTP POST failed: " + url + " status: " + response.StatusCode);
+				Log.Error("HTTP POST failed: " + url + " status: " + response.StatusCode, false);
 				return null;
 			}
 			string result = response.Content.ReadAsStringAsync().Result;

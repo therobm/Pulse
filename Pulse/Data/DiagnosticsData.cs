@@ -89,7 +89,7 @@ namespace Pulse.Data
 
 		private static int CompareByReceivedDescending(DiagnosticRecord first, DiagnosticRecord second)
 		{
-			return string.CompareOrdinal(second.ReceivedAt, first.ReceivedAt);
+			return string.CompareOrdinal(second.Timestamp, first.Timestamp);
 		}
 
 		private void PruneOld()
@@ -101,7 +101,7 @@ namespace Pulse.Data
 			{
 				for (int index = m_events.Count - 1; index >= 0; index--)
 				{
-					if (string.CompareOrdinal(m_events[index].ReceivedAt, cutoff) < 0)
+					if (string.CompareOrdinal(m_events[index].Timestamp, cutoff) < 0)
 					{
 						expired.Add(m_events[index]);
 						m_events.RemoveAt(index);
