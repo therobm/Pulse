@@ -21,9 +21,10 @@ namespace Thump
 			Write("WARN", message, filePath, memberName);
 		}
 
-		public static void Error(string message, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
+		public static void Error(string message, bool logDiagnostics = true, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 		{
-			MainView.Analytics.DiagnosticEvent(message, "", filePath, memberName);
+			if (logDiagnostics)
+				MainView.Analytics.DiagnosticEvent(message, "", filePath, memberName);
 			Write("ERROR", message, filePath, memberName);
 		}
 
@@ -34,9 +35,10 @@ namespace Thump
 #endif
 		}
 
-		public static void Exception(Exception ex, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
+		public static void Exception(Exception ex, bool logDiagnostics = true, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 		{
-			MainView.Analytics.DiagnosticEvent(ex.Message, ex.ToString(), filePath, memberName);
+			if (logDiagnostics)
+				MainView.Analytics.DiagnosticEvent(ex.Message, ex.ToString(), filePath, memberName);
 			Write("EXCEPTION", ex.ToString(), filePath, memberName);
 		}
 

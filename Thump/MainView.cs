@@ -117,7 +117,6 @@ namespace Thump
 			m_analytics = new Analytics(m_mediaClient);
 			m_analytics.Event(eAction.Launch, eResult.OK);
 			m_mediaClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetUseHttps());
-
 #if ANDROID
 			m_player = new ThumpAndroidPlayer(this, m_mediaClient);
 #else

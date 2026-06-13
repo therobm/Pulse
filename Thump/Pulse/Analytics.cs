@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Devices;
@@ -108,7 +109,7 @@ namespace Thump.Pulse
 		/// <summary>
 		/// Path for diagnostic error events
 		/// </summary>
-		public void DiagnosticEvent(string errorMessage, string notes, string filePath, string memberName)
+		public void DiagnosticEvent(string errorMessage, string notes, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 		{
 			List<PulseAnalyticsEvent> historyCopy = null;
 			lock(m_bufferLock)

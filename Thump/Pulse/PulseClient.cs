@@ -751,9 +751,12 @@ namespace Thump.Pulse
 				{
 					//make the small size they want now
 					ImageSource result = DecodeToSize(cache_url, rawImage, size);
-					m_imageCache[cache_url] = result;
-					CompleteOnMain(onComplete, result);
-					return;
+					if (result != null) 
+					{ 
+						m_imageCache[cache_url] = result;
+						CompleteOnMain(onComplete, result);
+						return;
+					}
 				}
 
 				byte[] cachedData = GetCachedCoverArt(coverArtId);
@@ -761,9 +764,12 @@ namespace Thump.Pulse
 				{
 					m_imageBytesCache[url] = cachedData;
 					ImageSource result = DecodeToSize(cache_url, cachedData, size);
-					m_imageCache[cache_url] = result;
-					CompleteOnMain(onComplete, m_imageCache[cache_url]);
-					return;
+					if (result != null) 
+					{ 
+						m_imageCache[cache_url] = result;
+						CompleteOnMain(onComplete, m_imageCache[cache_url]);
+						return;
+					}
 				}
 				
 				GetHTTPImage(url, (data) =>
@@ -781,8 +787,15 @@ namespace Thump.Pulse
 
 						//make the requested size
 						ImageSource result = DecodeToSize(cache_url, data, size);
-						m_imageCache[cache_url] = result;
-						CompleteOnMain(onComplete, m_imageCache[cache_url]);
+						if (result != null)
+						{
+							m_imageCache[cache_url] = result;
+							CompleteOnMain(onComplete, m_imageCache[cache_url]);
+						}
+						else
+						{
+							CompleteOnMain(onComplete, null);
+						}
 					}
 					catch (Exception ex)
 					{
@@ -1050,6 +1063,32 @@ namespace Thump.Pulse
 					// Do NOT call Log.Exception / Log.Error / any Log.* here -- that
 					// would feed the failure back into the pipeline (recursion / loop).
 					System.Diagnostics.Debug.WriteLine("[analytics] PostAnalytics failed: " + ex.Message);
+				}
+			});
+		}
+
+		/// <summary>
+		/// POST a single diagnostic event to the server's pulse_v1/ingestDiagnostics
+		/// route. Swallows its own failures: the diagnostics path must never feed
+		/// errors back into Log.* or it loops.
+		/// </summary>
+		public override void PostDiagnostics(PulseDiagnosticsEvent diagnosticsEvent)
+		{
+			if (diagnosticsEvent == null)
+			{
+				return;
+			}
+			Task.Run(() =>
+			{
+				try
+				{
+					string url = BuildPulseUrl("ingestDiagnostics", null);
+					string json = PulseWire.Serialize(diagnosticsEvent);
+					HttpPostJson(url, json);
+				}
+				catch (Exception ex)
+				{
+					System.Diagnostics.Debug.WriteLine("[diagnostics] PostDiagnostics failed: " + ex.Message);
 				}
 			});
 		}
@@ -1330,6 +1369,8 @@ namespace Thump.Pulse
 			Android.Graphics.BitmapFactory.Options decodeOptions = new Android.Graphics.BitmapFactory.Options();
 			decodeOptions.InSampleSize = sampleSize;
 			Android.Graphics.Bitmap sampled = Android.Graphics.BitmapFactory.DecodeByteArray(data, 0, data.Length, decodeOptions);
+			if (sampled == null)
+				return null;
 
 			Android.Graphics.Bitmap finalBitmap = sampled;
 			if (sampled.Width > size || sampled.Height > size)
