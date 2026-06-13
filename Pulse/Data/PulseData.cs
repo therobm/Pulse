@@ -25,7 +25,7 @@ namespace Pulse.Data
 		[Obsolete]
 		private PulseDB m_db = new PulseDB();
 		private PulseDataStore m_musicData;
-		private PulseDataStore m_userData;
+		private UserStore m_userStore;
 		private Timer m_saveTimer;
 
 		private PulseConfig m_config;
@@ -34,18 +34,13 @@ namespace Pulse.Data
 			m_config = config;
 
 			string musicDB = "music.db";
-			string userDB = "user.db";
 #if DEBUG
 			musicDB = "music_staging.db";
-			userDB = "user_staging.db";
 #endif
 			string dbPath = Path.Combine(m_config.PulseDataPath, musicDB);
 			m_musicData = new PulseDataStore(dbPath);
 
-			dbPath = Path.Combine(m_config.PulseDataPath, userDB);
-			m_userData = new PulseDataStore(dbPath);
-
-			
+			m_userStore = new UserStore(config);
 		}
 
 		public int GetTrackCount()
@@ -396,6 +391,7 @@ namespace Pulse.Data
 			string sqlitePath = Path.Combine(m_config.PulseDataPath, sqliteFileName);
 			Pulse.Database.PulseDBConnector.SetDatabaseFilePath(sqlitePath);
 			Pulse.Database.PulseDBMigrations.RunMigrations();
+			m_userStore.Load();
 			Log.Info("Pulse DB: env=" + environmentName + " path=" + sqlitePath);
 
 
@@ -834,17 +830,19 @@ namespace Pulse.Data
 			return m_db.GetItemStats(userName, mediaType);
 		}
 
-		// SELECT from the users table, then layer the in-memory per-user counts
-		// on top. Names that have per-user rows but no users-table entry (e.g.
-		// scrobbled after the user was deleted) are surfaced as orphan records
-		// with Created=MinValue so the operator can spot and clean them up.
+		// Pulls every UserData out of UserStore, projects each into a UserRecord,
+		// then layers the in-memory per-user counts on top. Names that have
+		// per-user rows but no UserStore entry (e.g. scrobbled after the user
+		// was deleted) are surfaced as orphan records with Created=MinValue so
+		// the operator can spot and clean them up.
 		public List<UserRecord> GetAllUsers()
 		{
 			Dictionary<string, UserRecord> byName = new Dictionary<string, UserRecord>();
-			List<UserRecord> rows = m_db.ReadAllUsers();
-			for (int index = 0; index < rows.Count; index++)
+			List<UserData> userDataList = m_userStore.GetAllUsers();
+			for (int index = 0; index < userDataList.Count; index++)
 			{
-				byName[rows[index].Name] = rows[index];
+				UserRecord record = ToUserRecord(userDataList[index]);
+				byName[record.Name] = record;
 			}
 			PopulateUserCounts(byName, true);
 			List<UserRecord> users = new List<UserRecord>(byName.Values);
@@ -854,36 +852,44 @@ namespace Pulse.Data
 
 		public UserRecord GetUser(string name)
 		{
-			return m_db.ReadUser(name);
+			UserData userData = m_userStore.GetUser(name);
+			if (userData == null)
+			{
+				return null;
+			}
+			return ToUserRecord(userData);
 		}
 
 		public string CreateUser(string name, string displayName, bool isAdmin)
 		{
-			return m_db.InsertUser(name, displayName, isAdmin);
+			return m_userStore.CreateUser(name, displayName, isAdmin);
 		}
 
 		public string UpdateUser(string oldName, string newName, string displayName, bool isAdmin)
 		{
-			string error = m_db.UpdateUserRow(oldName, newName, displayName, isAdmin);
+			string error = m_userStore.UpdateUser(oldName, newName, displayName, isAdmin);
 			if (!string.IsNullOrEmpty(error))
 			{
 				return error;
 			}
 			if (!string.Equals(oldName, newName, StringComparison.Ordinal))
 			{
+				m_db.RenameUserActivityRows(oldName, newName);
 				RenameUserInMemory(oldName, newName);
 			}
 			return "";
 		}
 
-		// Two-stage wipe: rows first (non-cached per-user tables + users row),
-		// then scrub the in-memory dicts and flag affected entities dirty so
-		// the upcoming Save rewrites their starred / score / last-played rows
-		// without this user.
+		// Two-stage wipe: UserStore drops identity/hash/tokens, the legacy DB
+		// drops the per-user activity rows, then the in-memory dicts get
+		// scrubbed and the affected entities flagged dirty so the upcoming
+		// Save rewrites their starred / score / last-played rows without this
+		// user.
 		public void DeleteUser(string userName)
 		{
 			if (string.IsNullOrEmpty(userName)) { return; }
 
+			m_userStore.DeleteUser(userName);
 			m_db.DeleteUserRows(userName);
 			DeleteUserInMemory(userName);
 			Save();
@@ -891,53 +897,69 @@ namespace Pulse.Data
 
 		public string GetUserPasswordHash(string name)
 		{
-			return m_db.ReadUserPasswordHash(name);
+			return m_userStore.GetPasswordHash(name);
 		}
 
 		public void SetUserPassword(string name, string passwordHash)
 		{
-			m_db.SetUserPassword(name, passwordHash);
+			m_userStore.SetPassword(name, passwordHash);
 		}
 
 		public bool AnyUserHasPassword()
 		{
-			return m_db.AnyUserHasPassword();
+			return m_userStore.AnyUserHasPassword();
 		}
 
 		public void InsertToken(string token, string userName, string label)
 		{
-			m_db.InsertToken(token, userName, label);
+			m_userStore.AddToken(token, userName, label);
 		}
 
 		public List<TokenRow> GetAllTokens()
 		{
-			return m_db.GetAllTokens();
+			List<UserData> users = m_userStore.GetAllUsers();
+			List<TokenRow> rows = new List<TokenRow>();
+			for (int userIndex = 0; userIndex < users.Count; userIndex++)
+			{
+				UserData user = users[userIndex];
+				for (int tokenIndex = 0; tokenIndex < user.Tokens.Count; tokenIndex++)
+				{
+					rows.Add(ToTokenRow(user.Id, user.Tokens[tokenIndex]));
+				}
+			}
+			rows.Sort(CompareTokenRowByCreatedDescending);
+			return rows;
 		}
 
 		public List<TokenRow> GetTokensForUser(string userName)
 		{
-			return m_db.GetTokensForUser(userName);
+			List<TokenRow> rows = new List<TokenRow>();
+			UserData user = m_userStore.GetUser(userName);
+			if (user == null)
+			{
+				return rows;
+			}
+			for (int tokenIndex = 0; tokenIndex < user.Tokens.Count; tokenIndex++)
+			{
+				rows.Add(ToTokenRow(user.Id, user.Tokens[tokenIndex]));
+			}
+			rows.Sort(CompareTokenRowByCreatedDescending);
+			return rows;
 		}
 
 		public string LookupTokenUser(string token)
 		{
-			return m_db.LookupTokenUser(token);
+			return m_userStore.LookupTokenUser(token);
 		}
 
-		/// <summary>
-		/// FUCK THIS FUNCTION WHO GIVES A SHIT
-		/// </summary>
-		/// <param name="token"></param>
 		public void UpdateTokenLastUsed(string token)
 		{
-			m_db.UpdateTokenLastUsed(token);
+			m_userStore.UpdateTokenLastUsed(token);
 		}
 
 		public void DeleteToken(string token)
 		{
-			string id = "";//WHERE THE FUCK IS MY OBJECT ID
-			m_userData.Delete(eDataType.User, id);
-			m_db.DeleteToken(token);
+			m_userStore.DeleteToken(token);
 		}
 
 		// Walks the in-memory stores and bumps ScoredTrackCount / StarredCount /
@@ -992,6 +1014,41 @@ namespace Pulse.Data
 		private static int CompareUserRecordByName(UserRecord left, UserRecord right)
 		{
 			return string.Compare(left.Name, right.Name, StringComparison.Ordinal);
+		}
+
+		/// <summary>
+		/// Projects a stored UserData onto the UserRecord wire shape consumers
+		/// (AuthEndpoints, settings UI) already work in. The per-user count
+		/// fields are zero here -- PopulateUserCounts layers them on after.
+		/// </summary>
+		private static UserRecord ToUserRecord(UserData userData)
+		{
+			UserRecord record = new UserRecord();
+			record.Name = userData.Id;
+			record.DisplayName = userData.DisplayName;
+			record.Created = userData.Created;
+			record.IsAdmin = userData.IsAdmin;
+			return record;
+		}
+
+		/// <summary>
+		/// Projects a stored TokenData onto the TokenRow wire shape that the
+		/// listTokens endpoint consumes.
+		/// </summary>
+		private static TokenRow ToTokenRow(string userName, TokenData token)
+		{
+			TokenRow row = new TokenRow();
+			row.UserName = userName;
+			row.Token = token.Token;
+			row.Label = token.Label;
+			row.CreatedAt = token.CreatedAt;
+			row.LastUsed = token.LastUsed;
+			return row;
+		}
+
+		private static int CompareTokenRowByCreatedDescending(TokenRow left, TokenRow right)
+		{
+			return string.CompareOrdinal(right.CreatedAt, left.CreatedAt);
 		}
 
 		private static UserRecord GetOrLookupUserRecord(Dictionary<string, UserRecord> byName, string userName, bool createMissing)

@@ -358,6 +358,19 @@ namespace Pulse.Database
 			";
 			steps.Add(v9);
 
+			// v10: identity / password hashes / device tokens moved to
+			// UserData + UserStore (PLS129); the legacy users + tokens tables
+			// are retired here. Forward-only -- existing deployments lose the
+			// rows, so first boot after this version goes through the
+			// first-run setup flow again.
+			MigrationStep v10 = new MigrationStep();
+			v10.Version = 10;
+			v10.Sql = @"
+				DROP TABLE IF EXISTS tokens;
+				DROP TABLE IF EXISTS users;
+			";
+			steps.Add(v10);
+
 			return steps;
 		}
 	}
