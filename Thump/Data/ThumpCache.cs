@@ -255,7 +255,7 @@ namespace Thump.Data
 			{
 				return false;
 			}
-			long min = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - maxAgeSeconds;
+			long oldest = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - maxAgeSeconds;
 
 			ExecuteSync(()=>
 			{
@@ -263,7 +263,7 @@ namespace Thump.Data
 				{
 					cmd.CommandText = "SELECT data FROM http_cache WHERE url = $u AND fetched_at >= $min";
 					cmd.Parameters.AddWithValue("$u", url);
-					cmd.Parameters.AddWithValue("$min", min);
+					cmd.Parameters.AddWithValue("$min", oldest);
 					object result = cmd.ExecuteScalar();
 					if (result != null && result != DBNull.Value)
 					{

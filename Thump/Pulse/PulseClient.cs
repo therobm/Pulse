@@ -84,7 +84,7 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, data);
 				return;
 			}
-			if (cacheStrategy == eMediaCacheStrategy.NetworkFirst && GetFreshCachedPulseData<T>(url, s_cacheFreshnessSeconds, out List<T> freshData))
+			if (cacheStrategy == eMediaCacheStrategy.NetworkFirst && GetRecentCachedPulseData<T>(url, s_cacheFreshnessSeconds, out List<T> freshData))
 			{
 				CompleteOnMain(onComplete, freshData);
 				return;
@@ -142,7 +142,7 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, data);
 				return;
 			}
-			if (cacheStrategy == eMediaCacheStrategy.NetworkFirst && GetFreshCachedPulseData<T>(url, s_cacheFreshnessSeconds, out T freshData))
+			if (cacheStrategy == eMediaCacheStrategy.NetworkFirst && GetRecentCachedPulseData<T>(url, s_cacheFreshnessSeconds, out T freshData))
 			{
 				CompleteOnMain(onComplete, freshData);
 				return;
@@ -1184,6 +1184,9 @@ namespace Thump.Pulse
 
 		public override void CacheQueryResults(string url, byte[] data)
 		{
+			if (data == null || data.Length == 0)
+				return;
+
 			m_cache.CacheQueryResults(url, data);
 		}
 
@@ -1194,12 +1197,18 @@ namespace Thump.Pulse
 
 		public void CacheQueryPulseData(string url, PulseObject pulseObject)
 		{
+			if (pulseObject == null)
+				return;
+
 			string data = PulseWire.Serialize(pulseObject);
 			m_cache.CacheQueryResults(url, data);
 		}
 
 		public void CacheQueryPulseData<T>(string url, List<T> pulseObject) where T : PulseObject
 		{
+			if (pulseObject == null || pulseObject.Count == 0)
+				return;
+
 			string data = PulseWire.Serialize(pulseObject);
 			m_cache.CacheQueryResults(url, data);
 		}
@@ -1241,7 +1250,7 @@ namespace Thump.Pulse
 		/// maxAgeSeconds. Mirrors GetCachedPulseData but routes through the
 		/// age-aware ThumpCache read.
 		/// </summary>
-		public bool GetFreshCachedPulseData<T>(string url, int maxAgeSeconds, out T pulseObject) where T : PulseObject
+		public bool GetRecentCachedPulseData<T>(string url, int maxAgeSeconds, out T pulseObject) where T : PulseObject
 		{
 			if (m_cache.GetCachedResults(url, maxAgeSeconds, out string data))
 			{
@@ -1261,7 +1270,7 @@ namespace Thump.Pulse
 		/// single overload, returning a parsed list only when the cached row is
 		/// fresh.
 		/// </summary>
-		public bool GetFreshCachedPulseData<T>(string url, int maxAgeSeconds, out List<T> pulseObject) where T : PulseObject
+		public bool GetRecentCachedPulseData<T>(string url, int maxAgeSeconds, out List<T> pulseObject) where T : PulseObject
 		{
 			if (m_cache.GetCachedResults(url, maxAgeSeconds, out string data))
 			{
@@ -1270,7 +1279,7 @@ namespace Thump.Pulse
 				{
 					Log.Warn("Warning bad data was cached for " + url);
 				}
-				return pulseObject != null;
+				return pulseObject != null && pulseObject.Count > 0;
 			}
 			pulseObject = null;
 			return false;

@@ -67,15 +67,7 @@ namespace PulseAPI.CSharp
 		public string Platform;
 		public string StartedAt;
 	}
-	/// <summary>
-	/// One analytics event recorded on the client. ObjectType/ObjectId attribute
-	/// the event to a piece of content -- both empty when the action has no
-	/// object. DurationMs is -1 for instantaneous actions (only timed operations
-	/// like TrackLoad/TrackStream set it). Detail is free-form context for the
-	/// long tail. Timestamp is the client clock, ISO-8601. Category is NOT here
-	/// -- the server derives it from Action at ingest. Plain public fields;
-	/// PulseWire emits field names verbatim as wire names.
-	/// </summary>
+	
 	public class PulseAnalyticsEvent
 	{
 		public eAction Action;
@@ -87,11 +79,6 @@ namespace PulseAPI.CSharp
 		public string Timestamp;
 	}
 
-	/// <summary>
-	/// A batch of analytics events POSTed by the client to the server intake.
-	/// Identity fields describe the sender; Events carries the rows. Plain
-	/// public fields for the same reason as PulseAnalyticsEvent.
-	/// </summary>
 	public class PulseAnalyticsBatch
 	{
 		public string DeviceId;
@@ -100,5 +87,19 @@ namespace PulseAPI.CSharp
 		public string User;
 		public string Platform;
 		public List<PulseAnalyticsEvent> Events;
+	}
+
+
+	public class PulseDiagnosticsEvent
+	{
+		public string DeviceId;
+		public string SessionId;
+		public string AppVersion;
+		public string User;
+		public string Platform;
+		public string ErrorType;
+		public string Location;
+		public string Detail;
+		public string Timestamp;
 	}
 }
