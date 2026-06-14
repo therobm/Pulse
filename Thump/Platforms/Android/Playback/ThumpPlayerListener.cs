@@ -53,6 +53,8 @@ namespace Thump.Playback.AndroidOS
 				_ => "UNKNOWN(" + reason + ")"
 			};
 
+			MainView.Analytics.Event(eAction.Stop, eResult.OK, ePulseWireType.Track, mediaItem.MediaId, -1);
+
 			Log.Info("ExoPlayer: mediaItemTransition reason=" + reasonStr + " item=" + (mediaItem?.MediaId ?? "null"));
 		}
 		public void OnMediaMetadataChanged(MediaMetadata mediaMetadata) { }

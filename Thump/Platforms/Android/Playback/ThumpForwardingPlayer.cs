@@ -1,4 +1,5 @@
 using AndroidX.Media3.Common;
+using PulseAPI.CSharp;
 
 namespace Thump.Playback.AndroidOS
 {
@@ -101,7 +102,10 @@ namespace Thump.Playback.AndroidOS
 			}
 			else
 			{
+				string outgoingId = CurrentTrackId();
+				long position = CurrentPosition;
 				base.SeekToNext();
+				ReportTrackChange(outgoingId, position);
 			}
 		}
 
@@ -113,7 +117,10 @@ namespace Thump.Playback.AndroidOS
 			}
 			else
 			{
+				string outgoingId = CurrentTrackId();
+				long position = CurrentPosition;
 				base.SeekToNextMediaItem();
+				ReportTrackChange(outgoingId, position);
 			}
 		}
 
@@ -125,7 +132,10 @@ namespace Thump.Playback.AndroidOS
 			}
 			else
 			{
+				string outgoingId = CurrentTrackId();
+				long position = CurrentPosition;
 				base.SeekToPrevious();
+				ReportTrackChange(outgoingId, position);
 			}
 		}
 
@@ -137,7 +147,48 @@ namespace Thump.Playback.AndroidOS
 			}
 			else
 			{
+				string outgoingId = CurrentTrackId();
+				long position = CurrentPosition;
 				base.SeekToPreviousMediaItem();
+				ReportTrackChange(outgoingId, position);
+			}
+		}
+
+		public override void Stop()
+		{
+			string outgoingId = CurrentTrackId();
+			long position = CurrentPosition;
+			base.Stop();
+			if (!string.IsNullOrEmpty(outgoingId))
+			{
+				MainView.Analytics.Event(eAction.Stop, eResult.OK, ePulseWireType.Track, outgoingId, position);
+			}
+		}
+
+		private string CurrentTrackId()
+		{
+			MediaItem current = CurrentMediaItem;
+			if (current == null)
+			{
+				return "";
+			}
+			return current.MediaId;
+		}
+
+		private void ReportTrackChange(string outgoingId, long outgoingPositionMs)
+		{
+			string newId = CurrentTrackId();
+			if (outgoingId == newId)
+			{
+				return;
+			}
+			if (!string.IsNullOrEmpty(outgoingId))
+			{
+				MainView.Analytics.Event(eAction.Stop, eResult.OK, ePulseWireType.Track, outgoingId, outgoingPositionMs);
+			}
+			if (!string.IsNullOrEmpty(newId))
+			{
+				MainView.Analytics.Event(eAction.Play, eResult.OK, ePulseWireType.Track, newId);
 			}
 		}
 	}

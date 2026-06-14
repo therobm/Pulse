@@ -27,7 +27,6 @@ namespace Thump.Playback.AndroidOS
 		private MediaController m_controller;
 		private Google.Common.Util.Concurrent.IListenableFuture m_onControllerConnected;
 		private Timer m_ticker;
-		private PulseTrack m_currentTrack = null;
 
 		private List<PulseTrack> m_queue = new List<PulseTrack>();
 	
@@ -157,7 +156,6 @@ namespace Thump.Playback.AndroidOS
 			m_controller.Play();
 			m_ticker.Start();
 
-			m_currentTrack = startTrack;
 			m_lastMediaId = startTrack.Id;
 			m_mainView.OnCurrentTrackChanged(startTrack);
 			
@@ -245,10 +243,6 @@ namespace Thump.Playback.AndroidOS
 			}
 			float currentPosition = m_controller.CurrentPosition;
 
-			if (m_currentTrack != null)
-			{
-				MainView.Analytics.Event(eAction.Stop, eResult.OK, ePulseWireType.Track, m_currentTrack.Id, currentPosition);
-			}
 
 			m_controller.SeekToNextMediaItem();
 		}
