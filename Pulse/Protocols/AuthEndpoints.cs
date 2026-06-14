@@ -278,7 +278,7 @@ namespace Pulse.Protocols
 				request = null;
 			}
 
-			if (request == null || string.IsNullOrEmpty(request.Username))
+			if (request == null || string.IsNullOrEmpty(request.Id))
 			{
 				return Respond("missing_fields", HttpStatusCode.BadRequest);
 			}
@@ -291,8 +291,7 @@ namespace Pulse.Protocols
 				return Respond("password_too_short", HttpStatusCode.OK);
 			}
 
-			string targetUsername = request.Username;
-			User targetUser = m_pulseData.LookupUserByName(targetUsername);
+			User targetUser = m_pulseData.GetUser(request.Id);
 			if (targetUser == null)
 			{
 				return Respond("user_not_found", HttpStatusCode.OK);
@@ -440,11 +439,14 @@ namespace Pulse.Protocols
 
 			m_rateLimiter.RecordSuccess(clientIp);
 
-			Log.Info("Auth: created token for '" + request.Username + "' label='" + request.Label + "'");
+			Log.Info("Auth: created token for '" + request.Id + "' label='" + request.Label + "'");
+
+			User user = m_pulseData.GetUser(request.Id);
 
 			PulseToken result = new PulseToken();
 			result.Token = token;
-			result.Username = request.Username;
+			result.Id = user.Id;
+			result.Username = user.Name;
 			result.Label = request.Label;
 			result.CreatedAt = DateTime.UtcNow.ToString("o");
 
