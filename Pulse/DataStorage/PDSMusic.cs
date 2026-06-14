@@ -19,6 +19,7 @@ namespace Pulse.DataStorage
 		Audiobook,
 		AudiobookChapter,
 		Diagnostic,
+		AnalyticRecordItem,
 	}
 
 	public abstract class PulseDataObject

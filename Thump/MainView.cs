@@ -488,12 +488,10 @@ namespace Thump
 			if (CurrentTrackIsSeries())
 			{
 				m_player.SeekRelative(10000);
-				m_analytics.Event(eAction.Next, eResult.OK, ePulseWireType.Track, CurrentTrackId(), -1, "series-skip");
 			}
 			else
 			{
 				m_player.Next();
-				m_analytics.Event(eAction.Next, eResult.OK, ePulseWireType.Track, CurrentTrackId());
 			}
 		}
 
@@ -502,12 +500,10 @@ namespace Thump
 			if (CurrentTrackIsSeries())
 			{
 				m_player.SeekRelative(-10000);
-				m_analytics.Event(eAction.Previous, eResult.OK, ePulseWireType.Track, CurrentTrackId(), -1, "series-skip");
 			}
 			else
 			{
 				m_player.Previous();
-				m_analytics.Event(eAction.Previous, eResult.OK, ePulseWireType.Track, CurrentTrackId());
 			}
 		}
 

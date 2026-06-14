@@ -34,6 +34,7 @@ namespace Thump.Playback.AndroidOS
 				builder.Add(BasePlayer.InterfaceConsts.CommandSeekToNextMediaItem);
 				builder.Add(BasePlayer.InterfaceConsts.CommandSeekToPrevious);
 				builder.Add(BasePlayer.InterfaceConsts.CommandSeekToPreviousMediaItem);
+
 				return builder.Build();
 			}
 		}

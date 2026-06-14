@@ -205,7 +205,7 @@ namespace Thump.Pulse
 		{
 			return BuildStreamUrl(trackId);
 		}
-
+		public abstract void Login(string username, string password, bool rememberMe, Action<PulseLoginResult> onComplete);
 		public abstract void GetTrack(string trackId, Action<PulseTrack> onComplete);
 		public abstract void GetArtists(Action<List<PulseArtist>> onComplete);
 		public abstract void GetArtist(string artistId, Action<PulseArtistDetails> onComplete);

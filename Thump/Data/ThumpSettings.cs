@@ -20,6 +20,7 @@ namespace Thump.Data
 		private const string s_keyCacheLimitBytes = "thump.cache.limitBytes";
 		private const string s_keyServerIp = "thump.login.ip";
 		private const string s_keyServerPort = "thump.login.port";
+		private const string s_keyUserID = "thump.login.userid";
 		private const string s_keyUsername = "thump.login.username";
 		private const string s_keyPassword = "thump.login.password";
 		private const string s_keyUseHttps = "thump.login.useHttps";
@@ -96,9 +97,20 @@ namespace Thump.Data
 		{
 			return Preferences.Get(s_keyUsername, "Rob");
 		}
+
 		public static void SetUsername(string value)
 		{
 			Preferences.Set(s_keyUsername, value);
+		}
+
+		public static string GetUserID()
+		{
+			return Preferences.Get(s_keyUserID, "");
+		}
+
+		public static void SetUserID(string userId)
+		{
+			Preferences.Set(s_keyUserID, userId);
 		}
 
 		public static string GetPassword()

@@ -82,6 +82,7 @@ namespace Pulse
 
 		private PulseData m_pulseData;
 		private MusicManager m_musicManager;
+		private AnalyticsData m_analyticsData;
 		private DiagnosticsData m_diagnosticsData;
 		private PodcastManager m_podcastManager;
 		private AudiobookManager m_audiobookManager;
@@ -124,6 +125,9 @@ namespace Pulse
 			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
 
+			m_analyticsData = new AnalyticsData(config);
+			m_analyticsData.Load();
+
 			m_diagnosticsData = new DiagnosticsData(config);
 			m_diagnosticsData.Load();
 
@@ -133,7 +137,7 @@ namespace Pulse
 			m_audiobookManager = new AudiobookManager(config);
 			m_audiobookManager.Run();
 
-			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_diagnosticsData, m_podcastManager, m_audiobookManager);
+			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_analyticsData, m_diagnosticsData, m_podcastManager, m_audiobookManager);
 			
 			m_authEndpoints = new AuthEndpoints(m_pulseData);
 
