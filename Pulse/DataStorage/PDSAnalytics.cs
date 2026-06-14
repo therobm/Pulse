@@ -45,7 +45,7 @@ namespace Pulse.DataStorage
 		{
 			Id = Guid.NewGuid().ToString();	
 		}
-		public float GetScore(PulseData pulseData)
+		public float GetScore(PulseData pulseData, AnalyticsData analyticsData)
 		{
 			float score = 0;
 
@@ -58,14 +58,62 @@ namespace Pulse.DataStorage
 						float trackDuration = track.DurationSeconds;
 
 						double maxPlayTime = PlayCount * trackDuration;
-						score = (float)(TotalPlayedSeconds / maxPlayTime);
+						if (maxPlayTime > 0)
+							score = (float)(TotalPlayedSeconds / maxPlayTime);
 						break;
 					}
 				case eAnalyticType.Album:
+					AlbumData album = pulseData.GetAlbum(ItemID);
+					List<string> trackIds = new List<string>();
+					for (int i = 0; i < album.Tracks.Count; i++)
+					{
+						trackIds.Add(album.Tracks[i].Id);
+					}
+					List<AnaliticUserItem> tracks = analyticsData.GetRankedItems(trackIds, eAnalyticType.Track);
+					score = 0;
+					if (tracks.Count > 0)
+					{
+						foreach (AnaliticUserItem track in tracks)
+						{
+							score += track.GetScore(pulseData, analyticsData);
+						}
+						score /= tracks.Count;
+					}
 					break;
 				case eAnalyticType.Artist:
+					ArtistData artist = pulseData.GetArtist(ItemID);
+					List<string> artistTrackIds = new List<string>();
+					for (int i = 0; i < artist.Albums.Count; i++)
+					{
+						AlbumData artistAlbum = artist.Albums[i];
+						for (int j = 0; j < artistAlbum.Tracks.Count; j++)
+						{
+							artistTrackIds.Add(artistAlbum.Tracks[j].Id);
+						}
+					}
+					List<AnaliticUserItem> artistTracks = analyticsData.GetRankedItems(artistTrackIds, eAnalyticType.Track);
+					score = 0;
+					if (artistTracks.Count > 0)
+					{
+						foreach (AnaliticUserItem track in artistTracks)
+						{
+							score += track.GetScore(pulseData, analyticsData);
+						}
+						score /= artistTracks.Count;
+					}
 					break;
 				case eAnalyticType.Playlist:
+					PlaylistData playlist = pulseData.GetPlaylist(ItemID);
+					List<AnaliticUserItem> playlistTracks = analyticsData.GetRankedItems(playlist.TrackIds, eAnalyticType.Track);
+					score = 0;
+					if (playlistTracks.Count > 0)
+					{
+						foreach (AnaliticUserItem track in playlistTracks)
+						{
+							score += track.GetScore(pulseData, analyticsData);
+						}
+						score /= playlistTracks.Count;
+					}
 					break;
 				default:
 					//noop

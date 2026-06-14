@@ -173,24 +173,6 @@ namespace Pulse.Protocols
 			return Respond(context, response);
 		}
 
-		private PulseArtist BuildArtist(ArtistData artist, string user)
-		{
-			PulseArtist pulseArtist = new PulseArtist();
-			pulseArtist.Id = artist.Id;
-			pulseArtist.Name = artist.Name;
-			pulseArtist.AlbumCount = artist.Albums.Count;
-			int trackCount = 0;
-			for (int index = 0; index < artist.Albums.Count; index++)
-			{
-				trackCount = trackCount + artist.Albums[index].Tracks.Count;
-			}
-			pulseArtist.TrackCount = trackCount;
-			pulseArtist.CoverArt = "ar-" + artist.Id;
-			pulseArtist.Score = artist.GetScore(user);
-			pulseArtist.LastPlayed = artist.LastPlayed;
-			return pulseArtist;
-		}
-
 		private PulseAlbum BuildAlbum(AlbumData album)
 		{
 			PulseAlbum pulseAlbum = new PulseAlbum();
@@ -227,20 +209,7 @@ namespace Pulse.Protocols
 			return pulseAlbum;
 		}
 
-		private PulseTrack BuildTrack(TrackData track, string user)
-		{
-			PulseTrack pulseTrack = new PulseTrack();
-			pulseTrack.Id = track.Id;
-			pulseTrack.Title = track.Title;
-			pulseTrack.Artist = track.Artist;
-			pulseTrack.ArtistId = track.ArtistId;
-			pulseTrack.Album = track.Album;
-			pulseTrack.AlbumId = track.AlbumId;
-			pulseTrack.CoverArt = track.CoverArtId;
-			pulseTrack.Duration = track.DurationSeconds;
-			pulseTrack.Starred = track.IsStarredBy(user);
-			return pulseTrack;
-		}
+
 
 		/// <summary>
 		/// Builds a PulseTrack envelope from a podcast episode so the /track
@@ -506,13 +475,13 @@ namespace Pulse.Protocols
 
 		public IResult GetArtists(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			List<PulseArtist> pulseArtists = new List<PulseArtist>();
 			List<ArtistData> allArtists = m_musicManager.GetAllArtists();
 			for (int index = 0; index < allArtists.Count; index++)
 			{
-				pulseArtists.Add(BuildArtist(allArtists[index], user));
+				pulseArtists.Add(allArtists[index].BuildPulse());
 			}
 			return RespondList(context, pulseArtists);
 		}
@@ -520,7 +489,7 @@ namespace Pulse.Protocols
 		public IResult GetArtist(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			ArtistData artist = m_musicManager.GetArtist(id);
 			if (artist == null)
@@ -530,7 +499,7 @@ namespace Pulse.Protocols
 
 			PulseArtistDetails details = new PulseArtistDetails();
 			details.Id = artist.Id;
-			details.Artist = BuildArtist(artist, user);
+			details.Artist = artist.BuildPulse();
 			for (int index = 0; index < artist.Albums.Count; index++)
 			{
 				details.Albums.Add(BuildAlbum(artist.Albums[index]));
@@ -541,7 +510,7 @@ namespace Pulse.Protocols
 		public IResult GetArtistTracks(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			ArtistData artist = m_musicManager.GetArtist(id);
 			if (artist == null)
@@ -551,7 +520,7 @@ namespace Pulse.Protocols
 
 			PulseArtistFullDetails details = new PulseArtistFullDetails();
 			details.Id = artist.Id;
-			details.Artist = BuildArtist(artist, user);
+			details.Artist = artist.BuildPulse();
 			for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
 			{
 				AlbumData album = artist.Albums[albumIndex];
@@ -563,7 +532,7 @@ namespace Pulse.Protocols
 				ordered.Sort(CompareTrackByDiscThenNumber);
 				for (int trackIndex = 0; trackIndex < ordered.Count; trackIndex++)
 				{
-					albumDetails.Tracks.Add(BuildTrack(ordered[trackIndex], user));
+					albumDetails.Tracks.Add(ordered[trackIndex].BuildPulse());
 				}
 				details.AlbumDetails.Add(albumDetails);
 			}
@@ -583,7 +552,7 @@ namespace Pulse.Protocols
 			{
 				offset = 0;
 			}
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			string type = "random";
 			if (!string.IsNullOrEmpty(typeRaw))
@@ -726,7 +695,7 @@ namespace Pulse.Protocols
 				{
 					AlbumData album = allAlbums[index];
 					bool isStarred = false;
-					album.Starred.TryGetValue(user, out isStarred);
+					album.Starred.TryGetValue(userId, out isStarred);
 					if (isStarred)
 					{
 						filtered.Add(album);
@@ -797,7 +766,7 @@ namespace Pulse.Protocols
 		public IResult GetAlbum(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			AlbumData album = m_musicManager.GetAlbum(id);
 			if (album == null)
@@ -813,7 +782,7 @@ namespace Pulse.Protocols
 			details.Album = BuildAlbum(album);
 			for (int index = 0; index < ordered.Count; index++)
 			{
-				details.Tracks.Add(BuildTrack(ordered[index], user));
+				details.Tracks.Add(ordered[index].BuildPulse());
 			}
 			return RespondObject(context, details);
 		}
@@ -829,24 +798,24 @@ namespace Pulse.Protocols
 		public IResult GetTrack(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			TrackData track = m_musicManager.GetTrack(id);
 			if (track != null)
 			{
-				return RespondObject(context, BuildTrack(track, user));
+				return RespondObject(context, track.BuildPulse());
 			}
 
 			Episode episode = m_podcastManager.GetEpisode(id);
 			if (episode != null)
 			{
-				return RespondObject(context, BuildTrackFromEpisode(episode, user));
+				return RespondObject(context, BuildTrackFromEpisode(episode, userId));
 			}
 
 			Chapter chapter = m_audiobookManager.GetChapter(id);
 			if (chapter != null)
 			{
-				return RespondObject(context, BuildTrackFromChapter(chapter, user));
+				return RespondObject(context, BuildTrackFromChapter(chapter, userId));
 			}
 
 			return RespondStatus(context, "not_found");
@@ -891,7 +860,7 @@ namespace Pulse.Protocols
 		public IResult GetGenreTracks(HttpContext context)
 		{
 			string genre = QueryParameters.GetString(context, "genre");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 			int count = QueryParameters.GetInt(context, "count", 10);
 			int offset = QueryParameters.GetInt(context, "offset", 0);
 			if (offset < 0)
@@ -941,7 +910,7 @@ namespace Pulse.Protocols
 			int end = Math.Min(matches.Count, offset + count);
 			for (int index = offset; index < end; index++)
 			{
-				details.Tracks.Add(BuildTrack(matches[index], user));
+				details.Tracks.Add(matches[index].BuildPulse());
 			}
 			return RespondObject(context, details);
 		}
@@ -963,7 +932,7 @@ namespace Pulse.Protocols
 		public IResult GetPlaylist(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			if (string.IsNullOrEmpty(id))
 			{
@@ -982,7 +951,7 @@ namespace Pulse.Protocols
 		{
 			string playlistId = QueryParameters.GetString(context, "playlistId");
 			string name = QueryParameters.GetString(context, "name");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 			List<string> trackIds = QueryParameters.GetList(context, "songId");
 
 			PlaylistData playlist = null;
@@ -1006,7 +975,7 @@ namespace Pulse.Protocols
 					return RespondStatus(context, "name_taken");
 				}
 				playlist = new PlaylistData();
-				playlist.Id = MusicManager.GenerateID("playlist/" + user + "/" + name + "/" + DateTime.UtcNow.Ticks);
+				playlist.Id = MusicManager.GenerateID("playlist/" + userId + "/" + name + "/" + DateTime.UtcNow.Ticks);
 				playlist.Name = name;
 			}
 
@@ -1033,7 +1002,7 @@ namespace Pulse.Protocols
 			string playlistId = QueryParameters.GetString(context, "playlistId");
 			string name = QueryParameters.GetString(context, "name");
 			string comment = QueryParameters.GetString(context, "comment");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 			List<string> trackIdsToAdd = QueryParameters.GetList(context, "songIdToAdd");
 			List<string> indicesToRemove = QueryParameters.GetList(context, "songIndexToRemove");
 
@@ -1163,7 +1132,7 @@ namespace Pulse.Protocols
 				return RespondObject(context, new PulseSearchData());
 			}
 
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 			int artistCount = QueryParameters.GetInt(context, "artistCount", 20);
 			int albumCount = QueryParameters.GetInt(context, "albumCount", 20);
 			int trackCount = QueryParameters.GetInt(context, "songCount", 20);
@@ -1180,7 +1149,7 @@ namespace Pulse.Protocols
 			{
 				if (allArtists[i].Name.ToLowerInvariant().Contains(lowerQuery))
 				{
-					result.Artists.Add(BuildArtist(allArtists[i], user));
+					result.Artists.Add(allArtists[i].BuildPulse());
 					artistHits++;
 				}
 			}
@@ -1209,7 +1178,7 @@ namespace Pulse.Protocols
 					if (track.Title.ToLowerInvariant().Contains(lowerQuery) ||
 						track.Artist.ToLowerInvariant().Contains(lowerQuery))
 					{
-						result.Tracks.Add(BuildTrack(track, user));
+						result.Tracks.Add(track.BuildPulse());
 						trackHits++;
 					}
 				}
@@ -1219,7 +1188,7 @@ namespace Pulse.Protocols
 
 		public IResult GetFavorites(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			PulseSearchData result = new PulseSearchData();
 
@@ -1228,10 +1197,10 @@ namespace Pulse.Protocols
 			{
 				ArtistData artist = allArtists[index];
 				bool artistStarred = false;
-				artist.Starred.TryGetValue(user, out artistStarred);
+				artist.Starred.TryGetValue(userId, out artistStarred);
 				if (artistStarred)
 				{
-					result.Artists.Add(BuildArtist(artist, user));
+					result.Artists.Add(artist.BuildPulse());
 				}
 			}
 
@@ -1240,7 +1209,7 @@ namespace Pulse.Protocols
 			{
 				AlbumData album = allAlbums[albumIndex];
 				bool albumStarred = false;
-				album.Starred.TryGetValue(user, out albumStarred);
+				album.Starred.TryGetValue(userId, out albumStarred);
 				if (albumStarred)
 				{
 					result.Albums.Add(BuildAlbum(album));
@@ -1250,10 +1219,10 @@ namespace Pulse.Protocols
 				{
 					TrackData track = album.Tracks[trackIndex];
 					bool trackStarred = false;
-					track.Starred.TryGetValue(user, out trackStarred);
+					track.Starred.TryGetValue(userId, out trackStarred);
 					if (trackStarred)
 					{
-						result.Tracks.Add(BuildTrack(track, user));
+						result.Tracks.Add(track.BuildPulse());
 					}
 				}
 			}
@@ -1275,7 +1244,7 @@ namespace Pulse.Protocols
 		{
 			string id = QueryParameters.GetString(context, "id");
 			string type = QueryParameters.GetString(context, "type");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			if (string.IsNullOrEmpty(id))
 			{
@@ -1304,7 +1273,7 @@ namespace Pulse.Protocols
 				trackId = id;
 			}
 
-			m_musicManager.UpdateStar(user, trackId, albumId, artistId, starred);
+			m_musicManager.UpdateStar(userId, trackId, albumId, artistId, starred);
 			return Respond(context, new PulseResponse());
 		}
 
@@ -1320,7 +1289,7 @@ namespace Pulse.Protocols
 		/// </summary>
 		public IResult ReportAnalytics(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			string body;
 			using (StreamReader reader = new StreamReader(context.Request.Body))
@@ -1339,7 +1308,7 @@ namespace Pulse.Protocols
 				return RespondStatus(context, "missing_id");
 			}
 
-			m_musicManager.OnPlaybackEvent(user, analytics);
+			m_musicManager.OnPlaybackEvent(userId, analytics);
 			return Respond(context, new PulseResponse());
 		}
 
@@ -1401,80 +1370,32 @@ namespace Pulse.Protocols
 			return types;
 		}
 
-		private PulsePodcast BuildPulsePodcast(Podcast series, string user)
-		{
-			PulsePodcast pulsePodcast = new PulsePodcast();
-			pulsePodcast.Id = series.Id;
-			pulsePodcast.Title = series.Title;
-			pulsePodcast.Author = series.Author;
-			pulsePodcast.Description = series.Description;
-			pulsePodcast.CoverArt = "se-" + series.Id;
+		
 
-			List<Episode> downloaded = m_podcastManager.GetDownloadedItems(series.Id);
-			pulsePodcast.EpisodeCount = downloaded.Count;
-			pulsePodcast.ItemCount = downloaded.Count;
-			pulsePodcast.UnplayedCount = m_podcastManager.GetUnplayedCount(series.Id, user);
-
-			Podcast.UserData userSeries;
-			bool hasUser = series.Users.TryGetValue(user, out userSeries);
-			if (hasUser)
-			{
-				pulsePodcast.Subscribed = userSeries.Subscribed;
-				pulsePodcast.LastItemId = userSeries.LastEpisodeId;
-				pulsePodcast.LastPlayed = userSeries.LastPlayed.ToString("o");
-			}
-
-			pulsePodcast.FeedUrl = series.FeedUrl;
-			pulsePodcast.AutoDownload = series.AutoDownload;
-			pulsePodcast.RetentionPolicy = series.Retention.ToString();
-			pulsePodcast.RetentionValue = series.RetentionValue;
-
-			return pulsePodcast;
-		}
-
-		private PulsePodcastEpisode BuildPulsePodcastEpisode(Episode item, string user)
-		{
-			PulsePodcastEpisode episode = new PulsePodcastEpisode();
-			episode.Id = item.Id;
-			episode.SeriesId = item.PodcastId;
-			episode.Title = item.Title;
-			episode.Description = item.Description;
-			episode.OrderIndex = item.OrderIndex;
-			episode.PublishedDate = item.PublishedDate;
-			episode.Duration = item.DurationSeconds;
-			episode.CoverArt = "se-" + item.PodcastId;
-
-			Episode.UserData progress;
-			if (item.Users.TryGetValue(user, out progress))
-			{
-				episode.PositionSeconds = progress.PositionSeconds;
-				episode.Completed = progress.Completed;
-			}
-			return episode;
-		}
+		
 
 		public IResult GetPodcasts(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
-			List<Podcast> subscribed = m_podcastManager.GetSubscribedPodcasts(user);
+			List<Podcast> subscribed = m_podcastManager.GetSubscribedPodcasts(userId);
 			List<PulsePodcast> pulsePodcasts = new List<PulsePodcast>();
 			for (int index = 0; index < subscribed.Count; index++)
 			{
-				pulsePodcasts.Add(BuildPulsePodcast(subscribed[index], user));
+				pulsePodcasts.Add(subscribed[index].BuildPulsePodcast(m_podcastManager, userId));
 			}
 			return RespondList(context, pulsePodcasts);
 		}
 
 		public IResult GetAllPodcasts(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			List<Podcast> allSeries = m_podcastManager.GetAllPodcasts();
 			List<PulsePodcast> pulsePodcasts = new List<PulsePodcast>();
 			for (int index = 0; index < allSeries.Count; index++)
 			{
-				pulsePodcasts.Add(BuildPulsePodcast(allSeries[index], user));
+				pulsePodcasts.Add(allSeries[index].BuildPulsePodcast(m_podcastManager, userId));
 			}
 			return RespondList(context, pulsePodcasts);
 		}
@@ -1482,7 +1403,7 @@ namespace Pulse.Protocols
 		public IResult GetPodcast(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			Podcast podcast = m_podcastManager.GetPodcast(id);
 			if (podcast == null)
@@ -1491,47 +1412,17 @@ namespace Pulse.Protocols
 			}
 
 			PulsePodcastDetails details = new PulsePodcastDetails();
-			details.Series = BuildPulsePodcast(podcast, user);
+			details.Series = podcast.BuildPulsePodcast(m_podcastManager, userId);
 
 			List<Episode> downloaded = m_podcastManager.GetDownloadedItems(id);
 			for (int index = 0; index < downloaded.Count; index++)
 			{
-				details.Episodes.Add(BuildPulsePodcastEpisode(downloaded[index], user));
+				details.Episodes.Add(downloaded[index].BuildPulsePodcastEpisode(m_podcastManager, userId));
 			}
 			return RespondObject(context, details);
 		}
 
-		private PulseAudiobook BuildPulseAudiobook(Audiobook series, string user)
-		{
-			PulseAudiobook book = new PulseAudiobook();
-			book.Id = series.Id;
-			book.Title = series.Title;
-			book.Author = series.Author;
-			book.Narrator = series.Narrator;
-			book.Description = series.Description;
-			book.Collection = series.Collection;
-			book.CollectionIndex = series.CollectionIndex;
-			book.CoverArt = "se-" + series.Id;
-
-			List<Chapter> chapters = m_audiobookManager.GetChapters(series.Id);
-			book.ItemCount = chapters.Count;
-			int totalDuration = 0;
-			for (int i = 0; i < chapters.Count; i++)
-			{
-				totalDuration = totalDuration + chapters[i].DurationSeconds;
-			}
-			book.TotalDuration = totalDuration;
-			book.UnplayedCount = 0;
-
-			Audiobook.UserData userData;
-			bool hasUser = series.Users.TryGetValue(user, out userData);
-			if (hasUser)
-			{
-				book.LastItemId = userData.LastChapterId;
-				book.LastPlayed = userData.LastPlayed.ToString("o");
-			}
-			return book;
-		}
+		
 
 		private PulseChapter BuildPulseChapter(Chapter item, string user, string streamId)
 		{
@@ -1558,13 +1449,13 @@ namespace Pulse.Protocols
 
 		public IResult GetAudiobooks(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			List<Audiobook> allBooks = m_audiobookManager.GetAllAudiobooks();
 			List<PulseAudiobook> pulseBooks = new List<PulseAudiobook>();
 			for (int i = 0; i < allBooks.Count; i++)
 			{
-				pulseBooks.Add(BuildPulseAudiobook(allBooks[i], user));
+				pulseBooks.Add(allBooks[i].BuildPulseAudiobook(m_audiobookManager, userId));
 			}
 			return RespondList(context, pulseBooks);
 		}
@@ -1572,7 +1463,7 @@ namespace Pulse.Protocols
 		public IResult GetAudiobook(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			Audiobook series = m_audiobookManager.GetBook(id);
 			if (series == null)
@@ -1581,7 +1472,7 @@ namespace Pulse.Protocols
 			}
 
 			PulseAudiobookDetails details = new PulseAudiobookDetails();
-			details.Book = BuildPulseAudiobook(series, user);
+			details.Book = series.BuildPulseAudiobook(m_audiobookManager, userId);
 
 			List<Chapter> chapters = m_audiobookManager.GetChapters(id);
 
@@ -1625,7 +1516,7 @@ namespace Pulse.Protocols
 						streamId = resolved;
 					}
 				}
-				details.Chapters.Add(BuildPulseChapter(chapter, user, streamId));
+				details.Chapters.Add(BuildPulseChapter(chapter, userId, streamId));
 			}
 			return RespondObject(context, details);
 		}
@@ -1638,14 +1529,14 @@ namespace Pulse.Protocols
 				return RespondStatus(context, "missing_feedUrl");
 			}
 			bool subscribe = QueryParameters.GetBool(context, "subscribe");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
-			Podcast podcast = m_podcastManager.AddPodcast(feedUrl, user, subscribe);
+			Podcast podcast = m_podcastManager.AddPodcast(feedUrl, userId, subscribe);
 			if (podcast == null)
 			{
 				return RespondStatus(context, "add_failed");
 			}
-			return RespondObject(context, BuildPulsePodcast(podcast, user));
+			return RespondObject(context, podcast.BuildPulsePodcast(m_podcastManager, userId));
 		}
 
 		/// <summary>
@@ -1701,7 +1592,7 @@ namespace Pulse.Protocols
 		public IResult UpdatePodcast(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 			Podcast series = m_podcastManager.GetPodcast(id);
 			if (series == null)
 			{
@@ -1724,33 +1615,33 @@ namespace Pulse.Protocols
 
 			m_podcastManager.UpdatePodcastSettings(id, retention, retentionValue, autoDownload);
 			Podcast updated = m_podcastManager.GetPodcast(id);
-			return RespondObject(context, BuildPulsePodcast(updated, user));
+			return RespondObject(context, updated.BuildPulsePodcast(m_podcastManager, userId));
 		}
 
 		public IResult SubscribePodcast(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
-			m_podcastManager.SetSubscribed(id, user, true);
+			string userId = QueryParameters.GetUserId(context);
+			m_podcastManager.SetSubscribed(id, userId, true);
 			return RespondStatus(context, "ok");
 		}
 
 		public IResult UnsubscribePodcast(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
-			m_podcastManager.SetSubscribed(id, user, false);
+			string userId = QueryParameters.GetUserId(context);
+			m_podcastManager.SetSubscribed(id, userId, false);
 			return RespondStatus(context, "ok");
 		}
 
 		public IResult EpisodeProgress(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 			string positionRaw = QueryParameters.GetString(context, "positionSeconds");
 			int positionSeconds = 0;
 			int.TryParse(positionRaw, out positionSeconds);
-			m_podcastManager.SaveProgress(id, user, positionSeconds);
+			m_podcastManager.SaveProgress(id, userId, positionSeconds);
 			return RespondStatus(context, "ok");
 		}
 
@@ -1795,7 +1686,7 @@ namespace Pulse.Protocols
 				{
 					case eAction.Play:
 					{
-						m_analyticsData.OnItemPlayed(userID, objectType, objectId);
+						m_analyticsData.OnItemPlayed(userID, objectType, objectId, m_musicManager);
 						break;
 					}
 					case eAction.Stop:
@@ -1837,7 +1728,7 @@ namespace Pulse.Protocols
 			{
 				case eAction.Play:
 				{
-					m_analyticsData.OnItemPlayed(userId, objectType, objectId);
+					m_analyticsData.OnItemPlayed(userId, objectType, objectId, m_musicManager);
 					break;
 				}
 				case eAction.Stop:

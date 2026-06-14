@@ -151,14 +151,17 @@ namespace Pulse.Podcasts
 			RssFeedParser parser = new RssFeedParser();
 			ParsedFeed parsed = parser.Parse(feedXml);
 
-			Podcast existingSeries = m_data.LoadPodcast(podcastId);
+			Podcast series = m_data.LoadPodcast(podcastId);
 			string dateAdded = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
-			if (existingSeries != null && !string.IsNullOrEmpty(existingSeries.DateAdded))
+			if (series != null && !string.IsNullOrEmpty(series.DateAdded))
 			{
-				dateAdded = existingSeries.DateAdded;
+				dateAdded = series.DateAdded;
+			}
+			else
+			{
+				series = new Podcast();
 			}
 
-			Podcast series = new Podcast();
 			series.Id = podcastId;
 			series.Title = parsed.Channel.Title;
 			series.Author = parsed.Channel.Author;
@@ -249,7 +252,7 @@ namespace Pulse.Podcasts
 				podcast.Retention = eRetentionPolicy.KeepN;
 				podcast.RetentionValue = 10;
 				podcast.AutoDownload = true;
-
+				podcast.MarkDirty();
 			}
 
 			bool shouldSubscribe = subscribe && !string.IsNullOrEmpty(userName);
@@ -260,9 +263,10 @@ namespace Pulse.Podcasts
 					podcast.Users[userName] = new Podcast.UserData();
 				}
 				podcast.Users[userName].Subscribed = true;
+				podcast.MarkDirty();
 			}
 
-			podcast.m_bIsDirty = true;
+			podcast.MarkDirty();
 			CacheArtwork(artworkUrl, podcast);
 
 			Thread downloadThread = new Thread(RunInitialDownload);
@@ -855,6 +859,7 @@ namespace Pulse.Podcasts
 			podcast.Retention = retention;
 			podcast.RetentionValue = retentionValue;
 			podcast.AutoDownload = autoDownload;
+			podcast.MarkDirty();
 
 			Thread settingsThread = new Thread(RunSettingsApply);
 			settingsThread.IsBackground = true;
@@ -883,7 +888,7 @@ namespace Pulse.Podcasts
 				podcast.Users[userName] = new Podcast.UserData();
 			}
 			podcast.Users[userName].Subscribed = subscribed;
-			podcast.m_bIsDirty = true;
+			podcast.MarkDirty();
 		}
 
 		public void SaveProgress(string episodeId, string userName, int positionSeconds)
@@ -918,7 +923,7 @@ namespace Pulse.Podcasts
 				userData.Completed = true;
 			}
 			episode.Users[userName] = userData;
-			episode.m_bIsDirty = true;
+			episode.MarkDirty();
 
 			Podcast parent = m_data.LoadPodcast(episode.PodcastId);
 			if (parent != null)
@@ -929,7 +934,7 @@ namespace Pulse.Podcasts
 				}
 				parent.Users[userName].LastEpisodeId = episodeId;
 				parent.Users[userName].LastPlayed = DateTime.UtcNow;
-				parent.m_bIsDirty = true;
+				parent.MarkDirty();
 			}
 		}
 

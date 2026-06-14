@@ -476,7 +476,7 @@ namespace Pulse
 			for (int i = 0; i < items.Count;i++)
 			{
 				string itemId = items[i].ItemID;
-				float score = items[i].GetScore(m_pulseData);
+				float score = items[i].GetScore(m_pulseData, m_analyticsData);
 
 				PulseMusicObject musicItem = null;
 				switch (items[i].AnalyticType)

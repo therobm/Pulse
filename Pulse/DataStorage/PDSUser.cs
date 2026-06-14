@@ -35,7 +35,7 @@ namespace Pulse.DataStorage
 			tokenData.LastUsed = DateTime.UtcNow;
 
 			Tokens.Add(tokenData);
-			m_bIsDirty = true;
+			MarkDirty();
 		}
 	}
 

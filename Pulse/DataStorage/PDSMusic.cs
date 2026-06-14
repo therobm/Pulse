@@ -28,7 +28,19 @@ namespace Pulse.DataStorage
 		public string Id;
 
 		[JsonIgnore]
-		public bool m_bIsDirty = false;
+		private bool m_bIsDirty;
+		public void ClearDirty()
+		{
+		}
+		public bool IsDirty()
+		{
+			return m_bIsDirty;
+		}
+		public void MarkDirty()
+		{
+			m_bIsDirty = true;
+		}
+
 	}
 
 
@@ -281,7 +293,7 @@ namespace Pulse.DataStorage
 				if (TrackIds[i] == badId)
 				{
 					TrackIds[i] = goodId;
-					m_bIsDirty = true;
+					MarkDirty();
 				}
 			}
 		}

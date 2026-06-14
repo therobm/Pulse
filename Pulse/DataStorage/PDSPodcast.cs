@@ -1,3 +1,5 @@
+using Pulse.Podcasts;
+using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -35,33 +37,40 @@ namespace Pulse.DataStorage
 		public string ArtworkPath = "";
 		public string DateAdded = "";
 		public Dictionary<string, UserData> Users = new Dictionary<string, UserData>();
+		public string FeedUrl = "";
+		public eRetentionPolicy Retention = eRetentionPolicy.KeepN;
+		public int RetentionValue = 10;
+		public bool AutoDownload = true;
 
-		private string m_feedUrl = "";
-		public string FeedUrl
+		public PulsePodcast BuildPulsePodcast(PodcastManager podcastManager, string userId)
 		{
-			get { return m_feedUrl; }
-			set { m_feedUrl = value; m_bIsDirty = true; }
-		}
+			PulsePodcast pulsePodcast = new PulsePodcast();
+			pulsePodcast.Id = Id;
+			pulsePodcast.Title = Title;
+			pulsePodcast.Author = Author;
+			pulsePodcast.Description = Description;
+			pulsePodcast.CoverArt = "se-" + Id;	
 
-		private eRetentionPolicy m_retention = eRetentionPolicy.KeepAll;
-		public eRetentionPolicy Retention
-		{
-			get { return m_retention; }
-			set { m_retention = value; m_bIsDirty = true; }
-		}
+			List<Episode> downloaded = podcastManager.GetDownloadedItems(Id);
+			pulsePodcast.EpisodeCount = downloaded.Count;
+			pulsePodcast.ItemCount = downloaded.Count;
+			pulsePodcast.UnplayedCount = podcastManager.GetUnplayedCount(Id, userId);
 
-		private int m_retentionValue;
-		public int RetentionValue
-		{
-			get { return m_retentionValue; }
-			set { m_retentionValue = value; m_bIsDirty = true; }
-		}
+			Podcast.UserData userSeries;
+			bool hasUser = Users.TryGetValue(userId, out userSeries);
+			if (hasUser)
+			{
+				pulsePodcast.Subscribed = userSeries.Subscribed;
+				pulsePodcast.LastItemId = userSeries.LastEpisodeId;
+				pulsePodcast.LastPlayed = userSeries.LastPlayed.ToString("o");
+			}
 
-		private bool m_autoDownload;
-		public bool AutoDownload
-		{
-			get { return m_autoDownload; }
-			set { m_autoDownload = value; m_bIsDirty = true; }
+			pulsePodcast.FeedUrl = FeedUrl;
+			pulsePodcast.AutoDownload = AutoDownload;
+			pulsePodcast.RetentionPolicy = Retention.ToString();
+			pulsePodcast.RetentionValue = RetentionValue;
+
+			return pulsePodcast;
 		}
 	}
 
@@ -84,34 +93,11 @@ namespace Pulse.DataStorage
 		public int StartMs;
 		public int EndMs;
 		public Dictionary<string, UserData> Users = new Dictionary<string, UserData>();
-
-		private int m_durationSeconds;
-		public int DurationSeconds
-		{
-			get { return m_durationSeconds; }
-			set { m_durationSeconds = value; m_bIsDirty = true; }
-		}
-
-		private string m_localPath = "";
-		public string LocalPath
-		{
-			get { return m_localPath; }
-			set { m_localPath = value; m_bIsDirty = true; }
-		}
-
-		private long m_fileSizeBytes;
-		public long FileSizeBytes
-		{
-			get { return m_fileSizeBytes; }
-			set { m_fileSizeBytes = value; m_bIsDirty = true; }
-		}
-
-		private eDownloadState m_downloadState = eDownloadState.Discovered;
-		public eDownloadState DownloadState
-		{
-			get { return m_downloadState; }
-			set { m_downloadState = value; m_bIsDirty = true; }
-		}
+		public int DurationSeconds = 0;
+		public string LocalPath = "";
+		public long FileSizeBytes = 0;
+		public eDownloadState DownloadState = eDownloadState.Discovered;
+		
 
 		public bool NeedsDownload()
 		{
@@ -128,6 +114,27 @@ namespace Pulse.DataStorage
 				return true;
 			}
 			return false;
+		}
+
+		public PulsePodcastEpisode BuildPulsePodcastEpisode(PodcastManager podcastManager, string userId)
+		{
+			PulsePodcastEpisode episode = new PulsePodcastEpisode();
+			episode.Id = Id;
+			episode.SeriesId = PodcastId;
+			episode.Title = Title;
+			episode.Description = Description;
+			episode.OrderIndex = OrderIndex;
+			episode.PublishedDate = PublishedDate;
+			episode.Duration = DurationSeconds;
+			episode.CoverArt = "se-" + PodcastId;
+
+			Episode.UserData progress;
+			if (Users.TryGetValue(userId, out progress))
+			{
+				episode.PositionSeconds = progress.PositionSeconds;
+				episode.Completed = progress.Completed;
+			}
+			return episode;
 		}
 	}
 }

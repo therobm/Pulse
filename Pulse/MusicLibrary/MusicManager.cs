@@ -144,7 +144,7 @@ namespace Pulse.MusicLibrary
 					if (previousTrack.ParentArtist != null)
 					{
 						previousTrack.ParentArtist.LastPlayed = DateTime.UtcNow;
-						previousTrack.ParentArtist.m_bIsDirty = true;
+						previousTrack.ParentArtist.MarkDirty();
 					}
 
 					if (userName != null)
@@ -167,7 +167,7 @@ namespace Pulse.MusicLibrary
 					{
 						analytics.RecentlyPlayed.RemoveAt(analytics.RecentlyPlayed.Count - 1);
 					}
-					analytics.m_bIsDirty = true;
+					analytics.MarkDirty();
 
 					RecalculateScore(previousTrack);
 
@@ -260,7 +260,7 @@ namespace Pulse.MusicLibrary
 				return;
 			}
 			artist.LastPlayed = DateTime.UtcNow;
-			artist.m_bIsDirty = true;
+			artist.MarkDirty();
 		}
 
 		/// <summary>
@@ -282,7 +282,7 @@ namespace Pulse.MusicLibrary
 			{
 				playlist.UserLastPlayed[userName] = now;
 			}
-			playlist.m_bIsDirty = true;
+			playlist.MarkDirty();
 		}
 
 		public PlaylistData ImportPlaylist(string name, List<PlaylistImportEntry> entries)
@@ -617,7 +617,7 @@ namespace Pulse.MusicLibrary
 					ArtistData artist = m_database.GetArtist(artistId);
 					if (artist != null)
 					{
-						artist.m_bIsDirty = true;
+						artist.MarkDirty();
 					}
 					Log.Info("Pulse: Removed dead track: " + trackPath);
 				}
@@ -798,7 +798,7 @@ namespace Pulse.MusicLibrary
 				if (!linked)
 				{
 					album.Tracks.Add(track);
-					album.m_bIsDirty = true;
+					album.MarkDirty();
 					relinked++;
 				}
 			}
@@ -949,7 +949,7 @@ namespace Pulse.MusicLibrary
 					track.UserScore[user].WeightedScore = 1;
 				}
 			}
-			track.m_bIsDirty = true;
+			track.MarkDirty();
 		}
 
 		private string GetContentType(string extension)

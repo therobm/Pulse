@@ -128,7 +128,7 @@ namespace Pulse.Data
 			}
 
 			m_data.Save(eDataType.User, user);
-			user.m_bIsDirty = false;
+			user.ClearDirty();
 			return user;
 		}
 
@@ -160,7 +160,7 @@ namespace Pulse.Data
 			user.Name = newName;
 
 			m_data.Save(eDataType.User, user);
-			user.m_bIsDirty = false;
+			user.ClearDirty();
 			return "";
 		}
 
@@ -231,7 +231,7 @@ namespace Pulse.Data
 			}
 
 			m_data.Save(eDataType.User, user);
-			user.m_bIsDirty = false;
+			user.ClearDirty();
 		}
 
 		public bool AnyUserHasPassword()
@@ -254,7 +254,7 @@ namespace Pulse.Data
 			List<User> dirtyUsers = new List<User>();
 			foreach (User user in m_users.Values)
 			{
-				if (user.m_bIsDirty) { dirtyUsers.Add(user); }
+				if (user.IsDirty()) { dirtyUsers.Add(user); }
 			}
 			for (int i = 0; i < dirtyUsers.Count; i++)
 			{
@@ -307,7 +307,7 @@ namespace Pulse.Data
 			}
 
 			m_data.Save(eDataType.User, owningUser);
-			owningUser.m_bIsDirty = false;
+			owningUser.ClearDirty();
 		}
 
 		

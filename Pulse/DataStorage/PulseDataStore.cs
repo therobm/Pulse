@@ -162,7 +162,7 @@ namespace Pulse.DataStorage
 			}
 			for (int i = 0; i < result.Count; i++)
 			{
-				result[i].m_bIsDirty = false;
+				result[i].ClearDirty();
 			}
 			return result;
 		}
@@ -183,7 +183,7 @@ namespace Pulse.DataStorage
 				if (result != null)
 				{
 					T item = JsonSerializer.Deserialize<T>((string)result, m_jsonOptions);
-					item.m_bIsDirty = false;
+					item.ClearDirty();
 					return item;
 				}
 			}

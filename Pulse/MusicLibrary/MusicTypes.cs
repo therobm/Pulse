@@ -19,7 +19,7 @@ namespace Pulse.MusicLibrary
 		public string Id { get; set; }
 
 		[JsonIgnore]
-		public bool m_bIsDirty = false;
+		public bool m_bIsDirty;
 	}
 
 	public class ScoreData
