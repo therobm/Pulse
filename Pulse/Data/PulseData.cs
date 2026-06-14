@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Http.HttpResults;
 using Pulse.Database;
 using Pulse.DataStorage;
 using Pulse.MusicLibrary;
@@ -9,7 +8,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Pulse.Data
 {
@@ -25,7 +23,7 @@ namespace Pulse.Data
 		[Obsolete]
 		private PulseDB m_db = new PulseDB();
 		private PulseDataStore m_musicData;
-		private UserStore m_userStore;
+		private UserData m_userData;
 		private Timer m_saveTimer;
 
 		private PulseConfig m_config;
@@ -40,7 +38,7 @@ namespace Pulse.Data
 			string dbPath = Path.Combine(m_config.PulseDataPath, musicDB);
 			m_musicData = new PulseDataStore(dbPath);
 
-			m_userStore = new UserStore(config);
+			m_userData = new UserData(config);
 		}
 
 		public int GetTrackCount()
@@ -389,9 +387,9 @@ namespace Pulse.Data
 			// the two run side-by-side without cross-contamination.
 			string sqliteFileName = "pulse_" + environmentName.ToLowerInvariant() + ".db";
 			string sqlitePath = Path.Combine(m_config.PulseDataPath, sqliteFileName);
-			Pulse.Database.PulseDBConnector.SetDatabaseFilePath(sqlitePath);
-			Pulse.Database.PulseDBMigrations.RunMigrations();
-			m_userStore.Load();
+			PulseDBConnector.SetDatabaseFilePath(sqlitePath);
+			PulseDBMigrations.RunMigrations();
+			m_userData.Load();
 			Log.Info("Pulse DB: env=" + environmentName + " path=" + sqlitePath);
 
 
@@ -575,6 +573,8 @@ namespace Pulse.Data
 		/// </summary>
 		public void Save()
 		{
+			m_userData.Save();
+
 			List<ArtistData> dirtyArtists = new List<ArtistData>();
 			foreach (ArtistData artist in m_artists.Values)
 			{
@@ -830,326 +830,102 @@ namespace Pulse.Data
 			return m_db.GetItemStats(userName, mediaType);
 		}
 
-		// Pulls every UserData out of UserStore, projects each into a UserRecord,
-		// then layers the in-memory per-user counts on top. Names that have
-		// per-user rows but no UserStore entry (e.g. scrobbled after the user
-		// was deleted) are surfaced as orphan records with Created=MinValue so
-		// the operator can spot and clean them up.
-		public List<UserRecord> GetAllUsers()
+
+		public List<User> GetAllUsers()
 		{
-			Dictionary<string, UserRecord> byName = new Dictionary<string, UserRecord>();
-			List<UserData> userDataList = m_userStore.GetAllUsers();
-			for (int index = 0; index < userDataList.Count; index++)
-			{
-				UserRecord record = ToUserRecord(userDataList[index]);
-				byName[record.Name] = record;
-			}
-			PopulateUserCounts(byName, true);
-			List<UserRecord> users = new List<UserRecord>(byName.Values);
-			users.Sort(CompareUserRecordByName);
+			List<User> users = m_userData.GetAllUsers();
 			return users;
 		}
 
-		public UserRecord GetUser(string name)
+		public User LookupUserByName(string userName)
 		{
-			UserData userData = m_userStore.GetUser(name);
-			if (userData == null)
-			{
-				return null;
-			}
-			return ToUserRecord(userData);
+			return m_userData.LookupUserByName(userName);
+		}
+		public User GetUser(string userId)
+		{
+			User userData = m_userData.GetUser(userId);
+			return userData;
 		}
 
-		public string CreateUser(string name, string displayName, bool isAdmin)
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="name"></param>
+		/// <param name="displayName"></param>
+		/// <param name="isAdmin"></param>
+		/// <returns>user id</returns>
+		public User CreateUser(string name, string displayName, bool isAdmin, out string error)
 		{
-			return m_userStore.CreateUser(name, displayName, isAdmin);
+			return m_userData.CreateUser(name, displayName, isAdmin, out error);
 		}
 
-		public string UpdateUser(string oldName, string newName, string displayName, bool isAdmin)
+		public string UpdateUser(string userId, string newName, string displayName)
 		{
-			string error = m_userStore.UpdateUser(oldName, newName, displayName, isAdmin);
+			string error = m_userData.UpdateUser(userId, newName, displayName);
 			if (!string.IsNullOrEmpty(error))
 			{
 				return error;
 			}
-			if (!string.Equals(oldName, newName, StringComparison.Ordinal))
-			{
-				m_db.RenameUserActivityRows(oldName, newName);
-				RenameUserInMemory(oldName, newName);
-			}
 			return "";
 		}
 
-		// Two-stage wipe: UserStore drops identity/hash/tokens, the legacy DB
-		// drops the per-user activity rows, then the in-memory dicts get
-		// scrubbed and the affected entities flagged dirty so the upcoming
-		// Save rewrites their starred / score / last-played rows without this
-		// user.
-		public void DeleteUser(string userName)
+		public void DeleteUser(string userId)
 		{
-			if (string.IsNullOrEmpty(userName)) { return; }
+			if (string.IsNullOrEmpty(userId)) { return; }
 
-			m_userStore.DeleteUser(userName);
-			m_db.DeleteUserRows(userName);
-			DeleteUserInMemory(userName);
+			m_userData.DeleteUser(userId);
+			DeleteUserFromMusicData(userId);
 			Save();
 		}
 
-		public string GetUserPasswordHash(string name)
+		public string GetUserPasswordHash(string userId)
 		{
-			return m_userStore.GetPasswordHash(name);
+			return m_userData.GetPasswordHash(userId);
 		}
 
-		public void SetUserPassword(string name, string passwordHash)
+		public void SetUserPassword(string userId, string passwordHash)
 		{
-			m_userStore.SetPassword(name, passwordHash);
+			m_userData.SetPassword(userId, passwordHash);
 		}
 
 		public bool AnyUserHasPassword()
 		{
-			return m_userStore.AnyUserHasPassword();
+			return m_userData.AnyUserHasPassword();
 		}
 
-		public void InsertToken(string token, string userName, string label)
+		public string CreateToken(string userId, string label)
 		{
-			m_userStore.AddToken(token, userName, label);
+			return m_userData.CreateToken(userId, label);	
 		}
-
-		public List<TokenRow> GetAllTokens()
+	
+		public void UpdateTokenLastUsed(string userId, string token)
 		{
-			List<UserData> users = m_userStore.GetAllUsers();
-			List<TokenRow> rows = new List<TokenRow>();
-			for (int userIndex = 0; userIndex < users.Count; userIndex++)
-			{
-				UserData user = users[userIndex];
-				for (int tokenIndex = 0; tokenIndex < user.Tokens.Count; tokenIndex++)
-				{
-					rows.Add(ToTokenRow(user.Id, user.Tokens[tokenIndex]));
-				}
-			}
-			rows.Sort(CompareTokenRowByCreatedDescending);
-			return rows;
+			m_userData.UpdateTokenLastUsed(userId, token);
 		}
 
-		public List<TokenRow> GetTokensForUser(string userName)
-		{
-			List<TokenRow> rows = new List<TokenRow>();
-			UserData user = m_userStore.GetUser(userName);
-			if (user == null)
-			{
-				return rows;
-			}
-			for (int tokenIndex = 0; tokenIndex < user.Tokens.Count; tokenIndex++)
-			{
-				rows.Add(ToTokenRow(user.Id, user.Tokens[tokenIndex]));
-			}
-			rows.Sort(CompareTokenRowByCreatedDescending);
-			return rows;
-		}
-
-		public string LookupTokenUser(string token)
-		{
-			return m_userStore.LookupTokenUser(token);
-		}
-
-		public void UpdateTokenLastUsed(string token)
-		{
-			m_userStore.UpdateTokenLastUsed(token);
-		}
-
-		public void DeleteToken(string token)
-		{
-			m_userStore.DeleteToken(token);
-		}
-
-		// Walks the in-memory stores and bumps ScoredTrackCount / StarredCount /
-		// PlaylistLastPlayedCount on the matching record. When `createMissing` is
-		// true a record is materialized for any name that doesn't already have
-		// one in the dict -- this surfaces orphan per-user rows whose users-row
-		// no longer exists.
-		private void PopulateUserCounts(Dictionary<string, UserRecord> byName, bool createMissing)
-		{
-			foreach (TrackData track in m_tracks.Values)
-			{
-				foreach (KeyValuePair<string, TrackData.ScoreData> entry in track.UserScore)
-				{
-					UserRecord record = GetOrLookupUserRecord(byName, entry.Key, createMissing);
-					if (record != null) { record.ScoredTrackCount++; }
-				}
-				foreach (KeyValuePair<string, bool> entry in track.Starred)
-				{
-					if (!entry.Value) { continue; }
-					UserRecord record = GetOrLookupUserRecord(byName, entry.Key, createMissing);
-					if (record != null) { record.StarredCount++; }
-				}
-			}
-			foreach (AlbumData album in m_albums.Values)
-			{
-				foreach (KeyValuePair<string, bool> entry in album.Starred)
-				{
-					if (!entry.Value) { continue; }
-					UserRecord record = GetOrLookupUserRecord(byName, entry.Key, createMissing);
-					if (record != null) { record.StarredCount++; }
-				}
-			}
-			foreach (ArtistData artist in m_artists.Values)
-			{
-				foreach (KeyValuePair<string, bool> entry in artist.Starred)
-				{
-					if (!entry.Value) { continue; }
-					UserRecord record = GetOrLookupUserRecord(byName, entry.Key, createMissing);
-					if (record != null) { record.StarredCount++; }
-				}
-			}
-			foreach (PlaylistData playlist in m_playlists.Values)
-			{
-				foreach (KeyValuePair<string, DateTime> entry in playlist.UserLastPlayed)
-				{
-					UserRecord record = GetOrLookupUserRecord(byName, entry.Key, createMissing);
-					if (record != null) { record.PlaylistLastPlayedCount++; }
-				}
-			}
-		}
-
-		private static int CompareUserRecordByName(UserRecord left, UserRecord right)
-		{
-			return string.Compare(left.Name, right.Name, StringComparison.Ordinal);
-		}
-
-		/// <summary>
-		/// Projects a stored UserData onto the UserRecord wire shape consumers
-		/// (AuthEndpoints, settings UI) already work in. The per-user count
-		/// fields are zero here -- PopulateUserCounts layers them on after.
-		/// </summary>
-		private static UserRecord ToUserRecord(UserData userData)
-		{
-			UserRecord record = new UserRecord();
-			record.Name = userData.Id;
-			record.DisplayName = userData.DisplayName;
-			record.Created = userData.Created;
-			record.IsAdmin = userData.IsAdmin;
-			return record;
-		}
-
-		/// <summary>
-		/// Projects a stored TokenData onto the TokenRow wire shape that the
-		/// listTokens endpoint consumes.
-		/// </summary>
-		private static TokenRow ToTokenRow(string userName, TokenData token)
-		{
-			TokenRow row = new TokenRow();
-			row.UserName = userName;
-			row.Token = token.Token;
-			row.Label = token.Label;
-			row.CreatedAt = token.CreatedAt;
-			row.LastUsed = token.LastUsed;
-			return row;
-		}
-
-		private static int CompareTokenRowByCreatedDescending(TokenRow left, TokenRow right)
-		{
-			return string.CompareOrdinal(right.CreatedAt, left.CreatedAt);
-		}
-
-		private static UserRecord GetOrLookupUserRecord(Dictionary<string, UserRecord> byName, string userName, bool createMissing)
-		{
-			UserRecord record;
-			if (byName.TryGetValue(userName, out record))
-			{
-				return record;
-			}
-			if (!createMissing)
-			{
-				return null;
-			}
-			record = new UserRecord();
-			record.Name = userName;
-			record.DisplayName = userName;
-			byName[userName] = record;
-			return record;
-		}
-
-		// Cascades a rename across every in-memory store. Runs AFTER the SQL
-		// UPDATE succeeded so a constraint failure rolls the SQL back without
-		// leaving in-memory in a half-renamed state.
-		private void RenameUserInMemory(string oldName, string newName)
-		{
-			if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName)) { return; }
-			if (string.Equals(oldName, newName, StringComparison.Ordinal)) { return; }
-
-			foreach (TrackData track in m_tracks.Values)
-			{
-				bool touched = false;
-				TrackData.ScoreData score;
-				if (track.UserScore.TryGetValue(oldName, out score))
-				{
-					track.UserScore.Remove(oldName);
-					track.UserScore[newName] = score;
-					touched = true;
-				}
-				bool starred;
-				if (track.Starred.TryGetValue(oldName, out starred))
-				{
-					track.Starred.Remove(oldName);
-					track.Starred[newName] = starred;
-					touched = true;
-				}
-				if (touched) { track.m_bIsDirty = true; }
-			}
-			foreach (AlbumData album in m_albums.Values)
-			{
-				bool starred;
-				if (album.Starred.TryGetValue(oldName, out starred))
-				{
-					album.Starred.Remove(oldName);
-					album.Starred[newName] = starred;
-					album.m_bIsDirty = true;
-				}
-			}
-			foreach (ArtistData artist in m_artists.Values)
-			{
-				bool starred;
-				if (artist.Starred.TryGetValue(oldName, out starred))
-				{
-					artist.Starred.Remove(oldName);
-					artist.Starred[newName] = starred;
-					artist.m_bIsDirty = true;
-				}
-			}
-			foreach (PlaylistData playlist in m_playlists.Values)
-			{
-				DateTime lastPlayed;
-				if (playlist.UserLastPlayed.TryGetValue(oldName, out lastPlayed))
-				{
-					playlist.UserLastPlayed.Remove(oldName);
-					playlist.UserLastPlayed[newName] = lastPlayed;
-					playlist.m_bIsDirty = true;
-				}
-			}
-		}
 
 		// Removes every in-memory trace of `userName` and flags the touched
 		// entities dirty so the next Save rewrites their per-user rows.
-		private void DeleteUserInMemory(string userName)
+		private void DeleteUserFromMusicData(string userId)
 		{
 			foreach (TrackData track in m_tracks.Values)
 			{
 				bool touched = false;
-				if (track.UserScore.Remove(userName)) { touched = true; }
-				if (track.Starred.Remove(userName)) { touched = true; }
+				if (track.UserScore.Remove(userId)) { touched = true; }
+				if (track.Starred.Remove(userId)) { touched = true; }
 				if (touched) { track.m_bIsDirty = true; }
 			}
 			foreach (AlbumData album in m_albums.Values)
 			{
-				if (album.Starred.Remove(userName)) { album.m_bIsDirty = true; }
+				if (album.Starred.Remove(userId)) { album.m_bIsDirty = true; }
 			}
 			foreach (ArtistData artist in m_artists.Values)
 			{
-				if (artist.Starred.Remove(userName)) { artist.m_bIsDirty = true; }
+				if (artist.Starred.Remove(userId)) { artist.m_bIsDirty = true; }
 			}
 			foreach (PlaylistData playlist in m_playlists.Values)
 			{
-				if (playlist.UserLastPlayed.Remove(userName)) { playlist.m_bIsDirty = true; }
+				if (playlist.UserLastPlayed.Remove(userId)) { playlist.m_bIsDirty = true; }
 			}
 		}
 

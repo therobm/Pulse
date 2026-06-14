@@ -42,9 +42,9 @@ namespace PulseAPI.CSharp
 	public class PulseTokenSummary : PulseObject
 	{
 		public string Token;
-		public string Username;
+		public string Name;
 		public string Label;
-		public string CreatedAt;
+		public string Create;
 		public string LastUsed;
 	}
 }

@@ -3,51 +3,29 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.InteropServices.Marshalling;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Pulse.Data;
 using Pulse.Database;
+using Pulse.DataStorage;
 using Pulse.MusicLibrary;
 using Pulse.Services;
 using PulseAPI.CSharp;
 
 namespace Pulse.Protocols
 {
-	/// <summary>
-	/// P1 of the Pulse authentication epic (PLS129 / PLS132). Provides password
-	/// login, logout, and password-set routes that mint an opaque session id
-	/// in a cookie. Additive only: no existing route is gated, no existing
-	/// behaviour is changed. The legacy `u=` query parameter is untouched and
-	/// will be removed in a later phase.
-	/// </summary>
+
 	public class AuthEndpoints
 	{
-		/// <summary>
-		/// The name of the session cookie. HttpOnly + Secure + SameSite=Strict
-		/// are set everywhere the cookie is written; the id itself is opaque
-		/// (the cookie value is a 256-bit random token, looked up in
-		/// SessionStore on the server side).
-		/// </summary>
+	
 		public const string CookieName = "pulse_session";
 
-		/// <summary>
-		/// Minimum acceptable plaintext length for SetPassword. The knob is
-		/// kept so the policy can be tightened later without touching the
-		/// client, but at 0 the check never trips -- empty passwords are
-		/// permitted. The real defence is BCrypt's work factor of 12.
-		/// </summary>
+	
 		private const int MinPasswordLength = 0;
 
-		/// <summary>
-		/// Lazily-constructed BCrypt hash run against incoming passwords when
-		/// the candidate user has no stored hash. Verifying against this dummy
-		/// keeps the response timing of "unknown user" indistinguishable from
-		/// "known user, wrong password" so login attempts cannot be used to
-		/// enumerate usernames. Computed once on first use because BCrypt at
-		/// work-factor 12 takes ~250 ms; doing it at startup would penalise
-		/// every cold launch even when no one logs in.
-		/// </summary>
+
 		private static string s_dummyHash = "";
 		private static object s_dummyHashLock = new object();
 
@@ -85,8 +63,6 @@ namespace Pulse.Protocols
 			RegisterRoute("deleteUser", DeleteUser);
 
 			RegisterRoute("createToken", CreateToken);
-			RegisterRoute("listTokens", ListTokens);
-			RegisterRoute("revokeToken", RevokeToken);
 		}
 
 		private void RegisterRoute(string route, Func<HttpContext, IResult> handler)
@@ -94,23 +70,15 @@ namespace Pulse.Protocols
 			m_host.RegisterResultRoute(m_apiSpace + route, handler);
 		}
 
-		/// <summary>
-		/// Reads the session cookie off the incoming request and resolves it
-		/// against the in-memory SessionStore. Returns false on missing,
-		/// unknown, or expired cookie. This is the hook future P-phases will
-		/// use to gate the existing routes; P1 itself only consults it inside
-		/// the new endpoints.
-		/// </summary>
-		public bool GetSessionUser(HttpContext context, out string userName, out bool isAdmin)
+		public bool GetSessionUserId(HttpContext context, out string userId)
 		{
-			userName = "";
-			isAdmin = false;
+			userId = "";
 			string sessionId = context.Request.Cookies[CookieName];
 			if (string.IsNullOrEmpty(sessionId))
 			{
 				return false;
 			}
-			return m_sessions.TryValidate(sessionId, out userName, out isAdmin);
+			return m_sessions.GetUserIdForSession(sessionId, out userId);
 		}
 
 		private IResult Login(HttpContext context)
@@ -143,8 +111,13 @@ namespace Pulse.Protocols
 				m_rateLimiter.RecordFailure(clientIp);
 				return Respond("invalid_credentials", HttpStatusCode.OK);
 			}
+			User user = m_pulseData.LookupUserByName(request.Username);
+			if (user == null)
+			{
+				return Respond("invalid_user", HttpStatusCode.OK);
+			}
 
-			string storedHash = m_pulseData.GetUserPasswordHash(request.Username);
+			string storedHash = m_pulseData.GetUserPasswordHash(user.Id);
 			bool hasHash = !string.IsNullOrEmpty(storedHash);
 			string hashToCheck = storedHash;
 			if (!hasHash)
@@ -168,35 +141,23 @@ namespace Pulse.Protocols
 				return Respond("invalid_credentials", HttpStatusCode.OK);
 			}
 
-			UserRecord user = m_pulseData.GetUser(request.Username);
-			bool isAdmin = false;
-			if (user != null)
-			{
-				isAdmin = user.IsAdmin;
-			}
+		
 
 			m_rateLimiter.RecordSuccess(clientIp);
 
-			string sessionId = m_sessions.CreateSession(request.Username, isAdmin, request.RememberMe);
+			string sessionId = m_sessions.CreateSession(user.Id, request.RememberMe);
 			AppendSessionCookie(context, sessionId, request.RememberMe);
 
 			Log.Info("Auth: login for '" + request.Username + "'");
 
 			PulseLoginResult result = new PulseLoginResult();
-			result.Username = request.Username;
-			result.IsAdmin = isAdmin;
+			result.Id = user.Id;
+			result.Username = user.Name;
+			result.IsAdmin = user.IsAdmin;
 
 			return Respond(result);
 		}
 
-		/// <summary>
-		/// GET -> the state probe the web wall calls on load. Returns
-		/// status="needs_setup" when the system has no passwords yet (the
-		/// first-run setup form should be shown), status="ok" with a
-		/// PulseLoginResult body when a valid session is presented (the
-		/// caller is signed in), and status="not_signed_in" otherwise (the
-		/// login form should be shown).
-		/// </summary>
 		private IResult WhoAmI(HttpContext context)
 		{
 			if (!m_pulseData.AnyUserHasPassword())
@@ -204,27 +165,26 @@ namespace Pulse.Protocols
 				return Respond("needs_setup", HttpStatusCode.OK);
 			}
 
-			string userName;
-			bool isAdmin;
-			bool valid = GetSessionUser(context, out userName, out isAdmin);
+			string userId;
+			bool valid = GetSessionUserId(context, out userId);
 			if (valid)
 			{
+				User user = m_pulseData.GetUser(userId);
+				if (user == null)
+				{
+
+					return Respond("invalid_user", HttpStatusCode.OK);
+				}
 				PulseLoginResult result = new PulseLoginResult();
-				result.Username = userName;
-				result.IsAdmin = isAdmin;
+				result.Id = user.Id;
+				result.Username = user.Name;
+				result.IsAdmin = user.IsAdmin;
 				return Respond(result);
 			}
 
 			return Respond("not_signed_in", HttpStatusCode.OK);
 		}
 
-		/// <summary>
-		/// POST body Username/DisplayName/Password -> first-run only.
-		/// Creates (or adopts) the named user as an admin, sets their
-		/// password, and signs them in via the session cookie. Refuses with
-		/// status="already_initialized" once any user has a password -- the
-		/// setup window is closed by then.
-		/// </summary>
 		private IResult SetupAdmin(HttpContext context)
 		{
 			string body = ReadRequestBody(context);
@@ -259,42 +219,27 @@ namespace Pulse.Protocols
 				displayName = request.Username;
 			}
 
-			UserRecord existing = m_pulseData.GetUser(request.Username);
-			if (existing == null)
+			User currentUser = m_pulseData.CreateUser(request.Username, displayName, true, out string error);
+			if (currentUser == null)
 			{
-				string createError = m_pulseData.CreateUser(request.Username, displayName, true);
-				if (!string.IsNullOrEmpty(createError))
-				{
-					return Respond(createError, HttpStatusCode.OK);
-				}
-			}
-			else
-			{
-				string updateError = m_pulseData.UpdateUser(request.Username, request.Username, displayName, true);
-				if (!string.IsNullOrEmpty(updateError))
-				{
-					return Respond(updateError, HttpStatusCode.OK);
-				}
+				return Respond(error, HttpStatusCode.OK);
 			}
 
 			string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, 12);
-			m_pulseData.SetUserPassword(request.Username, passwordHash);
+			m_pulseData.SetUserPassword(currentUser.Id, passwordHash);
 
-			string sessionId = m_sessions.CreateSession(request.Username, true, false);
+			string sessionId = m_sessions.CreateSession(currentUser.Id, false);
 			AppendSessionCookie(context, sessionId, false);
 
-			Log.Info("Auth: admin account set up for '" + request.Username + "'");
+			Log.Info("Auth: admin account set up for '" + currentUser.Name + "'");
 
 			PulseLoginResult result = new PulseLoginResult();
-			result.Username = request.Username;
-			result.IsAdmin = true;
+			result.Id = currentUser.Id;
+			result.Username = currentUser.Name;
+			result.IsAdmin = currentUser.IsAdmin;
 			return Respond(result);
 		}
 
-		/// <summary>
-		/// POST -> 200 status="ok"; idempotent. Drops the session in the store
-		/// and clears the cookie. Body is ignored.
-		/// </summary>
 		private IResult Logout(HttpContext context)
 		{
 			string sessionId = context.Request.Cookies[CookieName];
@@ -315,14 +260,6 @@ namespace Pulse.Protocols
 			return Respond("ok", HttpStatusCode.OK);
 		}
 
-		/// <summary>
-		/// POST { Username, Password } -> 200 status="ok" on success, status-
-		/// only failure envelope otherwise. Authorisation rule:
-		///   - first password on a fresh system (no user has a hash yet) is
-		///     allowed without a session, so the first admin can self-bootstrap;
-		///   - otherwise the caller must hold a valid session, and may only
-		///     target themselves unless they are an admin.
-		/// </summary>
 		private IResult SetPassword(HttpContext context)
 		{
 			string body = ReadRequestBody(context);
@@ -354,57 +291,59 @@ namespace Pulse.Protocols
 				return Respond("password_too_short", HttpStatusCode.OK);
 			}
 
+			string targetUsername = request.Username;
+			User targetUser = m_pulseData.LookupUserByName(targetUsername);
+			if (targetUser == null)
+			{
+				return Respond("user_not_found", HttpStatusCode.OK);
+			}
+
+			User sessionUser = null;
 			bool systemInitialized = m_pulseData.AnyUserHasPassword();
 			if (systemInitialized)
 			{
-				string sessionUser;
-				bool sessionIsAdmin;
-				bool sessionValid = GetSessionUser(context, out sessionUser, out sessionIsAdmin);
+				string userId;
+				bool sessionValid = GetSessionUserId(context, out userId);
 				if (!sessionValid)
 				{
-					return Respond("not_signed_in",  HttpStatusCode.OK);
+					return Respond("not_signed_in", HttpStatusCode.OK);
 				}
-				bool isSelf = string.Equals(sessionUser, request.Username, StringComparison.Ordinal);
-				if (!sessionIsAdmin && !isSelf)
+
+				sessionUser = m_pulseData.GetUser(userId);
+
+				bool isSelf = targetUser.Id == sessionUser.Id;
+
+				if (sessionUser == null)
+				{
+					return Respond("unknown_session_user", HttpStatusCode.OK);
+				}
+				if (!sessionUser.IsAdmin && !isSelf)
 				{
 					return Respond("forbidden", HttpStatusCode.OK);
 				}
 			}
-
-			UserRecord target = m_pulseData.GetUser(request.Username);
-			if (target == null)
-			{
-				return Respond("unknown_user", HttpStatusCode.OK);
-			}
+			
 
 			string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, 12);
-			m_pulseData.SetUserPassword(request.Username, passwordHash);
+			m_pulseData.SetUserPassword(targetUser.Id, passwordHash);
 
-			Log.Info("Auth: password set for '" + request.Username + "'");
+			Log.Info("Auth: password set for '" + sessionUser.Name + "'");
 			return Respond("ok", HttpStatusCode.OK);
 		}
 
 		public IResult ListUsers(HttpContext context)
 		{
-			List<UserRecord> users = m_pulseData.GetAllUsers();
+			List<User> users = m_pulseData.GetAllUsers();
 			List<PulseUser> userList = new List<PulseUser>();
 			for (int index = 0; index < users.Count; index++)
 			{
-				UserRecord user = users[index];
-				string createdStr = "";
-				if (user.Created != DateTime.MinValue)
-				{
-					createdStr = user.Created.ToString("o");
-				}
-
+				User user = users[index];
+				
 				PulseUser pulseUser = new PulseUser();
+				pulseUser.Id = user.Id;
 				pulseUser.Name = user.Name;
 				pulseUser.DisplayName = user.DisplayName;
-				pulseUser.Created = user.Created;
 				pulseUser.IsAdmin = user.IsAdmin;
-				pulseUser.ScoredTrackCount = user.ScoredTrackCount;
-				pulseUser.StarredCount = user.StarredCount;
-				pulseUser.PlaylistLastPlayedCount = user.PlaylistLastPlayedCount;
 
 				userList.Add(pulseUser);
 			}
@@ -419,7 +358,7 @@ namespace Pulse.Protocols
 			string displayName = QueryParameters.GetString(context, "displayName");
 			bool isAdmin = QueryParameters.GetBool(context, "isAdmin");
 
-			string error = m_pulseData.CreateUser(name, displayName, isAdmin);
+			User user = m_pulseData.CreateUser(name, displayName, isAdmin, out string error);
 			if (!string.IsNullOrEmpty(error))
 			{
 				return Respond(error, HttpStatusCode.OK);
@@ -430,47 +369,38 @@ namespace Pulse.Protocols
 
 		public IResult UpdateUser(HttpContext context)
 		{
-			string oldName = QueryParameters.GetString(context, "name");
+			string userId = QueryParameters.GetString(context, "userId");
 			string newName = QueryParameters.GetString(context, "newName");
 			string displayName = QueryParameters.GetString(context, "displayName");
-			bool isAdmin = QueryParameters.GetBool(context, "isAdmin");
 
 			if (string.IsNullOrEmpty(newName))
 			{
-				newName = oldName;
+				return Respond("invalid new name", HttpStatusCode.OK);
 			}
 
-			string error = m_pulseData.UpdateUser(oldName, newName, displayName, isAdmin);
+			string error = m_pulseData.UpdateUser(userId, newName, displayName);
 			if (!string.IsNullOrEmpty(error))
 			{
 				return Respond(error, HttpStatusCode.OK);
 			}
-			Log.Info("Settings: updated user '" + oldName + "' (now '" + newName + "')");
+			Log.Info("Settings: updated user '" + userId + "' (now '" + newName + "')");
 			return Respond(HttpStatusCode.OK);
 		}
 
-		// Deletes every per-user row for the given user_name across the database
-		// and the in-memory caches. Bug #201 -- used by the settings page to clean
-		// up duplicate-cased names that crept in (e.g. "shannon" vs "Shannon").
+
 		public IResult DeleteUser(HttpContext context)
 		{
-			string userName = QueryParameters.GetString(context, "user");
-			if (string.IsNullOrEmpty(userName))
+			string userId = QueryParameters.GetString(context, "useId");
+			if (string.IsNullOrEmpty(userId))
 			{
 				return Respond("Missing user", HttpStatusCode.OK);
 			}
-			m_pulseData.DeleteUser(userName);
-			Log.Info("Settings: deleted user '" + userName + "'");
+			m_pulseData.DeleteUser(userId);
+			Log.Info("Settings: deleted user '" + userId + "'");
 			return Respond(HttpStatusCode.OK);
 		}
 
-		/// <summary>
-		/// POST { Username, Label } -> 200 PulseToken on success. Mints a 256-bit
-		/// random token, base64url-encoded, and stores it against the named user.
-		/// The raw token rides back in the response body so the caller can show
-		/// it to the operator exactly once. No auth check on the endpoint
-		/// itself -- token management is opt-in plumbing in P2, not enforced.
-		/// </summary>
+	
 		private IResult CreateToken(HttpContext context)
 		{
 			string clientIp = GetClientIp(context);
@@ -496,165 +426,32 @@ namespace Pulse.Protocols
 				request = null;
 			}
 
-			if (request == null || string.IsNullOrEmpty(request.Username))
+			if (request == null || string.IsNullOrEmpty(request.Id))
 			{
 				return Respond("missing_fields", HttpStatusCode.BadRequest);
 			}
 
-			UserRecord user = m_pulseData.GetUser(request.Username);
-			if (user == null)
+			string token = m_pulseData.CreateToken(request.Id, request.Label);
+			if (string.IsNullOrEmpty(token))
 			{
 				m_rateLimiter.RecordFailure(clientIp);
 				return Respond("unknown_user", HttpStatusCode.OK);
 			}
 
-			byte[] raw = RandomNumberGenerator.GetBytes(32);
-			string token = SessionStore.ToUrlSafeBase64(raw);
-			string label = request.Label;
-			if (label == null)
-			{
-				label = "";
-			}
-			m_pulseData.InsertToken(token, request.Username, label);
-
 			m_rateLimiter.RecordSuccess(clientIp);
 
-			Log.Info("Auth: created token for '" + request.Username + "' label='" + label + "'");
+			Log.Info("Auth: created token for '" + request.Username + "' label='" + request.Label + "'");
 
 			PulseToken result = new PulseToken();
 			result.Token = token;
 			result.Username = request.Username;
-			result.Label = label;
+			result.Label = request.Label;
 			result.CreatedAt = DateTime.UtcNow.ToString("o");
 
 			return Respond(result);
 		}
 
-		/// <summary>
-		/// GET (optional ?user=&lt;name&gt;) -> list of PulseTokenSummary. With no
-		/// user query param every token is returned; with one, only that user's
-		/// tokens. No auth check -- listing tokens is plumbing for the
-		/// management UI, not gated in P2.
-		/// </summary>
-		private IResult ListTokens(HttpContext context)
-		{
-			string userFilter = QueryParameters.GetString(context, "user");
-			List<TokenRow> rows;
-			if (!string.IsNullOrEmpty(userFilter))
-			{
-				rows = m_pulseData.GetTokensForUser(userFilter);
-			}
-			else
-			{
-				rows = m_pulseData.GetAllTokens();
-			}
-
-			List<PulseTokenSummary> tokens = new List<PulseTokenSummary>();
-			for (int index = 0; index < rows.Count; index++)
-			{
-				TokenRow row = rows[index];
-				PulseTokenSummary summary = new PulseTokenSummary();
-				summary.Token = row.Token;
-				summary.Username = row.UserName;
-				summary.Label = row.Label;
-				summary.CreatedAt = row.CreatedAt;
-				summary.LastUsed = row.LastUsed;
-				tokens.Add(summary);
-			}
-			return RespondList(tokens);
-		}
-
-		/// <summary>
-		/// POST { Token } -> 200 status="ok". Idempotent: revoking an unknown
-		/// token still returns ok. No auth check -- revoking a token is
-		/// plumbing for the management UI, not gated in P2.
-		/// </summary>
-		private IResult RevokeToken(HttpContext context)
-		{
-			string body = ReadRequestBody(context);
-			if (string.IsNullOrEmpty(body))
-			{
-				return Respond("missing_body", HttpStatusCode.BadRequest);
-			}
-
-			PulseRevokeTokenRequest request;
-			try
-			{
-				request = PulseWire.Parse<PulseRevokeTokenRequest>(body);
-			}
-			catch (Exception)
-			{
-				request = null;
-			}
-
-			if (request == null || string.IsNullOrEmpty(request.Token))
-			{
-				return Respond("missing_fields", HttpStatusCode.BadRequest);
-			}
-
-			m_pulseData.DeleteToken(request.Token);
-			Log.Info("Auth: revoked token");
-			return Respond("ok", HttpStatusCode.OK);
-		}
-
-		/// <summary>
-		/// Checks the request for a device token: first Authorization: Bearer
-		/// header, then ?token= query param fallback. If a valid token is
-		/// found, updates its last-used timestamp and returns the mapped user.
-		/// Returns false if no token is present or the token is unknown. This
-		/// helper is plumbing for the future enforcement layer (P5); P2 does
-		/// not call it from any gate.
-		/// </summary>
-		public bool GetTokenUser(HttpContext context, out string userName, out bool isAdmin)
-		{
-			userName = "";
-			isAdmin = false;
-
-			string authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
-			string tokenValue = "";
-			if (!string.IsNullOrEmpty(authHeader))
-			{
-				string prefix = "Bearer ";
-				if (authHeader.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-				{
-					tokenValue = authHeader.Substring(prefix.Length).Trim();
-				}
-			}
-
-			if (string.IsNullOrEmpty(tokenValue))
-			{
-				tokenValue = QueryParameters.GetString(context, "token");
-			}
-			if (string.IsNullOrEmpty(tokenValue))
-			{
-				return false;
-			}
-
-			string resolvedUser = m_pulseData.LookupTokenUser(tokenValue);
-			if (string.IsNullOrEmpty(resolvedUser))
-			{
-				return false;
-			}
-
-			m_pulseData.UpdateTokenLastUsed(tokenValue);
-
-			UserRecord user = m_pulseData.GetUser(resolvedUser);
-			if (user == null)
-			{
-				return false;
-			}
-			userName = user.Name;
-			isAdmin = user.IsAdmin;
-			return true;
-		}
-
-		/// <summary>
-		/// Best-effort source-IP extraction for the brute-force limiter.
-		/// Falls back to the sentinel "unknown" if the connection does not
-		/// expose a remote address (e.g. some in-process test transports);
-		/// the limiter still tracks "unknown" as a key, which is the safest
-		/// default for an ambiguous origin.
-		/// </summary>
+		
 		private static string GetClientIp(HttpContext context)
 		{
 			if (context.Connection.RemoteIpAddress != null)
@@ -664,11 +461,7 @@ namespace Pulse.Protocols
 			return "unknown";
 		}
 
-		/// <summary>
-		/// Returns the cached anti-enumeration BCrypt hash, computing it on
-		/// first call. The plaintext is discarded -- only the hash matters as
-		/// a constant-time sink for failed-login verification.
-		/// </summary>
+	
 		private string GetDummyHash()
 		{
 			string current = s_dummyHash;
@@ -688,11 +481,7 @@ namespace Pulse.Protocols
 			}
 		}
 
-		/// <summary>
-		/// Writes the session id into the response as an HttpOnly + Secure +
-		/// SameSite=Strict cookie. RememberMe stretches the max-age to 30 days;
-		/// otherwise the cookie has no max-age and lasts the browser session.
-		/// </summary>
+	
 		private void AppendSessionCookie(HttpContext context, string sessionId, bool rememberMe)
 		{
 			CookieOptions cookieOptions = new CookieOptions();
@@ -708,10 +497,6 @@ namespace Pulse.Protocols
 			context.Response.Cookies.Append(CookieName, sessionId, cookieOptions);
 		}
 
-		/// <summary>
-		/// Synchronously reads the request body as UTF-8. Auth bodies are tiny
-		/// JSON envelopes and the host enables AllowSynchronousIO already.
-		/// </summary>
 		private string ReadRequestBody(HttpContext context)
 		{
 			using (StreamReader reader = new StreamReader(context.Request.Body))
@@ -720,12 +505,7 @@ namespace Pulse.Protocols
 			}
 		}
 
-		/// <summary>
-		/// Writes a PulseResponse envelope through PulseWire and sets the HTTP
-		/// status from response.statusCode so the wire status and the HTTP
-		/// status agree. All auth responses go through this helper -- they
-		/// never hand-serialize JSON or use Results.Json/Results.Content.
-		/// </summary>
+	
 		private IResult Respond(PulseResponse body)
 		{
 			return Results.Text(PulseWire.Serialize(body), "application/json", Encoding.UTF8, (int)HttpStatusCode.OK);

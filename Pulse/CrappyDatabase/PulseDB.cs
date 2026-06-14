@@ -40,16 +40,6 @@ namespace Pulse.Database
 	}
 
 
-	public class TokenRow 
-	{
-		public string Token;
-		public string UserName;
-		public string Label;
-		public string CreatedAt; //I literally do not give a single fuck about when users were made or used
-		public string LastUsed;//I literally do not give a single fuck about when users were made or used
-
-	}
-
 
 	public class PulseDB
 	{
