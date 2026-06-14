@@ -577,12 +577,13 @@ namespace Thump.Views
 				{
 					bool capturedSuccess = false;
 					string capturedMessage = "";
+
+					pulse.SetServerParams(ip, port, user, password, useHttps);
 					if (loginResult == null)
 					{
 						//legacy
 						//login unsupported on this server
 						capturedSuccess = true;
-						pulse.SetServerParams(ip, port, user, password, useHttps);
 					}
 					else
 					{ 
@@ -595,7 +596,6 @@ namespace Thump.Views
 						{
 							ThumpSettings.SetUserID(loginResult.Id);
 							capturedSuccess = true;
-							pulse.SetServerParams(ip, port, user, password, useHttps);
 						}
 					}
 					MainThread.BeginInvokeOnMainThread(() =>
