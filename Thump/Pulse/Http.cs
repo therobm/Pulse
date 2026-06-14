@@ -309,7 +309,7 @@ namespace Thump.Pulse
 
 				HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url);
 				request.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-				HttpResponseMessage response = client.SendAsync(request).Result;
+				HttpResponseMessage response = client.SendAsync(request, timeoutCts.Token).Result;
 				stopwatch.Stop();
 			
 				Log.Perf("#" + requestId + " done POST " + stopwatch.ElapsedMilliseconds + "ms status=" + (int)response.StatusCode + " " + url);

@@ -7,7 +7,7 @@ using TagLib.Riff;
 
 namespace Pulse.DataStorage
 {
-	public enum AnalyticType
+	public enum eAnalyticType
 	{
 		Track,
 		Album,
@@ -36,10 +36,11 @@ namespace Pulse.DataStorage
 		/// </summary>
 		public string UserID;
 		public string ItemID;
-		public AnalyticType AnalyticType;
+		public eAnalyticType AnalyticType;
 		public bool IsFavorite;
 		public int PlayCount;
 		public double TotalPlayedSeconds;
+		public DateTime LastPlayed = DateTime.MinValue;
 		public AnaliticUserItem()
 		{
 			Id = Guid.NewGuid().ToString();	
@@ -50,7 +51,7 @@ namespace Pulse.DataStorage
 
 			switch (AnalyticType)
 			{
-				case AnalyticType.Track:
+				case eAnalyticType.Track:
 					{
 						//todoo this should support all music object types
 						TrackData track = pulseData.GetTrack(ItemID);
@@ -60,11 +61,11 @@ namespace Pulse.DataStorage
 						score = (float)(TotalPlayedSeconds / maxPlayTime);
 						break;
 					}
-				case AnalyticType.Album:
+				case eAnalyticType.Album:
 					break;
-				case AnalyticType.Artist:
+				case eAnalyticType.Artist:
 					break;
-				case AnalyticType.Playlist:
+				case eAnalyticType.Playlist:
 					break;
 				default:
 					//noop

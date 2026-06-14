@@ -22,6 +22,7 @@ using Pulse.Series;
 using PulseAPI.CSharp;
 using Pulse.DataStorage;
 using Pulse.Podcasts;
+using static Pulse.Protocols.PulseEndpoints;
 
 namespace Pulse
 {
@@ -34,6 +35,11 @@ namespace Pulse
 
 	public class PulseService
 	{
+		static PulseService _self;
+		public static PulseService Get()
+		{
+			return _self;
+		}
 		public MusicManager GetMusicManager()
 		{
 			return m_musicManager;
@@ -98,7 +104,10 @@ namespace Pulse
 
 
 		public bool IsRunning { get; private set; }
-
+		public PulseService()
+		{
+			_self = this;
+		}
 		/// <summary>
 		/// Stop background services and flush dirty data. Call once on process exit.
 		/// </summary>
@@ -144,9 +153,11 @@ namespace Pulse
 			RegisterRoutes(webServer);
 			SyncSpotify();
 
+
 			IsRunning = true;
 		}
-	
+
+		
 		private void RegisterRoutes(IPulseRouteHost host)
 		{
 			m_pulseEndpoints.RegisterRoutes(host);
@@ -221,6 +232,15 @@ namespace Pulse
 				byte[] failBytes = System.Text.Encoding.UTF8.GetBytes("Authorization failed. Check server logs.");
 				context.Response.Body.Write(failBytes, 0, failBytes.Length);
 			}
+		}
+
+		[Obsolete("Legacy path only")]
+		public string GetIDFromUsername(string username)
+		{
+			User user = m_pulseData.LookupUserByName(username);
+			if (user == null)
+				return "";
+			return user.Id;
 		}
 
 		private void HandleSpotifyAuthorize(HttpContext context)
@@ -436,6 +456,123 @@ namespace Pulse
 				m_spotifySyncs.Add(userName, sync);
 				return sync;
 			}
+		}
+
+
+		public List<PulseMusicObject> GetRankedItems(string userId, int maxCount, eSortMethod sortMethod, List<eAnalyticType> types)
+		{
+			List<PulseMusicObject> returnList = new List<PulseMusicObject>();
+			List<AnaliticUserItem> items = null;
+
+			if (string.IsNullOrEmpty(userId))
+			{
+				items = m_analyticsData.GetRankedItems(types);
+			}
+			else
+			{
+				items = m_analyticsData.GetUserItems(userId, types);
+			}
+
+			for (int i = 0; i < items.Count;i++)
+			{
+				string itemId = items[i].ItemID;
+				float score = items[i].GetScore(m_pulseData);
+
+				PulseMusicObject musicItem = null;
+				switch (items[i].AnalyticType)
+				{
+					case eAnalyticType.Track:
+						TrackData track = m_pulseData.GetTrack(itemId);
+						musicItem = track.BuildPulse();
+						break;
+					case eAnalyticType.Album:
+						AlbumData album = m_pulseData.GetAlbum(itemId);
+						musicItem = album.BuildPulse();
+						break;
+					case eAnalyticType.Artist:
+						ArtistData artist = m_pulseData.GetArtist(itemId);
+						musicItem = artist.BuildPulse();
+
+						break;
+					case eAnalyticType.Playlist:
+						PlaylistData playlist = m_pulseData.GetPlaylist(itemId);
+						musicItem = playlist.BuildPulsePlaylist();
+						break;
+				}
+				if (musicItem != null)
+				{
+					DateTime lastPlayed = items[i].LastPlayed;
+					musicItem.Score = score;
+					musicItem.LastPlayed = lastPlayed;
+					returnList.Add(musicItem);
+				}
+
+			}
+
+			switch (sortMethod) 
+			{
+				case eSortMethod.MostRecent:
+					PulseMusicObject.SortByLastPlayed(returnList);
+					break;
+				case eSortMethod.Score:
+					PulseMusicObject.SortByScore(returnList);
+					break;
+			}
+
+			int emptySlots = maxCount - returnList.Count;
+			if (emptySlots > 0)
+			{
+				List<PulseMusicObject> allItems = GetItems(types);
+				for (int i = 0; i < allItems.Count; i++)
+				{
+					if (returnList.Count >= maxCount)
+						break;
+
+					if (!returnList.Contains(allItems[i]))
+						returnList.Add(allItems[i]);
+				}
+			}
+
+			return returnList;
+
+		}
+		public List<PulseMusicObject> GetItems(List<eAnalyticType> types)
+		{
+			//backfill with global items
+			List<PulseMusicObject> items = new List<PulseMusicObject>();
+			foreach (eAnalyticType type in types)
+			{
+
+				switch (type)
+				{
+					case eAnalyticType.Track:
+						List<TrackData> tracks = m_pulseData.GetAllTracks();
+						foreach (TrackData track in tracks)
+							items.Add(track.BuildPulse());
+						break;
+					case eAnalyticType.Album:
+						List<AlbumData> albums = m_pulseData.GetAllAlbums();
+						foreach (AlbumData album in albums)
+							items.Add(album.BuildPulse());
+						break;
+					case eAnalyticType.Artist:
+						List<ArtistData> artists = m_pulseData.GetAllArtists();
+						foreach (ArtistData artist in artists)
+							items.Add(artist.BuildPulse());
+						break;
+					case eAnalyticType.Playlist:
+						List<PlaylistData> playlists = m_pulseData.GetAllPlaylists("");
+						foreach (PlaylistData playlist in playlists)
+							items.Add(playlist.BuildPulsePlaylist());
+						break;
+				}
+			}
+			return items;
+		}
+		public List<PulseMusicObject> GetRecentItems(string userId, int maxCount, List<eAnalyticType> types)
+		{
+			List<PulseMusicObject> returnList = GetRankedItems(userId, maxCount, eSortMethod.MostRecent, types);
+			return returnList;
 		}
 
 		private IResult HandlePlay(HttpContext context)

@@ -47,5 +47,19 @@ namespace Pulse
 			}
 			return value;
 		}
+		public static string GetUserId(HttpContext context)
+		{
+			string userId = GetString(context, "uid", "");
+			if (string.IsNullOrEmpty(userId))
+			{
+				string userName = GetString(context, "u", "");
+				if (!string.IsNullOrEmpty(userName))
+				{
+
+					userId = PulseService.Get().GetIDFromUsername(userName);
+				}
+			}
+			return userId;
+		}
 	}
 }

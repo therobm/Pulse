@@ -68,7 +68,7 @@ namespace Pulse.MusicLibrary
 		private object m_scanLock = new object();
 		private string m_nowPlayingTrackId;
 		private DateTime m_nowPlayingStartTime = DateTime.MinValue;
-		private HashSet<string> m_missingSongs = new HashSet<string>();
+		private HashSet<string> m_missingTracks = new HashSet<string>();
 		private PulseConfig m_config;
 
 		public MusicManager(PulseConfig config, PulseData pulseData)
@@ -105,12 +105,12 @@ namespace Pulse.MusicLibrary
 
 		public void OnPlaylistSyncComplete()
 		{
-			HashSet<string> missingSongsSnapshot;
+			HashSet<string> missingTracksSnapshot;
 			lock (m_missingLock)
 			{
-				missingSongsSnapshot = new HashSet<string>(m_missingSongs);
+				missingTracksSnapshot = new HashSet<string>(m_missingTracks);
 			}
-			m_lidarrSync.RequestArtists(missingSongsSnapshot);
+			m_lidarrSync.RequestArtists(missingTracksSnapshot);
 		}
 
 		public void OnTrackStreamed(string userName, string trackId)
@@ -358,7 +358,7 @@ namespace Pulse.MusicLibrary
 				{
 					lock (m_missingLock)
 					{
-						m_missingSongs.Add(entries[index].Artist + " - " + entries[index].Title);
+						m_missingTracks.Add(entries[index].Artist + " - " + entries[index].Title);
 					}
 					missed++;
 				}
@@ -513,10 +513,10 @@ namespace Pulse.MusicLibrary
 			};
 			lock (m_missingLock)
 			{
-				string missingTempPath = "missingSongs.json.tmp";
-				string missingSongJson = JsonSerializer.Serialize(m_missingSongs, options);
-				File.WriteAllText(missingTempPath, missingSongJson);
-				File.Move(missingTempPath, "missingSongs.json", overwrite: true);
+				string missingTempPath = "missingTracks.json.tmp";
+				string missingTrackJson = JsonSerializer.Serialize(m_missingTracks, options);
+				File.WriteAllText(missingTempPath, missingTrackJson);
+				File.Move(missingTempPath, "missingTracks.json", overwrite: true);
 			}
 		}
 
@@ -1118,7 +1118,7 @@ namespace Pulse.MusicLibrary
 			return m_database.GetArtist(id);
 		}
 
-
+	
 		/// <summary>
 		/// Resolves a track's on-disk path from its RelativeFilePath against the
 		/// configured MusicPath. RelativeFilePath is the source of truth now (FilePath

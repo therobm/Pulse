@@ -3,14 +3,12 @@ using System.Collections.Generic;
 
 namespace PulseAPI.CSharp
 {
-	public class PulseArtist : PulseObject
+	public class PulseArtist : PulseMusicObject
 	{
 		public string Name;
 		public string CoverArt;
 		public int AlbumCount;
 		public int TrackCount;
-		public float Score;
-		public DateTime LastPlayed;
 
 		public PulseArtist()
 		{
