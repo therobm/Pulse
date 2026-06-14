@@ -70,7 +70,14 @@ namespace Thump.Pulse
 			loginRequest.Username = username;
 			loginRequest.Password = password;
 			loginRequest.RememberMe = rememberMe;
-			FetchObject<PulseLoginResult>(url, eMediaCacheStrategy.NetworkOnly, onComplete);
+			string json = PulseWire.Serialize(loginRequest);
+
+			string result = HttpPostJson(url, json);
+			if (string.IsNullOrEmpty(result))
+				onComplete(null);
+
+			PulseLoginResult loginResult = PulseWire.Parse<PulseLoginResult>(result);
+			onComplete(loginResult);
 		}
 		public override byte[] GetTrackAudioFromCache(string trackId)
 		{
