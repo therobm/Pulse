@@ -582,6 +582,7 @@ namespace Thump.Views
 						//legacy
 						//login unsupported on this server
 						capturedSuccess = true;
+						pulse.SetServerParams(ip, port, user, password, useHttps);
 					}
 					else
 					{ 

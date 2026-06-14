@@ -186,10 +186,6 @@ namespace Thump.Playback.AndroidOS
 			{
 				MainView.Analytics.Event(eAction.Stop, eResult.OK, ePulseWireType.Track, outgoingId, outgoingPositionMs);
 			}
-			if (!string.IsNullOrEmpty(newId))
-			{
-				MainView.Analytics.Event(eAction.Play, eResult.OK, ePulseWireType.Track, newId);
-			}
 		}
 	}
 }
