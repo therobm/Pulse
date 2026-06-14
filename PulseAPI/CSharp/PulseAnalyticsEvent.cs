@@ -29,7 +29,7 @@ namespace PulseAPI.CSharp
 		Play,
 		Pause,
 		Resume,
-		Next,
+		Stop,
 		Previous,
 		Seek,
 		QueueAdd,
@@ -58,7 +58,7 @@ namespace PulseAPI.CSharp
 		Cancelled,
 	}
 
-	public class PulseAnalyticsSession
+	public class PulseAnalyticsSession : PulseObject
 	{
 		public string SessionId;
 		public string DeviceId;
@@ -68,29 +68,29 @@ namespace PulseAPI.CSharp
 		public string StartedAt;
 	}
 	
-	public class PulseAnalyticsEvent
+	public class PulseAnalyticsEvent : PulseObject
 	{
 		public eAction Action;
 		public eResult Result;
-		public string ObjectType;
+		public ePulseWireType ObjectType;
 		public string ObjectId;
-		public long DurationMs;
+		public float DurationMs;
 		public string Detail;
 		public string Timestamp;
 	}
 
-	public class PulseAnalyticsBatch
+	public class PulseAnalyticsBatch : PulseObject
 	{
 		public string DeviceId;
 		public string SessionId;
 		public string AppVersion;
-		public string User;
+		public string UserID;
 		public string Platform;
 		public List<PulseAnalyticsEvent> Events;
 	}
 
 
-	public class PulseDiagnosticsEvent
+	public class PulseDiagnosticsEvent : PulseObject
 	{
 		public string DeviceId;
 		public string SessionId;

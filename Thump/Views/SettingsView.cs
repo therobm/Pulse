@@ -272,16 +272,6 @@ namespace Thump.Views
 
 			section.Children.Add(logButtonRow);
 
-			Button viewAnalyticsButton = new Button();
-			viewAnalyticsButton.Text = "View Analytics Log";
-			viewAnalyticsButton.TextColor = ThumpColors.OnBackground;
-			viewAnalyticsButton.BackgroundColor = ThumpColors.Surface;
-			viewAnalyticsButton.CornerRadius = 8;
-			viewAnalyticsButton.FontSize = 15;
-			viewAnalyticsButton.HeightRequest = 44;
-			viewAnalyticsButton.Margin = new Thickness(0, 8, 0, 0);
-			viewAnalyticsButton.Clicked += OnViewAnalyticsLogClicked;
-			section.Children.Add(viewAnalyticsButton);
 
 			return section;
 		}
@@ -528,71 +518,6 @@ namespace Thump.Views
 			Log.Info("Log reset by user.");
 		}
 
-		// Opens the local analytics log in a read-only scrollable page. The file is
-		// rewritten fresh each launch, so this shows the current session's events.
-		private async void OnViewAnalyticsLogClicked(object sender, EventArgs e)
-		{
-			string contents = "";
-			try
-			{
-				string path = MainView.Analytics.GetAnalyticsLogFilePath();
-				if (!string.IsNullOrEmpty(path) && File.Exists(path))
-				{
-					contents = File.ReadAllText(path);
-				}
-			}
-			catch (Exception ex)
-			{
-				Log.Exception(ex);
-			}
-			if (string.IsNullOrEmpty(contents))
-			{
-				contents = "No analytics events recorded yet this session.";
-			}
-
-			Grid layout = new Grid();
-			RowDefinition closeRow = new RowDefinition();
-			closeRow.Height = GridLength.Auto;
-			RowDefinition bodyRow = new RowDefinition();
-			bodyRow.Height = GridLength.Star;
-			layout.RowDefinitions.Add(closeRow);
-			layout.RowDefinitions.Add(bodyRow);
-
-			Button closeButton = new Button();
-			closeButton.Text = "Close";
-			closeButton.TextColor = ThumpColors.OnBackground;
-			closeButton.BackgroundColor = ThumpColors.Surface;
-			closeButton.CornerRadius = 8;
-			closeButton.FontSize = 15;
-			closeButton.HeightRequest = 44;
-			closeButton.Margin = new Thickness(12, 12, 12, 0);
-			closeButton.Clicked += OnCloseAnalyticsLogClicked;
-			Grid.SetRow(closeButton, 0);
-			layout.Children.Add(closeButton);
-
-			Editor logEditor = new Editor();
-			logEditor.Text = contents;
-			logEditor.IsReadOnly = true;
-			logEditor.FontSize = 12;
-			logEditor.TextColor = ThumpColors.OnBackground;
-			logEditor.BackgroundColor = ThumpColors.Background;
-			logEditor.Margin = new Thickness(12);
-			Grid.SetRow(logEditor, 1);
-			layout.Children.Add(logEditor);
-
-			ContentPage page = new ContentPage();
-			page.Title = "Analytics Log";
-			page.BackgroundColor = ThumpColors.Background;
-			page.Content = layout;
-
-			await MainView.Self.Navigation.PushModalAsync(page);
-		}
-
-		private async void OnCloseAnalyticsLogClicked(object sender, EventArgs e)
-		{
-			await MainView.Self.Navigation.PopModalAsync();
-		}
-
 		private string ValidateAndNormalizeServer(ref string ip, ref string port)
 		{
 			if (string.IsNullOrWhiteSpace(ip))
@@ -648,28 +573,46 @@ namespace Thump.Views
 			bool useHttps = m_useHttps;
 			Task.Run(() =>
 			{
-				pulse.SetServerParams(ip, port, user, password,  useHttps);
-				bool success = pulse.TestConnection(out JsonElement response);
-				string message = "Unknown";
-				if (!success && response.TryGetProperty("error", out JsonElement error))
+				MainView.MediaClient.Login(user, password, true, (loginResult)=>
 				{
-					message = JsonHelper.GetString(error, "message");
-				}
-				bool capturedSuccess = success;
-				string capturedMessage = message;
-				MainThread.BeginInvokeOnMainThread(() =>
-				{
-					if (capturedSuccess)
+					bool capturedSuccess = false;
+					string capturedMessage = "";
+					if (loginResult == null)
 					{
-						m_connectStatusLabel.Text = "Connected";
-						m_connectStatusLabel.TextColor = s_successColor;
+						//legacy
+						//login unsupported on this server
+						capturedSuccess = true;
 					}
 					else
-					{
-						m_connectStatusLabel.Text = "Failed: " + capturedMessage;
-						m_connectStatusLabel.TextColor = s_failColor;
+					{ 
+						if (loginResult.Outcome != PulseAPI.CSharp.eAuthOutcome.Ok)
+						{
+							capturedSuccess = false;
+							capturedMessage = loginResult.Outcome.ToString();
+						}
+						else
+						{
+							ThumpSettings.SetUserID(loginResult.Id);
+							capturedSuccess = true;
+							pulse.SetServerParams(ip, port, user, password, useHttps);
+						}
 					}
+					MainThread.BeginInvokeOnMainThread(() =>
+					{
+						if (capturedSuccess)
+						{
+							m_connectStatusLabel.Text = "Connected";
+							m_connectStatusLabel.TextColor = s_successColor;
+						}
+						else
+						{
+							m_connectStatusLabel.Text = "Failed: " + capturedMessage;
+							m_connectStatusLabel.TextColor = s_failColor;
+						}
+					});
+
 				});
+				
 			});
 		}
 

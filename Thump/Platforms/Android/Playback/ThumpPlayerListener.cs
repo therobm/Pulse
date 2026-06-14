@@ -1,4 +1,5 @@
 ﻿using AndroidX.Media3.Common;
+using AndroidX.Media3.ExoPlayer;
 using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
@@ -8,6 +9,10 @@ namespace Thump.Playback.AndroidOS
 {
 	public class ThumpPlayerListener : Java.Lang.Object, IPlayerListener
 	{
+		
+		public ThumpPlayerListener()
+		{
+		}
 		public void OnPlaybackStateChanged(int playbackState)
 		{
 			string state = playbackState switch
@@ -18,6 +23,7 @@ namespace Thump.Playback.AndroidOS
 				4 => "ENDED",
 				_ => "UNKNOWN(" + playbackState + ")"
 			};
+
 			Log.Info("ExoPlayer: state=" + state);
 		}
 
@@ -46,6 +52,9 @@ namespace Thump.Playback.AndroidOS
 				3 => "PLAYLIST_CHANGED",
 				_ => "UNKNOWN(" + reason + ")"
 			};
+
+			MainView.Analytics.Event(eAction.Stop, eResult.OK, ePulseWireType.Track, mediaItem.MediaId, -1);
+
 			Log.Info("ExoPlayer: mediaItemTransition reason=" + reasonStr + " item=" + (mediaItem?.MediaId ?? "null"));
 		}
 		public void OnMediaMetadataChanged(MediaMetadata mediaMetadata) { }
