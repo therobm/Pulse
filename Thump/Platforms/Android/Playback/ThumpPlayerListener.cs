@@ -52,8 +52,8 @@ namespace Thump.Playback.AndroidOS
 				3 => "PLAYLIST_CHANGED",
 				_ => "UNKNOWN(" + reason + ")"
 			};
-
-			MainView.Analytics.Event(eAction.Stop, eResult.OK, ePulseWireType.Track, mediaItem.MediaId, -1);
+			if (mediaItem != null)
+				MainView.Analytics.Event(eAction.Play, eResult.OK, ePulseWireType.Track, mediaItem.MediaId, -1);
 
 			Log.Info("ExoPlayer: mediaItemTransition reason=" + reasonStr + " item=" + (mediaItem?.MediaId ?? "null"));
 		}
