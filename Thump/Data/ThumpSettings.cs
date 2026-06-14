@@ -160,12 +160,11 @@ namespace Thump.Data
 
 		/// <summary>
 		/// Whether the product-analytics pipeline ships usage events to the
-		/// server. Opt-in: defaults to false so a fresh install does not POST
-		/// analytics until the user enables it.
+		/// server. Opt-in: defaults to true
 		/// </summary>
 		public static bool GetAnalyticsEnabled()
 		{
-			return Preferences.Get(s_keyAnalyticsEnabled, false);
+			return Preferences.Get(s_keyAnalyticsEnabled, true);
 		}
 		/// <summary>Persist the analytics opt-in toggle.</summary>
 		public static void SetAnalyticsEnabled(bool value)

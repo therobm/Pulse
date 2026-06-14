@@ -40,16 +40,6 @@ namespace Pulse.Database
 	}
 
 
-	public class TokenRow 
-	{
-		public string Token;
-		public string UserName;
-		public string Label;
-		public string CreatedAt; //I literally do not give a single fuck about when users were made or used
-		public string LastUsed;//I literally do not give a single fuck about when users were made or used
-
-	}
-
 
 	public class PulseDB
 	{
@@ -1094,182 +1084,45 @@ namespace Pulse.Database
 			return stats;
 		}
 
-		// Returns one record per row in the users table. The per-user counts
-		// (ScoredTrackCount / StarredCount / PlaylistLastPlayedCount) are
-		// layered on by PulseData from its in-memory state -- the persistence
-		// layer has no view of them.
-		public List<UserRecord> ReadAllUsers()
+		/// <summary>
+		/// Rewrites the user_name foreign-key column in every per-user activity
+		/// table inside a single transaction. Identity + validation now live in
+		/// UserStore -- this routine only fixes the legacy DB rows when a
+		/// rename has already been accepted upstream.
+		/// </summary>
+		public void RenameUserActivityRows(string oldName, string newName)
 		{
-			List<UserRecord> result = new List<UserRecord>();
 			SqliteConnection connection = PulseDBConnector.OpenConnection();
 			try
 			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT name, display_name, created, is_admin FROM users;";
-				SqliteDataReader reader = command.ExecuteReader();
-				while (reader.Read())
-				{
-					result.Add(ReadUserRecord(reader));
-				}
-				reader.Close();
-			}
-			finally
-			{
-				connection.Close();
-			}
-			return result;
-		}
-
-		public UserRecord ReadUser(string name)
-		{
-			if (string.IsNullOrEmpty(name)) { return null; }
-			UserRecord record = null;
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT name, display_name, created, is_admin FROM users WHERE name = $name;";
-				command.Parameters.AddWithValue("$name", name);
-				SqliteDataReader reader = command.ExecuteReader();
-				if (reader.Read())
-				{
-					record = ReadUserRecord(reader);
-				}
-				reader.Close();
-			}
-			finally
-			{
-				connection.Close();
-			}
-			return record;
-		}
-
-		private static UserRecord ReadUserRecord(SqliteDataReader reader)
-		{
-			UserRecord record = new UserRecord();
-			record.Name = reader.GetString(0);
-			record.DisplayName = reader.GetString(1);
-			string createdStr = reader.GetString(2);
-			DateTime created;
-			if (!string.IsNullOrEmpty(createdStr) && DateTime.TryParse(createdStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out created))
-			{
-				record.Created = created;
-			}
-			record.IsAdmin = reader.GetInt32(3) != 0;
-			return record;
-		}
-
-		public string InsertUser(string name, string displayName, bool isAdmin)
-		{
-			if (string.IsNullOrWhiteSpace(name)) { return "Name is required."; }
-
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand exists = connection.CreateCommand();
-				exists.CommandText = "SELECT 1 FROM users WHERE name = $name;";
-				exists.Parameters.AddWithValue("$name", name);
-				object found = exists.ExecuteScalar();
-				if (found != null)
-				{
-					return "A user with that name already exists.";
-				}
-
-				SqliteCommand insert = connection.CreateCommand();
-				insert.CommandText = "INSERT INTO users (name, display_name, created, is_admin) VALUES ($name, $dn, $created, $admin);";
-				insert.Parameters.AddWithValue("$name", name);
-				insert.Parameters.AddWithValue("$dn", displayName ?? "");
-				insert.Parameters.AddWithValue("$created", DateTime.UtcNow.ToString("o"));
-				insert.Parameters.AddWithValue("$admin", isAdmin ? 1 : 0);
-				insert.ExecuteNonQuery();
-			}
-			finally
-			{
-				connection.Close();
-			}
-			return "";
-		}
-
-		// Single-transaction update. If `newName` differs from `oldName` the FK
-		// columns in every per-user table are also rewritten -- on UNIQUE
-		// constraint violation (e.g. a track already had a row for newName)
-		// the transaction rolls back and the caller gets an error.
-		public string UpdateUserRow(string oldName, string newName, string displayName, bool isAdmin)
-		{
-			if (string.IsNullOrWhiteSpace(oldName)) { return "Old name is required."; }
-			if (string.IsNullOrWhiteSpace(newName)) { return "New name is required."; }
-
-			bool renaming = !string.Equals(oldName, newName, StringComparison.Ordinal);
-
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand oldExists = connection.CreateCommand();
-				oldExists.CommandText = "SELECT 1 FROM users WHERE name = $name;";
-				oldExists.Parameters.AddWithValue("$name", oldName);
-				if (oldExists.ExecuteScalar() == null)
-				{
-					return "User not found.";
-				}
-
-				if (renaming)
-				{
-					SqliteCommand newExists = connection.CreateCommand();
-					newExists.CommandText = "SELECT 1 FROM users WHERE name = $name;";
-					newExists.Parameters.AddWithValue("$name", newName);
-					if (newExists.ExecuteScalar() != null)
-					{
-						return "A user named '" + newName + "' already exists.";
-					}
-				}
-
 				SqliteTransaction transaction = connection.BeginTransaction();
 				try
 				{
-					SqliteCommand updateUsersRow = connection.CreateCommand();
-					updateUsersRow.Transaction = transaction;
-					updateUsersRow.CommandText = "UPDATE users SET name = $new, display_name = $dn, is_admin = $admin WHERE name = $old;";
-					updateUsersRow.Parameters.AddWithValue("$new", newName);
-					updateUsersRow.Parameters.AddWithValue("$dn", displayName ?? "");
-					updateUsersRow.Parameters.AddWithValue("$admin", isAdmin ? 1 : 0);
-					updateUsersRow.Parameters.AddWithValue("$old", oldName);
-					updateUsersRow.ExecuteNonQuery();
-
-					if (renaming)
+					string[] tables = new string[] {
+						"track_user_scores",
+						"starred",
+						"playlist_user_last_played",
+						"playqueue_state",
+						"playqueue_entries",
+						"bookmarks",
+						"playback_events",
+						"item_stats"
+					};
+					for (int index = 0; index < tables.Length; index++)
 					{
-						string[] tables = new string[] {
-							"track_user_scores",
-							"starred",
-							"playlist_user_last_played",
-							"playqueue_state",
-							"playqueue_entries",
-							"bookmarks",
-							"playback_events",
-							"item_stats"
-						};
-						for (int index = 0; index < tables.Length; index++)
-						{
-							SqliteCommand update = connection.CreateCommand();
-							update.Transaction = transaction;
-							update.CommandText = "UPDATE " + tables[index] + " SET user_name = $new WHERE user_name = $old;";
-							update.Parameters.AddWithValue("$new", newName);
-							update.Parameters.AddWithValue("$old", oldName);
-							update.ExecuteNonQuery();
-						}
+						SqliteCommand update = connection.CreateCommand();
+						update.Transaction = transaction;
+						update.CommandText = "UPDATE " + tables[index] + " SET user_name = $new WHERE user_name = $old;";
+						update.Parameters.AddWithValue("$new", newName);
+						update.Parameters.AddWithValue("$old", oldName);
+						update.ExecuteNonQuery();
 					}
-
 					transaction.Commit();
-				}
-				catch (SqliteException ex)
-				{
-					transaction.Rollback();
-					Log.Warning("UpdateUser '" + oldName + "' -> '" + newName + "' failed: " + ex.Message);
-					return "Rename failed -- another row would collide on this name. " + ex.Message;
 				}
 				catch (Exception ex)
 				{
 					transaction.Rollback();
-					Log.Error("UpdateUser unexpected error: " + ex.Message);
+					Log.Error("RenameUserActivityRows '" + oldName + "' -> '" + newName + "' failed: " + ex.Message);
 					throw;
 				}
 			}
@@ -1277,14 +1130,13 @@ namespace Pulse.Database
 			{
 				connection.Close();
 			}
-
-			return "";
 		}
 
-		// Single-transaction wipe of every SQL row that mentions this user --
-		// users table plus the non-cached per-user tables (playqueue, bookmarks,
-		// playback_events, item_stats). PulseData runs the in-memory cascade and
-		// flushes the resulting dirty rows separately.
+		// Single-transaction wipe of every per-user activity row in the legacy
+		// DB (playqueue, bookmarks, playback_events, item_stats). Identity
+		// (users + tokens) lives in UserStore now and is dropped separately;
+		// PulseData also runs the in-memory cascade and flushes the resulting
+		// dirty rows.
 		public void DeleteUserRows(string userName)
 		{
 			if (string.IsNullOrEmpty(userName)) { return; }
@@ -1325,12 +1177,6 @@ namespace Pulse.Database
 					delItemStats.Parameters.AddWithValue("$u", userName);
 					delItemStats.ExecuteNonQuery();
 
-					SqliteCommand delUsersRow = connection.CreateCommand();
-					delUsersRow.Transaction = transaction;
-					delUsersRow.CommandText = "DELETE FROM users WHERE name = $u;";
-					delUsersRow.Parameters.AddWithValue("$u", userName);
-					delUsersRow.ExecuteNonQuery();
-
 					transaction.Commit();
 				}
 				catch (Exception ex)
@@ -1346,250 +1192,5 @@ namespace Pulse.Database
 			}
 		}
 
-		/// <summary>
-		/// Returns the stored BCrypt password hash for a user, or "" if the
-		/// user has no password set or does not exist. Callers must NOT log
-		/// the returned value -- it is verification material.
-		/// </summary>
-		public string ReadUserPasswordHash(string name)
-		{
-			if (string.IsNullOrEmpty(name)) { return ""; }
-			string hash = "";
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT password_hash FROM users WHERE name = $name;";
-				command.Parameters.AddWithValue("$name", name);
-				object result = command.ExecuteScalar();
-				if (result != null && result != DBNull.Value)
-				{
-					hash = (string)result;
-				}
-			}
-			finally
-			{
-				connection.Close();
-			}
-			return hash;
-		}
-
-		/// <summary>
-		/// Overwrites a user's stored password hash. The caller has already
-		/// hashed the plaintext (BCrypt); this routine never sees it.
-		/// </summary>
-		public void SetUserPassword(string name, string passwordHash)
-		{
-			if (string.IsNullOrEmpty(name)) { return; }
-			string storedHash = passwordHash;
-			if (storedHash == null) { storedHash = ""; }
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "UPDATE users SET password_hash = $hash WHERE name = $name;";
-				command.Parameters.AddWithValue("$hash", storedHash);
-				command.Parameters.AddWithValue("$name", name);
-				command.ExecuteNonQuery();
-			}
-			finally
-			{
-				connection.Close();
-			}
-		}
-
-		/// <summary>
-		/// True when at least one user in the table has a non-empty password
-		/// hash. The setPassword endpoint uses this to allow the very first
-		/// password to be set without a session, then locks the route to
-		/// authenticated callers from that point forward.
-		/// </summary>
-		public bool AnyUserHasPassword()
-		{
-			bool any = false;
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT EXISTS(SELECT 1 FROM users WHERE password_hash <> '');";
-				object result = command.ExecuteScalar();
-				if (result != null && result != DBNull.Value)
-				{
-					any = Convert.ToInt32(result) != 0;
-				}
-			}
-			finally
-			{
-				connection.Close();
-			}
-			return any;
-		}
-
-		/// <summary>
-		/// Inserts a freshly-minted device token. created_at is stamped here so
-		/// every caller writes a consistent format; last_used picks up the
-		/// schema default ('') until the validation helper bumps it.
-		/// </summary>
-		public void InsertToken(string token, string userName, string label)
-		{
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "INSERT INTO tokens (token, user_name, label, created_at) VALUES ($token, $user_name, $label, $created_at);";
-				command.Parameters.AddWithValue("$token", token);
-				command.Parameters.AddWithValue("$user_name", userName);
-				command.Parameters.AddWithValue("$label", label ?? "");
-				command.Parameters.AddWithValue("$created_at", DateTime.UtcNow.ToString("o"));
-				command.ExecuteNonQuery();
-			}
-			finally
-			{
-				connection.Close();
-			}
-		}
-
-		/// <summary>
-		/// Returns every row in the tokens table, newest first.
-		/// </summary>
-		public List<TokenRow> GetAllTokens()
-		{
-			List<TokenRow> result = new List<TokenRow>();
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT token, user_name, label, created_at, last_used FROM tokens ORDER BY created_at DESC;";
-				SqliteDataReader reader = command.ExecuteReader();
-				while (reader.Read())
-				{
-					TokenRow row = new TokenRow();
-					row.Token = reader.GetString(0);
-					row.UserName = reader.GetString(1);
-					row.Label = reader.GetString(2);
-					row.CreatedAt = reader.GetString(3);
-					row.LastUsed = reader.GetString(4);
-					result.Add(row);
-				}
-				reader.Close();
-			}
-			finally
-			{
-				connection.Close();
-			}
-			return result;
-		}
-
-		/// <summary>
-		/// Returns the tokens registered to one user, newest first.
-		/// </summary>
-		public List<TokenRow> GetTokensForUser(string userName)
-		{
-			List<TokenRow> result = new List<TokenRow>();
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT token, user_name, label, created_at, last_used FROM tokens WHERE user_name = $user_name ORDER BY created_at DESC;";
-				command.Parameters.AddWithValue("$user_name", userName);
-				SqliteDataReader reader = command.ExecuteReader();
-				while (reader.Read())
-				{
-					TokenRow row = new TokenRow();
-					row.Token = reader.GetString(0);
-					row.UserName = reader.GetString(1);
-					row.Label = reader.GetString(2);
-					row.CreatedAt = reader.GetString(3);
-					row.LastUsed = reader.GetString(4);
-					result.Add(row);
-				}
-				reader.Close();
-			}
-			finally
-			{
-				connection.Close();
-			}
-			return result;
-		}
-
-		/// <summary>
-		/// Resolves a raw token value to its owning user. Returns "" when the
-		/// token is not in the table -- the validation helper treats that as
-		/// "no auth" without further error handling.
-		/// </summary>
-		public string LookupTokenUser(string token)
-		{
-			if (string.IsNullOrEmpty(token))
-			{
-				return "";
-			}
-			string userName = "";
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "SELECT user_name FROM tokens WHERE token = $token;";
-				command.Parameters.AddWithValue("$token", token);
-				object result = command.ExecuteScalar();
-				if (result != null && result != DBNull.Value)
-				{
-					userName = (string)result;
-				}
-			}
-			finally
-			{
-				connection.Close();
-			}
-			return userName;
-		}
-
-		/// <summary>
-		/// Stamps the last_used column on a token. Called on every successful
-		/// token resolve so the management UI can show recent activity.
-		/// </summary>
-		public void UpdateTokenLastUsed(string token)
-		{
-			if (string.IsNullOrEmpty(token))
-			{
-				return;
-			}
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "UPDATE tokens SET last_used = $last_used WHERE token = $token;";
-				command.Parameters.AddWithValue("$last_used", DateTime.UtcNow.ToString("o"));
-				command.Parameters.AddWithValue("$token", token);
-				command.ExecuteNonQuery();
-			}
-			finally
-			{
-				connection.Close();
-			}
-		}
-
-		/// <summary>
-		/// Removes a device token. Idempotent; deleting an unknown token is a
-		/// no-op.
-		/// </summary>
-		public void DeleteToken(string token)
-		{
-			if (string.IsNullOrEmpty(token))
-			{
-				return;
-			}
-			SqliteConnection connection = PulseDBConnector.OpenConnection();
-			try
-			{
-				SqliteCommand command = connection.CreateCommand();
-				command.CommandText = "DELETE FROM tokens WHERE token = $token;";
-				command.Parameters.AddWithValue("$token", token);
-				command.ExecuteNonQuery();
-			}
-			finally
-			{
-				connection.Close();
-			}
-		}
 	}
 }

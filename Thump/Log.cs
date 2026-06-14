@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Microsoft.Maui.Storage;
 
 namespace Thump
@@ -10,19 +11,21 @@ namespace Thump
 		private static readonly object s_fileLock = new object();
 		private static string s_logFilePath = "";
 
-		public static void Info(string message)
+		public static void Info(string message, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 		{
-			Write("INFO", message);
+			Write("INFO", message, filePath, memberName);
 		}
 
-		public static void Warn(string message)
+		public static void Warn(string message, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 		{
-			Write("WARN", message);
+			Write("WARN", message, filePath, memberName);
 		}
 
-		public static void Error(string message)
+		public static void Error(string message, bool logDiagnostics = true, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 		{
-			Write("ERROR", message);
+			if (logDiagnostics)
+				MainView.Analytics.DiagnosticEvent(message, "", filePath, memberName);
+			Write("ERROR", message, filePath, memberName);
 		}
 
 		public static void Perf(string message)
@@ -32,9 +35,11 @@ namespace Thump
 #endif
 		}
 
-		public static void Exception(Exception ex)
+		public static void Exception(Exception ex, bool logDiagnostics = true, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 		{
-			Write("EXCEPTION", ex.ToString());
+			if (logDiagnostics)
+				MainView.Analytics.DiagnosticEvent(ex.Message, ex.ToString(), filePath, memberName);
+			Write("EXCEPTION", ex.ToString(), filePath, memberName);
 		}
 
 		public static string GetLogFilePath()
@@ -63,9 +68,10 @@ namespace Thump
 		}
 
 
-		private static void Write(string level, string message, bool saveToDisk = true)
+		private static void Write(string level, string message, string filePath, string memberName, bool saveToDisk = true)
 		{
-			string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " [" + level + "] " + message;
+			string caller = Path.GetFileNameWithoutExtension(filePath);
+			string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " [" + level + "][" + caller + "." + memberName + "] " + message;
 			Debug.WriteLine(line);
 
 			if (saveToDisk)

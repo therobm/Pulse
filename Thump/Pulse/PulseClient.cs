@@ -84,7 +84,7 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, data);
 				return;
 			}
-			if (cacheStrategy == eMediaCacheStrategy.NetworkFirst && GetFreshCachedPulseData<T>(url, s_cacheFreshnessSeconds, out List<T> freshData))
+			if (cacheStrategy == eMediaCacheStrategy.NetworkFirst && GetRecentCachedPulseData<T>(url, s_cacheFreshnessSeconds, out List<T> freshData))
 			{
 				CompleteOnMain(onComplete, freshData);
 				return;
@@ -142,7 +142,7 @@ namespace Thump.Pulse
 				CompleteOnMain(onComplete, data);
 				return;
 			}
-			if (cacheStrategy == eMediaCacheStrategy.NetworkFirst && GetFreshCachedPulseData<T>(url, s_cacheFreshnessSeconds, out T freshData))
+			if (cacheStrategy == eMediaCacheStrategy.NetworkFirst && GetRecentCachedPulseData<T>(url, s_cacheFreshnessSeconds, out T freshData))
 			{
 				CompleteOnMain(onComplete, freshData);
 				return;
@@ -751,9 +751,12 @@ namespace Thump.Pulse
 				{
 					//make the small size they want now
 					ImageSource result = DecodeToSize(cache_url, rawImage, size);
-					m_imageCache[cache_url] = result;
-					CompleteOnMain(onComplete, result);
-					return;
+					if (result != null) 
+					{ 
+						m_imageCache[cache_url] = result;
+						CompleteOnMain(onComplete, result);
+						return;
+					}
 				}
 
 				byte[] cachedData = GetCachedCoverArt(coverArtId);
@@ -761,9 +764,12 @@ namespace Thump.Pulse
 				{
 					m_imageBytesCache[url] = cachedData;
 					ImageSource result = DecodeToSize(cache_url, cachedData, size);
-					m_imageCache[cache_url] = result;
-					CompleteOnMain(onComplete, m_imageCache[cache_url]);
-					return;
+					if (result != null) 
+					{ 
+						m_imageCache[cache_url] = result;
+						CompleteOnMain(onComplete, m_imageCache[cache_url]);
+						return;
+					}
 				}
 				
 				GetHTTPImage(url, (data) =>
@@ -781,8 +787,15 @@ namespace Thump.Pulse
 
 						//make the requested size
 						ImageSource result = DecodeToSize(cache_url, data, size);
-						m_imageCache[cache_url] = result;
-						CompleteOnMain(onComplete, m_imageCache[cache_url]);
+						if (result != null)
+						{
+							m_imageCache[cache_url] = result;
+							CompleteOnMain(onComplete, m_imageCache[cache_url]);
+						}
+						else
+						{
+							CompleteOnMain(onComplete, null);
+						}
 					}
 					catch (Exception ex)
 					{
@@ -1054,6 +1067,32 @@ namespace Thump.Pulse
 			});
 		}
 
+		/// <summary>
+		/// POST a single diagnostic event to the server's pulse_v1/ingestDiagnostics
+		/// route. Swallows its own failures: the diagnostics path must never feed
+		/// errors back into Log.* or it loops.
+		/// </summary>
+		public override void PostDiagnostics(PulseDiagnosticsEvent diagnosticsEvent)
+		{
+			if (diagnosticsEvent == null)
+			{
+				return;
+			}
+			Task.Run(() =>
+			{
+				try
+				{
+					string url = BuildPulseUrl("ingestDiagnostics", null);
+					string json = PulseWire.Serialize(diagnosticsEvent);
+					HttpPostJson(url, json);
+				}
+				catch (Exception ex)
+				{
+					System.Diagnostics.Debug.WriteLine("[diagnostics] PostDiagnostics failed: " + ex.Message);
+				}
+			});
+		}
+
 		// The recentlyPlayed feed is heterogeneous: each element carries its own
 		// Kind discriminator. Probe Kind off the raw element, then re-parse into
 		// the matching concrete PulseObject subtype.
@@ -1184,6 +1223,9 @@ namespace Thump.Pulse
 
 		public override void CacheQueryResults(string url, byte[] data)
 		{
+			if (data == null || data.Length == 0)
+				return;
+
 			m_cache.CacheQueryResults(url, data);
 		}
 
@@ -1194,12 +1236,18 @@ namespace Thump.Pulse
 
 		public void CacheQueryPulseData(string url, PulseObject pulseObject)
 		{
+			if (pulseObject == null)
+				return;
+
 			string data = PulseWire.Serialize(pulseObject);
 			m_cache.CacheQueryResults(url, data);
 		}
 
 		public void CacheQueryPulseData<T>(string url, List<T> pulseObject) where T : PulseObject
 		{
+			if (pulseObject == null || pulseObject.Count == 0)
+				return;
+
 			string data = PulseWire.Serialize(pulseObject);
 			m_cache.CacheQueryResults(url, data);
 		}
@@ -1241,7 +1289,7 @@ namespace Thump.Pulse
 		/// maxAgeSeconds. Mirrors GetCachedPulseData but routes through the
 		/// age-aware ThumpCache read.
 		/// </summary>
-		public bool GetFreshCachedPulseData<T>(string url, int maxAgeSeconds, out T pulseObject) where T : PulseObject
+		public bool GetRecentCachedPulseData<T>(string url, int maxAgeSeconds, out T pulseObject) where T : PulseObject
 		{
 			if (m_cache.GetCachedResults(url, maxAgeSeconds, out string data))
 			{
@@ -1261,7 +1309,7 @@ namespace Thump.Pulse
 		/// single overload, returning a parsed list only when the cached row is
 		/// fresh.
 		/// </summary>
-		public bool GetFreshCachedPulseData<T>(string url, int maxAgeSeconds, out List<T> pulseObject) where T : PulseObject
+		public bool GetRecentCachedPulseData<T>(string url, int maxAgeSeconds, out List<T> pulseObject) where T : PulseObject
 		{
 			if (m_cache.GetCachedResults(url, maxAgeSeconds, out string data))
 			{
@@ -1270,7 +1318,7 @@ namespace Thump.Pulse
 				{
 					Log.Warn("Warning bad data was cached for " + url);
 				}
-				return pulseObject != null;
+				return pulseObject != null && pulseObject.Count > 0;
 			}
 			pulseObject = null;
 			return false;
@@ -1321,6 +1369,8 @@ namespace Thump.Pulse
 			Android.Graphics.BitmapFactory.Options decodeOptions = new Android.Graphics.BitmapFactory.Options();
 			decodeOptions.InSampleSize = sampleSize;
 			Android.Graphics.Bitmap sampled = Android.Graphics.BitmapFactory.DecodeByteArray(data, 0, data.Length, decodeOptions);
+			if (sampled == null)
+				return null;
 
 			Android.Graphics.Bitmap finalBitmap = sampled;
 			if (sampled.Width > size || sampled.Height > size)

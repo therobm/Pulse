@@ -117,7 +117,6 @@ namespace Thump
 			m_analytics = new Analytics(m_mediaClient);
 			m_analytics.Event(eAction.Launch, eResult.OK);
 			m_mediaClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetUseHttps());
-
 #if ANDROID
 			m_player = new ThumpAndroidPlayer(this, m_mediaClient);
 #else
@@ -175,7 +174,7 @@ namespace Thump
 			{
 				connectivityDetail = "online";
 			}
-			m_analytics.Event(eAction.Connectivity, eResult.OK, connectivityDetail);
+			m_analytics.Event(eAction.Connectivity, eResult.OK, ePulseWireType.Invalid, "", -1, connectivityDetail);
 			MainThread.BeginInvokeOnMainThread(() =>
 			{
 				m_offlineBanner.SetIsOnline(online);
@@ -401,6 +400,8 @@ namespace Thump
 			ShowMiniPlayer();
 			m_player.Play(m_currentQueue, clampedIndex);
 
+			m_analytics.Event(eAction.Play, eResult.OK, ePulseWireType.Track, CurrentTrackId(), -1, "source=" + source);
+
 			// Collection-level Started analytics. Only albums, artists, and
 			// playlists report here -- a Track source is a single-track queue
 			// whose play is already captured track-side by the playback
@@ -470,10 +471,12 @@ namespace Thump
 			if (m_playbackState == ePlaybackState.Playing || m_playbackState == ePlaybackState.Buffering)
 			{
 				m_player.Pause();
+				m_analytics.Event(eAction.Pause, eResult.OK, ePulseWireType.Track, CurrentTrackId());
 			}
 			else
 			{
 				m_player.Resume();
+				m_analytics.Event(eAction.Resume, eResult.OK, ePulseWireType.Track, CurrentTrackId());
 			}
 		}
 
@@ -485,10 +488,12 @@ namespace Thump
 			if (CurrentTrackIsSeries())
 			{
 				m_player.SeekRelative(10000);
+				m_analytics.Event(eAction.Next, eResult.OK, ePulseWireType.Track, CurrentTrackId(), -1, "series-skip");
 			}
 			else
 			{
 				m_player.Next();
+				m_analytics.Event(eAction.Next, eResult.OK, ePulseWireType.Track, CurrentTrackId());
 			}
 		}
 
@@ -497,10 +502,12 @@ namespace Thump
 			if (CurrentTrackIsSeries())
 			{
 				m_player.SeekRelative(-10000);
+				m_analytics.Event(eAction.Previous, eResult.OK, ePulseWireType.Track, CurrentTrackId(), -1, "series-skip");
 			}
 			else
 			{
 				m_player.Previous();
+				m_analytics.Event(eAction.Previous, eResult.OK, ePulseWireType.Track, CurrentTrackId());
 			}
 		}
 
@@ -508,6 +515,7 @@ namespace Thump
 		{
 			long position = (long)(fraction * m_currentDurationMs);
 			m_player.SeekTo(position);
+			m_analytics.Event(eAction.Seek, eResult.OK, ePulseWireType.Track, CurrentTrackId());
 		}
 
 		public void OnToggleShuffle()
@@ -698,6 +706,17 @@ namespace Thump
 				return false;
 			}
 			return m_currentQueue[m_currentQueueIndex].IsSeries;
+		}
+
+		// Id of the current track for analytics attribution, or "" when nothing
+		// is loaded (the analytics layer treats an empty object id as no-object).
+		private string CurrentTrackId()
+		{
+			if (m_currentTrack == null)
+			{
+				return "";
+			}
+			return m_currentTrack.Id;
 		}
 
 		public void OnQueueTrackSelected(PulseTrack track)

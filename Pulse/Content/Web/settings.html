@@ -154,12 +154,6 @@
 				text-align: right;
 			}
 
-			.user-table tr.orphan td.col-name::after {
-				content: ' (orphan)';
-				color: var(--danger);
-				font-weight: 400;
-				font-size: 11px;
-			}
 
 		.btn {
 			background: transparent;
@@ -423,10 +417,9 @@
 
 		<div class="section">
 			<div class="section-head">
-				<h2>Sign in</h2>
+				<h2>Account</h2>
 				<div id="login-state" class="login-state"></div>
 			</div>
-			<div class="section-hint">Password login is additive in P1: existing routes are not gated yet. Sign in here to be able to set passwords for other users once the first password exists.</div>
 
 			<div id="login-form" class="login-form">
 				<div class="form-row">
@@ -440,10 +433,10 @@
 					</div>
 					<label class="checkbox-label"><input type="checkbox" id="login-remember" /> Remember me</label>
 					<button class="btn btn-primary" id="login-submit">Sign in</button>
-					<button class="btn" id="logout-btn">Sign out</button>
 				</div>
 				<div class="form-error" id="login-error"></div>
 			</div>
+			<button class="btn" id="logout-btn" style="display: none;">Sign out</button>
 		</div>
 
 		<div class="section">
@@ -451,7 +444,6 @@
 				<h2>Users</h2>
 				<button class="btn btn-primary" id="new-user-btn">New user</button>
 			</div>
-			<div class="section-hint">Real entries live in the <code>users</code> table. Rows still referenced by per-user data but missing from <code>users</code> are surfaced as orphans so you can clean them up.</div>
 
 			<div id="create-form" class="create-form">
 				<div class="form-row">
@@ -475,45 +467,6 @@
 			</div>
 		</div>
 
-		<div class="section">
-			<div class="section-head">
-				<h2>Device Tokens</h2>
-				<button class="btn btn-primary" id="new-token-btn">Create token</button>
-			</div>
-			<div class="section-hint">Device tokens authenticate clients that cannot sign in via the cookie path (set-top boxes, mobile apps, scripted callers). P2 is plumbing only -- nothing on the server is gated by a token yet. The raw token is shown once on creation; copy it then.</div>
-
-			<div id="token-create-form" class="create-form">
-				<div class="form-row">
-					<div>
-						<label for="token-user">User</label>
-						<input type="text" class="input" id="token-user" maxlength="120" autocomplete="off" />
-					</div>
-					<div>
-						<label for="token-label">Label</label>
-						<input type="text" class="input" id="token-label" maxlength="120" autocomplete="off" />
-					</div>
-					<span></span>
-					<button class="btn btn-primary" id="token-create-submit">Create</button>
-					<button class="btn" id="token-create-cancel">Cancel</button>
-				</div>
-				<div class="form-error" id="token-create-error"></div>
-			</div>
-
-			<div id="token-reveal-row" class="password-row" style="display: none;">
-				<div class="form-row">
-					<div style="grid-column: span 2;">
-						<label for="token-reveal-value">New token (copy now -- shown only once)</label>
-						<input type="text" class="input" id="token-reveal-value" readonly />
-					</div>
-					<button class="btn btn-primary" id="token-reveal-copy">Copy</button>
-					<button class="btn" id="token-reveal-close">Done</button>
-				</div>
-			</div>
-
-			<div id="tokens-container">
-				<div class="loading-text">Loading tokens...</div>
-			</div>
-		</div>
 	</div>
 
 	<div id="toast" class="toast"></div>
@@ -536,24 +489,17 @@
 		}
 
 		// Adapt PulseUser wire objects (PascalCase, inside the PulseResponse
-		// envelope's contents) to the lowercase shape the rest of this page
-		// uses. Created comes back as a DateTime; the .NET min-date sentinel
-		// is mapped to '' so the existing orphan/created checks keep working.
+		// envelope's contents) to the lowercase shape the rest of this page uses.
 		function adaptUsers(list) {
 			let out = [];
 			if (!list) { return out; }
 			for (let idx = 0; idx < list.length; idx++) {
 				let user = list[idx];
-				let created = user.Created || '';
-				if (created.indexOf('0001-01-01') === 0) { created = ''; }
 				out.push({
+					id: user.Id,
 					name: user.Name,
 					displayName: user.DisplayName,
-					created: created,
-					isAdmin: user.IsAdmin,
-					scoredTrackCount: user.ScoredTrackCount,
-					starredCount: user.StarredCount,
-					playlistLastPlayedCount: user.PlaylistLastPlayedCount
+					isAdmin: user.IsAdmin
 				});
 			}
 			return out;
@@ -574,16 +520,6 @@
 			toast.classList.toggle('error', !!isError);
 			toast.classList.add('visible');
 			setTimeout(function () { toast.classList.remove('visible'); }, 2500);
-		}
-
-		function formatCreated(iso) {
-			if (!iso) { return '—'; }
-			let date = new Date(iso);
-			if (isNaN(date.getTime())) { return '—'; }
-			let year = date.getFullYear();
-			let month = String(date.getMonth() + 1).padStart(2, '0');
-			let day = String(date.getDate()).padStart(2, '0');
-			return year + '-' + month + '-' + day;
 		}
 
 		function loadUsers() {
@@ -607,9 +543,7 @@
 			let columns = [
 				{ label: 'Name', cls: 'col-name' },
 				{ label: 'Display name', cls: 'col-display' },
-				{ label: 'Created', cls: 'col-created' },
 				{ label: 'Admin', cls: 'col-admin' },
-				{ label: 'Activity', cls: 'col-counts' },
 				{ label: '', cls: 'col-actions' }
 			];
 			for (let idx = 0; idx < columns.length; idx++) {
@@ -633,9 +567,8 @@
 
 		function buildUserRow(user) {
 			let row = document.createElement('tr');
-			let isOrphan = !user.created;
-			if (isOrphan) { row.classList.add('orphan'); }
 			row.setAttribute('data-user-name', user.name);
+			row.setAttribute('data-user-id', user.id);
 
 			let nameCell = document.createElement('td');
 			nameCell.className = 'col-name';
@@ -647,20 +580,10 @@
 			displayCell.textContent = user.displayName || '—';
 			row.appendChild(displayCell);
 
-			let createdCell = document.createElement('td');
-			createdCell.className = 'col-created';
-			createdCell.textContent = formatCreated(user.created);
-			row.appendChild(createdCell);
-
 			let adminCell = document.createElement('td');
 			adminCell.className = 'col-admin';
 			adminCell.textContent = user.isAdmin ? 'Yes' : '';
 			row.appendChild(adminCell);
-
-			let countsCell = document.createElement('td');
-			countsCell.className = 'col-counts';
-			countsCell.textContent = user.scoredTrackCount + ' s · ' + user.starredCount + ' ★ · ' + user.playlistLastPlayedCount + ' pl';
-			row.appendChild(countsCell);
 
 			let actionsCell = document.createElement('td');
 			actionsCell.className = 'col-actions';
@@ -675,19 +598,17 @@
 			let wrapper = document.createElement('span');
 			wrapper.className = 'action-row';
 
-			if (user.created) {
-				let editBtn = document.createElement('button');
-				editBtn.className = 'btn';
-				editBtn.textContent = 'Edit';
-				editBtn.addEventListener('click', function () { showEditRow(user); });
-				wrapper.appendChild(editBtn);
+			let editBtn = document.createElement('button');
+			editBtn.className = 'btn';
+			editBtn.textContent = 'Edit';
+			editBtn.addEventListener('click', function () { showEditRow(user); });
+			wrapper.appendChild(editBtn);
 
-				let passwordBtn = document.createElement('button');
-				passwordBtn.className = 'btn';
-				passwordBtn.textContent = 'Set password';
-				passwordBtn.addEventListener('click', function () { showPasswordRow(user.name); });
-				wrapper.appendChild(passwordBtn);
-			}
+			let passwordBtn = document.createElement('button');
+			passwordBtn.className = 'btn';
+			passwordBtn.textContent = 'Set password';
+			passwordBtn.addEventListener('click', function () { showPasswordRow(user.name); });
+			wrapper.appendChild(passwordBtn);
 
 			let deleteBtn = document.createElement('button');
 			deleteBtn.className = 'btn btn-danger';
@@ -710,7 +631,7 @@
 			let passwordRow = document.createElement('tr');
 			passwordRow.className = 'password-row';
 			let cell = document.createElement('td');
-			cell.colSpan = 6;
+			cell.colSpan = 4;
 
 			let formRow = document.createElement('div');
 			formRow.className = 'form-row';
@@ -760,7 +681,8 @@
 					errorDiv.textContent = 'Passwords do not match.';
 					return;
 				}
-				runSetPassword(userName, pw, function (ok, message) {
+				let userId = row.getAttribute('data-user-id');
+				runSetPassword(userId, pw, function (ok, message) {
 					if (ok) {
 						showToast('Password set for ' + userName);
 						passwordRow.parentNode.removeChild(passwordRow);
@@ -797,31 +719,24 @@
 			pwInput.focus();
 		}
 
-		// Maps the server's machine-parsable status code on a PulseResponse
-		// envelope to a human-readable message. The point of routing failures
-		// through this table is so the policy (e.g. minimum password length)
-		// stays server-side: the client just relays whatever the server says.
-		function describeAuthStatus(status) {
-			if (status === 'password_too_short') {
+		function describeAuthOutcome(outcome) {
+			if (outcome === 'PasswordTooShort') {
 				return "Password does not meet the server's requirements";
 			}
-			if (status === 'invalid_credentials') {
+			if (outcome === 'InvalidCredentials') {
 				return 'Invalid credentials';
 			}
-			if (status === 'not_signed_in') {
+			if (outcome === 'NotSignedIn') {
 				return 'Sign in first';
 			}
-			if (status === 'forbidden') {
+			if (outcome === 'Forbidden') {
 				return 'Not allowed';
 			}
-			if (status === 'unknown_user') {
+			if (outcome === 'UnknownUser') {
 				return 'Unknown user';
 			}
-			if (status === 'missing_fields') {
-				return 'Username and password are required.';
-			}
-			if (status === 'missing_body') {
-				return 'Missing request body';
+			if (outcome === 'RateLimited') {
+				return 'Too many attempts. Try again in a few minutes.';
 			}
 			return 'Request failed';
 		}
@@ -834,25 +749,25 @@
 			return parsed;
 		}
 
-		function runSetPassword(userName, password, callback) {
+		function runSetPassword(userId, password, callback) {
 			let xhr = new XMLHttpRequest();
 			xhr.open('POST', '/pulse_v1/setPassword');
 			xhr.withCredentials = true;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 			xhr.onload = function () {
 				let parsed = parseAuthEnvelope(xhr.responseText);
-				if (parsed && parsed.status === 'ok') {
+				let outcome = '';
+				if (parsed && parsed.contents) {
+					outcome = parsed.contents.Outcome;
+				}
+				if (outcome === 'Ok') {
 					callback(true, '');
 					return;
 				}
-				let message = 'Set-password failed';
-				if (parsed && parsed.status) {
-					message = describeAuthStatus(parsed.status);
-				}
-				callback(false, message);
+				callback(false, describeAuthOutcome(outcome));
 			};
 			xhr.onerror = function () { callback(false, 'Network error'); };
-			let payload = JSON.stringify({ Username: userName, Password: password });
+			let payload = JSON.stringify({ Id: userId, Password: password });
 			xhr.send(payload);
 		}
 
@@ -863,15 +778,15 @@
 			xhr.setRequestHeader('Content-Type', 'application/json');
 			xhr.onload = function () {
 				let parsed = parseAuthEnvelope(xhr.responseText);
-				if (parsed && parsed.status === 'ok' && parsed.contents && parsed.contents.Username) {
+				let outcome = '';
+				if (parsed && parsed.contents) {
+					outcome = parsed.contents.Outcome;
+				}
+				if (outcome === 'Ok') {
 					callback(true, parsed.contents, '');
 					return;
 				}
-				let message = 'Invalid credentials';
-				if (parsed && parsed.status) {
-					message = describeAuthStatus(parsed.status);
-				}
-				callback(false, null, message);
+				callback(false, null, describeAuthOutcome(outcome));
 			};
 			xhr.onerror = function () { callback(false, null, 'Network error'); };
 			let payload = JSON.stringify({ Username: username, Password: password, RememberMe: rememberMe });
@@ -923,16 +838,38 @@
 
 		function setLoginState(userName, isAdmin) {
 			let stateEl = document.getElementById('login-state');
+			let loginForm = document.getElementById('login-form');
+			let logoutBtn = document.getElementById('logout-btn');
 			if (userName) {
 				let suffix = '';
 				if (isAdmin) { suffix = ' (admin)'; }
 				stateEl.textContent = 'Signed in as ' + userName + suffix;
 				stateEl.classList.add('signed-in');
+				loginForm.style.display = 'none';
+				logoutBtn.style.display = '';
 			}
 			else {
 				stateEl.textContent = 'Not signed in';
 				stateEl.classList.remove('signed-in');
+				loginForm.style.display = '';
+				logoutBtn.style.display = 'none';
 			}
+		}
+
+		function checkSession() {
+			let xhr = new XMLHttpRequest();
+			xhr.open('GET', '/pulse_v1/whoami');
+			xhr.withCredentials = true;
+			xhr.onload = function () {
+				let parsed = parseAuthEnvelope(xhr.responseText);
+				if (parsed && parsed.contents && parsed.contents.State === 'SignedIn') {
+					setLoginState(parsed.contents.Username, parsed.contents.IsAdmin);
+					return;
+				}
+				setLoginState('', false);
+			};
+			xhr.onerror = function () { setLoginState('', false); };
+			xhr.send();
 		}
 
 		function showDeleteConfirm(actionsCell, userName) {
@@ -1096,243 +1033,6 @@
 			});
 		}
 
-		// Adapt PulseTokenSummary wire objects (PascalCase) to the lowercase
-		// shape used by the token table renderer. Mirrors adaptUsers.
-		function adaptTokens(list) {
-			let out = [];
-			if (!list) { return out; }
-			for (let idx = 0; idx < list.length; idx++) {
-				let tok = list[idx];
-				out.push({
-					token: tok.Token,
-					username: tok.Username,
-					label: tok.Label,
-					createdAt: tok.CreatedAt,
-					lastUsed: tok.LastUsed
-				});
-			}
-			return out;
-		}
-
-		function formatTokenTimestamp(iso) {
-			if (!iso) { return '—'; }
-			let date = new Date(iso);
-			if (isNaN(date.getTime())) { return '—'; }
-			let year = date.getFullYear();
-			let month = String(date.getMonth() + 1).padStart(2, '0');
-			let day = String(date.getDate()).padStart(2, '0');
-			let hours = String(date.getHours()).padStart(2, '0');
-			let minutes = String(date.getMinutes()).padStart(2, '0');
-			return year + '-' + month + '-' + day + ' ' + hours + ':' + minutes;
-		}
-
-		function loadTokens() {
-			let container = document.getElementById('tokens-container');
-			container.innerHTML = '<div class="loading-text">Loading tokens...</div>';
-			pulseGet('listTokens', function (data) { renderTokens(adaptTokens(data.contents)); });
-		}
-
-		function renderTokens(tokens) {
-			let container = document.getElementById('tokens-container');
-			if (tokens.length === 0) {
-				container.innerHTML = '<div class="empty-state">No device tokens issued.</div>';
-				return;
-			}
-
-			let table = document.createElement('table');
-			table.className = 'user-table';
-
-			let head = document.createElement('thead');
-			let headRow = document.createElement('tr');
-			let columns = [
-				{ label: 'User', cls: 'col-name' },
-				{ label: 'Label', cls: 'col-display' },
-				{ label: 'Created', cls: 'col-created' },
-				{ label: 'Last used', cls: 'col-created' },
-				{ label: '', cls: 'col-actions' }
-			];
-			for (let idx = 0; idx < columns.length; idx++) {
-				let th = document.createElement('th');
-				th.textContent = columns[idx].label;
-				th.className = columns[idx].cls;
-				headRow.appendChild(th);
-			}
-			head.appendChild(headRow);
-			table.appendChild(head);
-
-			let body = document.createElement('tbody');
-			for (let idx = 0; idx < tokens.length; idx++) {
-				body.appendChild(buildTokenRow(tokens[idx]));
-			}
-			table.appendChild(body);
-
-			container.innerHTML = '';
-			container.appendChild(table);
-		}
-
-		function buildTokenRow(tok) {
-			let row = document.createElement('tr');
-
-			let userCell = document.createElement('td');
-			userCell.className = 'col-name';
-			userCell.textContent = tok.username;
-			row.appendChild(userCell);
-
-			let labelCell = document.createElement('td');
-			labelCell.className = 'col-display';
-			labelCell.textContent = tok.label || '—';
-			row.appendChild(labelCell);
-
-			let createdCell = document.createElement('td');
-			createdCell.className = 'col-created';
-			createdCell.textContent = formatTokenTimestamp(tok.createdAt);
-			row.appendChild(createdCell);
-
-			let usedCell = document.createElement('td');
-			usedCell.className = 'col-created';
-			usedCell.textContent = formatTokenTimestamp(tok.lastUsed);
-			row.appendChild(usedCell);
-
-			let actionsCell = document.createElement('td');
-			actionsCell.className = 'col-actions';
-			let wrapper = document.createElement('span');
-			wrapper.className = 'action-row';
-			let revokeBtn = document.createElement('button');
-			revokeBtn.className = 'btn btn-danger';
-			revokeBtn.textContent = 'Revoke';
-			revokeBtn.addEventListener('click', function () { showRevokeConfirm(actionsCell, tok); });
-			wrapper.appendChild(revokeBtn);
-			actionsCell.appendChild(wrapper);
-			row.appendChild(actionsCell);
-
-			return row;
-		}
-
-		function showRevokeConfirm(actionsCell, tok) {
-			actionsCell.innerHTML = '';
-
-			let wrapper = document.createElement('span');
-			wrapper.className = 'action-row';
-
-			let label = document.createElement('span');
-			label.className = 'confirm-label';
-			let labelText = 'Revoke?';
-			if (tok.label) { labelText = 'Revoke "' + tok.label + '"?'; }
-			label.textContent = labelText;
-			wrapper.appendChild(label);
-
-			let confirmBtn = document.createElement('button');
-			confirmBtn.className = 'btn btn-confirm';
-			confirmBtn.textContent = 'Confirm';
-			confirmBtn.addEventListener('click', function () { runRevokeToken(tok); });
-			wrapper.appendChild(confirmBtn);
-
-			let cancelBtn = document.createElement('button');
-			cancelBtn.className = 'btn';
-			cancelBtn.textContent = 'Cancel';
-			cancelBtn.addEventListener('click', function () { loadTokens(); });
-			wrapper.appendChild(cancelBtn);
-
-			actionsCell.appendChild(wrapper);
-		}
-
-		function runRevokeToken(tok) {
-			let xhr = new XMLHttpRequest();
-			xhr.open('POST', '/pulse_v1/revokeToken');
-			xhr.setRequestHeader('Content-Type', 'application/json');
-			xhr.onload = function () {
-				let parsed = parseAuthEnvelope(xhr.responseText);
-				if (parsed && isOk(parsed)) {
-					let toastMsg = 'Token revoked';
-					if (tok.label) { toastMsg = 'Revoked "' + tok.label + '"'; }
-					showToast(toastMsg);
-				}
-				else {
-					showToast('Revoke failed', true);
-				}
-				loadTokens();
-			};
-			xhr.onerror = function () { showToast('Network error', true); loadTokens(); };
-			let payload = JSON.stringify({ Token: tok.token });
-			xhr.send(payload);
-		}
-
-		function showTokenCreateForm() {
-			let form = document.getElementById('token-create-form');
-			form.classList.add('visible');
-			document.getElementById('token-create-error').textContent = '';
-			document.getElementById('token-user').value = '';
-			document.getElementById('token-label').value = '';
-			document.getElementById('token-reveal-row').style.display = 'none';
-			document.getElementById('token-user').focus();
-		}
-
-		function hideTokenCreateForm() {
-			document.getElementById('token-create-form').classList.remove('visible');
-		}
-
-		function submitTokenCreate() {
-			let username = document.getElementById('token-user').value.trim();
-			let label = document.getElementById('token-label').value.trim();
-			let errEl = document.getElementById('token-create-error');
-			errEl.textContent = '';
-			if (!username) {
-				errEl.textContent = 'User is required.';
-				return;
-			}
-
-			let xhr = new XMLHttpRequest();
-			xhr.open('POST', '/pulse_v1/createToken');
-			xhr.setRequestHeader('Content-Type', 'application/json');
-			xhr.onload = function () {
-				let parsed = parseAuthEnvelope(xhr.responseText);
-				if (parsed && parsed.status === 'ok' && parsed.contents && parsed.contents.Token) {
-					hideTokenCreateForm();
-					revealToken(parsed.contents.Token);
-					showToast('Token created');
-					loadTokens();
-					return;
-				}
-				let message = 'Create failed';
-				if (parsed && parsed.status) {
-					message = describeAuthStatus(parsed.status);
-				}
-				errEl.textContent = message;
-			};
-			xhr.onerror = function () { errEl.textContent = 'Network error'; };
-			let payload = JSON.stringify({ Username: username, Label: label });
-			xhr.send(payload);
-		}
-
-		function revealToken(rawToken) {
-			let row = document.getElementById('token-reveal-row');
-			let input = document.getElementById('token-reveal-value');
-			input.value = rawToken;
-			row.style.display = 'block';
-			input.focus();
-			input.select();
-		}
-
-		function copyRevealedToken() {
-			let input = document.getElementById('token-reveal-value');
-			input.focus();
-			input.select();
-			let copied = false;
-			if (navigator.clipboard && navigator.clipboard.writeText) {
-				navigator.clipboard.writeText(input.value).then(function () { showToast('Copied to clipboard'); }, function () { showToast('Copy failed', true); });
-				return;
-			}
-			try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
-			if (copied) { showToast('Copied to clipboard'); }
-			else { showToast('Copy failed', true); }
-		}
-
-		function hideRevealedToken() {
-			let row = document.getElementById('token-reveal-row');
-			document.getElementById('token-reveal-value').value = '';
-			row.style.display = 'none';
-		}
-
 		function wireUp() {
 			document.getElementById('new-user-btn').addEventListener('click', showCreateForm);
 			document.getElementById('create-cancel').addEventListener('click', hideCreateForm);
@@ -1355,21 +1055,7 @@
 				if (event.key === 'Enter') { submitLogin(); }
 			});
 
-			document.getElementById('new-token-btn').addEventListener('click', showTokenCreateForm);
-			document.getElementById('token-create-cancel').addEventListener('click', hideTokenCreateForm);
-			document.getElementById('token-create-submit').addEventListener('click', submitTokenCreate);
-			document.getElementById('token-user').addEventListener('keydown', function (event) {
-				if (event.key === 'Enter') { submitTokenCreate(); }
-				else if (event.key === 'Escape') { hideTokenCreateForm(); }
-			});
-			document.getElementById('token-label').addEventListener('keydown', function (event) {
-				if (event.key === 'Enter') { submitTokenCreate(); }
-				else if (event.key === 'Escape') { hideTokenCreateForm(); }
-			});
-			document.getElementById('token-reveal-copy').addEventListener('click', copyRevealedToken);
-			document.getElementById('token-reveal-close').addEventListener('click', hideRevealedToken);
-
-			setLoginState('', false);
+			checkSession();
 		}
 
 		function loadVersionTag() {
@@ -1388,7 +1074,6 @@
 		document.addEventListener('DOMContentLoaded', function () {
 			wireUp();
 			loadUsers();
-			loadTokens();
 			loadVersionTag();
 		});
 	</script>

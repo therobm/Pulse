@@ -277,7 +277,16 @@ namespace Thump.Pulse
 		public virtual void PostAnalytics(PulseAnalyticsBatch batch)
 		{
 		}
-	
+
+		/// <summary>
+		/// Ship a single diagnostic event to the server. Base implementation is a
+		/// no-op; the Pulse client overrides it to POST. Fire-and-forget, like
+		/// PostAnalytics.
+		/// </summary>
+		public virtual void PostDiagnostics(PulseDiagnosticsEvent diagnosticsEvent)
+		{
+		}
+
 		public virtual byte[] GetTrackAudioFromCache(string trackId)
 		{
 			return null;
@@ -476,12 +485,12 @@ namespace Thump.Pulse
 			using HttpResponseMessage response = m_httpClient.HttpPostJson_Internal(url, Http.eRequestType.MetaData, json, timeoutSeconds);
 			if (response == null )
 			{
-				Log.Error("HTTP POST failed: " + url);
+				Log.Error("HTTP POST failed: " + url, false);
 				return null;
 			}
 			if (!response.IsSuccessStatusCode)
 			{
-				Log.Error("HTTP POST failed: " + url + " status: " + response.StatusCode);
+				Log.Error("HTTP POST failed: " + url + " status: " + response.StatusCode, false);
 				return null;
 			}
 			string result = response.Content.ReadAsStringAsync().Result;

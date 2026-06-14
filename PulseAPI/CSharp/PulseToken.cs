@@ -5,10 +5,10 @@ namespace PulseAPI.CSharp
 	/// for the named user. Label is a free-form hint (e.g. "Living room TV")
 	/// the management UI shows alongside the token. PascalCase fields are
 	/// required: PulseWire serialises by reflecting field names verbatim.
+	/// Id is the userId
 	/// </summary>
 	public class PulseCreateTokenRequest : PulseObject
 	{
-		public string Username;
 		public string Label;
 	}
 
@@ -42,9 +42,9 @@ namespace PulseAPI.CSharp
 	public class PulseTokenSummary : PulseObject
 	{
 		public string Token;
-		public string Username;
+		public string Name;
 		public string Label;
-		public string CreatedAt;
+		public string Create;
 		public string LastUsed;
 	}
 }
