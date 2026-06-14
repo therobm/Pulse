@@ -4,39 +4,24 @@ using System.Security.Cryptography;
 
 namespace Pulse.Services
 {
-	/// <summary>
-	/// One server-side session: the user the session was created for, whether
-	/// they were an admin at the time, the absolute expiry instant (slid
-	/// forward on every validation), and the per-session idle timeout the
-	/// slide uses. Fields are public per the data-bag convention -- no getter
-	/// ceremony.
-	/// </summary>
 	public class SessionEntry
 	{
-		public string UserName = "";
-		public bool IsAdmin = false;
+		public string UserId = "";
 		public DateTime ExpiresUtc = DateTime.MinValue;
 		public TimeSpan IdleTimeout = TimeSpan.Zero;
 	}
 
 	/// <summary>
-	/// In-memory session table for the new cookie-based auth (PLS132 / parent
-	/// PLS129). The cookie carries a 256-bit random id; this static dictionary
-	/// is the only place that knows what user / admin flag / expiry that id
-	/// belongs to, so the cookie itself is opaque to the client.
-	///
-	/// Lifetimes are lazy: expired entries are not eagerly swept -- the next
-	/// TryValidate that sees one removes it. P1 has no background pruner.
+	/// Expired entries are removed lazily on the next lookup, not by a
+	/// background sweep -- don't add a pruner expecting one to be missing.
 	/// </summary>
 	public class SessionStore
 	{
 		private ConcurrentDictionary<string, SessionEntry> m_sessions = new ConcurrentDictionary<string, SessionEntry>();
 
 		/// <summary>
-		/// Base64Url variant: '+' -> '-', '/' -> '_', strip '=' padding. Keeps
-		/// the id safe to drop into a cookie value without escaping. Exposed so
-		/// the token-mint path (PLS133) can use the same opaque encoding as
-		/// session ids.
+		/// Base64Url variant ('+'->'-', '/'->'_', no '=' padding) so the id is
+		/// safe in a cookie value without escaping.
 		/// </summary>
 		public static string ToUrlSafeBase64(byte[] bytes)
 		{
@@ -45,13 +30,7 @@ namespace Pulse.Services
 			return replaced.TrimEnd('=');
 		}
 
-		/// <summary>
-		/// Mints a new opaque session id, stores it against the supplied user
-		/// metadata, and returns it. "Remember me" stretches the idle window
-		/// to 30 days; otherwise the session expires after 24 hours of
-		/// inactivity. Slides on every successful validation.
-		/// </summary>
-		public string CreateSession(string userName, bool isAdmin, bool rememberMe)
+		public string CreateSession(string userId, bool rememberMe)
 		{
 			byte[] raw = RandomNumberGenerator.GetBytes(32);
 			string sessionId = ToUrlSafeBase64(raw);
@@ -67,8 +46,7 @@ namespace Pulse.Services
 			}
 
 			SessionEntry entry = new SessionEntry();
-			entry.UserName = userName;
-			entry.IsAdmin = isAdmin;
+			entry.UserId = userId;
 			entry.IdleTimeout = idle;
 			entry.ExpiresUtc = DateTime.UtcNow + idle;
 
@@ -77,15 +55,12 @@ namespace Pulse.Services
 		}
 
 		/// <summary>
-		/// Looks up a session by its id. Returns false if the id is unknown or
-		/// already expired (and removes the expired entry on the way out). On
-		/// success, the entry's idle window slides: ExpiresUtc is reset to now
-		/// plus IdleTimeout so an active user does not get logged out mid-use.
+		/// A successful lookup slides the idle window forward (ExpiresUtc reset
+		/// to now + IdleTimeout), so an active user is not logged out mid-use.
 		/// </summary>
-		public bool TryValidate(string sessionId, out string userName, out bool isAdmin)
+		public bool GetUserIdForSession(string sessionId, out string userId)
 		{
-			userName = "";
-			isAdmin = false;
+			userId = "";
 			if (string.IsNullOrEmpty(sessionId))
 			{
 				return false;
@@ -107,14 +82,10 @@ namespace Pulse.Services
 			}
 
 			entry.ExpiresUtc = now + entry.IdleTimeout;
-			userName = entry.UserName;
-			isAdmin = entry.IsAdmin;
+			userId = entry.UserId;
 			return true;
 		}
 
-		/// <summary>
-		/// Drops a session by id. Safe to call with an unknown id.
-		/// </summary>
 		public void Remove(string sessionId)
 		{
 			if (string.IsNullOrEmpty(sessionId))

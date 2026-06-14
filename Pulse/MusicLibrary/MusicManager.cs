@@ -1118,30 +1118,6 @@ namespace Pulse.MusicLibrary
 			return m_database.GetArtist(id);
 		}
 
-		public List<UserRecord> GetAllUsers()
-		{
-			return m_database.GetAllUsers();
-		}
-
-		public UserRecord GetUser(string name)
-		{
-			return m_database.GetUser(name);
-		}
-
-		public string CreateUser(string name, string displayName, bool isAdmin)
-		{
-			return m_database.CreateUser(name, displayName, isAdmin);
-		}
-
-		public string UpdateUser(string oldName, string newName, string displayName, bool isAdmin)
-		{
-			return m_database.UpdateUser(oldName, newName, displayName, isAdmin);
-		}
-
-		public void DeleteUser(string userName)
-		{
-			m_database.DeleteUser(userName);
-		}
 
 		/// <summary>
 		/// Resolves a track's on-disk path from its RelativeFilePath against the

@@ -174,32 +174,26 @@
 			return parsed;
 		}
 
-		function describeAuthStatus(status) {
-			if (status === 'password_too_short') {
+		function describeAuthOutcome(outcome) {
+			if (outcome === 'PasswordTooShort') {
 				return "Password does not meet the server's requirements";
 			}
-			if (status === 'invalid_credentials') {
+			if (outcome === 'InvalidCredentials') {
 				return 'Invalid credentials';
 			}
-			if (status === 'not_signed_in') {
+			if (outcome === 'NotSignedIn') {
 				return 'Sign in first';
 			}
-			if (status === 'forbidden') {
+			if (outcome === 'Forbidden') {
 				return 'Not allowed';
 			}
-			if (status === 'unknown_user') {
+			if (outcome === 'UnknownUser') {
 				return 'Unknown user';
 			}
-			if (status === 'missing_fields') {
-				return 'Username and password are required.';
-			}
-			if (status === 'missing_body') {
-				return 'Missing request body';
-			}
-			if (status === 'rate_limited') {
+			if (outcome === 'RateLimited') {
 				return 'Too many attempts. Try again in a few minutes.';
 			}
-			if (status === 'already_initialized') {
+			if (outcome === 'AlreadyInitialized') {
 				return 'Setup is already complete. Please sign in.';
 			}
 			return 'Request failed';
@@ -257,15 +251,15 @@
 				return response.text();
 			}).then(function (text) {
 				let parsed = parseAuthEnvelope(text);
-				if (parsed && parsed.status === 'ok' && parsed.contents && parsed.contents.Username) {
+				let outcome = '';
+				if (parsed && parsed.contents) {
+					outcome = parsed.contents.Outcome;
+				}
+				if (outcome === 'Ok') {
 					goToApp();
 					return;
 				}
-				let message = 'Invalid credentials';
-				if (parsed && parsed.status) {
-					message = describeAuthStatus(parsed.status);
-				}
-				errEl.textContent = message;
+				errEl.textContent = describeAuthOutcome(outcome);
 				button.disabled = false;
 			}).catch(function () {
 				errEl.textContent = 'Network error';
@@ -296,15 +290,15 @@
 				return response.text();
 			}).then(function (text) {
 				let parsed = parseAuthEnvelope(text);
-				if (parsed && parsed.status === 'ok' && parsed.contents && parsed.contents.Username) {
+				let outcome = '';
+				if (parsed && parsed.contents) {
+					outcome = parsed.contents.Outcome;
+				}
+				if (outcome === 'Ok') {
 					goToApp();
 					return;
 				}
-				let message = 'Setup failed';
-				if (parsed && parsed.status) {
-					message = describeAuthStatus(parsed.status);
-				}
-				errEl.textContent = message;
+				errEl.textContent = describeAuthOutcome(outcome);
 				button.disabled = false;
 			}).catch(function () {
 				errEl.textContent = 'Network error';
@@ -316,11 +310,15 @@
 			document.getElementById('login-form').addEventListener('submit', submitLogin);
 			document.getElementById('setup-form').addEventListener('submit', submitSetup);
 			runWhoAmI(function (parsed) {
-				if (parsed && parsed.contents && parsed.contents.Username) {
+				let state = '';
+				if (parsed && parsed.contents) {
+					state = parsed.contents.State;
+				}
+				if (state === 'SignedIn') {
 					goToApp();
 					return;
 				}
-				if (parsed && parsed.status === 'needs_setup') {
+				if (state === 'NeedsSetup') {
 					showSetup();
 					return;
 				}

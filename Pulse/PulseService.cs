@@ -300,9 +300,8 @@ namespace Pulse
 		/// </summary>
 		private bool RequireWebSession(HttpContext context)
 		{
-			string sessionUser;
-			bool isAdmin;
-			bool valid = m_authEndpoints.GetSessionUser(context, out sessionUser, out isAdmin);
+			string userId;
+			bool valid = m_authEndpoints.GetSessionUserId(context, out userId);
 			if (valid)
 			{
 				return true;
