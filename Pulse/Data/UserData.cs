@@ -124,7 +124,7 @@ namespace Pulse.Data
 					error = "A user with that name already exists.";
 					return null;
 				}
-				m_users[name] = user;
+				m_users[user.Id] = user;
 			}
 
 			m_data.Save(eDataType.User, user);

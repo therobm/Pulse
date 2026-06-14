@@ -87,14 +87,10 @@ namespace Pulse.Protocols
 			if (m_rateLimiter.IsLockedOut(clientIp))
 			{
 				context.Response.Headers["Retry-After"] = "300";
-				return Respond("rate_limited", HttpStatusCode.OK);
+				return RespondLogin(eAuthOutcome.RateLimited, null);
 			}
 
 			string body = ReadRequestBody(context);
-			if (string.IsNullOrEmpty(body))
-			{
-				return Respond("missing_body", HttpStatusCode.BadRequest);
-			}
 
 			PulseLoginRequest request;
 			try
@@ -109,20 +105,26 @@ namespace Pulse.Protocols
 			if (request == null || string.IsNullOrEmpty(request.Username) || string.IsNullOrEmpty(request.Password))
 			{
 				m_rateLimiter.RecordFailure(clientIp);
-				return Respond("invalid_credentials", HttpStatusCode.OK);
-			}
-			User user = m_pulseData.LookupUserByName(request.Username);
-			if (user == null)
-			{
-				return Respond("invalid_user", HttpStatusCode.OK);
+				return RespondLogin(eAuthOutcome.InvalidCredentials, null);
 			}
 
-			string storedHash = m_pulseData.GetUserPasswordHash(user.Id);
-			bool hasHash = !string.IsNullOrEmpty(storedHash);
-			string hashToCheck = storedHash;
-			if (!hasHash)
+			// Always run a bcrypt compare -- against the real hash when the user
+			// exists, against a throwaway hash when it does not -- so an unknown
+			// username is indistinguishable from a wrong password in both the
+			// response and the timing.
+			User user = m_pulseData.LookupUserByName(request.Username);
+			string hashToCheck;
+			if (user == null)
 			{
 				hashToCheck = GetDummyHash();
+			}
+			else
+			{
+				hashToCheck = m_pulseData.GetUserPasswordHash(user.Id);
+				if (string.IsNullOrEmpty(hashToCheck))
+				{
+					hashToCheck = GetDummyHash();
+				}
 			}
 
 			bool verified = false;
@@ -135,13 +137,11 @@ namespace Pulse.Protocols
 				verified = false;
 			}
 
-			if (!hasHash || !verified)
+			if (user == null || !verified)
 			{
 				m_rateLimiter.RecordFailure(clientIp);
-				return Respond("invalid_credentials", HttpStatusCode.OK);
+				return RespondLogin(eAuthOutcome.InvalidCredentials, null);
 			}
-
-		
 
 			m_rateLimiter.RecordSuccess(clientIp);
 
@@ -150,48 +150,35 @@ namespace Pulse.Protocols
 
 			Log.Info("Auth: login for '" + request.Username + "'");
 
-			PulseLoginResult result = new PulseLoginResult();
-			result.Id = user.Id;
-			result.Username = user.Name;
-			result.IsAdmin = user.IsAdmin;
-
-			return Respond(result);
+			return RespondLogin(eAuthOutcome.Ok, user);
 		}
 
 		private IResult WhoAmI(HttpContext context)
 		{
 			if (!m_pulseData.AnyUserHasPassword())
 			{
-				return Respond("needs_setup", HttpStatusCode.OK);
+				return RespondAuthState(eAuthState.NeedsSetup, null);
 			}
 
 			string userId;
 			bool valid = GetSessionUserId(context, out userId);
-			if (valid)
+			if (!valid)
 			{
-				User user = m_pulseData.GetUser(userId);
-				if (user == null)
-				{
-
-					return Respond("invalid_user", HttpStatusCode.OK);
-				}
-				PulseLoginResult result = new PulseLoginResult();
-				result.Id = user.Id;
-				result.Username = user.Name;
-				result.IsAdmin = user.IsAdmin;
-				return Respond(result);
+				return RespondAuthState(eAuthState.NotSignedIn, null);
 			}
 
-			return Respond("not_signed_in", HttpStatusCode.OK);
+			User user = m_pulseData.GetUser(userId);
+			if (user == null)
+			{
+				return RespondAuthState(eAuthState.NotSignedIn, null);
+			}
+
+			return RespondAuthState(eAuthState.SignedIn, user);
 		}
 
 		private IResult SetupAdmin(HttpContext context)
 		{
 			string body = ReadRequestBody(context);
-			if (string.IsNullOrEmpty(body))
-			{
-				return Respond("missing_body", HttpStatusCode.BadRequest);
-			}
 
 			PulseSetupAdminRequest request;
 			try
@@ -205,12 +192,12 @@ namespace Pulse.Protocols
 
 			if (request == null || string.IsNullOrEmpty(request.Username) || request.Password == null)
 			{
-				return Respond("missing_fields", HttpStatusCode.BadRequest);
+				return RespondLogin(eAuthOutcome.Failed, null);
 			}
 
 			if (m_pulseData.AnyUserHasPassword())
 			{
-				return Respond("already_initialized", HttpStatusCode.OK);
+				return RespondLogin(eAuthOutcome.AlreadyInitialized, null);
 			}
 
 			string displayName = request.DisplayName;
@@ -219,10 +206,11 @@ namespace Pulse.Protocols
 				displayName = request.Username;
 			}
 
-			User currentUser = m_pulseData.CreateUser(request.Username, displayName, true, out string error);
+			string createError;
+			User currentUser = m_pulseData.CreateUser(request.Username, displayName, true, out createError);
 			if (currentUser == null)
 			{
-				return Respond(error, HttpStatusCode.OK);
+				return RespondLogin(eAuthOutcome.Failed, null);
 			}
 
 			string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, 12);
@@ -233,11 +221,7 @@ namespace Pulse.Protocols
 
 			Log.Info("Auth: admin account set up for '" + currentUser.Name + "'");
 
-			PulseLoginResult result = new PulseLoginResult();
-			result.Id = currentUser.Id;
-			result.Username = currentUser.Name;
-			result.IsAdmin = currentUser.IsAdmin;
-			return Respond(result);
+			return RespondLogin(eAuthOutcome.Ok, currentUser);
 		}
 
 		private IResult Logout(HttpContext context)
@@ -263,10 +247,6 @@ namespace Pulse.Protocols
 		private IResult SetPassword(HttpContext context)
 		{
 			string body = ReadRequestBody(context);
-			if (string.IsNullOrEmpty(body))
-			{
-				return Respond("missing_body", HttpStatusCode.BadRequest);
-			}
 
 			PulseSetPasswordRequest request;
 			try
@@ -278,56 +258,49 @@ namespace Pulse.Protocols
 				request = null;
 			}
 
-			if (request == null || string.IsNullOrEmpty(request.Id))
+			if (request == null || string.IsNullOrEmpty(request.Id) || request.Password == null)
 			{
-				return Respond("missing_fields", HttpStatusCode.BadRequest);
-			}
-			if (request.Password == null)
-			{
-				return Respond("missing_fields", HttpStatusCode.BadRequest);
+				return RespondSetPassword(eAuthOutcome.Failed);
 			}
 			if (request.Password.Length < MinPasswordLength)
 			{
-				return Respond("password_too_short", HttpStatusCode.OK);
+				return RespondSetPassword(eAuthOutcome.PasswordTooShort);
 			}
 
 			User targetUser = m_pulseData.GetUser(request.Id);
 			if (targetUser == null)
 			{
-				return Respond("user_not_found", HttpStatusCode.OK);
+				return RespondSetPassword(eAuthOutcome.UnknownUser);
 			}
 
-			User sessionUser = null;
 			bool systemInitialized = m_pulseData.AnyUserHasPassword();
 			if (systemInitialized)
 			{
-				string userId;
-				bool sessionValid = GetSessionUserId(context, out userId);
+				string sessionUserId;
+				bool sessionValid = GetSessionUserId(context, out sessionUserId);
 				if (!sessionValid)
 				{
-					return Respond("not_signed_in", HttpStatusCode.OK);
+					return RespondSetPassword(eAuthOutcome.NotSignedIn);
 				}
 
-				sessionUser = m_pulseData.GetUser(userId);
-
-				bool isSelf = targetUser.Id == sessionUser.Id;
-
+				User sessionUser = m_pulseData.GetUser(sessionUserId);
 				if (sessionUser == null)
 				{
-					return Respond("unknown_session_user", HttpStatusCode.OK);
+					return RespondSetPassword(eAuthOutcome.NotSignedIn);
 				}
+
+				bool isSelf = targetUser.Id == sessionUser.Id;
 				if (!sessionUser.IsAdmin && !isSelf)
 				{
-					return Respond("forbidden", HttpStatusCode.OK);
+					return RespondSetPassword(eAuthOutcome.Forbidden);
 				}
 			}
-			
 
 			string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, 12);
 			m_pulseData.SetUserPassword(targetUser.Id, passwordHash);
 
-			Log.Info("Auth: password set for '" + sessionUser.Name + "'");
-			return Respond("ok", HttpStatusCode.OK);
+			Log.Info("Auth: password set for '" + targetUser.Name + "'");
+			return RespondSetPassword(eAuthOutcome.Ok);
 		}
 
 		public IResult ListUsers(HttpContext context)
@@ -389,7 +362,7 @@ namespace Pulse.Protocols
 
 		public IResult DeleteUser(HttpContext context)
 		{
-			string userId = QueryParameters.GetString(context, "useId");
+			string userId = QueryParameters.GetString(context, "userId");
 			if (string.IsNullOrEmpty(userId))
 			{
 				return Respond("Missing user", HttpStatusCode.OK);
@@ -406,14 +379,10 @@ namespace Pulse.Protocols
 			if (m_rateLimiter.IsLockedOut(clientIp))
 			{
 				context.Response.Headers["Retry-After"] = "300";
-				return Respond("rate_limited", HttpStatusCode.OK);
+				return RespondCreateToken(eAuthOutcome.RateLimited, null);
 			}
 
 			string body = ReadRequestBody(context);
-			if (string.IsNullOrEmpty(body))
-			{
-				return Respond("missing_body", HttpStatusCode.BadRequest);
-			}
 
 			PulseCreateTokenRequest request;
 			try
@@ -427,14 +396,14 @@ namespace Pulse.Protocols
 
 			if (request == null || string.IsNullOrEmpty(request.Id))
 			{
-				return Respond("missing_fields", HttpStatusCode.BadRequest);
+				return RespondCreateToken(eAuthOutcome.Failed, null);
 			}
 
 			string token = m_pulseData.CreateToken(request.Id, request.Label);
 			if (string.IsNullOrEmpty(token))
 			{
 				m_rateLimiter.RecordFailure(clientIp);
-				return Respond("unknown_user", HttpStatusCode.OK);
+				return RespondCreateToken(eAuthOutcome.UnknownUser, null);
 			}
 
 			m_rateLimiter.RecordSuccess(clientIp);
@@ -443,14 +412,14 @@ namespace Pulse.Protocols
 
 			User user = m_pulseData.GetUser(request.Id);
 
-			PulseToken result = new PulseToken();
-			result.Token = token;
-			result.Id = user.Id;
-			result.Username = user.Name;
-			result.Label = request.Label;
-			result.CreatedAt = DateTime.UtcNow.ToString("o");
+			PulseToken pulseToken = new PulseToken();
+			pulseToken.Token = token;
+			pulseToken.Id = user.Id;
+			pulseToken.Username = user.Name;
+			pulseToken.Label = request.Label;
+			pulseToken.CreatedAt = DateTime.UtcNow.ToString("o");
 
-			return Respond(result);
+			return RespondCreateToken(eAuthOutcome.Ok, pulseToken);
 		}
 
 		
@@ -533,6 +502,49 @@ namespace Pulse.Protocols
 			body.status = status;
 			body.contentType = PulseResponse.ContentType.PulseObject;
 			return Results.Text(PulseWire.Serialize(body), "application/json", Encoding.UTF8, (int)code);
+		}
+
+		// On any outcome other than Ok the identity fields stay empty -- a failed
+		// login must not leak whether the user exists.
+		private IResult RespondLogin(eAuthOutcome outcome, User user)
+		{
+			PulseLoginResult result = new PulseLoginResult();
+			result.Outcome = outcome;
+			if (user != null)
+			{
+				result.Id = user.Id;
+				result.Username = user.Name;
+				result.IsAdmin = user.IsAdmin;
+			}
+			return Respond(result);
+		}
+
+		private IResult RespondAuthState(eAuthState state, User user)
+		{
+			PulseAuthState result = new PulseAuthState();
+			result.State = state;
+			if (user != null)
+			{
+				result.Id = user.Id;
+				result.Username = user.Name;
+				result.IsAdmin = user.IsAdmin;
+			}
+			return Respond(result);
+		}
+
+		private IResult RespondSetPassword(eAuthOutcome outcome)
+		{
+			PulseSetPasswordResult result = new PulseSetPasswordResult();
+			result.Outcome = outcome;
+			return Respond(result);
+		}
+
+		private IResult RespondCreateToken(eAuthOutcome outcome, PulseToken token)
+		{
+			PulseCreateTokenResult result = new PulseCreateTokenResult();
+			result.Outcome = outcome;
+			result.Token = token;
+			return Respond(result);
 		}
 
 		private IResult RespondObject<T>(T contents) where T : PulseObject
