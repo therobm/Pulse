@@ -2,7 +2,7 @@
 
 namespace PulseAPI.CSharp
 {
-	public class PulseResponse
+	public class PulseResponse : PulseObject
 	{
 		public enum ContentType
 		{

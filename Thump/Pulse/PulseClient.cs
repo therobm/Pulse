@@ -62,7 +62,16 @@ namespace Thump.Pulse
 			}
 			return url;
 		}
+		public override void Login(string username, string password, bool rememberMe, Action<PulseLoginResult> onComplete)
+		{
+			string url = BuildPulseUrl("login", "");
+			PulseLoginRequest loginRequest = new PulseLoginRequest();
 
+			loginRequest.Username = username;
+			loginRequest.Password = password;
+			loginRequest.RememberMe = rememberMe;
+			FetchObject<PulseLoginResult>(url, eMediaCacheStrategy.NetworkOnly, onComplete);
+		}
 		public override byte[] GetTrackAudioFromCache(string trackId)
 		{
 			if (string.IsNullOrEmpty(trackId))
@@ -102,7 +111,7 @@ namespace Thump.Pulse
 						JsonElement jsonElement = (JsonElement)response.contents;
 						if (jsonElement.ValueKind != JsonValueKind.Undefined && jsonElement.ValueKind != JsonValueKind.Null)
 						{
-							contents = PulseWire.Parse<List<T>>(jsonElement.GetRawText());
+							contents = PulseWire.ParseList<T>(jsonElement.GetRawText());
 						}
 						else
 						{
@@ -1272,7 +1281,7 @@ namespace Thump.Pulse
 			if (m_cache.GetCachedResults(url, out string data))
 			{
 				
-				pulseObject = PulseWire.Parse<List<T>>(data);
+				pulseObject = PulseWire.ParseList<T>(data);
 				if (pulseObject == null) 
 				{
 					Log.Warn("Warning bad data was cached for " + url);
@@ -1313,7 +1322,7 @@ namespace Thump.Pulse
 		{
 			if (m_cache.GetCachedResults(url, maxAgeSeconds, out string data))
 			{
-				pulseObject = PulseWire.Parse<List<T>>(data);
+				pulseObject = PulseWire.ParseList<T>(data);
 				if (pulseObject == null)
 				{
 					Log.Warn("Warning bad data was cached for " + url);

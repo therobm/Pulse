@@ -32,16 +32,18 @@ namespace Pulse.Protocols
 		IPulseRouteHost m_host;
 		PulseService m_pulseService;
 		MusicManager m_musicManager;
+		AnalyticsData m_analyticsData;
 		DiagnosticsData m_diagnosticsData;
 		PodcastManager m_podcastManager;
 		AudiobookManager m_audiobookManager;
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseEndpoints(PulseService pulse, MusicManager musicManager, DiagnosticsData diagnosticsData, PodcastManager podcastManager, AudiobookManager audiobookManager)
+		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsData analyticsData, DiagnosticsData diagnosticsData, PodcastManager podcastManager, AudiobookManager audiobookManager)
 		{
 			m_pulseService = pulse;
 			m_musicManager = musicManager;
+			m_analyticsData = analyticsData;
 			m_diagnosticsData = diagnosticsData;
 			m_podcastManager = podcastManager;
 			m_audiobookManager = audiobookManager;
@@ -80,7 +82,7 @@ namespace Pulse.Protocols
 			RegisterRoute("unfavorite", Unfavorite);
 			RegisterRoute("reportAnalytics", ReportAnalytics);
 
-			RegisterRoute("ingestAnalytics", PostIngestAnalytics);
+			RegisterRoute("ingestAnalytics", IngestAnalytics);
 			RegisterRoute("analytics", GetAnalytics);
 
 			RegisterRoute("ingestDiagnostics", PostIngestDiagnostics);
@@ -1987,16 +1989,8 @@ namespace Pulse.Protocols
 			return RespondStatus(context, "ok");
 		}
 
-		/// <summary>
-		/// Analytics intake. Clients POST a PulseAnalyticsBatch describing a
-		/// window of client-side usage events (navigation, playback, failures).
-		/// The body is JSON; HttpServer sets AllowSynchronousIO so the
-		/// synchronous read is legal. The handler stamps received_at on the
-		/// server clock and hands the item to AnalyticsDB -- the request thread
-		/// never touches the database.
-		/// </summary>
-		[Obsolete("Analytics path is gone, this is just so clients don't get upset")]
-		public IResult PostIngestAnalytics(HttpContext context)
+
+		public IResult IngestAnalytics(HttpContext context)
 		{
 			string body;
 			using (StreamReader reader = new StreamReader(context.Request.Body))
@@ -2023,16 +2017,34 @@ namespace Pulse.Protocols
 				return RespondStatus(context, "missing_events");
 			}
 
-			string receivedAt = DateTime.UtcNow.ToString("o");
+
+			//process our events into useful data
+			string userID = batch.UserID;
+
+			foreach (PulseAnalyticsEvent evt in batch.Events)
+			{
+				float secondsPlayed = evt.DurationMs / 1000.0f;
+				string objectId = evt.ObjectId;
+				ePulseWireType objectType = evt.ObjectType;
+				switch (evt.Action)
+				{
+					case eAction.Play:
+					{
+						m_analyticsData.OnItemPlayed(userID, objectType, objectId);
+						break;
+					}
+					case eAction.Stop:
+					{
+						m_analyticsData.OnItemStopped(userID, objectType, objectId, secondsPlayed);
+						break;
+					}
+				}
+				
+			}
 			return Respond(context, new PulseResponse());
 		}
 
-		/// <summary>
-		/// Analytics read endpoint. With ?session_id=... returns every event for
-		/// that session (optionally filtered by category, action, and result),
-		/// ordered by client timestamp. With ?device_id=... returns every
-		/// session for that device, most recent first.
-		/// </summary>
+	
 		[Obsolete("Analytics path is gone, this is just so clients don't get upset")]
 		public IResult GetAnalytics(HttpContext context)
 		{

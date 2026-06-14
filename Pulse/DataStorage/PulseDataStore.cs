@@ -119,6 +119,11 @@ namespace Pulse.DataStorage
 
 		private void Save<T>(SqliteConnection connection, SqliteTransaction transaction, string kind, T value) where T : PulseDataObject
 		{
+			if (string.IsNullOrEmpty(value.Id))
+			{
+				Log.Error("Error invalid ID on record!");
+			}
+
 			string json = JsonSerializer.Serialize(value, m_jsonOptions);
 			SqliteCommand command = connection.CreateCommand();
 			command.Transaction = transaction;

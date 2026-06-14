@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Text;
@@ -43,9 +44,27 @@ namespace PulseAPI.CSharp
 			return JsonSerializer.Serialize(value, options);
 		}
 
-		public static T Parse<T>(string json)
+		public static T Parse<T>(string json) where T : PulseObject
 		{
-			return JsonSerializer.Deserialize<T>(json, s_options);
+			try
+			{
+				return JsonSerializer.Deserialize<T>(json, s_options);
+			}
+			catch (Exception ex)
+			{
+				return null;
+			}
+		}
+		public static List<T> ParseList<T>(string json) where T : PulseObject
+		{
+			try
+			{
+				return JsonSerializer.Deserialize<List<T>>(json, s_options);
+			}
+			catch (Exception ex)
+			{
+				return null;
+			}
 		}
 	}
 }

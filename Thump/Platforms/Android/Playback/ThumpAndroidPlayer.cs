@@ -158,6 +158,7 @@ namespace Thump.Playback.AndroidOS
 
 			m_lastMediaId = startTrack.Id;
 			m_mainView.OnCurrentTrackChanged(startTrack);
+			
 			m_controller.SeekTo(startItemIndex, 0);
 
 			//kick of cache requests for the rest
@@ -240,6 +241,9 @@ namespace Thump.Playback.AndroidOS
 			{
 				return;
 			}
+			float currentPosition = m_controller.CurrentPosition;
+
+
 			m_controller.SeekToNextMediaItem();
 		}
 
