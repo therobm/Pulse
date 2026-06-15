@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using Microsoft.Maui;
 using Microsoft.Maui.ApplicationModel;
 using Microsoft.Maui.Controls;
@@ -153,6 +154,7 @@ namespace Thump
 			m_miniPlayer.Initialize();
 			m_navFooter.Initialize();
 
+			TryAutoSignIn();
 			NavigateToHome();
 		}
 
@@ -199,6 +201,32 @@ namespace Thump
 		/// under enforcement, so the browse tabs would otherwise show empty. Returns
 		/// false (and navigates to Settings) when not signed in.
 		/// </summary>
+		/// <summary>
+		/// At boot, re-authenticate from stored credentials in the background to
+		/// validate and refresh the uid against the current server. Non-fatal on
+		/// failure (e.g. server unreachable): the persisted uid stands. Does nothing
+		/// when no password is stored -- the sign-in guard then routes to Settings.
+		/// </summary>
+		private void TryAutoSignIn()
+		{
+			string username = ThumpSettings.GetUsername();
+			string password = ThumpSettings.GetPassword();
+			if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+			{
+				return;
+			}
+			Task.Run(() =>
+			{
+				m_mediaClient.Login(username, password, true, (loginResult) =>
+				{
+					if (loginResult != null && loginResult.Outcome == eAuthOutcome.Ok)
+					{
+						ThumpSettings.SetUserID(loginResult.Id);
+					}
+				});
+			});
+		}
+
 		private bool EnsureSignedIn()
 		{
 			if (string.IsNullOrEmpty(ThumpSettings.GetUserID()))
