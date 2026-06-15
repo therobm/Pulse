@@ -193,8 +193,28 @@ namespace Thump
 			}
 		}
 
+		/// <summary>
+		/// Redirects to the sign-in (Settings) surface when the client has no uid.
+		/// The data API is uid-only and the server refuses unauthenticated requests
+		/// under enforcement, so the browse tabs would otherwise show empty. Returns
+		/// false (and navigates to Settings) when not signed in.
+		/// </summary>
+		private bool EnsureSignedIn()
+		{
+			if (string.IsNullOrEmpty(ThumpSettings.GetUserID()))
+			{
+				NavigateToSettings();
+				return false;
+			}
+			return true;
+		}
+
 		public void NavigateToHome()
 		{
+			if (!EnsureSignedIn())
+			{
+				return;
+			}
 			m_activeTab = eTab.Home;
 			m_detailStack.Clear();
 			SetActiveContent(m_homeView);
@@ -204,6 +224,10 @@ namespace Thump
 
 		public void NavigateToLibrary()
 		{
+			if (!EnsureSignedIn())
+			{
+				return;
+			}
 			m_activeTab = eTab.Library;
 			m_detailStack.Clear();
 			SetActiveContent(m_libraryView);
@@ -213,6 +237,10 @@ namespace Thump
 
 		public void NavigateToSearch()
 		{
+			if (!EnsureSignedIn())
+			{
+				return;
+			}
 			m_activeTab = eTab.Search;
 			m_detailStack.Clear();
 			SetActiveContent(m_searchView);
