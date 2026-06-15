@@ -44,8 +44,7 @@ namespace Thump.Views
 			form.Spacing = 12;
 			form.Padding = new Thickness(28);
 			form.VerticalOptions = LayoutOptions.Center;
-			form.MaximumWidthRequest = 460;
-			form.HorizontalOptions = LayoutOptions.Center;
+			form.HorizontalOptions = LayoutOptions.Fill;
 
 			Label title = new Label();
 			title.Text = "Sign in to Pulse";
