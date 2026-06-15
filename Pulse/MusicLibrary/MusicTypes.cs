@@ -1,4 +1,5 @@
 ﻿using Pulse.DataStorage;
+using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
@@ -18,7 +19,7 @@ namespace Pulse.MusicLibrary
 		public string Id { get; set; }
 
 		[JsonIgnore]
-		public bool m_bIsDirty = false;
+		public bool m_bIsDirty;
 	}
 
 	public class ScoreData
@@ -46,7 +47,17 @@ namespace Pulse.MusicLibrary
 			LastPlayed = info.LastPlayed;
 			UserLastPlayed = info.UserLastPlayed;
 		}
-
+		public PulsePlaylistDetails BuildPulsePlaylistDetails()
+		{
+			PulsePlaylistDetails pulse = new PulsePlaylistDetails();
+			pulse.Id = Id;
+			pulse.Playlist = BuildPulsePlaylist();
+			for (int index = 0; index < Tracks.Count; index++)
+			{
+				pulse.Tracks.Add(Tracks[index].BuildPulse());
+			}
+			return pulse;
+		}
 	}
 
 

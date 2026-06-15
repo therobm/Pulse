@@ -1945,6 +1945,7 @@
 	<script src="/web/pulse-api.js"></script>
 	<script>
 		let API_USER = '';
+		let API_USER_ID = '';
 		let pulse = null;
 
 		/* The pulse_v1 contract is the wire ("object is the wire"): fields are
@@ -1953,7 +1954,7 @@
 		function normalizeLastPlayed(raw) { if (!raw) { return ''; } if (raw.indexOf('0001-') === 0) { return ''; } return raw; }
 		function adaptTrack(track) {
 			if (!track) { return null; }
-			return { id: track.Id, title: track.Title, artist: track.Artist, artistId: track.ArtistId, album: track.Album, albumId: track.AlbumId, coverArt: track.CoverArt || track.AlbumId || null, duration: track.Duration, starred: track.Starred };
+			return { id: track.Id, title: track.Title, artist: track.Artist, artistId: track.ArtistId, album: track.Album, albumId: track.AlbumId, coverArt: track.CoverArt || track.AlbumId || null, duration: track.Duration, starred: track.Starred, kind: 'Track' };
 		}
 		function adaptTracks(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptTrack(list[idx])); } } return out; }
 		function adaptAlbum(album) {
@@ -1979,7 +1980,7 @@
 		function adaptPodcasts(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptPodcast(list[idx])); } } return out; }
 		function adaptEpisode(episode) {
 			if (!episode) { return null; }
-			return { id: episode.Id, seriesId: episode.SeriesId, title: episode.Title, description: episode.Description || '', coverArt: episode.CoverArt || null, duration: episode.Duration || 0, publishedDate: episode.PublishedDate || '', position: episode.PositionSeconds || 0, completed: !!episode.Completed };
+			return { id: episode.Id, seriesId: episode.SeriesId, title: episode.Title, description: episode.Description || '', coverArt: episode.CoverArt || null, duration: episode.Duration || 0, publishedDate: episode.PublishedDate || '', position: episode.PositionSeconds || 0, completed: !!episode.Completed, kind: 'PodcastEpisode' };
 		}
 		function adaptEpisodes(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptEpisode(list[idx])); } } return out; }
 		function adaptAudiobook(book) {
@@ -1989,7 +1990,7 @@
 		function adaptAudiobooks(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptAudiobook(list[idx])); } } return out; }
 		function adaptChapter(chapter) {
 			if (!chapter) { return null; }
-			return { id: chapter.Id, seriesId: chapter.SeriesId, title: chapter.Title, coverArt: chapter.CoverArt || null, duration: chapter.Duration || 0, orderIndex: chapter.OrderIndex || 0, position: chapter.PositionSeconds || 0, completed: !!chapter.Completed, startMs: chapter.StartMs || 0, endMs: chapter.EndMs || 0, streamId: chapter.StreamId || '' };
+			return { id: chapter.Id, seriesId: chapter.SeriesId, title: chapter.Title, coverArt: chapter.CoverArt || null, duration: chapter.Duration || 0, orderIndex: chapter.OrderIndex || 0, position: chapter.PositionSeconds || 0, completed: !!chapter.Completed, startMs: chapter.StartMs || 0, endMs: chapter.EndMs || 0, streamId: chapter.StreamId || '', kind: 'Chapter' };
 		}
 		function adaptChapters(list) { let out = []; if (list) { for (let idx = 0; idx < list.length; idx++) { out.push(adaptChapter(list[idx])); } } return out; }
 		/* Map an envelope status code onto a user-facing message. */
@@ -2008,7 +2009,7 @@
 		let isShuffled = false; let repeatMode = 0; let progressInterval = null; let menuTrackId = null;
 		let currentStreamKey = '';
 		audioElement.volume = 0.7;
-		audioElement.addEventListener('ended', function () { if (repeatMode === 2) { audioElement.currentTime = 0; audioElement.play(); } else { playNext(); } });
+		audioElement.addEventListener('ended', function () { reportPlaybackStop(); if (repeatMode === 2) { audioElement.currentTime = 0; audioElement.play(); reportPlaybackPlay(playQueue[playQueueIndex]); } else { playNext(); } });
 		audioElement.addEventListener('play', function () { updatePlayButton(true); startProgressUpdates(); });
 		audioElement.addEventListener('pause', function () { updatePlayButton(false); stopProgressUpdates(); });
 
@@ -2158,7 +2159,7 @@
 		function loadHomeScreen() { loadQuickGrid(); loadRecentCarousel(); loadPlaylistCarousel(); loadPopularArtistsCarousel(); }
 		function loadQuickGrid() {
 			let grid = document.getElementById('home-quick-grid');
-			grid.innerHTML = ''; pulse.playlists().then(
+			grid.innerHTML = ''; pulse.topItems({ types: 'playlist', count: 8 }).then(
 				function (list)
 				{
 					let playlists = adaptPlaylists(list);
@@ -2186,6 +2187,7 @@
 				let songs = adaptTracks(details && details.Tracks);
 				if (songs.length > 0) {
 					markPlaylistPlayed(playlistId);
+					reportContainerPlay('Playlist', playlistId);
 					playTrackList(songs, 0);
 				}
 			}).catch(function (err) { logApiError('playlist', err); });
@@ -2239,11 +2241,9 @@
 		{
 			let scroll = document.getElementById('home-playlists-scroll');
 			scroll.innerHTML = '<div class="loading-text">Loading...</div>';
-			pulse.playlists().then(function (list)
+			pulse.topItems({ types: 'playlist', count: 10 }).then(function (list)
 			{
 				let playlists = adaptPlaylists(list);
-				playlists.sort(function (left, right) { return (right.score || 0) - (left.score || 0); });
-				if (playlists.length > 10) { playlists = playlists.slice(0, 10); }
 				scroll.innerHTML = '';
 				if (playlists.length === 0)
 				{
@@ -2262,7 +2262,7 @@
 				}
 			}).catch(function (err) { logApiError('playlists', err); scroll.innerHTML = '<div class="loading-text">Failed to load</div>'; });
 		}
-		function loadPopularArtistsCarousel() { let scroll = document.getElementById('home-artists-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulse.artists().then(function (list) { let all = adaptArtists(list); all.sort(function (left, right) { return (right.score || 0) - (left.score || 0); }); let artists = []; for (let i = 0; i < all.length && artists.length < 10; i++) { if ((all[i].score || 0) > 0) { artists.push(all[i]); } } scroll.innerHTML = ''; if (artists.length === 0) { scroll.innerHTML = '<div class="loading-text">Play some music first</div>'; return; } for (let idx = 0; idx < artists.length; idx++) { let artist = artists[idx]; let card = buildCarouselCard(artist.coverArt || null, artist.name, formatScorePercent(artist.score), (function (aid) { return function () { navStack = []; openArtist(aid); }; })(artist.id), true); scroll.appendChild(card); } }).catch(function (err) { logApiError('artists', err); scroll.innerHTML = '<div class="loading-text">Failed to load</div>'; }); }
+		function loadPopularArtistsCarousel() { let scroll = document.getElementById('home-artists-scroll'); scroll.innerHTML = '<div class="loading-text">Loading...</div>'; pulse.topItems({ types: 'artist', count: 10 }).then(function (list) { let artists = adaptArtists(list); scroll.innerHTML = ''; if (artists.length === 0) { scroll.innerHTML = '<div class="loading-text">Play some music first</div>'; return; } for (let idx = 0; idx < artists.length; idx++) { let artist = artists[idx]; let card = buildCarouselCard(artist.coverArt || null, artist.name, formatScorePercent(artist.score), (function (aid) { return function () { navStack = []; openArtist(aid); }; })(artist.id), true); scroll.appendChild(card); } }).catch(function (err) { logApiError('topItems', err); scroll.innerHTML = '<div class="loading-text">Failed to load</div>'; }); }
 		function formatScorePercent(score) { let n = Number(score) || 0; if (n <= 0) { return '—'; } return Math.round(n * 100) + '%'; }
 
 		/* Artist Detail */
@@ -2270,14 +2270,14 @@
 		/* artistTracks returns ArtistFullDetails: tracks grouped per album. Flatten
 		   in album order for queue playback. */
 		function flattenArtistTracks(details) { let out = []; let groups = (details && details.AlbumDetails) || []; for (let gi = 0; gi < groups.length; gi++) { let tracks = adaptTracks(groups[gi].Tracks); for (let ti = 0; ti < tracks.length; ti++) { out.push(tracks[ti]); } } return out; }
-		function playArtist() { if (!currentArtistId) { return; } pulse.artistTracks(currentArtistId).then(function (details) { let tracks = flattenArtistTracks(details); if (tracks.length === 0) { return; } playTrackList(tracks, 0); }).catch(function (err) { logApiError('artistTracks', err); }); }
-		function shuffleArtist() { if (!currentArtistId) { return; } pulse.artistTracks(currentArtistId).then(function (details) { let tracks = flattenArtistTracks(details); if (tracks.length === 0) { return; } shuffleArray(tracks); playTrackList(tracks, 0); }).catch(function (err) { logApiError('artistTracks', err); }); }
+		function playArtist() { if (!currentArtistId) { return; } pulse.artistTracks(currentArtistId).then(function (details) { let tracks = flattenArtistTracks(details); if (tracks.length === 0) { return; } reportContainerPlay('Artist', currentArtistId); playTrackList(tracks, 0); }).catch(function (err) { logApiError('artistTracks', err); }); }
+		function shuffleArtist() { if (!currentArtistId) { return; } pulse.artistTracks(currentArtistId).then(function (details) { let tracks = flattenArtistTracks(details); if (tracks.length === 0) { return; } reportContainerPlay('Artist', currentArtistId); shuffleArray(tracks); playTrackList(tracks, 0); }).catch(function (err) { logApiError('artistTracks', err); }); }
 
 		/* Album Detail */
 		function openAlbum(albumId) { pulse.album(albumId).then(function (details) { currentAlbumDetail = Object.assign(adaptAlbum(details.Album), { song: adaptTracks(details.Tracks) }); let album = currentAlbumDetail; document.getElementById('album-detail-name').textContent = album.name; document.getElementById('album-detail-artist').textContent = album.artist; document.getElementById('album-detail-artist').setAttribute('data-artist-id', album.artistId); let songs = album.song || []; let totalDuration = 0; for (let idx = 0; idx < songs.length; idx++) { totalDuration = totalDuration + songs[idx].duration; } document.getElementById('album-detail-meta').textContent = songs.length + ' tracks \u00b7 ' + Math.floor(totalDuration / 60) + ' min'; document.getElementById('album-detail-art').innerHTML = artHtml(album.coverArt, 400); let tracksEl = document.getElementById('album-detail-tracks'); tracksEl.innerHTML = ''; for (let idx = 0; idx < songs.length; idx++) { let row = buildTrackRow(songs[idx], idx + 1, (function (sl, si) { return function () { playTrackList(sl, si); }; })(songs, idx)); tracksEl.appendChild(row); } navigateWithHistory('album-detail'); }).catch(function (err) { logApiError('album', err); }); }
 		function onAlbumArtistClick() { let artistId = document.getElementById('album-detail-artist').getAttribute('data-artist-id'); if (artistId) { openArtist(artistId); } }
-		function playAlbum() { if (currentAlbumDetail && currentAlbumDetail.song) { playTrackList(currentAlbumDetail.song, 0); } }
-		function shuffleAlbum() { if (currentAlbumDetail && currentAlbumDetail.song) { let shuffled = currentAlbumDetail.song.slice(); shuffleArray(shuffled); playTrackList(shuffled, 0); } }
+		function playAlbum() { if (currentAlbumDetail && currentAlbumDetail.song) { reportContainerPlay('Album', currentAlbumDetail.id); playTrackList(currentAlbumDetail.song, 0); } }
+		function shuffleAlbum() { if (currentAlbumDetail && currentAlbumDetail.song) { reportContainerPlay('Album', currentAlbumDetail.id); let shuffled = currentAlbumDetail.song.slice(); shuffleArray(shuffled); playTrackList(shuffled, 0); } }
 
 		/* Playlist Detail */
 		function openPlaylist(playlistId) { pulse.playlist(playlistId).then(function (details) { currentPlaylistDetail = Object.assign(adaptPlaylist(details.Playlist), { entry: adaptTracks(details.Tracks) }); let playlist = currentPlaylistDetail; document.getElementById('playlist-detail-name').textContent = playlist.name; document.getElementById('playlist-detail-meta').textContent = playlist.songCount + ' tracks \u00b7 ' + Math.floor(playlist.duration / 60) + ' min'; document.getElementById('playlist-detail-comment').textContent = playlist.comment || ''; document.getElementById('playlist-rename-form').style.display = 'none'; document.getElementById('playlist-comment-form').style.display = 'none'; document.getElementById('playlist-detail-art').innerHTML = artHtml(playlist.coverArt, 400); renderPlaylistTracks(); navigateWithHistory('playlist-detail'); }).catch(function (err) { logApiError('playlist', err); }); }
@@ -2399,8 +2399,8 @@
 			}
 			pulse.updatePlaylist({ playlistId: currentPlaylistDetail.id, songIndexesToRemove: indexesToRemove, songIdsToAdd: idsToAdd }).catch(function (err) { logApiError('updatePlaylist', err); });
 		}
-		function playPlaylist() { if (currentPlaylistDetail && currentPlaylistDetail.entry) { markPlaylistPlayed(currentPlaylistDetail.id); playTrackList(currentPlaylistDetail.entry, 0); } }
-		function shufflePlaylist() { if (currentPlaylistDetail && currentPlaylistDetail.entry) { markPlaylistPlayed(currentPlaylistDetail.id); let shuffled = currentPlaylistDetail.entry.slice(); shuffleArray(shuffled); playTrackList(shuffled, 0); } }
+		function playPlaylist() { if (currentPlaylistDetail && currentPlaylistDetail.entry) { markPlaylistPlayed(currentPlaylistDetail.id); reportContainerPlay('Playlist', currentPlaylistDetail.id); playTrackList(currentPlaylistDetail.entry, 0); } }
+		function shufflePlaylist() { if (currentPlaylistDetail && currentPlaylistDetail.entry) { markPlaylistPlayed(currentPlaylistDetail.id); reportContainerPlay('Playlist', currentPlaylistDetail.id); let shuffled = currentPlaylistDetail.entry.slice(); shuffleArray(shuffled); playTrackList(shuffled, 0); } }
 		function formatPodcastDate(iso) { if (!iso) { return ''; } let parsed = new Date(iso); if (isNaN(parsed.getTime())) { return iso; } let months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; return months[parsed.getMonth()] + ' ' + parsed.getDate() + ', ' + parsed.getFullYear(); }
 		function openPodcast(podcastId) {
 			pulse.podcast(podcastId).then(function (details) {
@@ -2875,8 +2875,30 @@
 
 		/* Playback */
 		function playTrackList(songs, startIndex) { playQueue = songs.slice(); playQueueIndex = startIndex; playCurrentTrack(); }
+		let analyticsItemId = '';
+		let analyticsItemKind = '';
+		function reportPlaybackPlay(item) {
+			if (!item || !item.id) { return; }
+			analyticsItemId = item.id;
+			analyticsItemKind = item.kind ? item.kind : 'Track';
+			pulse.recordAnalytic('Play', analyticsItemKind, analyticsItemId, 0).catch(function (err) { logApiError('recordAnalytic', err); });
+		}
+		function reportPlaybackStop() {
+			if (!analyticsItemId) { return; }
+			let playedMs = Math.floor(audioElement.currentTime * 1000);
+			let stoppedId = analyticsItemId;
+			let stoppedKind = analyticsItemKind;
+			analyticsItemId = '';
+			analyticsItemKind = '';
+			pulse.recordAnalytic('Stop', stoppedKind, stoppedId, playedMs).catch(function (err) { logApiError('recordAnalytic', err); });
+		}
+		function reportContainerPlay(kind, id) {
+			if (!id) { return; }
+			pulse.recordAnalytic('Play', kind, id, 0).catch(function (err) { logApiError('recordAnalytic', err); });
+		}
 		function playCurrentTrack() {
 			if (playQueueIndex < 0 || playQueueIndex >= playQueue.length) { return; }
+			reportPlaybackStop();
 			let song = playQueue[playQueueIndex];
 			let streamKey = song.streamId ? song.streamId : song.id;
 			let startSec = (song.endMs > song.startMs) ? (song.startMs / 1000) : 0;
@@ -2893,6 +2915,7 @@
 				}
 				audioElement.play();
 			}
+			reportPlaybackPlay(song);
 			document.getElementById('player-title').textContent = song.title;
 			document.getElementById('player-artist-name').textContent = song.artist;
 			document.getElementById('player-time-total').textContent = formatDuration(song.duration);
@@ -3168,7 +3191,7 @@
 			}).catch(function (err) { logApiError('version', err); });
 		}
 		function initApp() {
-			pulse = PulseAPI.create({ user: API_USER, client: 'PulseWeb' });
+			pulse = PulseAPI.create({ user: API_USER, userId: API_USER_ID, client: 'PulseWeb' });
 			wireUpStaticHandlers();
 			document.body.addEventListener('click', handleDelegatedClick);
 			document.body.addEventListener('click', onBodyClickForDrawer);
@@ -3196,8 +3219,9 @@
 			}).then(function (text) {
 				let parsed = null;
 				try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
-				if (parsed && parsed.contents && parsed.contents.Username) {
+				if (parsed && parsed.contents && parsed.contents.Id) {
 					API_USER = parsed.contents.Username;
+					API_USER_ID = parsed.contents.Id;
 					initApp();
 					return;
 				}

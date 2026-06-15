@@ -112,7 +112,7 @@ namespace Pulse.Data
 			if (m_tracks.TryGetValue(trackId, out track))
 			{
 				track.Rating = rating;
-				track.m_bIsDirty = true;
+				track.MarkDirty();
 			}
 		}
 
@@ -124,7 +124,7 @@ namespace Pulse.Data
 				if (m_tracks.TryGetValue(trackId, out track))
 				{
 					track.Starred[userName] = starred;
-					track.m_bIsDirty = true;
+					track.MarkDirty();
 				}
 			}
 
@@ -134,7 +134,7 @@ namespace Pulse.Data
 				if (m_albums.TryGetValue(albumId, out album))
 				{
 					album.Starred[userName] = starred;
-					album.m_bIsDirty = true;
+					album.MarkDirty();
 				}
 			}
 
@@ -144,7 +144,7 @@ namespace Pulse.Data
 				if (m_artists.TryGetValue(artistId, out artist))
 				{
 					artist.Starred[userName] = starred;
-					artist.m_bIsDirty = true;
+					artist.MarkDirty();
 				}
 			}
 		}
@@ -203,7 +203,7 @@ namespace Pulse.Data
 		public void CreateOrUpdate(PlaylistData playlist)
 		{
 			m_playlists[playlist.Id] = playlist;
-			m_playlists[playlist.Id].m_bIsDirty = true;
+			m_playlists[playlist.Id].MarkDirty();
 		}
 
 		public void CreateOrUpdate(ArtistData ArtistData)
@@ -216,7 +216,7 @@ namespace Pulse.Data
 			}
 			artist.Id = ArtistData.Id;
 			artist.Name = ArtistData.Name;
-			artist.m_bIsDirty = true;
+			artist.MarkDirty();
 		}
 
 		public ArtistData GetOrCreateArtist(string id, string name)
@@ -230,7 +230,7 @@ namespace Pulse.Data
 			artist = new ArtistData();
 			artist.Id = id;
 			artist.Name = name;
-			artist.m_bIsDirty = true;
+			artist.MarkDirty();
 			m_artists[id] = artist;
 			return artist;
 		}
@@ -258,7 +258,7 @@ namespace Pulse.Data
 			if (artist != null)
 			{
 				artist.Albums.Add(album);
-				artist.m_bIsDirty = true;
+				artist.MarkDirty();
 			}
 
 			return album;
@@ -267,13 +267,13 @@ namespace Pulse.Data
 		public void AddTrack(TrackData track, string albumId)
 		{
 			m_tracks[track.Id] = track;
-			track.m_bIsDirty = true;
+			track.MarkDirty();
 
 			AlbumData album;
 			if (m_albums.TryGetValue(albumId, out album))
 			{
 				album.Tracks.Add(track);
-				album.m_bIsDirty = true;
+				album.MarkDirty();
 			}
 		}
 
@@ -558,11 +558,11 @@ namespace Pulse.Data
 			m_musicData.Save(eDataType.PulseAnalytics, m_analytics);
 
 			// Clear dirty flags — everything was just persisted
-			foreach (TrackData track in m_tracks.Values) { track.m_bIsDirty = false; }
-			foreach (AlbumData album in m_albums.Values) { album.m_bIsDirty = false; }
-			foreach (ArtistData artist in m_artists.Values) { artist.m_bIsDirty = false; }
-			foreach (PlaylistData playlist in m_playlists.Values) { playlist.m_bIsDirty = false; }
-			m_analytics.m_bIsDirty = false;
+			foreach (TrackData track in m_tracks.Values) { track.ClearDirty(); }
+			foreach (AlbumData album in m_albums.Values) { album.ClearDirty(); }
+			foreach (ArtistData artist in m_artists.Values) { artist.ClearDirty(); }
+			foreach (PlaylistData playlist in m_playlists.Values) { playlist.ClearDirty(); }
+			m_analytics.ClearDirty();
 
 			Log.Info("PulseDataStore migration complete");
 		}
@@ -578,55 +578,55 @@ namespace Pulse.Data
 			List<ArtistData> dirtyArtists = new List<ArtistData>();
 			foreach (ArtistData artist in m_artists.Values)
 			{
-				if (artist.m_bIsDirty) { dirtyArtists.Add(artist); }
+				if (artist.IsDirty()) { dirtyArtists.Add(artist); }
 			}
 
 			List<AlbumData> dirtyAlbums = new List<AlbumData>();
 			foreach (AlbumData album in m_albums.Values)
 			{
-				if (album.m_bIsDirty) { dirtyAlbums.Add(album); }
+				if (album.IsDirty()) { dirtyAlbums.Add(album); }
 			}
 
 			List<TrackData> dirtyTracks = new List<TrackData>();
 			foreach (TrackData track in m_tracks.Values)
 			{
-				if (track.m_bIsDirty) { dirtyTracks.Add(track); }
+				if (track.IsDirty()) { dirtyTracks.Add(track); }
 			}
 
 			List<PlaylistData> dirtyPlaylists = new List<PlaylistData>();
 			foreach (PlaylistData playlist in m_playlists.Values)
 			{
-				if (playlist.m_bIsDirty) { dirtyPlaylists.Add(playlist); }
+				if (playlist.IsDirty()) { dirtyPlaylists.Add(playlist); }
 			}
 
 			if (dirtyArtists.Count > 0)
 			{
 				m_musicData.SaveList(eDataType.Artist, dirtyArtists);
-				for (int i = 0; i < dirtyArtists.Count; i++) { dirtyArtists[i].m_bIsDirty = false; }
+				for (int i = 0; i < dirtyArtists.Count; i++) { dirtyArtists[i].ClearDirty(); }
 			}
 
 			if (dirtyAlbums.Count > 0)
 			{
 				m_musicData.SaveList(eDataType.Album, dirtyAlbums);
-				for (int i = 0; i < dirtyAlbums.Count; i++) { dirtyAlbums[i].m_bIsDirty = false; }
+				for (int i = 0; i < dirtyAlbums.Count; i++) { dirtyAlbums[i].ClearDirty(); }
 			}
 
 			if (dirtyTracks.Count > 0)
 			{
 				m_musicData.SaveList(eDataType.Track, dirtyTracks);
-				for (int i = 0; i < dirtyTracks.Count; i++) { dirtyTracks[i].m_bIsDirty = false; }
+				for (int i = 0; i < dirtyTracks.Count; i++) { dirtyTracks[i].ClearDirty(); }
 			}
 
 			if (dirtyPlaylists.Count > 0)
 			{
 				m_musicData.SaveList(eDataType.Playlist, dirtyPlaylists);
-				for (int i = 0; i < dirtyPlaylists.Count; i++) { dirtyPlaylists[i].m_bIsDirty = false; }
+				for (int i = 0; i < dirtyPlaylists.Count; i++) { dirtyPlaylists[i].ClearDirty(); }
 			}
 
-			if (m_analytics.m_bIsDirty)
+			if (m_analytics.IsDirty())
 			{
 				m_musicData.Save(eDataType.PulseAnalytics, m_analytics);
-				m_analytics.m_bIsDirty = false;
+				m_analytics.ClearDirty();
 			}
 		}
 
@@ -688,7 +688,7 @@ namespace Pulse.Data
 						{
 
 							track.RelativeFilePath = relativePath;
-							track.m_bIsDirty = true;
+							track.MarkDirty();
 
 						}
 						else
@@ -913,19 +913,19 @@ namespace Pulse.Data
 				bool touched = false;
 				if (track.UserScore.Remove(userId)) { touched = true; }
 				if (track.Starred.Remove(userId)) { touched = true; }
-				if (touched) { track.m_bIsDirty = true; }
+				if (touched) { track.MarkDirty(); }
 			}
 			foreach (AlbumData album in m_albums.Values)
 			{
-				if (album.Starred.Remove(userId)) { album.m_bIsDirty = true; }
+				if (album.Starred.Remove(userId)) { album.MarkDirty(); }
 			}
 			foreach (ArtistData artist in m_artists.Values)
 			{
-				if (artist.Starred.Remove(userId)) { artist.m_bIsDirty = true; }
+				if (artist.Starred.Remove(userId)) { artist.MarkDirty(); }
 			}
 			foreach (PlaylistData playlist in m_playlists.Values)
 			{
-				if (playlist.UserLastPlayed.Remove(userId)) { playlist.m_bIsDirty = true; }
+				if (playlist.UserLastPlayed.Remove(userId)) { playlist.MarkDirty(); }
 			}
 		}
 

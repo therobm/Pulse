@@ -1,3 +1,5 @@
+using Pulse.Series;
+using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
 
@@ -20,9 +22,40 @@ namespace Pulse.DataStorage
 		public string Collection = "";
 		public int CollectionIndex;
 		public Dictionary<string, UserData> Users = new Dictionary<string, UserData>();
+
+		public PulseAudiobook BuildPulseAudiobook(AudiobookManager audiobookManager, string user)
+		{
+			PulseAudiobook book = new PulseAudiobook();
+			book.Id = Id;
+			book.Title = Title;
+			book.Author = Author;
+			book.Narrator = Narrator;
+			book.Description = Description;
+			book.Collection = Collection;
+			book.CollectionIndex = CollectionIndex;
+			book.CoverArt = "se-" + Id;
+
+			List<Chapter> chapters = audiobookManager.GetChapters(Id);
+			book.ItemCount = chapters.Count;
+			int totalDuration = 0;
+			for (int i = 0; i < chapters.Count; i++)
+			{
+				totalDuration = totalDuration + chapters[i].DurationSeconds;
+			}
+			book.TotalDuration = totalDuration;
+			book.UnplayedCount = 0;
+
+			Audiobook.UserData userData;
+			bool hasUser = Users.TryGetValue(user, out userData);
+			if (hasUser)
+			{
+				book.LastItemId = userData.LastChapterId;
+				book.LastPlayed = userData.LastPlayed.ToString("o");
+			}
+			return book;
+		}
 	}
 
-	/// <summary>One chapter of an audiobook (a file, or a time window into a file).</summary>
 	public class Chapter : PulseDataObject
 	{
 		public class UserData
@@ -47,4 +80,6 @@ namespace Pulse.DataStorage
 		public int EndMs;
 		public Dictionary<string, UserData> Users = new Dictionary<string, UserData>();
 	}
+
+
 }

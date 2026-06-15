@@ -68,7 +68,7 @@ namespace Pulse.MusicLibrary
 		private object m_scanLock = new object();
 		private string m_nowPlayingTrackId;
 		private DateTime m_nowPlayingStartTime = DateTime.MinValue;
-		private HashSet<string> m_missingSongs = new HashSet<string>();
+		private HashSet<string> m_missingTracks = new HashSet<string>();
 		private PulseConfig m_config;
 
 		public MusicManager(PulseConfig config, PulseData pulseData)
@@ -105,12 +105,12 @@ namespace Pulse.MusicLibrary
 
 		public void OnPlaylistSyncComplete()
 		{
-			HashSet<string> missingSongsSnapshot;
+			HashSet<string> missingTracksSnapshot;
 			lock (m_missingLock)
 			{
-				missingSongsSnapshot = new HashSet<string>(m_missingSongs);
+				missingTracksSnapshot = new HashSet<string>(m_missingTracks);
 			}
-			m_lidarrSync.RequestArtists(missingSongsSnapshot);
+			m_lidarrSync.RequestArtists(missingTracksSnapshot);
 		}
 
 		public void OnTrackStreamed(string userName, string trackId)
@@ -144,7 +144,7 @@ namespace Pulse.MusicLibrary
 					if (previousTrack.ParentArtist != null)
 					{
 						previousTrack.ParentArtist.LastPlayed = DateTime.UtcNow;
-						previousTrack.ParentArtist.m_bIsDirty = true;
+						previousTrack.ParentArtist.MarkDirty();
 					}
 
 					if (userName != null)
@@ -167,7 +167,7 @@ namespace Pulse.MusicLibrary
 					{
 						analytics.RecentlyPlayed.RemoveAt(analytics.RecentlyPlayed.Count - 1);
 					}
-					analytics.m_bIsDirty = true;
+					analytics.MarkDirty();
 
 					RecalculateScore(previousTrack);
 
@@ -260,7 +260,7 @@ namespace Pulse.MusicLibrary
 				return;
 			}
 			artist.LastPlayed = DateTime.UtcNow;
-			artist.m_bIsDirty = true;
+			artist.MarkDirty();
 		}
 
 		/// <summary>
@@ -282,7 +282,7 @@ namespace Pulse.MusicLibrary
 			{
 				playlist.UserLastPlayed[userName] = now;
 			}
-			playlist.m_bIsDirty = true;
+			playlist.MarkDirty();
 		}
 
 		public PlaylistData ImportPlaylist(string name, List<PlaylistImportEntry> entries)
@@ -358,7 +358,7 @@ namespace Pulse.MusicLibrary
 				{
 					lock (m_missingLock)
 					{
-						m_missingSongs.Add(entries[index].Artist + " - " + entries[index].Title);
+						m_missingTracks.Add(entries[index].Artist + " - " + entries[index].Title);
 					}
 					missed++;
 				}
@@ -513,10 +513,10 @@ namespace Pulse.MusicLibrary
 			};
 			lock (m_missingLock)
 			{
-				string missingTempPath = "missingSongs.json.tmp";
-				string missingSongJson = JsonSerializer.Serialize(m_missingSongs, options);
-				File.WriteAllText(missingTempPath, missingSongJson);
-				File.Move(missingTempPath, "missingSongs.json", overwrite: true);
+				string missingTempPath = "missingTracks.json.tmp";
+				string missingTrackJson = JsonSerializer.Serialize(m_missingTracks, options);
+				File.WriteAllText(missingTempPath, missingTrackJson);
+				File.Move(missingTempPath, "missingTracks.json", overwrite: true);
 			}
 		}
 
@@ -617,7 +617,7 @@ namespace Pulse.MusicLibrary
 					ArtistData artist = m_database.GetArtist(artistId);
 					if (artist != null)
 					{
-						artist.m_bIsDirty = true;
+						artist.MarkDirty();
 					}
 					Log.Info("Pulse: Removed dead track: " + trackPath);
 				}
@@ -798,7 +798,7 @@ namespace Pulse.MusicLibrary
 				if (!linked)
 				{
 					album.Tracks.Add(track);
-					album.m_bIsDirty = true;
+					album.MarkDirty();
 					relinked++;
 				}
 			}
@@ -949,7 +949,7 @@ namespace Pulse.MusicLibrary
 					track.UserScore[user].WeightedScore = 1;
 				}
 			}
-			track.m_bIsDirty = true;
+			track.MarkDirty();
 		}
 
 		private string GetContentType(string extension)
@@ -1118,7 +1118,7 @@ namespace Pulse.MusicLibrary
 			return m_database.GetArtist(id);
 		}
 
-
+	
 		/// <summary>
 		/// Resolves a track's on-disk path from its RelativeFilePath against the
 		/// configured MusicPath. RelativeFilePath is the source of truth now (FilePath

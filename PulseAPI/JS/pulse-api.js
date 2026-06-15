@@ -69,7 +69,8 @@
 
 	// options:
 	//   baseUrl   - endpoint root (default "/pulse_v1/")
-	//   user      - sent as `u` on every request
+	//   user      - sent as `u` on every request (legacy username)
+	//   userId    - sent as `uid` on every request (stable user id)
 	//   client    - sent as `c` (default "PulseWeb")
 	//   version   - sent as `v` when set
 	//   defaultParams - extra params merged into every request
@@ -80,6 +81,7 @@
 			this.baseUrl = this.baseUrl + '/';
 		}
 		this.user = options.user || '';
+		this.userId = options.userId || '';
 		this.client = options.client || 'PulseWeb';
 		this.version = options.version || '';
 		this.defaultParams = options.defaultParams || {};
@@ -98,6 +100,7 @@
 			}
 		}
 		if (this.user) { merged.u = this.user; }
+		if (this.userId) { merged.uid = this.userId; }
 		if (this.client) { merged.c = this.client; }
 		if (this.version) { merged.v = this.version; }
 		if (params) {
@@ -157,6 +160,14 @@
 		return this.request(endpoint, params).then(function (envelope) {
 			return envelope.contents;
 		});
+	};
+
+	// Report a single non-batched analytics event (play/stop). uid rides along
+	// via _buildQuery. Fire-and-forget at the call site.
+	PulseClient.prototype.recordAnalytic = function (action, type, id, ms) {
+		var params = { action: action, type: type, id: id };
+		if (ms !== null && ms !== undefined) { params.ms = ms; }
+		return this.request('recordAnalytic', params);
 	};
 
 	// -- non-fetching URL helpers -----------------------------------------
@@ -253,6 +264,23 @@
 			}
 		}
 		return this._contents('recentlyPlayed', params);
+	};
+
+	// Items ranked by Score. options: { count, types } where types is an array
+	// or CSV of "track","artist","album","playlist" (omit for all). Resolves to
+	// an array of Pulse* objects; branch on each item's Kind.
+	PulseClient.prototype.topItems = function (options) {
+		options = options || {};
+		var params = {};
+		if (options.count !== undefined) { params.count = options.count; }
+		if (options.types !== undefined && options.types !== null) {
+			if (Object.prototype.toString.call(options.types) === '[object Array]') {
+				params.types = options.types.join(',');
+			} else {
+				params.types = options.types;
+			}
+		}
+		return this._contents('topItems', params);
 	};
 
 	// -- playlists --------------------------------------------------------

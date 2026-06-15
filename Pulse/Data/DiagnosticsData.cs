@@ -54,7 +54,7 @@ namespace Pulse.Data
 				m_events.Add(record);
 			}
 			m_data.Save(eDataType.Diagnostic, record);
-			record.m_bIsDirty = false;
+			record.ClearDirty();
 			PruneOld();
 		}
 

@@ -1,4 +1,7 @@
 
+using System;
+using System.Collections.Generic;
+
 namespace PulseAPI.CSharp
 {
 	/// <summary>
@@ -34,5 +37,18 @@ namespace PulseAPI.CSharp
 	{
 		public string Id;
 		public ePulseWireType Kind;
+	}
+	public class PulseMusicObject : PulseObject
+	{
+		public float Score;
+		public DateTime LastPlayed;
+		public static void SortByScore(List<PulseMusicObject> items)
+		{
+			items.Sort((a, b) => b.Score.CompareTo(a.Score));
+		}
+		public static void SortByLastPlayed(List<PulseMusicObject> items)
+		{
+			items.Sort((a, b) => b.LastPlayed.CompareTo(a.LastPlayed));
+		}
 	}
 }

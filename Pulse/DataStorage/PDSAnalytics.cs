@@ -7,7 +7,7 @@ using TagLib.Riff;
 
 namespace Pulse.DataStorage
 {
-	public enum AnalyticType
+	public enum eAnalyticType
 	{
 		Track,
 		Album,
@@ -36,35 +36,84 @@ namespace Pulse.DataStorage
 		/// </summary>
 		public string UserID;
 		public string ItemID;
-		public AnalyticType AnalyticType;
+		public eAnalyticType AnalyticType;
 		public bool IsFavorite;
 		public int PlayCount;
 		public double TotalPlayedSeconds;
+		public DateTime LastPlayed = DateTime.MinValue;
 		public AnaliticUserItem()
 		{
 			Id = Guid.NewGuid().ToString();	
 		}
-		public float GetScore(PulseData pulseData)
+		public float GetScore(PulseData pulseData, AnalyticsData analyticsData)
 		{
 			float score = 0;
 
 			switch (AnalyticType)
 			{
-				case AnalyticType.Track:
+				case eAnalyticType.Track:
 					{
 						//todoo this should support all music object types
 						TrackData track = pulseData.GetTrack(ItemID);
 						float trackDuration = track.DurationSeconds;
 
 						double maxPlayTime = PlayCount * trackDuration;
-						score = (float)(TotalPlayedSeconds / maxPlayTime);
+						if (maxPlayTime > 0)
+							score = (float)(TotalPlayedSeconds / maxPlayTime);
 						break;
 					}
-				case AnalyticType.Album:
+				case eAnalyticType.Album:
+					AlbumData album = pulseData.GetAlbum(ItemID);
+					List<string> trackIds = new List<string>();
+					for (int i = 0; i < album.Tracks.Count; i++)
+					{
+						trackIds.Add(album.Tracks[i].Id);
+					}
+					List<AnaliticUserItem> tracks = analyticsData.GetRankedItems(trackIds, eAnalyticType.Track);
+					score = 0;
+					if (tracks.Count > 0)
+					{
+						foreach (AnaliticUserItem track in tracks)
+						{
+							score += track.GetScore(pulseData, analyticsData);
+						}
+						score /= tracks.Count;
+					}
 					break;
-				case AnalyticType.Artist:
+				case eAnalyticType.Artist:
+					ArtistData artist = pulseData.GetArtist(ItemID);
+					List<string> artistTrackIds = new List<string>();
+					for (int i = 0; i < artist.Albums.Count; i++)
+					{
+						AlbumData artistAlbum = artist.Albums[i];
+						for (int j = 0; j < artistAlbum.Tracks.Count; j++)
+						{
+							artistTrackIds.Add(artistAlbum.Tracks[j].Id);
+						}
+					}
+					List<AnaliticUserItem> artistTracks = analyticsData.GetRankedItems(artistTrackIds, eAnalyticType.Track);
+					score = 0;
+					if (artistTracks.Count > 0)
+					{
+						foreach (AnaliticUserItem track in artistTracks)
+						{
+							score += track.GetScore(pulseData, analyticsData);
+						}
+						score /= artistTracks.Count;
+					}
 					break;
-				case AnalyticType.Playlist:
+				case eAnalyticType.Playlist:
+					PlaylistData playlist = pulseData.GetPlaylist(ItemID);
+					List<AnaliticUserItem> playlistTracks = analyticsData.GetRankedItems(playlist.TrackIds, eAnalyticType.Track);
+					score = 0;
+					if (playlistTracks.Count > 0)
+					{
+						foreach (AnaliticUserItem track in playlistTracks)
+						{
+							score += track.GetScore(pulseData, analyticsData);
+						}
+						score /= playlistTracks.Count;
+					}
 					break;
 				default:
 					//noop

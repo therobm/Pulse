@@ -370,7 +370,7 @@ namespace Pulse.Database
 				ArtistData artist = dirtyArtists[index];
 				UpdateArtist(connection, transaction, artist);
 				WriteStarred(connection, transaction, "artist", artist.Id, artist.Starred);
-				artist.m_bIsDirty = false;
+				artist.ClearDirty();
 				count++;
 			}
 			return count;
@@ -384,7 +384,7 @@ namespace Pulse.Database
 				AlbumData album = dirtyAlbums[index];
 				UpdateAlbum(connection, transaction, album);
 				WriteStarred(connection, transaction, "album", album.Id, album.Starred);
-				album.m_bIsDirty = false;
+				album.ClearDirty();
 				count++;
 			}
 			return count;
@@ -399,7 +399,7 @@ namespace Pulse.Database
 				UpdateTrack(connection, transaction, track);
 				WriteTrackUserScores(connection, transaction, track);
 				WriteStarred(connection, transaction, "track", track.Id, track.Starred);
-				track.m_bIsDirty = false;
+				track.ClearDirty();
 				count++;
 			}
 			return count;
@@ -414,7 +414,7 @@ namespace Pulse.Database
 				UpdatePlaylist(connection, transaction, playlist);
 				WritePlaylistTracks(connection, transaction, playlist);
 				WritePlaylistUserLastPlayed(connection, transaction, playlist);
-				playlist.m_bIsDirty = false;
+				playlist.ClearDirty();
 				count++;
 			}
 			return count;
@@ -423,7 +423,7 @@ namespace Pulse.Database
 		private int SaveAnalytics(SqliteConnection connection, SqliteTransaction transaction, PulseAnalyticsData analytics)
 		{
 			if (analytics == null) { return 0; }
-			if (!analytics.m_bIsDirty) { return 0; }
+			if (!analytics.IsDirty()) { return 0; }
 
 			SqliteCommand delete = connection.CreateCommand();
 			delete.Transaction = transaction;
@@ -439,7 +439,7 @@ namespace Pulse.Database
 				insert.Parameters.AddWithValue("$track_id", analytics.RecentlyPlayed[position]);
 				insert.ExecuteNonQuery();
 			}
-			analytics.m_bIsDirty = false;
+			analytics.ClearDirty();
 			return 1;
 		}
 

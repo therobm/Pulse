@@ -23,7 +23,7 @@ namespace Pulse.Protocols
 		public enum eSortMethod
 		{
 			MostRecent,
-			MostPlays,
+			Score,
 		}
 		/// <summary>
 		/// Intentionally changed from /pulse to add versioning support
@@ -83,6 +83,7 @@ namespace Pulse.Protocols
 			RegisterRoute("reportAnalytics", ReportAnalytics);
 
 			RegisterRoute("ingestAnalytics", IngestAnalytics);
+			RegisterRoute("recordAnalytic", RecordAnalytic);
 			RegisterRoute("analytics", GetAnalytics);
 
 			RegisterRoute("ingestDiagnostics", PostIngestDiagnostics);
@@ -172,24 +173,6 @@ namespace Pulse.Protocols
 			return Respond(context, response);
 		}
 
-		private PulseArtist BuildArtist(ArtistData artist, string user)
-		{
-			PulseArtist pulseArtist = new PulseArtist();
-			pulseArtist.Id = artist.Id;
-			pulseArtist.Name = artist.Name;
-			pulseArtist.AlbumCount = artist.Albums.Count;
-			int trackCount = 0;
-			for (int index = 0; index < artist.Albums.Count; index++)
-			{
-				trackCount = trackCount + artist.Albums[index].Tracks.Count;
-			}
-			pulseArtist.TrackCount = trackCount;
-			pulseArtist.CoverArt = "ar-" + artist.Id;
-			pulseArtist.Score = artist.GetScore(user);
-			pulseArtist.LastPlayed = artist.LastPlayed;
-			return pulseArtist;
-		}
-
 		private PulseAlbum BuildAlbum(AlbumData album)
 		{
 			PulseAlbum pulseAlbum = new PulseAlbum();
@@ -226,20 +209,7 @@ namespace Pulse.Protocols
 			return pulseAlbum;
 		}
 
-		private PulseTrack BuildTrack(TrackData track, string user)
-		{
-			PulseTrack pulseTrack = new PulseTrack();
-			pulseTrack.Id = track.Id;
-			pulseTrack.Title = track.Title;
-			pulseTrack.Artist = track.Artist;
-			pulseTrack.ArtistId = track.ArtistId;
-			pulseTrack.Album = track.Album;
-			pulseTrack.AlbumId = track.AlbumId;
-			pulseTrack.CoverArt = track.CoverArtId;
-			pulseTrack.Duration = track.DurationSeconds;
-			pulseTrack.Starred = track.IsStarredBy(user);
-			return pulseTrack;
-		}
+
 
 		/// <summary>
 		/// Builds a PulseTrack envelope from a podcast episode so the /track
@@ -289,19 +259,7 @@ namespace Pulse.Protocols
 			return pulseTrack;
 		}
 
-		private PulsePlaylist BuildPlaylist(PlaylistData playlist, string user)
-		{
-			PulsePlaylist pulsePlaylist = new PulsePlaylist();
-			pulsePlaylist.Id = playlist.Id;
-			pulsePlaylist.Name = playlist.Name;
-			pulsePlaylist.Comment = playlist.Comment;
-			pulsePlaylist.CoverArt = "pl-" + playlist.Id;
-			pulsePlaylist.TrackCount = playlist.GetSongCount();
-			pulsePlaylist.Duration = (int)playlist.DurationSeconds;
-			pulsePlaylist.Score = 0f;
-			pulsePlaylist.LastPlayed = playlist.GetLastPlayed(user);
-			return pulsePlaylist;
-		}
+		
 
 		private PulseGenre BuildGenre(GenreInfo genre)
 		{
@@ -517,13 +475,13 @@ namespace Pulse.Protocols
 
 		public IResult GetArtists(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			List<PulseArtist> pulseArtists = new List<PulseArtist>();
 			List<ArtistData> allArtists = m_musicManager.GetAllArtists();
 			for (int index = 0; index < allArtists.Count; index++)
 			{
-				pulseArtists.Add(BuildArtist(allArtists[index], user));
+				pulseArtists.Add(allArtists[index].BuildPulse());
 			}
 			return RespondList(context, pulseArtists);
 		}
@@ -531,7 +489,7 @@ namespace Pulse.Protocols
 		public IResult GetArtist(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			ArtistData artist = m_musicManager.GetArtist(id);
 			if (artist == null)
@@ -541,7 +499,7 @@ namespace Pulse.Protocols
 
 			PulseArtistDetails details = new PulseArtistDetails();
 			details.Id = artist.Id;
-			details.Artist = BuildArtist(artist, user);
+			details.Artist = artist.BuildPulse();
 			for (int index = 0; index < artist.Albums.Count; index++)
 			{
 				details.Albums.Add(BuildAlbum(artist.Albums[index]));
@@ -552,7 +510,7 @@ namespace Pulse.Protocols
 		public IResult GetArtistTracks(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			ArtistData artist = m_musicManager.GetArtist(id);
 			if (artist == null)
@@ -562,7 +520,7 @@ namespace Pulse.Protocols
 
 			PulseArtistFullDetails details = new PulseArtistFullDetails();
 			details.Id = artist.Id;
-			details.Artist = BuildArtist(artist, user);
+			details.Artist = artist.BuildPulse();
 			for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
 			{
 				AlbumData album = artist.Albums[albumIndex];
@@ -574,7 +532,7 @@ namespace Pulse.Protocols
 				ordered.Sort(CompareTrackByDiscThenNumber);
 				for (int trackIndex = 0; trackIndex < ordered.Count; trackIndex++)
 				{
-					albumDetails.Tracks.Add(BuildTrack(ordered[trackIndex], user));
+					albumDetails.Tracks.Add(ordered[trackIndex].BuildPulse());
 				}
 				details.AlbumDetails.Add(albumDetails);
 			}
@@ -594,7 +552,7 @@ namespace Pulse.Protocols
 			{
 				offset = 0;
 			}
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			string type = "random";
 			if (!string.IsNullOrEmpty(typeRaw))
@@ -737,7 +695,7 @@ namespace Pulse.Protocols
 				{
 					AlbumData album = allAlbums[index];
 					bool isStarred = false;
-					album.Starred.TryGetValue(user, out isStarred);
+					album.Starred.TryGetValue(userId, out isStarred);
 					if (isStarred)
 					{
 						filtered.Add(album);
@@ -808,7 +766,7 @@ namespace Pulse.Protocols
 		public IResult GetAlbum(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			AlbumData album = m_musicManager.GetAlbum(id);
 			if (album == null)
@@ -824,7 +782,7 @@ namespace Pulse.Protocols
 			details.Album = BuildAlbum(album);
 			for (int index = 0; index < ordered.Count; index++)
 			{
-				details.Tracks.Add(BuildTrack(ordered[index], user));
+				details.Tracks.Add(ordered[index].BuildPulse());
 			}
 			return RespondObject(context, details);
 		}
@@ -840,24 +798,24 @@ namespace Pulse.Protocols
 		public IResult GetTrack(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			TrackData track = m_musicManager.GetTrack(id);
 			if (track != null)
 			{
-				return RespondObject(context, BuildTrack(track, user));
+				return RespondObject(context, track.BuildPulse());
 			}
 
 			Episode episode = m_podcastManager.GetEpisode(id);
 			if (episode != null)
 			{
-				return RespondObject(context, BuildTrackFromEpisode(episode, user));
+				return RespondObject(context, BuildTrackFromEpisode(episode, userId));
 			}
 
 			Chapter chapter = m_audiobookManager.GetChapter(id);
 			if (chapter != null)
 			{
-				return RespondObject(context, BuildTrackFromChapter(chapter, user));
+				return RespondObject(context, BuildTrackFromChapter(chapter, userId));
 			}
 
 			return RespondStatus(context, "not_found");
@@ -902,7 +860,7 @@ namespace Pulse.Protocols
 		public IResult GetGenreTracks(HttpContext context)
 		{
 			string genre = QueryParameters.GetString(context, "genre");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 			int count = QueryParameters.GetInt(context, "count", 10);
 			int offset = QueryParameters.GetInt(context, "offset", 0);
 			if (offset < 0)
@@ -952,7 +910,7 @@ namespace Pulse.Protocols
 			int end = Math.Min(matches.Count, offset + count);
 			for (int index = offset; index < end; index++)
 			{
-				details.Tracks.Add(BuildTrack(matches[index], user));
+				details.Tracks.Add(matches[index].BuildPulse());
 			}
 			return RespondObject(context, details);
 		}
@@ -960,13 +918,13 @@ namespace Pulse.Protocols
 
 		public IResult GetPlaylists(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			List<PulsePlaylist> pulsePlaylists = new List<PulsePlaylist>();
-			List<PlaylistData> allPlaylists = m_musicManager.GetAllPlaylists(user);
+			List<PlaylistData> allPlaylists = m_musicManager.GetAllPlaylists(userId);
 			for (int index = 0; index < allPlaylists.Count; index++)
 			{
-				pulsePlaylists.Add(BuildPlaylist(allPlaylists[index], user));
+				pulsePlaylists.Add(allPlaylists[index].BuildPulsePlaylist());
 			}
 			return RespondList(context, pulsePlaylists);
 		}
@@ -974,7 +932,7 @@ namespace Pulse.Protocols
 		public IResult GetPlaylist(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			if (string.IsNullOrEmpty(id))
 			{
@@ -986,27 +944,15 @@ namespace Pulse.Protocols
 			{
 				return RespondStatus(context, "not_found");
 			}
-			return RespondObject(context, BuildPlaylistDetails(playlist, user));
-		}
-
-		private PulsePlaylistDetails BuildPlaylistDetails(PlaylistAndTracks playlist, string user)
-		{
-			PulsePlaylistDetails details = new PulsePlaylistDetails();
-			details.Id = playlist.Id;
-			details.Playlist = BuildPlaylist(playlist, user);
-			for (int index = 0; index < playlist.Tracks.Count; index++)
-			{
-				details.Tracks.Add(BuildTrack(playlist.Tracks[index], user));
-			}
-			return details;
+			return RespondObject(context, playlist.BuildPulsePlaylistDetails());
 		}
 
 		public IResult CreatePlaylist(HttpContext context)
 		{
 			string playlistId = QueryParameters.GetString(context, "playlistId");
 			string name = QueryParameters.GetString(context, "name");
-			string user = QueryParameters.GetString(context, "u");
-			List<string> songIds = QueryParameters.GetList(context, "songId");
+			string userId = QueryParameters.GetUserId(context);
+			List<string> trackIds = QueryParameters.GetList(context, "songId");
 
 			PlaylistData playlist = null;
 			if (!string.IsNullOrEmpty(playlistId))
@@ -1029,14 +975,14 @@ namespace Pulse.Protocols
 					return RespondStatus(context, "name_taken");
 				}
 				playlist = new PlaylistData();
-				playlist.Id = MusicManager.GenerateID("playlist/" + user + "/" + name + "/" + DateTime.UtcNow.Ticks);
+				playlist.Id = MusicManager.GenerateID("playlist/" + userId + "/" + name + "/" + DateTime.UtcNow.Ticks);
 				playlist.Name = name;
 			}
 
 			long totalDuration = 0;
-			for (int index = 0; index < songIds.Count; index++)
+			for (int index = 0; index < trackIds.Count; index++)
 			{
-				TrackData track = m_musicManager.GetTrack(songIds[index]);
+				TrackData track = m_musicManager.GetTrack(trackIds[index]);
 				if (track == null)
 				{
 					continue;
@@ -1048,7 +994,7 @@ namespace Pulse.Protocols
 			m_musicManager.CreateOrUpdatePlaylist(playlist);
 
 			PlaylistAndTracks fullPlaylist = m_musicManager.GetPlaylistAndTracks(playlist.Id);
-			return RespondObject(context, BuildPlaylistDetails(fullPlaylist, user));
+			return RespondObject(context, fullPlaylist.BuildPulsePlaylistDetails());
 		}
 
 		public IResult UpdatePlaylist(HttpContext context)
@@ -1056,8 +1002,8 @@ namespace Pulse.Protocols
 			string playlistId = QueryParameters.GetString(context, "playlistId");
 			string name = QueryParameters.GetString(context, "name");
 			string comment = QueryParameters.GetString(context, "comment");
-			string user = QueryParameters.GetString(context, "u");
-			List<string> songIdsToAdd = QueryParameters.GetList(context, "songIdToAdd");
+			string userId = QueryParameters.GetUserId(context);
+			List<string> trackIdsToAdd = QueryParameters.GetList(context, "songIdToAdd");
 			List<string> indicesToRemove = QueryParameters.GetList(context, "songIndexToRemove");
 
 			if (string.IsNullOrEmpty(playlistId))
@@ -1106,9 +1052,9 @@ namespace Pulse.Protocols
 				}
 			}
 
-			for (int index = 0; index < songIdsToAdd.Count; index++)
+			for (int index = 0; index < trackIdsToAdd.Count; index++)
 			{
-				TrackData track = m_musicManager.GetTrack(songIdsToAdd[index]);
+				TrackData track = m_musicManager.GetTrack(trackIdsToAdd[index]);
 				if (track == null)
 				{
 					continue;
@@ -1134,7 +1080,7 @@ namespace Pulse.Protocols
 			m_coverArtCache.TryRemove("pl-" + playlist.Id, out discard);
 
 			PlaylistAndTracks fullPlaylist = m_musicManager.GetPlaylistAndTracks(playlist.Id);
-			return RespondObject(context, BuildPlaylistDetails(fullPlaylist, user));
+			return RespondObject(context, fullPlaylist.BuildPulsePlaylistDetails());
 		}
 
 		// Case-insensitive duplicate-name check. skipPlaylistId lets the caller
@@ -1186,10 +1132,10 @@ namespace Pulse.Protocols
 				return RespondObject(context, new PulseSearchData());
 			}
 
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 			int artistCount = QueryParameters.GetInt(context, "artistCount", 20);
 			int albumCount = QueryParameters.GetInt(context, "albumCount", 20);
-			int songCount = QueryParameters.GetInt(context, "songCount", 20);
+			int trackCount = QueryParameters.GetInt(context, "songCount", 20);
 
 			PulseSearchData result = new PulseSearchData();
 
@@ -1199,32 +1145,32 @@ namespace Pulse.Protocols
 			string lowerQuery = query.ToLowerInvariant();
 
 			int artistHits = 0;
-			for (int index = 0; index < allArtists.Count && artistHits < artistCount; index++)
+			for (int i = 0; i < allArtists.Count && artistHits < artistCount; i++)
 			{
-				if (allArtists[index].Name.ToLowerInvariant().Contains(lowerQuery))
+				if (allArtists[i].Name.ToLowerInvariant().Contains(lowerQuery))
 				{
-					result.Artists.Add(BuildArtist(allArtists[index], user));
+					result.Artists.Add(allArtists[i].BuildPulse());
 					artistHits++;
 				}
 			}
 
 			int albumHits = 0;
-			for (int index = 0; index < allAlbums.Count && albumHits < albumCount; index++)
+			for (int i = 0; i < allAlbums.Count && albumHits < albumCount; i++)
 			{
-				if (allAlbums[index].Name.ToLowerInvariant().Contains(lowerQuery))
+				if (allAlbums[i].Name.ToLowerInvariant().Contains(lowerQuery))
 				{
-					result.Albums.Add(BuildAlbum(allAlbums[index]));
+					result.Albums.Add(BuildAlbum(allAlbums[i]));
 					albumHits++;
 				}
 			}
 
-			int songHits = 0;
-			for (int albumIndex = 0; albumIndex < allAlbums.Count && songHits < songCount; albumIndex++)
+			int trackHits = 0;
+			for (int i = 0; i < allAlbums.Count && trackHits < trackCount; i++)
 			{
-				List<TrackData> tracks = allAlbums[albumIndex].Tracks;
-				for (int trackIndex = 0; trackIndex < tracks.Count && songHits < songCount; trackIndex++)
+				List<TrackData> tracks = allAlbums[i].Tracks;
+				for (int j = 0; j < tracks.Count && trackHits < trackCount; j++)
 				{
-					TrackData track = tracks[trackIndex];
+					TrackData track = tracks[j];
 					if (track == null)
 					{
 						continue;
@@ -1232,8 +1178,8 @@ namespace Pulse.Protocols
 					if (track.Title.ToLowerInvariant().Contains(lowerQuery) ||
 						track.Artist.ToLowerInvariant().Contains(lowerQuery))
 					{
-						result.Tracks.Add(BuildTrack(track, user));
-						songHits++;
+						result.Tracks.Add(track.BuildPulse());
+						trackHits++;
 					}
 				}
 			}
@@ -1242,7 +1188,7 @@ namespace Pulse.Protocols
 
 		public IResult GetFavorites(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			PulseSearchData result = new PulseSearchData();
 
@@ -1251,10 +1197,10 @@ namespace Pulse.Protocols
 			{
 				ArtistData artist = allArtists[index];
 				bool artistStarred = false;
-				artist.Starred.TryGetValue(user, out artistStarred);
+				artist.Starred.TryGetValue(userId, out artistStarred);
 				if (artistStarred)
 				{
-					result.Artists.Add(BuildArtist(artist, user));
+					result.Artists.Add(artist.BuildPulse());
 				}
 			}
 
@@ -1263,7 +1209,7 @@ namespace Pulse.Protocols
 			{
 				AlbumData album = allAlbums[albumIndex];
 				bool albumStarred = false;
-				album.Starred.TryGetValue(user, out albumStarred);
+				album.Starred.TryGetValue(userId, out albumStarred);
 				if (albumStarred)
 				{
 					result.Albums.Add(BuildAlbum(album));
@@ -1273,10 +1219,10 @@ namespace Pulse.Protocols
 				{
 					TrackData track = album.Tracks[trackIndex];
 					bool trackStarred = false;
-					track.Starred.TryGetValue(user, out trackStarred);
+					track.Starred.TryGetValue(userId, out trackStarred);
 					if (trackStarred)
 					{
-						result.Tracks.Add(BuildTrack(track, user));
+						result.Tracks.Add(track.BuildPulse());
 					}
 				}
 			}
@@ -1298,7 +1244,7 @@ namespace Pulse.Protocols
 		{
 			string id = QueryParameters.GetString(context, "id");
 			string type = QueryParameters.GetString(context, "type");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			if (string.IsNullOrEmpty(id))
 			{
@@ -1327,7 +1273,7 @@ namespace Pulse.Protocols
 				trackId = id;
 			}
 
-			m_musicManager.UpdateStar(user, trackId, albumId, artistId, starred);
+			m_musicManager.UpdateStar(userId, trackId, albumId, artistId, starred);
 			return Respond(context, new PulseResponse());
 		}
 
@@ -1343,7 +1289,7 @@ namespace Pulse.Protocols
 		/// </summary>
 		public IResult ReportAnalytics(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			string body;
 			using (StreamReader reader = new StreamReader(context.Request.Body))
@@ -1362,17 +1308,17 @@ namespace Pulse.Protocols
 				return RespondStatus(context, "missing_id");
 			}
 
-			m_musicManager.OnPlaybackEvent(user, analytics);
+			m_musicManager.OnPlaybackEvent(userId, analytics);
 			return Respond(context, new PulseResponse());
 		}
 
 		public IResult GetTop(HttpContext context)
 		{
 			int count = QueryParameters.GetInt(context, "count", 10);
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 			string typesParam = QueryParameters.GetString(context, "types");
 
-			List<PulseObject> items = GetItems(count, user, typesParam, eSortMethod.MostPlays);
+			List<PulseMusicObject> items = GetItems(count, userId, typesParam, eSortMethod.Score);
 			return RespondList(context, items);
 		}
 
@@ -1385,331 +1331,71 @@ namespace Pulse.Protocols
 		public IResult GetRecentlyPlayed(HttpContext context)
 		{
 			int count = QueryParameters.GetInt(context, "count", 10);
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
+
 			string typesParam = QueryParameters.GetString(context, "types");
-			List<PulseObject> items = GetItems(count, user, typesParam, eSortMethod.MostRecent);
+			List<PulseMusicObject> items = GetItems(count, userId, typesParam, eSortMethod.MostRecent);
 			return RespondList(context, items);
 		}
 
-		private List<PulseObject> GetItems(int count, string user, string typesParam, eSortMethod sortMethod)
+		private List<PulseMusicObject> GetItems(int count, string user, string typesParam, eSortMethod sortMethod)
 		{
-			bool includeTracks;
-			bool includeArtists;
-			bool includeAlbums;
-			bool includePlaylists;
-			ParseRecentTypes(typesParam, out includeTracks, out includeArtists, out includeAlbums, out includePlaylists);
+			List<eAnalyticType> types = ParseTypesParam(typesParam);
 
-			List<RecentCandidate> candidates;
-			if (sortMethod == eSortMethod.MostPlays)
-			{
-				candidates = GatherMostPlayed(user, includeTracks, includeArtists, includeAlbums, includePlaylists);
-				candidates.Sort(CompareCandidateByPlaysDescending);
-			}
-			else
-			{
-				candidates = GatherMostRecent(user, includeTracks, includeArtists, includeAlbums, includePlaylists);
-				candidates.Sort(CompareRecentCandidateDescending);
-			}
-
-			List<PulseObject> items = new List<PulseObject>();
-			int emit = Math.Min(count, candidates.Count);
-			for (int i = 0; i < emit; i++)
-			{
-				items.Add(candidates[i].Item);
-			}
-			return items;
+			List<PulseMusicObject> ranked = GetItems(count, user, types, sortMethod);
+			return ranked;
 		}
-
-		/// <summary>
-		/// Builds the candidate set for the MostPlays (topItems) ranking. The
-		/// candidate set is driven by the item_stats counter, scoped to the
-		/// requesting user (global when user is empty): only items that have
-		/// actually been started appear, each carrying its lifetime play count
-		/// and most-recent start time for tie-breaking.
-		/// </summary>
-		private List<RecentCandidate> GatherMostPlayed(string user, bool includeTracks, bool includeArtists, bool includeAlbums, bool includePlaylists)
+		private List<PulseMusicObject> GetItems(int count, string user, List<eAnalyticType> types, eSortMethod sortMethod)
 		{
-			List<RecentCandidate> candidates = new List<RecentCandidate>();
-
-			if (includeTracks)
-			{
-				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, ePulseWireType.Track);
-				foreach (KeyValuePair<string, ItemStats> entry in stats)
-				{
-					TrackData track = m_musicManager.GetTrack(entry.Key);
-					if (track == null)
-					{
-						continue;
-					}
-					candidates.Add(MakeCandidate(BuildTrack(track, user), entry.Value));
-				}
-			}
-
-			if (includeArtists)
-			{
-				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, ePulseWireType.Artist);
-				foreach (KeyValuePair<string, ItemStats> entry in stats)
-				{
-					ArtistData artist = m_musicManager.GetArtist(entry.Key);
-					if (artist == null)
-					{
-						continue;
-					}
-					candidates.Add(MakeCandidate(BuildArtist(artist, user), entry.Value));
-				}
-			}
-
-			if (includeAlbums)
-			{
-				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, ePulseWireType.Album);
-				foreach (KeyValuePair<string, ItemStats> entry in stats)
-				{
-					AlbumData album = m_musicManager.GetAlbum(entry.Key);
-					if (album == null)
-					{
-						continue;
-					}
-					candidates.Add(MakeCandidate(BuildAlbum(album), entry.Value));
-				}
-			}
-
-			if (includePlaylists)
-			{
-				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, ePulseWireType.Playlist);
-				foreach (KeyValuePair<string, ItemStats> entry in stats)
-				{
-					PlaylistData playlist = m_musicManager.GetPlaylist(entry.Key);
-					if (playlist == null)
-					{
-						continue;
-					}
-					candidates.Add(MakeCandidate(BuildPlaylist(playlist, user), entry.Value));
-				}
-			}
-
-			return candidates;
+			List<PulseMusicObject> ranked = m_pulseService.GetRankedItems(user, 100, sortMethod, types);
+			return ranked;
 		}
-
-		/// <summary>
-		/// Builds the candidate set for the MostRecent (recentlyPlayed) ranking.
-		/// Tracks come from the in-memory FIFO recents list; artists and playlists
-		/// from their in-memory last-played (skipping never-played items); albums,
-		/// which hold no in-memory last-played, have their recency read back from
-		/// the item_stats counter.
-		/// </summary>
-		private List<RecentCandidate> GatherMostRecent(string user, bool includeTracks, bool includeArtists, bool includeAlbums, bool includePlaylists)
+		private static List<eAnalyticType> ParseTypesParam(string raw)
 		{
-			List<RecentCandidate> candidates = new List<RecentCandidate>();
-
-			if (includeTracks)
-			{
-				PulseAnalyticsData analytics = m_musicManager.GetAnalytics();
-				List<string> recentIds = new List<string>(analytics.RecentlyPlayed);
-				for (int i = 0; i < recentIds.Count; i++)
-				{
-					TrackData track = m_musicManager.GetTrack(recentIds[i]);
-					if (track == null)
-					{
-						continue;
-					}
-					RecentCandidate candidate = new RecentCandidate();
-					candidate.Item = BuildTrack(track, user);
-
-					// RecentlyPlayed is FIFO-ordered; if a track has no LastPlayed,
-					// fall back to its position so it still slots in roughly right.
-					if (track.LastPlayed != default)
-					{
-						candidate.LastPlayed = track.LastPlayed;
-					}
-					else
-					{
-						candidate.LastPlayed = DateTime.UtcNow.AddSeconds(-i);
-					}
-					candidates.Add(candidate);
-				}
-			}
-
-			if (includeArtists)
-			{
-				List<ArtistData> allArtists = m_musicManager.GetAllArtists();
-				for (int i = 0; i < allArtists.Count; i++)
-				{
-					ArtistData artist = allArtists[i];
-					if (artist.LastPlayed == default)
-					{
-						continue;
-					}
-					RecentCandidate candidate = new RecentCandidate();
-					candidate.Item = BuildArtist(artist, user);
-					candidate.LastPlayed = artist.LastPlayed;
-					candidates.Add(candidate);
-				}
-			}
-
-			if (includeAlbums)
-			{
-				Dictionary<string, ItemStats> stats = m_musicManager.GetItemStats(user, ePulseWireType.Album);
-				foreach (KeyValuePair<string, ItemStats> entry in stats)
-				{
-					AlbumData album = m_musicManager.GetAlbum(entry.Key);
-					if (album == null)
-					{
-						continue;
-					}
-					RecentCandidate candidate = new RecentCandidate();
-					candidate.Item = BuildAlbum(album);
-					candidate.LastPlayed = entry.Value.LastPlayed;
-					candidates.Add(candidate);
-				}
-			}
-
-			if (includePlaylists)
-			{
-				List<PlaylistData> allPlaylists = m_musicManager.GetAllPlaylists(user);
-				for (int i = 0; i < allPlaylists.Count; i++)
-				{
-					PlaylistData playlist = allPlaylists[i];
-					DateTime playlistLastPlayed = playlist.GetLastPlayed(user);
-					if (playlistLastPlayed == default)
-					{
-						continue;
-					}
-					RecentCandidate candidate = new RecentCandidate();
-					candidate.Item = BuildPlaylist(playlist, user);
-					candidate.LastPlayed = playlistLastPlayed;
-					candidates.Add(candidate);
-				}
-			}
-
-			return candidates;
-		}
-
-		private static RecentCandidate MakeCandidate(PulseObject item, ItemStats stats)
-		{
-			RecentCandidate candidate = new RecentCandidate();
-			candidate.Item = item;
-			candidate.PlayCount = stats.PlayCount;
-			candidate.LastPlayed = stats.LastPlayed;
-			return candidate;
-		}
-
-		private static void ParseRecentTypes(string raw, out bool track, out bool artist, out bool album, out bool playlist)
-		{
+			List<eAnalyticType> types = new List<eAnalyticType>();
 			if (string.IsNullOrWhiteSpace(raw))
 			{
-				track = true; artist = true; album = true; playlist = true;
-				return;
+				return types;
 			}
-			track = false; artist = false; album = false; playlist = false;
+			
 			string[] parts = raw.Split(',');
 			for (int i = 0; i < parts.Length; i++)
 			{
 				string part = parts[i].Trim();
-				if (string.Equals(part, "track", StringComparison.OrdinalIgnoreCase)) { track = true; }
-				else if (string.Equals(part, "artist", StringComparison.OrdinalIgnoreCase)) { artist = true; }
-				else if (string.Equals(part, "album", StringComparison.OrdinalIgnoreCase)) { album = true; }
-				else if (string.Equals(part, "playlist", StringComparison.OrdinalIgnoreCase)) { playlist = true; }
+				if (string.Equals(part, "track", StringComparison.OrdinalIgnoreCase)) { types.Add(eAnalyticType.Track); }
+				else if (string.Equals(part, "artist", StringComparison.OrdinalIgnoreCase)) { types.Add(eAnalyticType.Artist); }
+				else if (string.Equals(part, "album", StringComparison.OrdinalIgnoreCase)) { types.Add(eAnalyticType.Album); }
+				else if (string.Equals(part, "playlist", StringComparison.OrdinalIgnoreCase)) { types.Add(eAnalyticType.Playlist); }
 			}
+			return types;
 		}
 
-		private static int CompareRecentCandidateDescending(RecentCandidate left, RecentCandidate right)
-		{
-			return right.LastPlayed.CompareTo(left.LastPlayed);
-		}
+		
 
-		// Most-played first; ties broken by most-recently-started so equal-play
-		// items still land in a stable, sensible order.
-		private static int CompareCandidateByPlaysDescending(RecentCandidate left, RecentCandidate right)
-		{
-			int byPlays = right.PlayCount.CompareTo(left.PlayCount);
-			if (byPlays != 0)
-			{
-				return byPlays;
-			}
-			return right.LastPlayed.CompareTo(left.LastPlayed);
-		}
-
-		private class RecentCandidate
-		{
-			public int PlayCount;
-			public DateTime LastPlayed;
-			public PulseObject Item;
-		}
-
-		private PulsePodcast BuildPulsePodcast(Podcast series, string user)
-		{
-			PulsePodcast pulsePodcast = new PulsePodcast();
-			pulsePodcast.Id = series.Id;
-			pulsePodcast.Title = series.Title;
-			pulsePodcast.Author = series.Author;
-			pulsePodcast.Description = series.Description;
-			pulsePodcast.CoverArt = "se-" + series.Id;
-
-			List<Episode> downloaded = m_podcastManager.GetDownloadedItems(series.Id);
-			pulsePodcast.EpisodeCount = downloaded.Count;
-			pulsePodcast.ItemCount = downloaded.Count;
-			pulsePodcast.UnplayedCount = m_podcastManager.GetUnplayedCount(series.Id, user);
-
-			Podcast.UserData userSeries;
-			bool hasUser = series.Users.TryGetValue(user, out userSeries);
-			if (hasUser)
-			{
-				pulsePodcast.Subscribed = userSeries.Subscribed;
-				pulsePodcast.LastItemId = userSeries.LastEpisodeId;
-				pulsePodcast.LastPlayed = userSeries.LastPlayed.ToString("o");
-			}
-
-			pulsePodcast.FeedUrl = series.FeedUrl;
-			pulsePodcast.AutoDownload = series.AutoDownload;
-			pulsePodcast.RetentionPolicy = series.Retention.ToString();
-			pulsePodcast.RetentionValue = series.RetentionValue;
-
-			return pulsePodcast;
-		}
-
-		private PulsePodcastEpisode BuildPulsePodcastEpisode(Episode item, string user)
-		{
-			PulsePodcastEpisode episode = new PulsePodcastEpisode();
-			episode.Id = item.Id;
-			episode.SeriesId = item.PodcastId;
-			episode.Title = item.Title;
-			episode.Description = item.Description;
-			episode.OrderIndex = item.OrderIndex;
-			episode.PublishedDate = item.PublishedDate;
-			episode.Duration = item.DurationSeconds;
-			episode.CoverArt = "se-" + item.PodcastId;
-
-			Episode.UserData progress;
-			if (item.Users.TryGetValue(user, out progress))
-			{
-				episode.PositionSeconds = progress.PositionSeconds;
-				episode.Completed = progress.Completed;
-			}
-			return episode;
-		}
+		
 
 		public IResult GetPodcasts(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
-			List<Podcast> subscribed = m_podcastManager.GetSubscribedPodcasts(user);
+			List<Podcast> subscribed = m_podcastManager.GetSubscribedPodcasts(userId);
 			List<PulsePodcast> pulsePodcasts = new List<PulsePodcast>();
 			for (int index = 0; index < subscribed.Count; index++)
 			{
-				pulsePodcasts.Add(BuildPulsePodcast(subscribed[index], user));
+				pulsePodcasts.Add(subscribed[index].BuildPulsePodcast(m_podcastManager, userId));
 			}
 			return RespondList(context, pulsePodcasts);
 		}
 
 		public IResult GetAllPodcasts(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			List<Podcast> allSeries = m_podcastManager.GetAllPodcasts();
 			List<PulsePodcast> pulsePodcasts = new List<PulsePodcast>();
 			for (int index = 0; index < allSeries.Count; index++)
 			{
-				pulsePodcasts.Add(BuildPulsePodcast(allSeries[index], user));
+				pulsePodcasts.Add(allSeries[index].BuildPulsePodcast(m_podcastManager, userId));
 			}
 			return RespondList(context, pulsePodcasts);
 		}
@@ -1717,7 +1403,7 @@ namespace Pulse.Protocols
 		public IResult GetPodcast(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			Podcast podcast = m_podcastManager.GetPodcast(id);
 			if (podcast == null)
@@ -1726,47 +1412,17 @@ namespace Pulse.Protocols
 			}
 
 			PulsePodcastDetails details = new PulsePodcastDetails();
-			details.Series = BuildPulsePodcast(podcast, user);
+			details.Series = podcast.BuildPulsePodcast(m_podcastManager, userId);
 
 			List<Episode> downloaded = m_podcastManager.GetDownloadedItems(id);
 			for (int index = 0; index < downloaded.Count; index++)
 			{
-				details.Episodes.Add(BuildPulsePodcastEpisode(downloaded[index], user));
+				details.Episodes.Add(downloaded[index].BuildPulsePodcastEpisode(m_podcastManager, userId));
 			}
 			return RespondObject(context, details);
 		}
 
-		private PulseAudiobook BuildPulseAudiobook(Audiobook series, string user)
-		{
-			PulseAudiobook book = new PulseAudiobook();
-			book.Id = series.Id;
-			book.Title = series.Title;
-			book.Author = series.Author;
-			book.Narrator = series.Narrator;
-			book.Description = series.Description;
-			book.Collection = series.Collection;
-			book.CollectionIndex = series.CollectionIndex;
-			book.CoverArt = "se-" + series.Id;
-
-			List<Chapter> chapters = m_audiobookManager.GetChapters(series.Id);
-			book.ItemCount = chapters.Count;
-			int totalDuration = 0;
-			for (int i = 0; i < chapters.Count; i++)
-			{
-				totalDuration = totalDuration + chapters[i].DurationSeconds;
-			}
-			book.TotalDuration = totalDuration;
-			book.UnplayedCount = 0;
-
-			Audiobook.UserData userData;
-			bool hasUser = series.Users.TryGetValue(user, out userData);
-			if (hasUser)
-			{
-				book.LastItemId = userData.LastChapterId;
-				book.LastPlayed = userData.LastPlayed.ToString("o");
-			}
-			return book;
-		}
+		
 
 		private PulseChapter BuildPulseChapter(Chapter item, string user, string streamId)
 		{
@@ -1793,13 +1449,13 @@ namespace Pulse.Protocols
 
 		public IResult GetAudiobooks(HttpContext context)
 		{
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			List<Audiobook> allBooks = m_audiobookManager.GetAllAudiobooks();
 			List<PulseAudiobook> pulseBooks = new List<PulseAudiobook>();
 			for (int i = 0; i < allBooks.Count; i++)
 			{
-				pulseBooks.Add(BuildPulseAudiobook(allBooks[i], user));
+				pulseBooks.Add(allBooks[i].BuildPulseAudiobook(m_audiobookManager, userId));
 			}
 			return RespondList(context, pulseBooks);
 		}
@@ -1807,7 +1463,7 @@ namespace Pulse.Protocols
 		public IResult GetAudiobook(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			Audiobook series = m_audiobookManager.GetBook(id);
 			if (series == null)
@@ -1816,7 +1472,7 @@ namespace Pulse.Protocols
 			}
 
 			PulseAudiobookDetails details = new PulseAudiobookDetails();
-			details.Book = BuildPulseAudiobook(series, user);
+			details.Book = series.BuildPulseAudiobook(m_audiobookManager, userId);
 
 			List<Chapter> chapters = m_audiobookManager.GetChapters(id);
 
@@ -1860,7 +1516,7 @@ namespace Pulse.Protocols
 						streamId = resolved;
 					}
 				}
-				details.Chapters.Add(BuildPulseChapter(chapter, user, streamId));
+				details.Chapters.Add(BuildPulseChapter(chapter, userId, streamId));
 			}
 			return RespondObject(context, details);
 		}
@@ -1873,14 +1529,14 @@ namespace Pulse.Protocols
 				return RespondStatus(context, "missing_feedUrl");
 			}
 			bool subscribe = QueryParameters.GetBool(context, "subscribe");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
-			Podcast podcast = m_podcastManager.AddPodcast(feedUrl, user, subscribe);
+			Podcast podcast = m_podcastManager.AddPodcast(feedUrl, userId, subscribe);
 			if (podcast == null)
 			{
 				return RespondStatus(context, "add_failed");
 			}
-			return RespondObject(context, BuildPulsePodcast(podcast, user));
+			return RespondObject(context, podcast.BuildPulsePodcast(m_podcastManager, userId));
 		}
 
 		/// <summary>
@@ -1936,7 +1592,7 @@ namespace Pulse.Protocols
 		public IResult UpdatePodcast(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 			Podcast series = m_podcastManager.GetPodcast(id);
 			if (series == null)
 			{
@@ -1959,33 +1615,33 @@ namespace Pulse.Protocols
 
 			m_podcastManager.UpdatePodcastSettings(id, retention, retentionValue, autoDownload);
 			Podcast updated = m_podcastManager.GetPodcast(id);
-			return RespondObject(context, BuildPulsePodcast(updated, user));
+			return RespondObject(context, updated.BuildPulsePodcast(m_podcastManager, userId));
 		}
 
 		public IResult SubscribePodcast(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
-			m_podcastManager.SetSubscribed(id, user, true);
+			string userId = QueryParameters.GetUserId(context);
+			m_podcastManager.SetSubscribed(id, userId, true);
 			return RespondStatus(context, "ok");
 		}
 
 		public IResult UnsubscribePodcast(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
-			m_podcastManager.SetSubscribed(id, user, false);
+			string userId = QueryParameters.GetUserId(context);
+			m_podcastManager.SetSubscribed(id, userId, false);
 			return RespondStatus(context, "ok");
 		}
 
 		public IResult EpisodeProgress(HttpContext context)
 		{
 			string id = QueryParameters.GetString(context, "id");
-			string user = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 			string positionRaw = QueryParameters.GetString(context, "positionSeconds");
 			int positionSeconds = 0;
 			int.TryParse(positionRaw, out positionSeconds);
-			m_podcastManager.SaveProgress(id, user, positionSeconds);
+			m_podcastManager.SaveProgress(id, userId, positionSeconds);
 			return RespondStatus(context, "ok");
 		}
 
@@ -2030,7 +1686,7 @@ namespace Pulse.Protocols
 				{
 					case eAction.Play:
 					{
-						m_analyticsData.OnItemPlayed(userID, objectType, objectId);
+						m_analyticsData.OnItemPlayed(userID, objectType, objectId, m_musicManager);
 						break;
 					}
 					case eAction.Stop:
@@ -2045,6 +1701,46 @@ namespace Pulse.Protocols
 		}
 
 	
+		public IResult RecordAnalytic(HttpContext context)
+		{
+			string userId = QueryParameters.GetString(context, "uid");
+			string objectId = QueryParameters.GetString(context, "id");
+			string actionRaw = QueryParameters.GetString(context, "action");
+			string typeRaw = QueryParameters.GetString(context, "type");
+			string msRaw = QueryParameters.GetString(context, "ms");
+
+			if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(objectId))
+			{
+				return RespondStatus(context, "missing_id");
+			}
+
+			eAction action = eAction.Invalid;
+			Enum.TryParse<eAction>(actionRaw, out action);
+
+			ePulseWireType objectType = ePulseWireType.Invalid;
+			Enum.TryParse<ePulseWireType>(typeRaw, out objectType);
+
+			long ms = 0;
+			long.TryParse(msRaw, out ms);
+			float secondsPlayed = ms / 1000.0f;
+
+			switch (action)
+			{
+				case eAction.Play:
+				{
+					m_analyticsData.OnItemPlayed(userId, objectType, objectId, m_musicManager);
+					break;
+				}
+				case eAction.Stop:
+				{
+					m_analyticsData.OnItemStopped(userId, objectType, objectId, secondsPlayed);
+					break;
+				}
+			}
+
+			return RespondStatus(context, "ok");
+		}
+
 		[Obsolete("Analytics path is gone, this is just so clients don't get upset")]
 		public IResult GetAnalytics(HttpContext context)
 		{

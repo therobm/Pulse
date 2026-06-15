@@ -1,6 +1,6 @@
 namespace PulseAPI.CSharp
 {
-	public class PulseTrack : PulseObject
+	public class PulseTrack : PulseMusicObject
 	{
 		public string Title;
 		public string Artist;

@@ -1,3 +1,4 @@
+using PulseAPI.CSharp;
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
@@ -27,7 +28,19 @@ namespace Pulse.DataStorage
 		public string Id;
 
 		[JsonIgnore]
-		public bool m_bIsDirty = false;
+		private bool m_bIsDirty;
+		public void ClearDirty()
+		{
+		}
+		public bool IsDirty()
+		{
+			return m_bIsDirty;
+		}
+		public void MarkDirty()
+		{
+			m_bIsDirty = true;
+		}
+
 	}
 
 
@@ -129,8 +142,22 @@ namespace Pulse.DataStorage
 			return 0;
 		}
 
+		public PulseTrack BuildPulse()
+		{
+			PulseTrack pulseTrack = new PulseTrack();
+			pulseTrack.Id = Id;
+			pulseTrack.Title = Title;
+			pulseTrack.Artist = Artist;
+			pulseTrack.ArtistId = ArtistId;
+			pulseTrack.Album = Album;
+			pulseTrack.AlbumId = AlbumId;
+			pulseTrack.CoverArt = CoverArtId;
+			pulseTrack.Duration = DurationSeconds;
+			return pulseTrack;
+		}
 	}
 
+	
 	public class AlbumData : PulseDataObject
 	{
 		public string Name;
@@ -144,6 +171,26 @@ namespace Pulse.DataStorage
 
 		[JsonIgnore]
 		public List<TrackData> Tracks = new List<TrackData>();
+
+		public PulseAlbum BuildPulse()
+		{
+			PulseAlbum pulse = new PulseAlbum();
+			pulse.Id = Id;
+
+			pulse.Name = Name;
+			pulse.Artist = ArtistName;
+			pulse.ArtistId = ArtistId;
+			pulse.CoverArt = CoverArtId;
+			pulse.Year = Year; ;
+			pulse.TrackCount = Tracks.Count;
+			pulse.Duration = 0;
+			foreach (TrackData track in Tracks)
+			{
+				pulse.Duration += track.DurationSeconds;
+			}
+
+			return pulse;
+		}
 	}
 
 	public class ArtistData : PulseDataObject
@@ -171,6 +218,27 @@ namespace Pulse.DataStorage
 			}
 			return WeightedScore;
 		}
+
+		public PulseArtist BuildPulse()
+		{
+			PulseArtist pulse = new PulseArtist();
+			pulse.Id = Id;
+			pulse.AlbumCount = Albums.Count;
+			pulse.Name = Name;
+			if (Albums.Count != 0)
+			{
+				pulse.CoverArt = Albums[0].CoverArtId;
+			}
+			pulse.AlbumCount = Albums.Count;
+			pulse.TrackCount = 0;
+
+			foreach (AlbumData album in Albums)
+			{
+				pulse.TrackCount += album.Tracks.Count;
+			}
+			return pulse;
+		}
+
 	}
 
 	public class PlaylistData : PulseDataObject
@@ -178,7 +246,7 @@ namespace Pulse.DataStorage
 		public string Name;
 		public string Comment;
 		public List<string> TrackIds;
-		public int GetSongCount()
+		public int GetTrackCount()
 		{
 			return TrackIds.Count;
 		}
@@ -200,6 +268,19 @@ namespace Pulse.DataStorage
 			return LastPlayed;
 		}
 
+		public PulsePlaylist BuildPulsePlaylist()
+		{
+			PulsePlaylist pulse = new PulsePlaylist();
+			pulse.Id = Id;
+			pulse.Name = Name;
+			pulse.Comment = Comment;
+			pulse.CoverArt = "pl-" + Id;
+			pulse.TrackCount = TrackIds.Count;
+			pulse.Duration = 0;
+
+			return pulse;
+		}
+
 		/// <summary>
 		/// If the bad ID is in our track list we'll replace it with the good id
 		/// </summary>
@@ -212,7 +293,7 @@ namespace Pulse.DataStorage
 				if (TrackIds[i] == badId)
 				{
 					TrackIds[i] = goodId;
-					m_bIsDirty = true;
+					MarkDirty();
 				}
 			}
 		}

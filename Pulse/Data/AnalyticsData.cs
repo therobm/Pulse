@@ -1,4 +1,5 @@
 ﻿using Pulse.DataStorage;
+using Pulse.MusicLibrary;
 using Pulse.Services;
 using PulseAPI.CSharp;
 using System;
@@ -9,7 +10,7 @@ using System.Threading;
 
 namespace Pulse.Data
 {
-
+	
 	public class AnalyticsData
 	{
 		/// <summary>
@@ -49,12 +50,14 @@ namespace Pulse.Data
 				for (int i = 0; i < records.Count; i++)
 				{
 					AnaliticUserItem item = records[i];
+					
 					if (item == null)
 					{
 						continue;
 					}
-					if (string.IsNullOrEmpty(item.ItemID))
+					if (string.IsNullOrEmpty(item.ItemID) || string.IsNullOrEmpty(item.UserID))
 					{
+						//todo: delete these they're orphaned
 						continue;
 					}
 
@@ -64,16 +67,16 @@ namespace Pulse.Data
 					
 					switch (item.AnalyticType)
 					{
-						case AnalyticType.Track:
+						case eAnalyticType.Track:
 							m_analytics[item.UserID].m_tracks.Add(item.ItemID, item);
 							break;
-						case AnalyticType.Album:
+						case eAnalyticType.Album:
 							m_analytics[item.UserID].m_albums.Add(item.ItemID, item);
 							break;
-						case AnalyticType.Artist:
+						case eAnalyticType.Artist:
 							m_analytics[item.UserID].m_artists.Add(item.ItemID, item);
 							break;
-						case AnalyticType.Playlist:
+						case eAnalyticType.Playlist:
 							m_analytics[item.UserID].m_playlists.Add(item.ItemID, item);
 							break;
 						default:
@@ -90,13 +93,13 @@ namespace Pulse.Data
 			foreach (AnalyticRecord record in m_analytics.Values)
 			{
 				foreach (AnaliticUserItem item in record.m_tracks.Values)
-					if (item.m_bIsDirty) { dirtyRecords.Add(item); }
+					if (item.IsDirty()) { dirtyRecords.Add(item); }
 				foreach (AnaliticUserItem item in record.m_albums.Values)
-					if (item.m_bIsDirty) { dirtyRecords.Add(item); }
+					if (item.IsDirty()) { dirtyRecords.Add(item); }
 				foreach (AnaliticUserItem item in record.m_artists.Values)
-					if (item.m_bIsDirty) { dirtyRecords.Add(item); }
+					if (item.IsDirty()) { dirtyRecords.Add(item); }
 				foreach (AnaliticUserItem item in record.m_playlists.Values)
-					if (item.m_bIsDirty) { dirtyRecords.Add(item); }
+					if (item.IsDirty()) { dirtyRecords.Add(item); }
 			}
 
 			for (int i = 0; i < dirtyRecords.Count; i++)
@@ -104,14 +107,139 @@ namespace Pulse.Data
 				m_data.Save<AnaliticUserItem>(eDataType.AnalyticRecordItem, dirtyRecords[i]);
 			}
 		}
+		public List<AnaliticUserItem> GetRankedItems(List<string> itemIds, eAnalyticType type)
+		{
+			List<AnaliticUserItem> items = new List<AnaliticUserItem>();
+			foreach (KeyValuePair<string, AnalyticRecord> kvp in m_analytics)
+			{
+				IEnumerable<AnaliticUserItem> recordItems = GetContainer(kvp.Value, type);
+				foreach (AnaliticUserItem ritem in recordItems) 
+				{
+					if (itemIds.Contains(ritem.ItemID))
+						items.Add(ritem);
+				}
+			}
+			return items;
+		}
+		public List<AnaliticUserItem> GetRankedItems(List<eAnalyticType> types)
+		{
+			List<AnaliticUserItem> rankedItems = new List<AnaliticUserItem>();
 
-		public void OnItemPlayed(string userId, ePulseWireType type, string itemId)
+			foreach (KeyValuePair<string, AnalyticRecord> kvp in m_analytics)
+			{
+				if (types.Count == 0)
+				{
+					//return everything
+					types.Add(eAnalyticType.Track);
+					types.Add(eAnalyticType.Artist);
+					types.Add(eAnalyticType.Album);
+					types.Add(eAnalyticType.Playlist);
+				}
+
+				foreach (eAnalyticType type in types)
+				{
+					rankedItems.AddRange(GetContainer(kvp.Value, type));
+				}
+			}
+			
+			return rankedItems;
+		}
+
+		public List<AnaliticUserItem> GetUserItems(string userId, List<eAnalyticType> types)
+		{
+			List<AnaliticUserItem> rankedItems = new List<AnaliticUserItem>();
+			AnalyticRecord userRecord = null;
+			if (!m_analytics.TryGetValue(userId, out userRecord))
+				return new List<AnaliticUserItem>();
+
+			if (types.Count == 0)
+			{
+				//return everything
+				types.Add(eAnalyticType.Track);
+				types.Add(eAnalyticType.Artist);
+				types.Add(eAnalyticType.Album);
+				types.Add(eAnalyticType.Playlist);
+			}
+			
+			foreach (eAnalyticType type in types)
+			{
+				rankedItems.AddRange(GetContainer(userRecord, type));
+			}
+			
+			return rankedItems;
+		}
+
+		private IEnumerable<AnaliticUserItem> GetContainer(AnalyticRecord record, eAnalyticType type)
+		{
+			switch (type)
+			{
+				case eAnalyticType.Track: return record.m_tracks.Values;
+				case eAnalyticType.Album: return record.m_albums.Values;
+				case eAnalyticType.Artist: return record.m_artists.Values;
+				case eAnalyticType.Playlist: return record.m_playlists.Values;
+				default: return Array.Empty<AnaliticUserItem>();
+			}
+		}
+
+		public void OnItemPlayed(string userId, ePulseWireType type, string itemId, MusicManager musicManager)
 		{
 			AnaliticUserItem item = GetItem(userId, type, itemId);
 			if (item != null)
 			{
 				item.PlayCount++;
-				item.m_bIsDirty = true;
+				item.LastPlayed = DateTime.UtcNow;
+				item.MarkDirty();
+				OnChildPlayed(userId, type, itemId, musicManager);
+			}
+
+		}
+
+		private void OnChildPlayed(string userId, ePulseWireType type, string itemId, MusicManager musicManager)
+		{  
+			//ensure this parents have been "ranked"
+			switch (type)
+			{
+				case ePulseWireType.Track:
+				{
+					TrackData track = musicManager.GetTrack(itemId);
+					if (track == null)
+						return;
+					AnaliticUserItem parent = GetItem(userId, ePulseWireType.Album, track.AlbumId);
+					if (parent != null)
+					{
+							//ensure parent has at least one play
+							if (parent.PlayCount <= 0)
+							{
+								parent.PlayCount = 1;
+								parent.MarkDirty();
+							}
+					}
+					OnChildPlayed(userId, ePulseWireType.Album, parent.ItemID, musicManager);
+					break;
+				}
+				case ePulseWireType.Album:
+				{
+					AlbumData album = musicManager.GetAlbum(itemId);
+					if (album == null)
+						return;
+					AnaliticUserItem parent = GetItem(userId, ePulseWireType.Artist, album.ArtistId);
+					if (parent != null)
+					{
+							//ensure parent has at least one play
+							if (parent.PlayCount <= 0)
+							{
+								parent.PlayCount = 1;
+								parent.MarkDirty();
+							}
+						}
+					OnChildPlayed(userId, ePulseWireType.Artist, parent.ItemID, musicManager);
+					break;
+				}
+				case ePulseWireType.Playlist:
+				{
+					//no-op for now at least...
+					break;
+				}
 			}
 		}
 		public void OnItemStopped(string userId, ePulseWireType type, string itemId, float totalSecondsPlayed)
@@ -120,7 +248,7 @@ namespace Pulse.Data
 			if (item != null)
 			{
 				item.TotalPlayedSeconds += totalSecondsPlayed;
-				item.m_bIsDirty = true;
+				item.MarkDirty();
 			}
 		}
 
@@ -142,7 +270,7 @@ namespace Pulse.Data
 					if (!record.m_tracks.TryGetValue(itemId, out item))
 					{
 						item = new AnaliticUserItem();
-						item.AnalyticType = AnalyticType.Track;
+						item.AnalyticType = eAnalyticType.Track;
 						item.ItemID = itemId;
 						item.UserID = userId;
 						record.m_tracks[itemId] = item;
@@ -152,8 +280,9 @@ namespace Pulse.Data
 					if (!record.m_albums.TryGetValue(itemId, out item))
 					{
 						item = new AnaliticUserItem();
-						item.AnalyticType = AnalyticType.Album;
+						item.AnalyticType = eAnalyticType.Album;
 						item.ItemID = itemId;
+						item.UserID = userId;
 						record.m_albums[itemId] = item;
 					}
 					break;
@@ -161,8 +290,9 @@ namespace Pulse.Data
 					if (!record.m_artists.TryGetValue(itemId, out item))
 					{
 						item = new AnaliticUserItem();
-						item.AnalyticType = AnalyticType.Artist;
+						item.AnalyticType = eAnalyticType.Artist;
 						item.ItemID = itemId;
+						item.UserID = userId;
 						record.m_artists[itemId] = item;
 					}
 					break;
@@ -170,8 +300,9 @@ namespace Pulse.Data
 					if (!record.m_playlists.TryGetValue(itemId, out item))
 					{
 						item = new AnaliticUserItem();
-						item.AnalyticType = AnalyticType.Playlist;
+						item.AnalyticType = eAnalyticType.Playlist;
 						item.ItemID = itemId;
+						item.UserID = userId;
 						record.m_playlists[itemId] = item;
 					}
 					break;

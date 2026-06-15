@@ -58,7 +58,7 @@ namespace Pulse.Data
 			List<Audiobook> dirtyBooks = new List<Audiobook>();
 			foreach (KeyValuePair<string, Audiobook> pair in m_audiobooks)
 			{
-				if (pair.Value.m_bIsDirty)
+				if (pair.Value.IsDirty())
 				{
 					dirtyBooks.Add(pair.Value);
 				}
@@ -67,7 +67,7 @@ namespace Pulse.Data
 			List<Chapter> dirtyChapters = new List<Chapter>();
 			foreach (KeyValuePair<string, Chapter> pair in m_chapters)
 			{
-				if (pair.Value.m_bIsDirty)
+				if (pair.Value.IsDirty())
 				{
 					dirtyChapters.Add(pair.Value);
 				}
@@ -78,7 +78,7 @@ namespace Pulse.Data
 				m_data.SaveList(eDataType.Audiobook, dirtyBooks);
 				for (int i = 0; i < dirtyBooks.Count; i++)
 				{
-					dirtyBooks[i].m_bIsDirty = false;
+					dirtyBooks[i].ClearDirty();
 				}
 			}
 
@@ -87,7 +87,7 @@ namespace Pulse.Data
 				m_data.SaveList(eDataType.AudiobookChapter, dirtyChapters);
 				for (int i = 0; i < dirtyChapters.Count; i++)
 				{
-					dirtyChapters[i].m_bIsDirty = false;
+					dirtyChapters[i].ClearDirty();
 				}
 			}
 		}
@@ -151,7 +151,7 @@ namespace Pulse.Data
 			}
 			m_audiobooks[book.Id] = book;
 			m_data.Save(eDataType.Audiobook, book);
-			book.m_bIsDirty = false;
+			book.ClearDirty();
 		}
 
 		/// <summary>
@@ -174,7 +174,7 @@ namespace Pulse.Data
 			m_data.SaveList(eDataType.AudiobookChapter, chapters);
 			for (int i = 0; i < chapters.Count; i++)
 			{
-				chapters[i].m_bIsDirty = false;
+				chapters[i].ClearDirty();
 			}
 		}
 

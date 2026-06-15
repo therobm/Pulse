@@ -40,9 +40,9 @@ namespace Pulse.Lidarr
 		}
 
 		/// <summary>
-		/// Converts songs into artist requests for lidarr 
+		/// Converts tracks into artist requests for lidarr 
 		/// </summary>
-		public int RequestArtists(HashSet<string> requestedSongs)
+		public int RequestArtists(HashSet<string> requestedTracks)
 		{
 			m_lastAdded.Clear();
 			m_lastFailed.Clear();
@@ -50,7 +50,7 @@ namespace Pulse.Lidarr
 
 			// Extract unique artist names from "Artist - Title" entries
 			HashSet<string> missingArtistNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			foreach (string entry in requestedSongs)
+			foreach (string entry in requestedTracks)
 			{
 				int dashIndex = entry.IndexOf(" - ");
 				if (dashIndex <= 0)
@@ -64,7 +64,7 @@ namespace Pulse.Lidarr
 				}
 			}
 
-			Log.Info("LidarrSync: " + missingArtistNames.Count + " unique artists from " + requestedSongs.Count + " missing songs");
+			Log.Info("LidarrSync: " + missingArtistNames.Count + " unique artists from " + requestedTracks.Count + " missing tracks");
 
 			// Fetch existing artists from Lidarr
 			if (!FetchExistingArtists())

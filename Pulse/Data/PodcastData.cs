@@ -29,8 +29,16 @@ namespace Pulse.Data
 		public void Load()
 		{
 			List<Podcast> podcasts = m_data.LoadList<Podcast>(eDataType.Podcast);
+
+			
 			for (int i = 0; i < podcasts.Count; i++)
 			{
+				if (podcasts[i].Retention == eRetentionPolicy.KeepAll)
+				{
+					podcasts[i].Retention = eRetentionPolicy.KeepN;
+					podcasts[i].RetentionValue = 10;
+					podcasts[i].MarkDirty();
+				}
 				m_podcasts[podcasts[i].Id] = podcasts[i];
 			}
 
@@ -56,7 +64,7 @@ namespace Pulse.Data
 			List<Podcast> dirtyPodcasts = new List<Podcast>();
 			foreach (KeyValuePair<string, Podcast> pair in m_podcasts)
 			{
-				if (pair.Value.m_bIsDirty)
+				if (pair.Value.IsDirty())
 				{
 					dirtyPodcasts.Add(pair.Value);
 				}
@@ -65,7 +73,7 @@ namespace Pulse.Data
 			List<Episode> dirtyEpisodes = new List<Episode>();
 			foreach (KeyValuePair<string, Episode> pair in m_episodes)
 			{
-				if (pair.Value.m_bIsDirty)
+				if (pair.Value.IsDirty())
 				{
 					dirtyEpisodes.Add(pair.Value);
 				}
@@ -76,7 +84,7 @@ namespace Pulse.Data
 				m_data.SaveList(eDataType.Podcast, dirtyPodcasts);
 				for (int i = 0; i < dirtyPodcasts.Count; i++)
 				{
-					dirtyPodcasts[i].m_bIsDirty = false;
+					dirtyPodcasts[i].ClearDirty();
 				}
 			}
 
@@ -85,7 +93,7 @@ namespace Pulse.Data
 				m_data.SaveList(eDataType.PodcastEpisode, dirtyEpisodes);
 				for (int i = 0; i < dirtyEpisodes.Count; i++)
 				{
-					dirtyEpisodes[i].m_bIsDirty = false;
+					dirtyEpisodes[i].ClearDirty();
 				}
 			}
 		}
@@ -145,7 +153,7 @@ namespace Pulse.Data
 			}
 			m_podcasts[podcast.Id] = podcast;
 			m_data.Save(eDataType.Podcast, podcast);
-			podcast.m_bIsDirty = false;
+			podcast.ClearDirty();
 		}
 
 		public void UpdateEpisode(Episode episode)
@@ -158,7 +166,7 @@ namespace Pulse.Data
 			}
 			m_episodes[episode.Id] = episode;
 			m_data.Save(eDataType.PodcastEpisode, episode);
-			episode.m_bIsDirty = false;
+			episode.ClearDirty();
 		}
 
 		public void UpdateEpisodes(List<Episode> episodes)
@@ -177,7 +185,7 @@ namespace Pulse.Data
 			m_data.SaveList(eDataType.PodcastEpisode, episodes);
 			for (int i = 0; i < episodes.Count; i++)
 			{
-				episodes[i].m_bIsDirty = false;
+				episodes[i].ClearDirty();
 			}
 		}
 
