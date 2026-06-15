@@ -55,6 +55,7 @@ namespace Thump
 		private LibraryView m_libraryView;
 		private SearchView m_searchView;
 		private SettingsView m_settingsView;
+		private LoginView m_loginView;
 		private MiniPlayer m_miniPlayer;
 		private NavFooter m_navFooter;
 
@@ -117,8 +118,6 @@ namespace Thump
 			m_mediaClient = new PulseClient(m_cache, this);
 			m_analytics = new Analytics(m_mediaClient);
 
-			TryAutoSignIn();
-
 			m_mediaClient.SetServerParams(ThumpSettings.GetServerIp(), ThumpSettings.GetServerPort(), ThumpSettings.GetUsername(), ThumpSettings.GetPassword(), ThumpSettings.GetUseHttps());
 #if ANDROID
 			m_player = new ThumpAndroidPlayer(this, m_mediaClient);
@@ -139,6 +138,7 @@ namespace Thump
 			m_libraryView = new LibraryView(this);
 			m_searchView = new SearchView(this);
 			m_settingsView = new SettingsView(this);
+			m_loginView = new LoginView(this);
 
 			m_miniPlayer = new MiniPlayer(this);
 			Grid.SetRow(m_miniPlayer, 2);
@@ -153,29 +153,50 @@ namespace Thump
 			m_libraryView.Initialize();
 			m_searchView.Initialize();
 			m_settingsView.Initialize();
+			m_loginView.Initialize();
 			m_miniPlayer.Initialize();
 			m_navFooter.Initialize();
 
+			NavigateToLogin();
+		}
+
+		/// <summary>
+		/// Shows the full-screen sign-in gate: hides the nav chrome and lets the
+		/// LoginView attempt a sign-in from stored credentials (covering the wait)
+		/// or present the form. Boot entry point and the redirect target whenever
+		/// the app finds itself without a signed-in uid.
+		/// </summary>
+		public void NavigateToLogin()
+		{
+			m_detailStack.Clear();
+			m_navFooter.IsVisible = false;
+			m_miniPlayer.IsVisible = false;
+			SetActiveContent(m_loginView);
+			m_loginView.BeginAutoLogin();
+		}
+
+		/// <summary>
+		/// Called by LoginView once a sign-in succeeds (uid stored). Restores the
+		/// nav chrome and enters the app at Home.
+		/// </summary>
+		public void OnSignedIn()
+		{
+			m_navFooter.IsVisible = true;
 			NavigateToHome();
 		}
 
-		private void TryAutoSignIn()
+		/// <summary>
+		/// Redirects to the sign-in gate when there is no uid. Returns false when
+		/// not signed in so a navigation can bail.
+		/// </summary>
+		private bool EnsureSignedIn()
 		{
-			string username = ThumpSettings.GetUsername();
-			string password = ThumpSettings.GetPassword();
-			if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+			if (string.IsNullOrEmpty(ThumpSettings.GetUserID()))
 			{
-				return;
+				NavigateToLogin();
+				return false;
 			}
-			
-			m_mediaClient.Login(username, password, true, (loginResult) =>
-			{
-				if (loginResult != null && loginResult.Outcome == eAuthOutcome.Ok)
-				{
-					ThumpSettings.SetUserID(loginResult.Id);
-				}
-			});
-			
+			return true;
 		}
 
 		public ThumpCache GetCache()
@@ -217,6 +238,10 @@ namespace Thump
 
 		public void NavigateToHome()
 		{
+			if (!EnsureSignedIn())
+			{
+				return;
+			}
 			m_activeTab = eTab.Home;
 			m_detailStack.Clear();
 			SetActiveContent(m_homeView);
@@ -226,6 +251,10 @@ namespace Thump
 
 		public void NavigateToLibrary()
 		{
+			if (!EnsureSignedIn())
+			{
+				return;
+			}
 			m_activeTab = eTab.Library;
 			m_detailStack.Clear();
 			SetActiveContent(m_libraryView);
@@ -235,6 +264,10 @@ namespace Thump
 
 		public void NavigateToSearch()
 		{
+			if (!EnsureSignedIn())
+			{
+				return;
+			}
 			m_activeTab = eTab.Search;
 			m_detailStack.Clear();
 			SetActiveContent(m_searchView);
