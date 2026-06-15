@@ -559,6 +559,23 @@ namespace Thump.Views
 				return;
 			}
 
+			bool serverChanged = ip != ThumpSettings.GetServerIp()
+				|| port != ThumpSettings.GetServerPort()
+				|| m_useHttps != ThumpSettings.GetUseHttps();
+			if (serverChanged)
+			{
+				// A different server means a different library and a different
+				// per-server uid -- the cached metadata/blobs and the stored uid are
+				// stale. Clear them so we never serve old-server data or send an
+				// old-server uid (the login below re-establishes the uid on success).
+				ThumpSettings.SetUserID("");
+				ThumpCache cache = MainView.Self.GetCache();
+				cache.ExecuteAsync(() =>
+				{
+					cache.ClearCache();
+				});
+			}
+
 			ThumpSettings.SetServerIp(ip);
 			ThumpSettings.SetServerPort(port);
 			ThumpSettings.SetUsername(user);
