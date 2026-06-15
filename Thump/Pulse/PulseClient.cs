@@ -92,7 +92,10 @@ namespace Thump.Pulse
 			if (string.IsNullOrEmpty(result))
 				onComplete(null);
 
-			PulseLoginResult loginResult = PulseWire.Parse<PulseLoginResult>(result);
+			PulseResponse response = PulseWire.Parse<PulseResponse>(result);
+
+			JsonElement rawContents = (JsonElement)response.contents;
+			PulseLoginResult loginResult = PulseWire.Parse<PulseLoginResult>(rawContents.GetRawText());
 			onComplete(loginResult);
 		}
 		public override byte[] GetTrackAudioFromCache(string trackId)

@@ -234,8 +234,15 @@ namespace Thump.Views
 					}
 					else
 					{
-						ThumpSettings.SetUserID(loginResult.Id);
-						ok = true;
+						if (!string.IsNullOrEmpty(loginResult.Id))
+						{
+							ThumpSettings.SetUserID(loginResult.Id);
+							ok = true;
+						}
+						else
+						{
+							message = "login failed";
+						}
 					}
 					MainThread.BeginInvokeOnMainThread(() =>
 					{
