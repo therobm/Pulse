@@ -52,11 +52,17 @@ namespace Pulse
 			string userId = GetString(context, "uid", "");
 			if (string.IsNullOrEmpty(userId))
 			{
-				string userName = GetString(context, "u", "");
-				if (!string.IsNullOrEmpty(userName))
+				// Legacy `u=` username bridge. Disabled under modern-API
+				// enforcement (HttpServer rejects such requests before they reach
+				// a handler, so this is the defensive belt-and-braces); honoured
+				// only in the legacy-tolerant default.
+				if (!PulseService.GetConfig().EnforceModernApi)
 				{
-
-					userId = PulseService.Get().GetIDFromUsername(userName);
+					string userName = GetString(context, "u", "");
+					if (!string.IsNullOrEmpty(userName))
+					{
+						userId = PulseService.Get().GetIDFromUsername(userName);
+					}
 				}
 			}
 			return userId;

@@ -36,6 +36,12 @@ namespace Pulse
 		// a one-chapter book). Empty disables audiobook scanning.
 		public string AudiobooksPath { get; set; } = "";
 
+		// When true, the data API enforces the modern request contract: identity
+		// must arrive as `uid=` and the legacy `u=` username param is refused
+		// (HttpServer rejects such requests with 401). Default false keeps the
+		// legacy-tolerant behaviour. Flip on at boot once every client sends uid=.
+		public bool EnforceModernApi = false;
+
 
 		public static string GetConfigPath()
 		{

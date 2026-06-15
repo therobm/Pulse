@@ -158,6 +158,25 @@ namespace Assistant.Services
 					return Task.CompletedTask;
 				}
 
+				// Modern-API enforcement. When enabled, the data API refuses the
+				// legacy `u=` username identity in favour of `uid=`. Scoped to the
+				// pulse_v1 surface so web-page `u=` redirects and the auth routes
+				// (which never carry `u=`) are unaffected. The `u=`->id bridge in
+				// QueryParameters.GetUserId is the legacy tolerance this turns off.
+				if (path.StartsWith("pulse_v1/") && PulseService.GetConfig().EnforceModernApi)
+				{
+					string legacyUser = QueryParameters.GetString(context, "u", "");
+					string modernUid = QueryParameters.GetString(context, "uid", "");
+					bool usesLegacyIdentity = !string.IsNullOrEmpty(legacyUser) && string.IsNullOrEmpty(modernUid);
+					if (usesLegacyIdentity)
+					{
+						context.Response.StatusCode = 401;
+						byte[] rejectBytes = System.Text.Encoding.UTF8.GetBytes("Legacy 'u' identity param is not accepted; send 'uid'.");
+						context.Response.Body.Write(rejectBytes, 0, rejectBytes.Length);
+						return Task.CompletedTask;
+					}
+				}
+
 				Action<HttpContext> exactHandler = null;
 				bool hasExact = m_routes.TryGetValue(path, out exactHandler);
 				if (hasExact)
