@@ -50,16 +50,32 @@ namespace Thump.Pulse
 
 		private string BuildPulseUrl(string endpoint, string extraParams)
 		{
-			string url = m_baseUrl + "/pulse_v1/" + endpoint + "?u=" + Uri.EscapeDataString(m_user);
+			string url = m_baseUrl + "/pulse_v1/" + endpoint;
+			string separator = "?";
+
+			// Identity is the modern `uid=` once signed in. Before login there is
+			// no uid: send no identity at all rather than the legacy `u=` username
+			// (the server rejects `u=` under enforcement, and login/whoami carry
+			// their identity in the request body).
+			string userId = ThumpSettings.GetUserID();
+			if (!string.IsNullOrEmpty(userId))
+			{
+				url = url + separator + "uid=" + Uri.EscapeDataString(userId);
+				separator = "&";
+			}
+
 			string token = ThumpSettings.GetToken();
 			if (!string.IsNullOrEmpty(token))
 			{
-				url = url + "&token=" + Uri.EscapeDataString(token);
+				url = url + separator + "token=" + Uri.EscapeDataString(token);
+				separator = "&";
 			}
+
 			if (!string.IsNullOrEmpty(extraParams))
 			{
-				url = url + "&" + extraParams;
+				url = url + separator + extraParams;
 			}
+
 			return url;
 		}
 		public override void Login(string username, string password, bool rememberMe, Action<PulseLoginResult> onComplete)

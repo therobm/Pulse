@@ -21,6 +21,19 @@ namespace Assistant.Services
 
 		private Dictionary<string, Action<HttpContext>> m_routes = new Dictionary<string, Action<HttpContext>>();
 
+		// Auth/bootstrap and health routes that must work before a client has a
+		// uid -- exempt from modern-API identity enforcement (see HandleRequest).
+		// They are how a client establishes or checks identity in the first place.
+		private static readonly HashSet<string> s_identityExemptRoutes = new HashSet<string>
+		{
+			"pulse_v1/login",
+			"pulse_v1/logout",
+			"pulse_v1/whoami",
+			"pulse_v1/setupAdmin",
+			"pulse_v1/ping",
+			"pulse_v1/version",
+		};
+
 		private Dictionary<string, Action<HttpContext>> m_prefixRoutes = new Dictionary<string, Action<HttpContext>>();
 
 		private class ResultRouteAdapter
@@ -156,6 +169,24 @@ namespace Assistant.Services
 				{
 					context.Response.Redirect("/web/pulse.html");
 					return Task.CompletedTask;
+				}
+
+				// Modern-API enforcement. When enabled, every pulse_v1 data route
+				// requires the modern `uid=` identity; a request without it is
+				// refused. Only the auth/bootstrap and health routes are exempt --
+				// they are how a client establishes or checks identity before it
+				// has a uid. This also kills the legacy `u=` path: a `u=`-only
+				// request has no uid, so it fails here.
+				if (path.StartsWith("pulse_v1/") && PulseService.GetConfig().EnforceModernApi && !s_identityExemptRoutes.Contains(path))
+				{
+					string modernUid = QueryParameters.GetString(context, "uid", "");
+					if (string.IsNullOrEmpty(modernUid))
+					{
+						context.Response.StatusCode = 401;
+						byte[] rejectBytes = System.Text.Encoding.UTF8.GetBytes("Modern API enforcement is on: a 'uid' identity param is required.");
+						context.Response.Body.Write(rejectBytes, 0, rejectBytes.Length);
+						return Task.CompletedTask;
+					}
 				}
 
 				Action<HttpContext> exactHandler = null;
