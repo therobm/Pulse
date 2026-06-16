@@ -42,11 +42,6 @@ namespace Pulse
 		// legacy-tolerant behaviour. Flip on at boot once every client sends uid=.
 		public bool EnforceModernApi = false;
 
-		// When true, every pulse_v1 data request must carry a token that belongs to
-		// the claimed uid, or it is rejected (401). The token is issued at login and
-		// sent on each request. Default false until clients provision tokens.
-		public bool EnforceApiTokens = false;
-
 
 		public static string GetConfigPath()
 		{
