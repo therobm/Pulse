@@ -191,6 +191,22 @@ namespace Assistant.Services
 					}
 				}
 
+				// Token enforcement. When enabled, every pulse_v1 data route must
+				// carry a token that belongs to the claimed uid; reject otherwise.
+				// The token is issued at login and sent on each request.
+				if (path.StartsWith("pulse_v1/") && PulseService.GetConfig().EnforceApiTokens && !s_identityExemptRoutes.Contains(path))
+				{
+					string tokenUid = QueryParameters.GetString(context, "uid", "");
+					string apiToken = QueryParameters.GetString(context, "token", "");
+					if (!PulseService.Get().IsTokenAuthorized(tokenUid, apiToken))
+					{
+						context.Response.StatusCode = 401;
+						byte[] tokenReject = System.Text.Encoding.UTF8.GetBytes("A valid device token is required.");
+						context.Response.Body.Write(tokenReject, 0, tokenReject.Length);
+						return Task.CompletedTask;
+					}
+				}
+
 				Action<HttpContext> exactHandler = null;
 				bool hasExact = m_routes.TryGetValue(path, out exactHandler);
 				if (hasExact)

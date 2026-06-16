@@ -515,6 +515,7 @@ namespace Pulse.Protocols
 				result.Id = user.Id;
 				result.Username = user.Name;
 				result.IsAdmin = user.IsAdmin;
+				result.Token = m_pulseData.EnsureToken(user.Id);
 			}
 			return Respond(result);
 		}

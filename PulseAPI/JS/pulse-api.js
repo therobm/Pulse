@@ -81,6 +81,7 @@
 			this.baseUrl = this.baseUrl + '/';
 		}
 		this.userId = options.userId || '';
+		this.token = options.token || '';
 		this.client = options.client || 'PulseWeb';
 		this.version = options.version || '';
 		this.defaultParams = options.defaultParams || {};
@@ -99,6 +100,7 @@
 			}
 		}
 		if (this.userId) { merged.uid = this.userId; }
+		if (this.token) { merged.token = this.token; }
 		if (this.client) { merged.c = this.client; }
 		if (this.version) { merged.v = this.version; }
 		if (params) {

@@ -49,6 +49,7 @@ namespace PulseAPI.CSharp
 		public eAuthOutcome Outcome;
 		public string Username = "";
 		public bool IsAdmin = false;
+		public string Token = "";
 	}
 
 	/// <summary>

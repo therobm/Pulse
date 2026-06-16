@@ -306,6 +306,25 @@ namespace Pulse.Data
 		}
 
 		/// <summary>
+		/// Returns the user's existing token, or mints one if they have none, so a
+		/// successful login can hand the client a token to send. Empty for an
+		/// unknown user.
+		/// </summary>
+		public string EnsureToken(string userId)
+		{
+			User user = GetUser(userId);
+			if (user == null)
+			{
+				return "";
+			}
+			if (user.Tokens.Count > 0)
+			{
+				return user.Tokens[0].Token;
+			}
+			return CreateToken(userId, "auto");
+		}
+
+		/// <summary>
 		/// Stamps the last-used timestamp on the matching token (whichever user
 		/// holds it) and persists that user. No-op when the token is unknown.
 		/// </summary>

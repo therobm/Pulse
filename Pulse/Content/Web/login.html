@@ -256,6 +256,9 @@
 					outcome = parsed.contents.Outcome;
 				}
 				if (outcome === 'Ok') {
+					if (parsed.contents.Token) {
+						try { localStorage.setItem('pulse_token', parsed.contents.Token); } catch (e) {}
+					}
 					goToApp();
 					return;
 				}
@@ -295,6 +298,9 @@
 					outcome = parsed.contents.Outcome;
 				}
 				if (outcome === 'Ok') {
+					if (parsed.contents.Token) {
+						try { localStorage.setItem('pulse_token', parsed.contents.Token); } catch (e) {}
+					}
 					goToApp();
 					return;
 				}

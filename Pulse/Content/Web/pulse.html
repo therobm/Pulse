@@ -1946,6 +1946,7 @@
 	<script>
 		let API_USER = '';
 		let API_USER_ID = '';
+		let API_TOKEN = '';
 		let pulse = null;
 
 		/* The pulse_v1 contract is the wire ("object is the wire"): fields are
@@ -3191,7 +3192,8 @@
 			}).catch(function (err) { logApiError('version', err); });
 		}
 		function initApp() {
-			pulse = PulseAPI.create({ user: API_USER, userId: API_USER_ID, client: 'PulseWeb' });
+			try { API_TOKEN = localStorage.getItem('pulse_token') || ''; } catch (e) { API_TOKEN = ''; }
+			pulse = PulseAPI.create({ user: API_USER, userId: API_USER_ID, token: API_TOKEN, client: 'PulseWeb' });
 			wireUpStaticHandlers();
 			document.body.addEventListener('click', handleDelegatedClick);
 			document.body.addEventListener('click', onBodyClickForDrawer);
@@ -3207,6 +3209,7 @@
 			routeTo(initial.page, initial.u, true);
 		}
 		function onNavLogout() {
+			try { localStorage.removeItem('pulse_token'); } catch (e) {}
 			fetch('/pulse_v1/logout', { method: 'POST', credentials: 'same-origin' }).then(function () {
 				window.location.replace('/web/login.html');
 			}).catch(function () {
