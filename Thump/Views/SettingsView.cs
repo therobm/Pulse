@@ -334,6 +334,17 @@ namespace Thump.Views
 			m_connectStatusLabel.TextColor = ThumpColors.TextSecondary;
 			section.Children.Add(m_connectStatusLabel);
 
+			Button logoutButton = new Button();
+			logoutButton.Text = "Log out";
+			logoutButton.TextColor = ThumpColors.OnBackground;
+			logoutButton.BackgroundColor = ThumpColors.Surface;
+			logoutButton.CornerRadius = 8;
+			logoutButton.FontSize = 15;
+			logoutButton.HeightRequest = 44;
+			logoutButton.Margin = new Thickness(0, 12, 0, 0);
+			logoutButton.Clicked += OnLogoutClicked;
+			section.Children.Add(logoutButton);
+
 			return section;
 		}
 
@@ -543,6 +554,11 @@ namespace Thump.Views
 			return "";
 		}
 
+		private void OnLogoutClicked(object sender, EventArgs e)
+		{
+			m_mainView.Logout();
+		}
+
 		private void OnConnectClicked(object sender, EventArgs e)
 		{
 			string ip = m_serverIpEntry.Text;
@@ -557,6 +573,23 @@ namespace Thump.Views
 				m_connectStatusLabel.Text = validationError;
 				m_connectStatusLabel.TextColor = s_failColor;
 				return;
+			}
+
+			bool serverChanged = ip != ThumpSettings.GetServerIp()
+				|| port != ThumpSettings.GetServerPort()
+				|| m_useHttps != ThumpSettings.GetUseHttps();
+			if (serverChanged)
+			{
+				// A different server means a different library and a different
+				// per-server uid -- the cached metadata/blobs and the stored uid are
+				// stale. Clear them so we never serve old-server data or send an
+				// old-server uid (the login below re-establishes the uid on success).
+				ThumpSettings.SetUserID("");
+				ThumpCache cache = MainView.Self.GetCache();
+				cache.ExecuteAsync(() =>
+				{
+					cache.ClearCache();
+				});
 			}
 
 			ThumpSettings.SetServerIp(ip);
