@@ -269,7 +269,7 @@ namespace Pulse.Data
 				return "";
 
 			byte[] raw = RandomNumberGenerator.GetBytes(32);
-			string token = SessionStore.ToUrlSafeBase64(raw);
+			string token = ToUrlSafeBase64(raw);
 			if (label == null)
 			{
 				label = "";
@@ -308,9 +308,8 @@ namespace Pulse.Data
 		}
 
 		/// <summary>
-		/// Returns the user's existing token, or mints one if they have none, so a
-		/// successful login can hand the client a token to send. Empty for an
-		/// unknown user.
+		/// Mints a fresh token for the user (one per login), first dropping any of
+		/// their tokens unused for over 30 days. Empty for an unknown user.
 		/// </summary>
 		public string CreateToken(string userId)
 		{
@@ -328,6 +327,17 @@ namespace Pulse.Data
 					user.Tokens.RemoveAt(i);
 			}
 			return CreateToken(userId, "auto");
+		}
+
+		/// <summary>
+		/// Base64Url variant ('+'->'-', '/'->'_', no '=' padding) so a token is
+		/// safe in a query string without escaping.
+		/// </summary>
+		private static string ToUrlSafeBase64(byte[] bytes)
+		{
+			string standard = Convert.ToBase64String(bytes);
+			string replaced = standard.Replace('+', '-').Replace('/', '_');
+			return replaced.TrimEnd('=');
 		}
 	}
 }
