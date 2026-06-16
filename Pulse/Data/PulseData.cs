@@ -852,9 +852,9 @@ namespace Pulse.Data
 			return m_userData.IsTokenAuthorized(userId, token);
 		}
 
-		public string EnsureToken(string userId)
+		public string CreateToken(string userId)
 		{
-			return m_userData.EnsureToken(userId);
+			return m_userData.CreateToken(userId);
 		}
 
 		/// <summary>
@@ -908,12 +908,6 @@ namespace Pulse.Data
 			return m_userData.CreateToken(userId, label);	
 		}
 	
-		public void UpdateTokenLastUsed(string userId, string token)
-		{
-			m_userData.UpdateTokenLastUsed(userId, token);
-		}
-
-
 		// Removes every in-memory trace of `userName` and flags the touched
 		// entities dirty so the next Save rewrites their per-user rows.
 		private void DeleteUserFromMusicData(string userId)

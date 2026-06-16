@@ -299,6 +299,8 @@ namespace Pulse.Data
 			{
 				if (string.Equals(user.Tokens[index].Token, token, StringComparison.Ordinal))
 				{
+					user.Tokens[index].LastUsed = DateTime.UtcNow;
+					user.MarkDirty();
 					return true;
 				}
 			}
@@ -310,50 +312,22 @@ namespace Pulse.Data
 		/// successful login can hand the client a token to send. Empty for an
 		/// unknown user.
 		/// </summary>
-		public string EnsureToken(string userId)
+		public string CreateToken(string userId)
 		{
 			User user = GetUser(userId);
 			if (user == null)
 			{
 				return "";
 			}
-			if (user.Tokens.Count > 0)
+
+			//expire old tokens
+			for (int i = user.Tokens.Count-1; i >=0 ; i-- )
 			{
-				return user.Tokens[0].Token;
+				TimeSpan timeSinceUsed = DateTime.Now - user.Tokens[i].LastUsed;
+				if (timeSinceUsed.Days > 30)
+					user.Tokens.RemoveAt(i);
 			}
 			return CreateToken(userId, "auto");
 		}
-
-		/// <summary>
-		/// Stamps the last-used timestamp on the matching token (whichever user
-		/// holds it) and persists that user. No-op when the token is unknown.
-		/// </summary>
-		public void UpdateTokenLastUsed(string userId, string token)
-		{
-			if (string.IsNullOrEmpty(token))
-			{
-				return;
-			}
-
-			User owningUser = GetUser(userId);
-			for (int index = 0; index < owningUser.Tokens.Count; index++)
-			{
-				if (string.Equals(owningUser.Tokens[index].Token, token, StringComparison.Ordinal))
-				{
-					owningUser.Tokens[index].LastUsed = DateTime.UtcNow;
-					break;
-				}
-			}
-
-			if (owningUser == null)
-			{
-				return;
-			}
-
-			m_data.Save(eDataType.User, owningUser);
-			owningUser.ClearDirty();
-		}
-
-		
 	}
 }
