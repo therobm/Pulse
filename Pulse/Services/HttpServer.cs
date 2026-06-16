@@ -153,6 +153,8 @@ namespace Assistant.Services
 			policy.AllowAnyHeader();
 		}
 
+		
+
 		private Task HandleRequest(HttpContext context, RequestDelegate next)
 		{
 			try
@@ -171,20 +173,36 @@ namespace Assistant.Services
 					return Task.CompletedTask;
 				}
 
-				// Modern-API enforcement. When enabled, every pulse_v1 data route
-				// requires the modern `uid=` identity; a request without it is
-				// refused. Only the auth/bootstrap and health routes are exempt --
-				// they are how a client establishes or checks identity before it
-				// has a uid. This also kills the legacy `u=` path: a `u=`-only
-				// request has no uid, so it fails here.
-				if (path.StartsWith("pulse_v1/") && PulseService.GetConfig().EnforceModernApi && !s_identityExemptRoutes.Contains(path))
+				if (path.ToLower().StartsWith("web/"))
 				{
-					string modernUid = QueryParameters.GetString(context, "uid", "");
-					if (string.IsNullOrEmpty(modernUid))
+					string pulseDir = Path.Combine(AppContext.BaseDirectory, "Content", "Web");
+					string fileName = Path.GetFileName(path);
+					if (string.IsNullOrEmpty(fileName))
+					{
+						fileName = "pulse.html";
+					}
+
+					string filePath = Path.Combine(pulseDir, fileName);
+					if (File.Exists(filePath))
+					{
+						string contentType = GetContentTypeForFile(filePath);
+						ServeFile(context, filePath, contentType);
+						return Task.CompletedTask;
+					}
+				}
+
+				// Token enforcement. When enabled, every pulse_v1 data route must
+				// carry a token that belongs to the claimed uid; reject otherwise.
+				// The token is issued at login and sent on each request.
+				if (!s_identityExemptRoutes.Contains(path))
+				{
+					string tokenUid = QueryParameters.GetString(context, "uid", "");
+					string apiToken = QueryParameters.GetString(context, "token", "");
+					if (!PulseService.Get().IsTokenAuthorized(tokenUid, apiToken))
 					{
 						context.Response.StatusCode = 401;
-						byte[] rejectBytes = System.Text.Encoding.UTF8.GetBytes("Modern API enforcement is on: a 'uid' identity param is required.");
-						context.Response.Body.Write(rejectBytes, 0, rejectBytes.Length);
+						byte[] tokenReject = System.Text.Encoding.UTF8.GetBytes("A valid device token is required.");
+						context.Response.Body.Write(tokenReject, 0, tokenReject.Length);
 						return Task.CompletedTask;
 					}
 				}
@@ -215,23 +233,7 @@ namespace Assistant.Services
 					return Task.CompletedTask;
 				}
 
-				if (path.ToLower().Contains("web"))
-				{
-					string pulseDir = Path.Combine(AppContext.BaseDirectory, "Content", "Web");
-					string fileName = Path.GetFileName(path);
-					if (string.IsNullOrEmpty(fileName))
-					{
-						fileName = "pulse.html";
-					}
-
-					string filePath = Path.Combine(pulseDir, fileName);
-					if (File.Exists(filePath))
-					{
-						string contentType = GetContentTypeForFile(filePath);
-						ServeFile(context, filePath, contentType);
-						return Task.CompletedTask;
-					}
-				}
+				
 
 				context.Response.StatusCode = 404;
 				return Task.CompletedTask;

@@ -49,23 +49,9 @@ namespace Pulse
 		}
 		public static string GetUserId(HttpContext context)
 		{
-			string userId = GetString(context, "uid", "");
-			if (string.IsNullOrEmpty(userId))
-			{
-				// Legacy `u=` username bridge. Disabled under modern-API
-				// enforcement (HttpServer rejects such requests before they reach
-				// a handler, so this is the defensive belt-and-braces); honoured
-				// only in the legacy-tolerant default.
-				if (!PulseService.GetConfig().EnforceModernApi)
-				{
-					string userName = GetString(context, "u", "");
-					if (!string.IsNullOrEmpty(userName))
-					{
-						userId = PulseService.Get().GetIDFromUsername(userName);
-					}
-				}
-			}
-			return userId;
+			// Identity is the modern `uid=` only. The legacy `u=` username bridge
+			// was removed once every client moved to uid.
+			return GetString(context, "uid", "");
 		}
 	}
 }

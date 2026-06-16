@@ -1946,6 +1946,7 @@
 	<script>
 		let API_USER = '';
 		let API_USER_ID = '';
+		let API_TOKEN = '';
 		let pulse = null;
 
 		/* The pulse_v1 contract is the wire ("object is the wire"): fields are
@@ -3178,20 +3179,21 @@
 			}
 			currentPage = page;
 		}
-		/* Build/assembly version, not the API contract version — served by the
-		   dedicated /pulse/version endpoint (Flatline #229). No pulse_v1 equivalent. */
+		/* Build/assembly version (Flatline #229). The pulse_v1/version route is
+		   identity-exempt, so it needs no token. */
 		function loadVersionTag() {
-			fetch('/pulse/version').then(function (response) {
+			fetch('/pulse_v1/version').then(function (response) {
 				if (!response.ok) { return null; }
 				return response.json();
 			}).then(function (data) {
-				if (!data || !data.version) { return; }
+				if (!data || !data.contents || !data.contents.Version) { return; }
 				let tagEl = document.getElementById('pulse-version-tag');
-				if (tagEl) { tagEl.textContent = 'v' + data.version; }
+				if (tagEl) { tagEl.textContent = 'v' + data.contents.Version; }
 			}).catch(function (err) { logApiError('version', err); });
 		}
 		function initApp() {
-			pulse = PulseAPI.create({ user: API_USER, userId: API_USER_ID, client: 'PulseWeb' });
+			try { API_TOKEN = localStorage.getItem('pulse_token') || ''; } catch (e) { API_TOKEN = ''; }
+			pulse = PulseAPI.create({ user: API_USER, userId: API_USER_ID, token: API_TOKEN, client: 'PulseWeb' });
 			wireUpStaticHandlers();
 			document.body.addEventListener('click', handleDelegatedClick);
 			document.body.addEventListener('click', onBodyClickForDrawer);
@@ -3207,24 +3209,37 @@
 			routeTo(initial.page, initial.u, true);
 		}
 		function onNavLogout() {
-			fetch('/pulse_v1/logout', { method: 'POST', credentials: 'same-origin' }).then(function () {
+			try { localStorage.removeItem('pulse_token'); localStorage.removeItem('pulse_uid'); } catch (e) {}
+			fetch('/pulse_v1/logout', { method: 'POST' }).then(function () {
 				window.location.replace('/web/login.html');
 			}).catch(function () {
 				window.location.replace('/web/login.html');
 			});
 		}
 		function bootstrapFromSession() {
-			fetch('/pulse_v1/whoami', { credentials: 'same-origin' }).then(function (response) {
+			let storedUid = '';
+			let storedToken = '';
+			try {
+				storedUid = localStorage.getItem('pulse_uid') || '';
+				storedToken = localStorage.getItem('pulse_token') || '';
+			} catch (e) { storedUid = ''; storedToken = ''; }
+			if (!storedUid || !storedToken) {
+				window.location.replace('/web/login.html');
+				return;
+			}
+			let whoamiUrl = '/pulse_v1/whoami?uid=' + encodeURIComponent(storedUid) + '&token=' + encodeURIComponent(storedToken);
+			fetch(whoamiUrl).then(function (response) {
 				return response.text();
 			}).then(function (text) {
 				let parsed = null;
 				try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
-				if (parsed && parsed.contents && parsed.contents.Id) {
+				if (parsed && parsed.contents && parsed.contents.State === 'SignedIn') {
 					API_USER = parsed.contents.Username;
 					API_USER_ID = parsed.contents.Id;
 					initApp();
 					return;
 				}
+				try { localStorage.removeItem('pulse_token'); localStorage.removeItem('pulse_uid'); } catch (e) {}
 				window.location.replace('/web/login.html');
 			}).catch(function () {
 				window.location.replace('/web/login.html');

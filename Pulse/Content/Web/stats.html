@@ -386,8 +386,13 @@
 	</div>
 	<script>
 		(function () {
-			let STATS_USER = new URLSearchParams(window.location.search).get('u') || '';
-			let STATS_ENDPOINT = '/pulse/stats' + (STATS_USER ? ('?u=' + encodeURIComponent(STATS_USER)) : '');
+			let STATS_UID = '';
+			let STATS_TOKEN = '';
+			try {
+				STATS_UID = localStorage.getItem('pulse_uid') || '';
+				STATS_TOKEN = localStorage.getItem('pulse_token') || '';
+			} catch (e) { STATS_UID = ''; STATS_TOKEN = ''; }
+			let STATS_ENDPOINT = '/pulse_v1/stats?uid=' + encodeURIComponent(STATS_UID) + '&token=' + encodeURIComponent(STATS_TOKEN);
 			let contentEl = document.getElementById('content');
 			let timestampEl = document.getElementById('timestamp');
 
@@ -605,7 +610,7 @@
 					if (!resp.ok) throw new Error('HTTP ' + resp.status);
 					return resp.json();
 				})
-				.then(function (data) { render(data); })
+				.then(function (data) { render(data.contents); })
 				.catch(function (err) {
 					contentEl.innerHTML = '<div class="error-msg">Failed to load stats: ' + esc(err.message) + '</div>';
 				});
@@ -613,13 +618,13 @@
 
 		(function () {
 			let request = new XMLHttpRequest();
-			request.open('GET', '/pulse/version');
+			request.open('GET', '/pulse_v1/version');
 			request.onload = function () {
 				if (request.status !== 200) { return; }
 				let data = JSON.parse(request.responseText);
-				if (!data || !data.version) { return; }
+				if (!data || !data.contents || !data.contents.Version) { return; }
 				let tagEl = document.getElementById('pulse-version-tag');
-				if (tagEl) { tagEl.textContent = 'v' + data.version; }
+				if (tagEl) { tagEl.textContent = 'v' + data.contents.Version; }
 			};
 			request.send();
 		})();
