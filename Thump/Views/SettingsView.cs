@@ -334,6 +334,17 @@ namespace Thump.Views
 			m_connectStatusLabel.TextColor = ThumpColors.TextSecondary;
 			section.Children.Add(m_connectStatusLabel);
 
+			Button logoutButton = new Button();
+			logoutButton.Text = "Log out";
+			logoutButton.TextColor = ThumpColors.OnBackground;
+			logoutButton.BackgroundColor = ThumpColors.Surface;
+			logoutButton.CornerRadius = 8;
+			logoutButton.FontSize = 15;
+			logoutButton.HeightRequest = 44;
+			logoutButton.Margin = new Thickness(0, 12, 0, 0);
+			logoutButton.Clicked += OnLogoutClicked;
+			section.Children.Add(logoutButton);
+
 			return section;
 		}
 
@@ -541,6 +552,11 @@ namespace Thump.Views
 			}
 			ip = match.Value;*/
 			return "";
+		}
+
+		private void OnLogoutClicked(object sender, EventArgs e)
+		{
+			m_mainView.Logout();
 		}
 
 		private void OnConnectClicked(object sender, EventArgs e)

@@ -186,6 +186,24 @@ namespace Thump
 		}
 
 		/// <summary>
+		/// Signs the terminal out: clears the stored uid and credentials so the boot
+		/// auto-login won't sign back in, wipes the now-foreign cache, and returns to
+		/// the sign-in gate. Data auth is uid-only, so there is no server session to
+		/// invalidate.
+		/// </summary>
+		public void Logout()
+		{
+			ThumpSettings.SetUserID("");
+			ThumpSettings.SetPassword("");
+			ThumpCache cache = GetCache();
+			cache.ExecuteAsync(() =>
+			{
+				cache.ClearCache();
+			});
+			NavigateToLogin();
+		}
+
+		/// <summary>
 		/// Redirects to the sign-in gate when there is no uid. Returns false when
 		/// not signed in so a navigation can bail.
 		/// </summary>
