@@ -234,15 +234,6 @@ namespace Pulse
 			}
 		}
 
-		[Obsolete("Legacy path only")]
-		public string GetIDFromUsername(string username)
-		{
-			User user = m_pulseData.LookupUserByName(username);
-			if (user == null)
-				return "";
-			return user.Id;
-		}
-
 		private void HandleSpotifyAuthorize(HttpContext context)
 		{
 			string userName = context.Request.Path.Value.Split('/').Last();
