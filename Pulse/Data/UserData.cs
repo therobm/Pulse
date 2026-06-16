@@ -269,7 +269,7 @@ namespace Pulse.Data
 				return "";
 
 			byte[] raw = RandomNumberGenerator.GetBytes(32);
-			string token = SessionStore.ToUrlSafeBase64(raw);
+			string token = ToUrlSafeBase64(raw);
 			if (label == null)
 			{
 				label = "";
@@ -281,35 +281,63 @@ namespace Pulse.Data
 		}
 
 		/// <summary>
-		/// Stamps the last-used timestamp on the matching token (whichever user
-		/// holds it) and persists that user. No-op when the token is unknown.
+		/// True when the token is held by the given user. This binding is what the
+		/// audit cares about -- a token authorises only the uid that owns it.
 		/// </summary>
-		public void UpdateTokenLastUsed(string userId, string token)
+		public bool IsTokenAuthorized(string userId, string token)
 		{
 			if (string.IsNullOrEmpty(token))
 			{
-				return;
+				return false;
 			}
-
-			User owningUser = GetUser(userId);
-			for (int index = 0; index < owningUser.Tokens.Count; index++)
+			User user = GetUser(userId);
+			if (user == null)
 			{
-				if (string.Equals(owningUser.Tokens[index].Token, token, StringComparison.Ordinal))
+				return false;
+			}
+			for (int index = 0; index < user.Tokens.Count; index++)
+			{
+				if (string.Equals(user.Tokens[index].Token, token, StringComparison.Ordinal))
 				{
-					owningUser.Tokens[index].LastUsed = DateTime.UtcNow;
-					break;
+					user.Tokens[index].LastUsed = DateTime.UtcNow;
+					user.MarkDirty();
+					return true;
 				}
 			}
-
-			if (owningUser == null)
-			{
-				return;
-			}
-
-			m_data.Save(eDataType.User, owningUser);
-			owningUser.ClearDirty();
+			return false;
 		}
 
-		
+		/// <summary>
+		/// Mints a fresh token for the user (one per login), first dropping any of
+		/// their tokens unused for over 30 days. Empty for an unknown user.
+		/// </summary>
+		public string CreateToken(string userId)
+		{
+			User user = GetUser(userId);
+			if (user == null)
+			{
+				return "";
+			}
+
+			//expire old tokens
+			for (int i = user.Tokens.Count-1; i >=0 ; i-- )
+			{
+				TimeSpan timeSinceUsed = DateTime.Now - user.Tokens[i].LastUsed;
+				if (timeSinceUsed.Days > 30)
+					user.Tokens.RemoveAt(i);
+			}
+			return CreateToken(userId, "auto");
+		}
+
+		/// <summary>
+		/// Base64Url variant ('+'->'-', '/'->'_', no '=' padding) so a token is
+		/// safe in a query string without escaping.
+		/// </summary>
+		private static string ToUrlSafeBase64(byte[] bytes)
+		{
+			string standard = Convert.ToBase64String(bytes);
+			string replaced = standard.Replace('+', '-').Replace('/', '_');
+			return replaced.TrimEnd('=');
+		}
 	}
 }

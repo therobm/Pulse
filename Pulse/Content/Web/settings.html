@@ -436,7 +436,6 @@
 				</div>
 				<div class="form-error" id="login-error"></div>
 			</div>
-			<button class="btn" id="logout-btn" style="display: none;">Sign out</button>
 		</div>
 
 		<div class="section">
@@ -472,9 +471,21 @@
 	<div id="toast" class="toast"></div>
 
 	<script>
+		// Identity for every data/auth call: uid + device token, read from the
+		// same localStorage the rest of the web client uses. No browser session.
+		function pulseAuth() {
+			let uid = '';
+			let token = '';
+			try {
+				uid = localStorage.getItem('pulse_uid') || '';
+				token = localStorage.getItem('pulse_token') || '';
+			} catch (e) { uid = ''; token = ''; }
+			return 'uid=' + encodeURIComponent(uid) + '&token=' + encodeURIComponent(token);
+		}
+
 		function pulseGet(endpoint, callback) {
 			let xhr = new XMLHttpRequest();
-			xhr.open('GET', '/pulse_v1/' + endpoint);
+			xhr.open('GET', '/pulse_v1/' + endpoint + '?' + pulseAuth());
 			xhr.onload = function () {
 				if (xhr.status === 200) {
 					let data = JSON.parse(xhr.responseText);
@@ -751,8 +762,7 @@
 
 		function runSetPassword(userId, password, callback) {
 			let xhr = new XMLHttpRequest();
-			xhr.open('POST', '/pulse_v1/setPassword');
-			xhr.withCredentials = true;
+			xhr.open('POST', '/pulse_v1/setPassword?' + pulseAuth());
 			xhr.setRequestHeader('Content-Type', 'application/json');
 			xhr.onload = function () {
 				let parsed = parseAuthEnvelope(xhr.responseText);
@@ -774,7 +784,6 @@
 		function runLogin(username, password, rememberMe, callback) {
 			let xhr = new XMLHttpRequest();
 			xhr.open('POST', '/pulse_v1/login');
-			xhr.withCredentials = true;
 			xhr.setRequestHeader('Content-Type', 'application/json');
 			xhr.onload = function () {
 				let parsed = parseAuthEnvelope(xhr.responseText);
@@ -783,6 +792,10 @@
 					outcome = parsed.contents.Outcome;
 				}
 				if (outcome === 'Ok') {
+					try {
+						localStorage.setItem('pulse_token', parsed.contents.Token);
+						localStorage.setItem('pulse_uid', parsed.contents.Id);
+					} catch (e) {}
 					callback(true, parsed.contents, '');
 					return;
 				}
@@ -791,15 +804,6 @@
 			xhr.onerror = function () { callback(false, null, 'Network error'); };
 			let payload = JSON.stringify({ Username: username, Password: password, RememberMe: rememberMe });
 			xhr.send(payload);
-		}
-
-		function runLogout(callback) {
-			let xhr = new XMLHttpRequest();
-			xhr.open('POST', '/pulse_v1/logout');
-			xhr.withCredentials = true;
-			xhr.onload = function () { callback(xhr.status === 200); };
-			xhr.onerror = function () { callback(false); };
-			xhr.send();
 		}
 
 		function submitLogin() {
@@ -824,42 +828,26 @@
 			});
 		}
 
-		function submitLogout() {
-			runLogout(function (ok) {
-				if (ok) {
-					setLoginState('', false);
-					showToast('Signed out');
-				}
-				else {
-					showToast('Sign out failed', true);
-				}
-			});
-		}
-
 		function setLoginState(userName, isAdmin) {
 			let stateEl = document.getElementById('login-state');
 			let loginForm = document.getElementById('login-form');
-			let logoutBtn = document.getElementById('logout-btn');
 			if (userName) {
 				let suffix = '';
 				if (isAdmin) { suffix = ' (admin)'; }
 				stateEl.textContent = 'Signed in as ' + userName + suffix;
 				stateEl.classList.add('signed-in');
 				loginForm.style.display = 'none';
-				logoutBtn.style.display = '';
 			}
 			else {
 				stateEl.textContent = 'Not signed in';
 				stateEl.classList.remove('signed-in');
 				loginForm.style.display = '';
-				logoutBtn.style.display = 'none';
 			}
 		}
 
 		function checkSession() {
 			let xhr = new XMLHttpRequest();
-			xhr.open('GET', '/pulse_v1/whoami');
-			xhr.withCredentials = true;
+			xhr.open('GET', '/pulse_v1/whoami?' + pulseAuth());
 			xhr.onload = function () {
 				let parsed = parseAuthEnvelope(xhr.responseText);
 				if (parsed && parsed.contents && parsed.contents.State === 'SignedIn') {
@@ -960,7 +948,7 @@
 		}
 
 		function runDelete(userName) {
-			let url = '/pulse_v1/deleteUser?user=' + encodeURIComponent(userName);
+			let url = '/pulse_v1/deleteUser?user=' + encodeURIComponent(userName) + '&' + pulseAuth();
 			postPulse(url, function (data) {
 				if (isOk(data)) { showToast('Deleted ' + userName); }
 				else { showToast('Delete failed: ' + (data.status || 'unknown error'), true); }
@@ -973,7 +961,8 @@
 			let url = '/pulse_v1/updateUser?name=' + encodeURIComponent(oldName)
 				+ '&newName=' + encodeURIComponent(newName)
 				+ '&displayName=' + encodeURIComponent(displayName)
-				+ '&isAdmin=' + (isAdmin ? 'true' : 'false');
+				+ '&isAdmin=' + (isAdmin ? 'true' : 'false')
+				+ '&' + pulseAuth();
 			postPulse(url, function (data) {
 				if (isOk(data)) { showToast('Saved ' + newName); }
 				else { showToast('Update failed: ' + (data.status || 'unknown error'), true); }
@@ -1020,7 +1009,8 @@
 
 			let url = '/pulse_v1/createUser?name=' + encodeURIComponent(name)
 				+ '&displayName=' + encodeURIComponent(displayName)
-				+ '&isAdmin=' + (isAdmin ? 'true' : 'false');
+				+ '&isAdmin=' + (isAdmin ? 'true' : 'false')
+				+ '&' + pulseAuth();
 			postPulse(url, function (data) {
 				if (isOk(data)) {
 					hideCreateForm();
@@ -1047,7 +1037,6 @@
 			});
 
 			document.getElementById('login-submit').addEventListener('click', submitLogin);
-			document.getElementById('logout-btn').addEventListener('click', submitLogout);
 			document.getElementById('login-username').addEventListener('keydown', function (event) {
 				if (event.key === 'Enter') { submitLogin(); }
 			});
@@ -1064,9 +1053,9 @@
 			request.onload = function () {
 				if (request.status !== 200) { return; }
 				let data = JSON.parse(request.responseText);
-				if (!data || !data.version) { return; }
+				if (!data || !data.contents || !data.contents.Version) { return; }
 				let tagEl = document.getElementById('pulse-version-tag');
-				if (tagEl) { tagEl.textContent = 'v' + data.version; }
+				if (tagEl) { tagEl.textContent = 'v' + data.contents.Version; }
 			};
 			request.send();
 		}

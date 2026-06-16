@@ -80,8 +80,8 @@
 		if (this.baseUrl.charAt(this.baseUrl.length - 1) !== '/') {
 			this.baseUrl = this.baseUrl + '/';
 		}
-		this.user = options.user || '';
 		this.userId = options.userId || '';
+		this.token = options.token || '';
 		this.client = options.client || 'PulseWeb';
 		this.version = options.version || '';
 		this.defaultParams = options.defaultParams || {};
@@ -99,8 +99,8 @@
 				merged[key] = this.defaultParams[key];
 			}
 		}
-		if (this.user) { merged.u = this.user; }
 		if (this.userId) { merged.uid = this.userId; }
+		if (this.token) { merged.token = this.token; }
 		if (this.client) { merged.c = this.client; }
 		if (this.version) { merged.v = this.version; }
 		if (params) {

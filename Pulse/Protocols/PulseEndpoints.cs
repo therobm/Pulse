@@ -1868,14 +1868,14 @@ namespace Pulse.Protocols
 
 		private IResult GetStats(HttpContext context)
 		{
-			string userName = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			List<TrackData> allTracks = m_musicManager.GetAllTracks();
 			List<AlbumData> allAlbums = m_musicManager.GetAllAlbums();
 			List<ArtistData> allArtists = m_musicManager.GetAllArtists();
-			List<PlaylistData> allPlaylists = m_musicManager.GetAllPlaylists(userName);
+			List<PlaylistData> allPlaylists = m_musicManager.GetAllPlaylists(userId);
 
-			PulseStats stats = Data.PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userName);
+			PulseStats stats = Data.PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userId);
 
 			return Respond(context, stats);
 		}

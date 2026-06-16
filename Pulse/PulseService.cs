@@ -50,6 +50,15 @@ namespace Pulse
 			return m_config;
 		}
 
+		/// <summary>
+		/// True when the token is a valid device token owned by the given user.
+		/// Used by the observe-only API token audit.
+		/// </summary>
+		public bool IsTokenAuthorized(string userId, string token)
+		{
+			return m_pulseData.IsTokenAuthorized(userId, token);
+		}
+
 		// Returns false until the initial music library scan has finished.
 		// HttpServer.HandleRequest uses this to short-circuit incoming requests
 		// with a loading page while the database is still being populated --
@@ -167,12 +176,6 @@ namespace Pulse
 
 			host.RegisterResultRoute("pulse/version", HandleVersion);
 
-			//web pages
-			host.RegisterRoute("web/pulse.html", HandlePulsePage);
-			host.RegisterRoute("web/stats.html", HandleStatsPage);
-			host.RegisterRoute("web/settings.html", HandleSettingsPage);
-
-
 			host.RegisterRoute("spotify/callback", HandleSpotifyCallback);
 			host.RegisterPrefixRoute("spotify/authorize", HandleSpotifyAuthorize);
 		}
@@ -234,15 +237,6 @@ namespace Pulse
 			}
 		}
 
-		[Obsolete("Legacy path only")]
-		public string GetIDFromUsername(string username)
-		{
-			User user = m_pulseData.LookupUserByName(username);
-			if (user == null)
-				return "";
-			return user.Id;
-		}
-
 		private void HandleSpotifyAuthorize(HttpContext context)
 		{
 			string userName = context.Request.Path.Value.Split('/').Last();
@@ -300,14 +294,14 @@ namespace Pulse
 
 		private IResult HandleStats(HttpContext context)
 		{
-			string userName = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			List<TrackData> allTracks = m_musicManager.GetAllTracks();
 			List<AlbumData> allAlbums = m_musicManager.GetAllAlbums();
 			List<ArtistData> allArtists = m_musicManager.GetAllArtists();
-			List<PlaylistData> allPlaylists = m_musicManager.GetAllPlaylists(userName);
+			List<PlaylistData> allPlaylists = m_musicManager.GetAllPlaylists(userId);
 
-			PulseStats stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userName);
+			PulseStats stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userId);
 			string json = System.Text.Json.JsonSerializer.Serialize(stats);
 			return Results.Content(json, "application/json");
 		}
@@ -315,96 +309,6 @@ namespace Pulse
 		private IResult HandleVersion(HttpContext context)
 		{
 			return Results.Json(new { version = GetServerVersion() });
-		}
-
-		/// <summary>
-		/// Returns true when the request carries a valid session. Otherwise issues
-		/// a 302 to the unauthenticated login wall and returns false. Page handlers
-		/// call this before serving any protected web HTML; the data API is not gated.
-		/// </summary>
-		private bool RequireWebSession(HttpContext context)
-		{
-			string userId;
-			bool valid = m_authEndpoints.GetSessionUserId(context, out userId);
-			if (valid)
-			{
-				return true;
-			}
-			context.Response.Redirect("/web/login.html");
-			return false;
-		}
-
-		private void HandlePulsePage(HttpContext context)
-		{
-			if (!RequireWebSession(context))
-			{
-				return;
-			}
-			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "pulse.html");
-			if (!File.Exists(htmlPath))
-			{
-				context.Response.StatusCode = 404;
-				byte[] notFound = System.Text.Encoding.UTF8.GetBytes("Pulse page not found");
-				context.Response.Body.Write(notFound, 0, notFound.Length);
-				return;
-			}
-			byte[] htmlBytes = File.ReadAllBytes(htmlPath);
-			context.Response.ContentType = "text/html";
-			context.Response.Body.Write(htmlBytes, 0, htmlBytes.Length);
-		}
-
-		private void HandleStatsPage(HttpContext context)
-		{
-			if (!QueryParameters.GetBool(context, "embed"))
-			{
-				string user = QueryParameters.GetString(context, "u");
-				string redirect = "/web/pulse.html?view=stats";
-				if (!string.IsNullOrEmpty(user))
-				{
-					redirect = redirect + "&u=" + System.Uri.EscapeDataString(user);
-				}
-				context.Response.Redirect(redirect);
-				return;
-			}
-			if (!RequireWebSession(context))
-			{
-				return;
-			}
-			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "stats.html");
-			if (!File.Exists(htmlPath))
-			{
-				context.Response.StatusCode = 404;
-				byte[] notFound = System.Text.Encoding.UTF8.GetBytes("Stats page not found");
-				context.Response.Body.Write(notFound, 0, notFound.Length);
-				return;
-			}
-			byte[] htmlBytes = File.ReadAllBytes(htmlPath);
-			context.Response.ContentType = "text/html";
-			context.Response.Body.Write(htmlBytes, 0, htmlBytes.Length);
-		}
-
-		private void HandleSettingsPage(HttpContext context)
-		{
-			if (!QueryParameters.GetBool(context, "embed"))
-			{
-				context.Response.Redirect("/web/pulse.html?view=settings");
-				return;
-			}
-			if (!RequireWebSession(context))
-			{
-				return;
-			}
-			string htmlPath = Path.Combine(AppContext.BaseDirectory, "Content", "Web", "settings.html");
-			if (!File.Exists(htmlPath))
-			{
-				context.Response.StatusCode = 404;
-				byte[] notFound = System.Text.Encoding.UTF8.GetBytes("Settings page not found");
-				context.Response.Body.Write(notFound, 0, notFound.Length);
-				return;
-			}
-			byte[] htmlBytes = File.ReadAllBytes(htmlPath);
-			context.Response.ContentType = "text/html";
-			context.Response.Body.Write(htmlBytes, 0, htmlBytes.Length);
 		}
 
 		private void SyncSpotify()

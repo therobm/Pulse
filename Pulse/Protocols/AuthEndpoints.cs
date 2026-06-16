@@ -19,10 +19,7 @@ namespace Pulse.Protocols
 
 	public class AuthEndpoints
 	{
-	
-		public const string CookieName = "pulse_session";
 
-	
 		private const int MinPasswordLength = 0;
 
 
@@ -30,7 +27,6 @@ namespace Pulse.Protocols
 		private static object s_dummyHashLock = new object();
 
 		private PulseData m_pulseData;
-		private SessionStore m_sessions = new SessionStore();
 		private LoginRateLimiter m_rateLimiter = new LoginRateLimiter();
 		IPulseRouteHost m_host;
 
@@ -38,8 +34,6 @@ namespace Pulse.Protocols
 		/// Intentionally changed from /pulse to add versioning support
 		/// </summary>
 		string m_apiSpace = "pulse_v1/";
-
-		bool m_bRequireHTTPS = false;
 
 
 		public AuthEndpoints(PulseData pulseData)
@@ -62,7 +56,6 @@ namespace Pulse.Protocols
 			RegisterRoute("updateUser", UpdateUser);
 			RegisterRoute("deleteUser", DeleteUser);
 
-			RegisterRoute("createToken", CreateToken);
 		}
 
 		private void RegisterRoute(string route, Func<HttpContext, IResult> handler)
@@ -70,15 +63,20 @@ namespace Pulse.Protocols
 			m_host.RegisterResultRoute(m_apiSpace + route, handler);
 		}
 
-		public bool GetSessionUserId(HttpContext context, out string userId)
+		// The caller's identity is the uid it claims, proven by a device token
+		// bound to that uid. This is the single identity model -- web and device
+		// clients alike send uid + token; there is no separate browser session.
+		private bool GetAuthenticatedUserId(HttpContext context, out string userId)
 		{
 			userId = "";
-			string sessionId = context.Request.Cookies[CookieName];
-			if (string.IsNullOrEmpty(sessionId))
+			string claimedUserId = QueryParameters.GetString(context, "uid", "");
+			string token = QueryParameters.GetString(context, "token", "");
+			if (!m_pulseData.IsTokenAuthorized(claimedUserId, token))
 			{
 				return false;
 			}
-			return m_sessions.GetUserIdForSession(sessionId, out userId);
+			userId = claimedUserId;
+			return true;
 		}
 
 		private IResult Login(HttpContext context)
@@ -145,9 +143,6 @@ namespace Pulse.Protocols
 
 			m_rateLimiter.RecordSuccess(clientIp);
 
-			string sessionId = m_sessions.CreateSession(user.Id, request.RememberMe);
-			AppendSessionCookie(context, sessionId, request.RememberMe);
-
 			Log.Info("Auth: login for '" + request.Username + "'");
 
 			return RespondLogin(eAuthOutcome.Ok, user);
@@ -161,7 +156,7 @@ namespace Pulse.Protocols
 			}
 
 			string userId;
-			bool valid = GetSessionUserId(context, out userId);
+			bool valid = GetAuthenticatedUserId(context, out userId);
 			if (!valid)
 			{
 				return RespondAuthState(eAuthState.NotSignedIn, null);
@@ -216,9 +211,6 @@ namespace Pulse.Protocols
 			string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password, 12);
 			m_pulseData.SetUserPassword(currentUser.Id, passwordHash);
 
-			string sessionId = m_sessions.CreateSession(currentUser.Id, false);
-			AppendSessionCookie(context, sessionId, false);
-
 			Log.Info("Auth: admin account set up for '" + currentUser.Name + "'");
 
 			return RespondLogin(eAuthOutcome.Ok, currentUser);
@@ -226,21 +218,6 @@ namespace Pulse.Protocols
 
 		private IResult Logout(HttpContext context)
 		{
-			string sessionId = context.Request.Cookies[CookieName];
-			if (!string.IsNullOrEmpty(sessionId))
-			{
-				m_sessions.Remove(sessionId);
-			}
-
-			CookieOptions clearOptions = new CookieOptions();
-			clearOptions.HttpOnly = true;
-			if (m_bRequireHTTPS)
-				clearOptions.Secure = true;
-			clearOptions.SameSite = SameSiteMode.Strict;
-			clearOptions.Path = "/";
-			clearOptions.MaxAge = TimeSpan.Zero;
-			context.Response.Cookies.Append(CookieName, "", clearOptions);
-
 			return Respond("ok", HttpStatusCode.OK);
 		}
 
@@ -276,21 +253,21 @@ namespace Pulse.Protocols
 			bool systemInitialized = m_pulseData.AnyUserHasPassword();
 			if (systemInitialized)
 			{
-				string sessionUserId;
-				bool sessionValid = GetSessionUserId(context, out sessionUserId);
-				if (!sessionValid)
+				string callerUserId;
+				bool callerValid = GetAuthenticatedUserId(context, out callerUserId);
+				if (!callerValid)
 				{
 					return RespondSetPassword(eAuthOutcome.NotSignedIn);
 				}
 
-				User sessionUser = m_pulseData.GetUser(sessionUserId);
-				if (sessionUser == null)
+				User callerUser = m_pulseData.GetUser(callerUserId);
+				if (callerUser == null)
 				{
 					return RespondSetPassword(eAuthOutcome.NotSignedIn);
 				}
 
-				bool isSelf = targetUser.Id == sessionUser.Id;
-				if (!sessionUser.IsAdmin && !isSelf)
+				bool isSelf = targetUser.Id == callerUser.Id;
+				if (!callerUser.IsAdmin && !isSelf)
 				{
 					return RespondSetPassword(eAuthOutcome.Forbidden);
 				}
@@ -373,56 +350,6 @@ namespace Pulse.Protocols
 		}
 
 	
-		private IResult CreateToken(HttpContext context)
-		{
-			string clientIp = GetClientIp(context);
-			if (m_rateLimiter.IsLockedOut(clientIp))
-			{
-				context.Response.Headers["Retry-After"] = "300";
-				return RespondCreateToken(eAuthOutcome.RateLimited, null);
-			}
-
-			string body = ReadRequestBody(context);
-
-			PulseCreateTokenRequest request;
-			try
-			{
-				request = PulseWire.Parse<PulseCreateTokenRequest>(body);
-			}
-			catch (Exception)
-			{
-				request = null;
-			}
-
-			if (request == null || string.IsNullOrEmpty(request.Id))
-			{
-				return RespondCreateToken(eAuthOutcome.Failed, null);
-			}
-
-			string token = m_pulseData.CreateToken(request.Id, request.Label);
-			if (string.IsNullOrEmpty(token))
-			{
-				m_rateLimiter.RecordFailure(clientIp);
-				return RespondCreateToken(eAuthOutcome.UnknownUser, null);
-			}
-
-			m_rateLimiter.RecordSuccess(clientIp);
-
-			Log.Info("Auth: created token for '" + request.Id + "' label='" + request.Label + "'");
-
-			User user = m_pulseData.GetUser(request.Id);
-
-			PulseToken pulseToken = new PulseToken();
-			pulseToken.Token = token;
-			pulseToken.Id = user.Id;
-			pulseToken.Username = user.Name;
-			pulseToken.Label = request.Label;
-			pulseToken.CreatedAt = DateTime.UtcNow.ToString("o");
-
-			return RespondCreateToken(eAuthOutcome.Ok, pulseToken);
-		}
-
-		
 		private static string GetClientIp(HttpContext context)
 		{
 			if (context.Connection.RemoteIpAddress != null)
@@ -453,21 +380,6 @@ namespace Pulse.Protocols
 		}
 
 	
-		private void AppendSessionCookie(HttpContext context, string sessionId, bool rememberMe)
-		{
-			CookieOptions cookieOptions = new CookieOptions();
-			cookieOptions.HttpOnly = true;
-			if (m_bRequireHTTPS)
-				cookieOptions.Secure = true;
-			cookieOptions.SameSite = SameSiteMode.Strict;
-			cookieOptions.Path = "/";
-			if (rememberMe)
-			{
-				cookieOptions.MaxAge = TimeSpan.FromDays(30);
-			}
-			context.Response.Cookies.Append(CookieName, sessionId, cookieOptions);
-		}
-
 		private string ReadRequestBody(HttpContext context)
 		{
 			using (StreamReader reader = new StreamReader(context.Request.Body))
@@ -515,6 +427,7 @@ namespace Pulse.Protocols
 				result.Id = user.Id;
 				result.Username = user.Name;
 				result.IsAdmin = user.IsAdmin;
+				result.Token = m_pulseData.CreateToken(user.Id);
 			}
 			return Respond(result);
 		}

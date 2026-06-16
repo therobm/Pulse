@@ -202,6 +202,7 @@ namespace Thump.Views
 			if (serverChanged)
 			{
 				ThumpSettings.SetUserID("");
+				ThumpSettings.SetToken("");
 				ThumpCache cache = MainView.Self.GetCache();
 				cache.ExecuteAsync(() =>
 				{
@@ -236,6 +237,7 @@ namespace Thump.Views
 						if (!string.IsNullOrEmpty(loginResult.Id))
 						{
 							ThumpSettings.SetUserID(loginResult.Id);
+							ThumpSettings.SetToken(loginResult.Token);
 							ok = true;
 						}
 						else
