@@ -291,14 +291,14 @@ namespace Pulse
 
 		private IResult HandleStats(HttpContext context)
 		{
-			string userName = QueryParameters.GetString(context, "u");
+			string userId = QueryParameters.GetUserId(context);
 
 			List<TrackData> allTracks = m_musicManager.GetAllTracks();
 			List<AlbumData> allAlbums = m_musicManager.GetAllAlbums();
 			List<ArtistData> allArtists = m_musicManager.GetAllArtists();
-			List<PlaylistData> allPlaylists = m_musicManager.GetAllPlaylists(userName);
+			List<PlaylistData> allPlaylists = m_musicManager.GetAllPlaylists(userId);
 
-			PulseStats stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userName);
+			PulseStats stats = PulseStatsBuilder.Build(allTracks, allAlbums, allArtists, allPlaylists, userId);
 			string json = System.Text.Json.JsonSerializer.Serialize(stats);
 			return Results.Content(json, "application/json");
 		}
@@ -348,11 +348,11 @@ namespace Pulse
 		{
 			if (!QueryParameters.GetBool(context, "embed"))
 			{
-				string user = QueryParameters.GetString(context, "u");
+				string userId = QueryParameters.GetString(context, "uid");
 				string redirect = "/web/pulse.html?view=stats";
-				if (!string.IsNullOrEmpty(user))
+				if (!string.IsNullOrEmpty(userId))
 				{
-					redirect = redirect + "&u=" + System.Uri.EscapeDataString(user);
+					redirect = redirect + "&uid=" + System.Uri.EscapeDataString(userId);
 				}
 				context.Response.Redirect(redirect);
 				return;
