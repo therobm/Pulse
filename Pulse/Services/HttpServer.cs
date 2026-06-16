@@ -153,27 +153,7 @@ namespace Assistant.Services
 			policy.AllowAnyHeader();
 		}
 
-		/// <summary>
-		/// Observe-only: logs a pulse_v1 data request whose claimed uid is not
-		/// backed by a valid token. Serves the request regardless -- this is the
-		/// monitoring step before token auth becomes a hard requirement.
-		/// </summary>
-		private void AuditApiToken(HttpContext context, string path)
-		{
-			string auditUid = QueryParameters.GetString(context, "uid", "");
-			if (string.IsNullOrEmpty(auditUid))
-			{
-				return;
-			}
-			string auditToken = QueryParameters.GetString(context, "token", "");
-			bool authorized = PulseService.Get().IsTokenAuthorized(auditUid, auditToken);
-			if (authorized)
-			{
-				return;
-			}
-			bool tokenPresent = !string.IsNullOrEmpty(auditToken);
-			Log.Warning("API token audit: unauthorized request to '" + path + "' uid='" + auditUid + "' tokenPresent=" + tokenPresent.ToString());
-		}
+		
 
 		private Task HandleRequest(HttpContext context, RequestDelegate next)
 		{
@@ -209,14 +189,6 @@ namespace Assistant.Services
 						context.Response.Body.Write(rejectBytes, 0, rejectBytes.Length);
 						return Task.CompletedTask;
 					}
-				}
-
-				// API token audit (observe-only): log pulse_v1 data requests whose
-				// claimed uid is not backed by a valid token, but serve them anyway
-				// -- a monitoring step before token auth is enforced.
-				if (path.StartsWith("pulse_v1/") && PulseService.GetConfig().AuditApiTokens && !s_identityExemptRoutes.Contains(path))
-				{
-					AuditApiToken(context, path);
 				}
 
 				Action<HttpContext> exactHandler = null;
