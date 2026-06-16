@@ -847,6 +847,11 @@ namespace Pulse.Data
 			return userData;
 		}
 
+		public bool IsTokenAuthorized(string userId, string token)
+		{
+			return m_userData.IsTokenAuthorized(userId, token);
+		}
+
 		/// <summary>
 		/// 
 		/// </summary>

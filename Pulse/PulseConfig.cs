@@ -42,6 +42,12 @@ namespace Pulse
 		// legacy-tolerant behaviour. Flip on at boot once every client sends uid=.
 		public bool EnforceModernApi = false;
 
+		// Observe-only token audit. When true, the server logs any pulse_v1 data
+		// request whose claimed uid is not backed by a valid token, but still
+		// serves it. A monitoring step before token auth is enforced -- to find
+		// clients that aren't sending a valid token yet.
+		public bool AuditApiTokens = false;
+
 
 		public static string GetConfigPath()
 		{

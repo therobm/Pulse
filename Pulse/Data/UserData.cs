@@ -281,6 +281,31 @@ namespace Pulse.Data
 		}
 
 		/// <summary>
+		/// True when the token is held by the given user. This binding is what the
+		/// audit cares about -- a token authorises only the uid that owns it.
+		/// </summary>
+		public bool IsTokenAuthorized(string userId, string token)
+		{
+			if (string.IsNullOrEmpty(token))
+			{
+				return false;
+			}
+			User user = GetUser(userId);
+			if (user == null)
+			{
+				return false;
+			}
+			for (int index = 0; index < user.Tokens.Count; index++)
+			{
+				if (string.Equals(user.Tokens[index].Token, token, StringComparison.Ordinal))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
+		/// <summary>
 		/// Stamps the last-used timestamp on the matching token (whichever user
 		/// holds it) and persists that user. No-op when the token is unknown.
 		/// </summary>

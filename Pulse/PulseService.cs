@@ -50,6 +50,15 @@ namespace Pulse
 			return m_config;
 		}
 
+		/// <summary>
+		/// True when the token is a valid device token owned by the given user.
+		/// Used by the observe-only API token audit.
+		/// </summary>
+		public bool IsTokenAuthorized(string userId, string token)
+		{
+			return m_pulseData.IsTokenAuthorized(userId, token);
+		}
+
 		// Returns false until the initial music library scan has finished.
 		// HttpServer.HandleRequest uses this to short-circuit incoming requests
 		// with a loading page while the database is still being populated --
