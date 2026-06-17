@@ -304,7 +304,8 @@ namespace Pulse.Lidarr
 			}
 			catch (Exception ex)
 			{
-				Log.Error("LidarrSync: GET " + endpoint + " exception - " + ex.Message);
+				//Low priority here, not an emergency
+				Log.Warning(ex.Message);
 				return null;
 			}
 		}
@@ -332,7 +333,9 @@ namespace Pulse.Lidarr
 			}
 			catch (Exception ex)
 			{
-				Log.Error("LidarrSync: POST " + endpoint + " exception - " + ex.Message);
+
+				//Low priority here, not an emergency
+				Log.Warning(ex.Message);
 				return null;
 			}
 		}

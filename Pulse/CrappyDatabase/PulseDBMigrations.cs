@@ -81,7 +81,7 @@ namespace Pulse.Database
 			catch (Exception ex)
 			{
 				transaction.Rollback();
-				Log.Error("Migration v" + step.Version + " failed: " + ex.Message);
+				Log.Exception(ex);
 				throw;
 			}
 		}

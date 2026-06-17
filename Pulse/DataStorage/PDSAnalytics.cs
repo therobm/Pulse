@@ -54,7 +54,6 @@ namespace Pulse.DataStorage
 			{
 				case eAnalyticType.Track:
 					{
-						//todoo this should support all music object types
 						TrackData track = pulseData.GetTrack(ItemID);
 						if (track == null)
 						{

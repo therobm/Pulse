@@ -8,7 +8,8 @@ public class Log
 	{
 		INFO,
 		WARN,
-		ERROR
+		ERROR,
+		EXCEPTION
 	}
 	static readonly object s_consoleLock = new object();
 	static StreamWriter s_fileWriter;
@@ -105,5 +106,10 @@ public class Log
 	public static void Error(string message, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
 	{
 		LogInternal(message, LogType.ERROR, filePath, memberName, ConsoleColor.Red);
+	}
+	public static void Exception( Exception ex, [CallerFilePath] string filePath = "", [CallerMemberName] string memberName = "")
+	{
+		string message = ex.Message + Environment.NewLine + ex.StackTrace;
+		LogInternal(message, LogType.EXCEPTION, filePath, memberName, ConsoleColor.Red);
 	}
 }

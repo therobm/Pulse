@@ -286,7 +286,7 @@ namespace Pulse.Podcasts
 			}
 			catch (Exception ex)
 			{
-				Log.Error("Initial podcast download failed for " + seriesId + ": " + ex.Message);
+				Log.Exception(ex);
 			}
 		}
 
@@ -627,7 +627,7 @@ namespace Pulse.Podcasts
 			}
 			catch (Exception ex)
 			{
-				Log.Error("Podcast poll cycle failed: " + ex.Message);
+				Log.Exception(ex);
 			}
 		}
 
@@ -788,7 +788,7 @@ namespace Pulse.Podcasts
 			}
 			catch (Exception ex)
 			{
-				Log.Error("Podcast search error for query '" + query + "': " + ex.Message);
+				Log.Exception(ex);
 			}
 			return results;
 		}
@@ -876,7 +876,7 @@ namespace Pulse.Podcasts
 			}
 			catch (Exception ex)
 			{
-				Log.Error("Podcast settings apply failed for " + podcastId + ": " + ex.Message);
+				Log.Exception(ex);
 			}
 		}
 

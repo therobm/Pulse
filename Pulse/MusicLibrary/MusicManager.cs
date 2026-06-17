@@ -595,9 +595,10 @@ namespace Pulse.MusicLibrary
 						}
 					}
 				}
-				catch (Exception exception)
+				catch (Exception ex)
 				{
-					Log.Error("Scan failed: " + filePath + " - " + exception.Message);
+					//Low priority here, a bad mp3 is not an emergency
+					Log.Warning(filePath + ": " + ex.Message);
 				}
 			});
 
@@ -1163,7 +1164,7 @@ namespace Pulse.MusicLibrary
 				}
 				catch (Exception ex)
 				{
-					Log.Error("TryGetAlbumCoverBytes: failed to read embedded art - " + ex.Message);
+					Log.Exception(ex);
 				}
 			}
 

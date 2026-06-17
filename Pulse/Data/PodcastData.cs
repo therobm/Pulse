@@ -127,7 +127,7 @@ namespace Pulse.Data
 			}
 			catch (Exception ex)
 			{
-				Log.Error("PodcastData: shutdown flush failed - " + ex.Message);
+				Log.Exception(ex);
 			}
 		}
 
