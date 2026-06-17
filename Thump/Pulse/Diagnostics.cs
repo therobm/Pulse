@@ -8,18 +8,151 @@ using System.Diagnostics;
 using System.Text;
 using Thump.Data;
 using System.IO;
+using System.Threading.Tasks;
+using Microsoft.Maui.Storage;
 
 namespace Thump.Pulse
 {
 	public class Diagnostics
 	{
+		private const int s_maxQueuedEvents = 200;
+		private const string s_queueFileName = "diagnostics_queue.json";
+
 		private MediaClient m_client;
 		private string m_sessionId;
+		private string m_queuePath = "";
+		private readonly object m_queueLock = new object();
+		private bool m_draining = false;
 
 		public Diagnostics(MediaClient client, string sessionId)
 		{
 			m_client = client;
 			m_sessionId = sessionId;
+			m_queuePath = Path.Combine(FileSystem.AppDataDirectory, s_queueFileName);
+			Connectivity.ConnectivityChanged += OnConnectivityChanged;
+		}
+
+		private void OnConnectivityChanged(object sender, ConnectivityChangedEventArgs args)
+		{
+			if (args.NetworkAccess == NetworkAccess.Internet)
+			{
+				StartDrain();
+			}
+		}
+
+		private void StartDrain()
+		{
+			Task.Run(Drain);
+		}
+
+		/// <summary>
+		/// Upload queued events oldest-first, stopping at the first failure so a
+		/// dead network leaves the rest on disk for the next attempt. Removes only
+		/// the prefix that actually sent, so events appended mid-drain survive.
+		/// </summary>
+		private void Drain()
+		{
+			lock (m_queueLock)
+			{
+				if (m_draining)
+				{
+					return;
+				}
+				m_draining = true;
+			}
+			try
+			{
+				List<PulseDiagnosticsEvent> snapshot;
+				lock (m_queueLock)
+				{
+					snapshot = LoadQueue();
+				}
+				int sentCount = 0;
+				for (int index = 0; index < snapshot.Count; index++)
+				{
+					bool sent = m_client.PostDiagnostics(snapshot[index]);
+					if (!sent)
+					{
+						break;
+					}
+					sentCount++;
+				}
+				if (sentCount > 0)
+				{
+					lock (m_queueLock)
+					{
+						List<PulseDiagnosticsEvent> queue = LoadQueue();
+						int removeCount = sentCount;
+						if (removeCount > queue.Count)
+						{
+							removeCount = queue.Count;
+						}
+						queue.RemoveRange(0, removeCount);
+						SaveQueue(queue);
+					}
+				}
+			}
+			finally
+			{
+				lock (m_queueLock)
+				{
+					m_draining = false;
+				}
+			}
+		}
+
+		private void Enqueue(PulseDiagnosticsEvent diagEvent)
+		{
+			lock (m_queueLock)
+			{
+				List<PulseDiagnosticsEvent> queue = LoadQueue();
+				queue.Add(diagEvent);
+				if (queue.Count > s_maxQueuedEvents)
+				{
+					queue.RemoveRange(0, queue.Count - s_maxQueuedEvents);
+				}
+				SaveQueue(queue);
+			}
+		}
+
+		private List<PulseDiagnosticsEvent> LoadQueue()
+		{
+			if (!File.Exists(m_queuePath))
+			{
+				return new List<PulseDiagnosticsEvent>();
+			}
+			try
+			{
+				string data = File.ReadAllText(m_queuePath);
+				if (string.IsNullOrEmpty(data))
+				{
+					return new List<PulseDiagnosticsEvent>();
+				}
+				List<PulseDiagnosticsEvent> list = PulseWire.ParseList<PulseDiagnosticsEvent>(data);
+				if (list == null)
+				{
+					return new List<PulseDiagnosticsEvent>();
+				}
+				return list;
+			}
+			catch (Exception ex)
+			{
+				Debug.WriteLine("[diagnostics] queue load failed: " + ex.Message);
+				return new List<PulseDiagnosticsEvent>();
+			}
+		}
+
+		private void SaveQueue(List<PulseDiagnosticsEvent> queue)
+		{
+			try
+			{
+				string data = PulseWire.Serialize(queue);
+				File.WriteAllText(m_queuePath, data);
+			}
+			catch (Exception ex)
+			{
+				Debug.WriteLine("[diagnostics] queue save failed: " + ex.Message);
+			}
 		}
 
 		public void ReportErrorEvent(string errorMessage, string notes, string filePath, string memberName, List<PulseAnalyticsEvent> eventHistory)
@@ -163,7 +296,8 @@ namespace Thump.Pulse
 					diagEvent.NetworkType = "unknown";
 				}
 
-				m_client.PostDiagnostics(diagEvent);
+				Enqueue(diagEvent);
+				StartDrain();
 			}
 			catch (Exception ex)
 			{

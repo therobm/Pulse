@@ -1065,7 +1065,7 @@ namespace Thump.Pulse
 
 					string url = BuildPulseUrl("reportAnalytics", null);
 					string json = PulseWire.Serialize(analytics);
-					HttpPostJson(url, json);
+					HttpPostJson(url, json, Http.s_defaultTimeout, false);
 				}
 				catch (Exception ex)
 				{
@@ -1096,7 +1096,7 @@ namespace Thump.Pulse
 					string url = BuildPulseUrl("ingestAnalytics", null);
 					string json = PulseWire.Serialize(batch);
 					// logPerf=false: analytics POSTs must not spam the perf log.
-					HttpPostJson(url, json);
+					HttpPostJson(url, json, Http.s_defaultTimeout, false);
 				}
 				catch (Exception ex)
 				{
@@ -1113,25 +1113,24 @@ namespace Thump.Pulse
 		/// route. Swallows its own failures: the diagnostics path must never feed
 		/// errors back into Log.* or it loops.
 		/// </summary>
-		public override void PostDiagnostics(PulseDiagnosticsEvent diagnosticsEvent)
+		public override bool PostDiagnostics(PulseDiagnosticsEvent diagnosticsEvent)
 		{
 			if (diagnosticsEvent == null)
 			{
-				return;
+				return false;
 			}
-			Task.Run(() =>
+			try
 			{
-				try
-				{
-					string url = BuildPulseUrl("ingestDiagnostics", null);
-					string json = PulseWire.Serialize(diagnosticsEvent);
-					HttpPostJson(url, json);
-				}
-				catch (Exception ex)
-				{
-					System.Diagnostics.Debug.WriteLine("[diagnostics] PostDiagnostics failed: " + ex.Message);
-				}
-			});
+				string url = BuildPulseUrl("ingestDiagnostics", null);
+				string json = PulseWire.Serialize(diagnosticsEvent);
+				string result = HttpPostJson(url, json, Http.s_defaultTimeout, false);
+				return result != null;
+			}
+			catch (Exception ex)
+			{
+				System.Diagnostics.Debug.WriteLine("[diagnostics] PostDiagnostics failed: " + ex.Message);
+				return false;
+			}
 		}
 
 		// The recentlyPlayed feed is heterogeneous: each element carries its own
