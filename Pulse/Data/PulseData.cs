@@ -659,7 +659,7 @@ namespace Pulse.Data
 			}
 			catch (Exception ex)
 			{
-				Log.Error("PulseData: shutdown flush failed - " + ex.Message);
+				Log.Exception(ex);
 			}
 		}
 

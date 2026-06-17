@@ -115,7 +115,7 @@ namespace Pulse.Data
 				IEnumerable<AnaliticUserItem> recordItems = GetContainer(kvp.Value, type);
 				foreach (AnaliticUserItem ritem in recordItems) 
 				{
-					if (itemIds.Contains(ritem.ItemID))
+					if (ritem != null && itemIds.Contains(ritem.ItemID))
 						items.Add(ritem);
 				}
 			}
@@ -127,8 +127,9 @@ namespace Pulse.Data
 
 			foreach (KeyValuePair<string, AnalyticRecord> kvp in m_analytics)
 			{
-				if (types.Count == 0)
+				if (types == null || types.Count == 0)
 				{
+					types = new List<eAnalyticType>();
 					//return everything
 					types.Add(eAnalyticType.Track);
 					types.Add(eAnalyticType.Artist);

@@ -337,7 +337,7 @@ namespace Pulse
 			}
 			catch (Exception ex)
 			{
-				Log.Error("Pulse: Spotify startup failed - " + ex.Message + "\n" + ex.StackTrace);
+				Log.Exception(ex);
 			}
 		}
 		private SpotifySync GetOrCreateSpotifySync(string userName)
@@ -376,9 +376,22 @@ namespace Pulse
 			{
 				items = m_analyticsData.GetUserItems(userId, types);
 			}
+			if (items == null)
+			{
+				items = m_analyticsData.GetRankedItems(types);
+				
+			}
+			if (items == null)
+			{
+				Log.Error("No analytics present");
+				return returnList;
+			}
 
 			for (int i = 0; i < items.Count;i++)
 			{
+				if (items[i] == null)
+					continue;
+
 				string itemId = items[i].ItemID;
 				float score = items[i].GetScore(m_pulseData, m_analyticsData);
 
@@ -387,20 +400,24 @@ namespace Pulse
 				{
 					case eAnalyticType.Track:
 						TrackData track = m_pulseData.GetTrack(itemId);
-						musicItem = track.BuildPulse();
+						if (track != null)
+							musicItem = track.BuildPulse();
 						break;
 					case eAnalyticType.Album:
 						AlbumData album = m_pulseData.GetAlbum(itemId);
-						musicItem = album.BuildPulse();
+						if (album != null)
+							musicItem = album.BuildPulse();
 						break;
 					case eAnalyticType.Artist:
 						ArtistData artist = m_pulseData.GetArtist(itemId);
-						musicItem = artist.BuildPulse();
+						if (artist != null)
+							musicItem = artist.BuildPulse();
 
 						break;
 					case eAnalyticType.Playlist:
 						PlaylistData playlist = m_pulseData.GetPlaylist(itemId);
-						musicItem = playlist.BuildPulsePlaylist();
+						if (playlist != null)
+							musicItem = playlist.BuildPulsePlaylist();
 						break;
 				}
 				if (musicItem != null)

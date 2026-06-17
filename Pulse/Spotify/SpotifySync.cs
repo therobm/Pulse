@@ -149,7 +149,7 @@ namespace Pulse.Spotify
 				}
 				catch (Exception ex)
 				{
-					Log.Error("Spotify: Sync error - " + ex.Message + "\n" + ex.StackTrace);
+					Log.Exception(ex);
 				}
 
 				for (int waited = 0; waited < m_syncIntervalHours * 60 * 60 && m_running; waited++)
@@ -421,7 +421,7 @@ namespace Pulse.Spotify
 			}
 			catch (Exception ex)
 			{
-				Log.Error("Spotify: Failed to load credentials - " + ex.Message);
+				Log.Exception(ex);
 			}
 		}
 

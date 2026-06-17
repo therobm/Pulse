@@ -351,7 +351,7 @@ namespace Pulse.Database
 					catch (Exception ex)
 					{
 						transaction.Rollback();
-						Log.Error("Save failed, rolled back: " + ex.Message);
+						Log.Exception(ex);
 						throw;
 					}
 				}
@@ -1122,7 +1122,7 @@ namespace Pulse.Database
 				catch (Exception ex)
 				{
 					transaction.Rollback();
-					Log.Error("RenameUserActivityRows '" + oldName + "' -> '" + newName + "' failed: " + ex.Message);
+					Log.Exception(ex);
 					throw;
 				}
 			}
@@ -1182,7 +1182,7 @@ namespace Pulse.Database
 				catch (Exception ex)
 				{
 					transaction.Rollback();
-					Log.Error("DeleteUser failed for '" + userName + "', rolled back: " + ex.Message);
+					Log.Exception(ex);
 					throw;
 				}
 			}

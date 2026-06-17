@@ -71,7 +71,9 @@ namespace Pulse.Series
 			}
 			catch (Exception ex)
 			{
-				Log.Error("Audiobook scan thread failed: " + ex.Message);
+				//Low priority here, a bad mp3 is not an emergency
+				Log.Warning(ex.Message);
+				//Log.Exception(ex);
 			}
 		}
 

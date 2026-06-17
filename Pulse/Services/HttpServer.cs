@@ -240,7 +240,7 @@ namespace Assistant.Services
 			}
 			catch (Exception ex)
 			{
-				Log.Error("Request failed: " + context.Request.Path + " - " + ex.Message + "\n" + ex.StackTrace);
+				Log.Exception(ex);
 				context.Response.StatusCode = 500;
 				return Task.CompletedTask;
 			}
