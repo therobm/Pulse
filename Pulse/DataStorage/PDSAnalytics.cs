@@ -1,4 +1,5 @@
 ﻿
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Pulse.Data;
 using System;
 using System.Collections.Generic;
@@ -55,6 +56,11 @@ namespace Pulse.DataStorage
 					{
 						//todoo this should support all music object types
 						TrackData track = pulseData.GetTrack(ItemID);
+						if (track == null)
+						{
+							Log.Error("Unknown track: " + ItemID);
+							return 0;
+						}
 						float trackDuration = track.DurationSeconds;
 
 						double maxPlayTime = PlayCount * trackDuration;
@@ -64,6 +70,11 @@ namespace Pulse.DataStorage
 					}
 				case eAnalyticType.Album:
 					AlbumData album = pulseData.GetAlbum(ItemID);
+					if (album == null)
+					{
+						Log.Error("Unknown album: " + ItemID);
+						return 0;
+					}
 					List<string> trackIds = new List<string>();
 					for (int i = 0; i < album.Tracks.Count; i++)
 					{
@@ -82,6 +93,11 @@ namespace Pulse.DataStorage
 					break;
 				case eAnalyticType.Artist:
 					ArtistData artist = pulseData.GetArtist(ItemID);
+					if (artist == null)
+					{
+						Log.Error("Unknown artist: " + ItemID);
+						return 0;
+					}
 					List<string> artistTrackIds = new List<string>();
 					for (int i = 0; i < artist.Albums.Count; i++)
 					{
@@ -104,6 +120,11 @@ namespace Pulse.DataStorage
 					break;
 				case eAnalyticType.Playlist:
 					PlaylistData playlist = pulseData.GetPlaylist(ItemID);
+					if (playlist == null)
+					{
+						Log.Error("Unknown playlist: " + ItemID);
+						return 0;
+					}
 					List<AnaliticUserItem> playlistTracks = analyticsData.GetRankedItems(playlist.TrackIds, eAnalyticType.Track);
 					score = 0;
 					if (playlistTracks.Count > 0)
