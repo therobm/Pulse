@@ -33,9 +33,9 @@
 		<!-- App Identifier -->
 		<ApplicationId>com.therobm.thump</ApplicationId>
 
-		<!-- Versions (CI overrides via -p:ApplicationDisplayVersion / -p:ApplicationVersion) -->
-		<ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
-		<ApplicationVersion>1</ApplicationVersion>
+		<!-- Local-build placeholder; CI overrides via -p:ApplicationDisplayVersion / -p:ApplicationVersion -->
+		<ApplicationDisplayVersion>0.0.0-local</ApplicationDisplayVersion>
+		<ApplicationVersion>0</ApplicationVersion>
 
 		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
 		<WindowsPackageType>None</WindowsPackageType>
