@@ -393,6 +393,11 @@ namespace Pulse
 					continue;
 
 				string itemId = items[i].ItemID;
+
+				//skip audiobooks they are not ranked
+				if (string.IsNullOrEmpty(itemId) || itemId.StartsWith("ch"))
+					continue;
+
 				float score = items[i].GetScore(m_pulseData, m_analyticsData);
 
 				PulseMusicObject musicItem = null;
