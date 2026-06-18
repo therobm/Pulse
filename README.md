@@ -30,24 +30,24 @@ See [Pulse/README.md](Pulse/README.md) for configuration and build instructions.
   <img src="Docs/podcasts.png" alt="Pulse podcast management" width="100%">
 </p>
 
-## Thump — the Android client
+## Pulse — the Android client
 
 A native Android app built with .NET MAUI. Streams from your Pulse server, caches tracks for offline playback, and works with Android Auto. Music, podcasts, and audiobooks.
 
 <p align="center">
-  <img src="Docs/ThumpHome.png" alt="Thump home screen" width="32%">
-  <img src="Docs/ThumpPlaylist.png" alt="Thump playlist" width="32%">
-  <img src="Docs/ThumpAudiobook.png" alt="Thump audiobook" width="32%">
+  <img src="Docs/PulseHome.png" alt="Pulse home screen" width="32%">
+  <img src="Docs/PulsePlaylist.png" alt="Pulse playlist" width="32%">
+  <img src="Docs/PulseAudiobook.png" alt="Pulse audiobook" width="32%">
 </p>
 <p align="center">
-  <img src="Docs/androidauto.png" alt="Thump podcast player" width="100%">
+  <img src="Docs/androidauto.png" alt="Pulse podcast player" width="100%">
 </p>
 <p align="center">
-  <img src="Docs/ThumpPodcast.png" alt="Thump podcast player" width="32%">
-  <img src="Docs/ThumpPodcastDetail.png" alt="Thump podcast detail" width="32%">
+  <img src="Docs/PulsePodcast.png" alt="Pulse podcast player" width="32%">
+  <img src="Docs/PulsePodcastDetail.png" alt="Pulse podcast detail" width="32%">
 </p>
 
-See [Thump/README.md](Thump/README.md) for build instructions.
+See [PulseApp/README.md](PulseApp/README.md) for build instructions.
 
 ## License
 

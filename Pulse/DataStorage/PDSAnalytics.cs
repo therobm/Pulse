@@ -54,6 +54,10 @@ namespace Pulse.DataStorage
 			{
 				case eAnalyticType.Track:
 					{
+						//Audiobook chapters don't get rated ever
+						if (ItemID.StartsWith("ch"))
+							return 0;
+
 						TrackData track = pulseData.GetTrack(ItemID);
 						if (track == null)
 						{
@@ -85,6 +89,11 @@ namespace Pulse.DataStorage
 					{
 						foreach (AnaliticUserItem track in tracks)
 						{
+							if (track == null)
+							{
+								Log.Error("Bad track in album ranking");
+								continue;
+							}
 							score += track.GetScore(pulseData, analyticsData);
 						}
 						score /= tracks.Count;
@@ -112,6 +121,11 @@ namespace Pulse.DataStorage
 					{
 						foreach (AnaliticUserItem track in artistTracks)
 						{
+							if (track == null)
+							{
+								Log.Error("Bad track in artist ranking");
+								continue;
+							}
 							score += track.GetScore(pulseData, analyticsData);
 						}
 						score /= artistTracks.Count;
@@ -130,6 +144,11 @@ namespace Pulse.DataStorage
 					{
 						foreach (AnaliticUserItem track in playlistTracks)
 						{
+							if (track == null)
+							{
+								Log.Error("Bad track in playlist ranking");
+								continue;
+							}
 							score += track.GetScore(pulseData, analyticsData);
 						}
 						score /= playlistTracks.Count;
