@@ -1,6 +1,6 @@
 # Pulse
 
-A self-hosted music server built in C#. Serves your library to its own clients — the Thump app and a built-in tablet web client. Runs as a single executable with no external service dependencies.
+A self-hosted music server built in C#. Serves your library to its own clients — the Pulse app and a built-in tablet web client. Runs as a single executable with no external service dependencies.
 
 I built this because Spotify kept changing how playlists worked without asking, and I wanted a music server I actually controlled.
 
