@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="PulseApp\PulseApp.csproj" />
+  <Project Path="PulseAPI\PulseAPI.csproj" />
+</Solution>

@@ -746,7 +746,7 @@ namespace Pulse.Protocols
 
 		/// <summary>
 		/// Returns the entire album catalog (no paging) with a trimmed field set,
-		/// sorted alphabetically by name. Serves the Thump album grid, which
+		/// sorted alphabetically by name. Serves the Pulse album grid, which
 		/// renders every tile at once and lazy-loads cover images. Response
 		/// compression makes a single whole-catalog payload cheaper than paging.
 		/// </summary>

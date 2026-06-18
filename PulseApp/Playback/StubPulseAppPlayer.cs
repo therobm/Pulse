@@ -1,0 +1,66 @@
+using PulseAPI.CSharp;
+using System.Collections.Generic;
+using PulseApp.Pulse;
+
+namespace PulseApp.Playback
+{
+	public class StubPulseAppPlayer : IMediaPlayer
+	{
+		public void Play(List<PulseTrack> tracks, int startIndex)
+		{
+			Log.Warn("StubPulseAppPlayer.Play: playback is only implemented on Android.");
+		}
+
+		public void Pause()
+		{
+		}
+
+		public void Resume()
+		{
+		}
+
+		public void SeekTo(long positionMilliseconds)
+		{
+		}
+
+		public void SeekRelative(long deltaMilliseconds)
+		{
+		}
+
+		public void Next()
+		{
+		}
+
+		public void Previous()
+		{
+		}
+
+		public void Stop()
+		{
+		}
+
+		public void Release()
+		{
+		}
+
+		public void SetShuffleEnabled(bool enabled)
+		{
+		}
+
+		public void SetRepeatMode(eRepeatMode mode)
+		{
+		}
+
+		public void AddToQueue(List<PulseTrack> tracks)
+		{
+		}
+
+		public void PlayNext(List<PulseTrack> tracks)
+		{
+		}
+
+		public void SeekToQueueItem(int index)
+		{
+		}
+	}
+}
