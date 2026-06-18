@@ -34,7 +34,7 @@
 		<ApplicationId>com.therobm.thump</ApplicationId>
 
 		<!-- Local-build placeholder. ApplicationVersion must be a positive integer: 0 yields an empty/invalid android:versionCode and fails the Android build. CI overrides both via -p:ApplicationDisplayVersion / -p:ApplicationVersion -->
-		<ApplicationDisplayVersion>0.0.0-local</ApplicationDisplayVersion>
+		<ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
 		<ApplicationVersion>1</ApplicationVersion>
 
 		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
