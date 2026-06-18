@@ -283,8 +283,9 @@ namespace Thump.Pulse
 		/// no-op; the Pulse client overrides it to POST. Fire-and-forget, like
 		/// PostAnalytics.
 		/// </summary>
-		public virtual void PostDiagnostics(PulseDiagnosticsEvent diagnosticsEvent)
+		public virtual bool PostDiagnostics(PulseDiagnosticsEvent diagnosticsEvent)
 		{
+			return false;
 		}
 
 		public virtual byte[] GetTrackAudioFromCache(string trackId)
@@ -482,15 +483,20 @@ namespace Thump.Pulse
 		// root. Returns the response body on success, null on failure.
 		protected string HttpPostJson(string url, string json, float timeoutSeconds = Http.s_defaultTimeout)
 		{
+			return HttpPostJson(url, json, timeoutSeconds, true);
+		}
+
+		protected string HttpPostJson(string url, string json, float timeoutSeconds, bool logDiagnostics)
+		{
 			using HttpResponseMessage response = m_httpClient.HttpPostJson_Internal(url, Http.eRequestType.MetaData, json, timeoutSeconds);
-			if (response == null )
+			if (response == null)
 			{
-				Log.Error("HTTP POST failed: " + url, false);
+				Log.Error("HTTP POST failed: " + url, logDiagnostics);
 				return null;
 			}
 			if (!response.IsSuccessStatusCode)
 			{
-				Log.Error("HTTP POST failed: " + url + " status: " + response.StatusCode, false);
+				Log.Error("HTTP POST failed: " + url + " status: " + response.StatusCode, logDiagnostics);
 				return null;
 			}
 			string result = response.Content.ReadAsStringAsync().Result;

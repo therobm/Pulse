@@ -40,7 +40,15 @@ namespace Thump.Pulse
 		private int m_bConnectionFailures = 0;
 		public Http()
 		{
+			Connectivity.ConnectivityChanged += OnConnectivityChanged;
+		}
 
+		private void OnConnectivityChanged(object sender, ConnectivityChangedEventArgs args)
+		{
+			if (args.NetworkAccess == NetworkAccess.Internet)
+			{
+				SetOnlineStatus(true);
+			}
 		}
 		public void SetOnlineStatus(bool isOnline)
 		{
@@ -59,6 +67,23 @@ namespace Thump.Pulse
 		{
 			//most users are only on lan, this is far more convienent than being safe
 			return true;
+		}
+
+		private HttpClient PickClient(eRequestType requestType)
+		{
+			lock (m_httpLock)
+			{
+				switch (requestType)
+				{
+					case eRequestType.AudioStream:
+						return m_httpAudioClient;
+					case eRequestType.BinaryData:
+						return m_httpBinaryClient;
+					case eRequestType.MetaData:
+					default:
+						return m_httpMetaClient;
+				}
+			}
 		}
 
 		public void OnServerChanged()
@@ -103,33 +128,39 @@ namespace Thump.Pulse
 
 		public HttpResponseMessage HttpGetStream(string url, long position, CancellationToken token)
 		{
-			HttpClient client;
-			lock (m_httpLock)
+			for (int attempt = 1; attempt <= 2; attempt++)
 			{
-				client = m_httpAudioClient;
-			}
+				HttpClient client = PickClient(eRequestType.AudioStream);
+				if (client == null)
+				{
+					return null;
+				}
 
-			if (client == null) 
-			{ 
-				return null; 
-			}
+				HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url);
+				if (position > 0)
+				{
+					request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(position, null);
+				}
 
-			HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url);
-			if (position > 0)
-			{
-				request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(position, null);
+				try
+				{
+					return client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).Result;
+				}
+				catch (Exception ex)
+				{
+					if (token.IsCancellationRequested)
+					{
+						return null;
+					}
+					// the client can be disposed by OnServerChanged mid-flight; re-pick and retry once
+					if (attempt >= 2)
+					{
+						Log.Exception(ex);
+						return null;
+					}
+				}
 			}
-
-
-			try
-			{
-				return client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).Result;
-			}
-			catch (Exception ex)
-			{
-				Log.Exception(ex);
-				return null;
-			}
+			return null;
 		}
 
 		public static bool IsNetworkAvailable()
@@ -149,30 +180,6 @@ namespace Thump.Pulse
 				return new HttpResponseMessage(System.Net.HttpStatusCode.GatewayTimeout);
 
 			
-			HttpClient client;
-			lock (m_httpLock)
-			{
-				switch (requestType)
-				{
-					case eRequestType.AudioStream:
-						client = m_httpAudioClient;
-						break;
-					case eRequestType.BinaryData:
-						client = m_httpBinaryClient;
-						break;
-					case eRequestType.MetaData:
-					default:
-						client = m_httpMetaClient;
-						break;
-				}
-			}
-
-			if (client == null)
-			{
-				return new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed);
-			}
-
-
 			int requestId = Interlocked.Increment(ref s_requestCounter);
 			Stopwatch stopwatch = Stopwatch.StartNew();
 			Log.Perf("#" + requestId + " start GET " + url);
@@ -184,6 +191,12 @@ namespace Thump.Pulse
 			{
 				response = null;
 				transportFailure = false;
+				HttpClient client = PickClient(requestType);
+				if (client == null)
+				{
+					stopwatch.Stop();
+					return new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed);
+				}
 				try
 				{
 					using CancellationTokenSource timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
@@ -271,60 +284,68 @@ namespace Thump.Pulse
 
 		public HttpResponseMessage HttpPostJson_Internal(string url, eRequestType requestType, string json, float timeoutSeconds = s_defaultTimeout)
 		{
-			if (!m_bIsOnline)
-				return new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway);
-
-			HttpClient client;
-			lock (m_httpLock)
+			if (!IsNetworkAvailable())
 			{
-				switch (requestType)
-				{
-					case eRequestType.AudioStream:
-						client = m_httpAudioClient;
-						break;
-					case eRequestType.BinaryData:
-						client = m_httpBinaryClient;
-						break;
-					case eRequestType.MetaData:
-					default:
-						client = m_httpMetaClient;
-						break;
-				}
+				return new HttpResponseMessage(System.Net.HttpStatusCode.GatewayTimeout);
 			}
 
-			if (client == null)
+			if (!m_bIsOnline)
 			{
-				return new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed);
+				return new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway);
 			}
 
 			int requestId = Interlocked.Increment(ref s_requestCounter);
 			Stopwatch stopwatch = Stopwatch.StartNew();
-			
 			Log.Perf("#" + requestId + " start POST " + url);
-			
-			try
-			{
 
-				using CancellationTokenSource timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-
-				HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url);
-				request.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-				HttpResponseMessage response = client.SendAsync(request, timeoutCts.Token).Result;
-				stopwatch.Stop();
-			
-				Log.Perf("#" + requestId + " done POST " + stopwatch.ElapsedMilliseconds + "ms status=" + (int)response.StatusCode + " " + url);
-			
-				return response;
-			}
-			catch (Exception ex)
+			Exception lastError = null;
+			for (int attempt = 1; attempt <= s_maxHttpAttempts; attempt++)
 			{
-				stopwatch.Stop();
-				
-				Log.Perf("#" + requestId + " fail POST " + stopwatch.ElapsedMilliseconds + "ms " + url);
-				
-				Log.Exception(ex);
-				return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
+				HttpClient client = PickClient(requestType);
+				if (client == null)
+				{
+					stopwatch.Stop();
+					return new HttpResponseMessage(System.Net.HttpStatusCode.PreconditionFailed);
+				}
+
+				try
+				{
+					using CancellationTokenSource timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+
+					HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, url);
+					request.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+					HttpResponseMessage response = client.SendAsync(request, timeoutCts.Token).Result;
+					stopwatch.Stop();
+
+					Log.Perf("#" + requestId + " done POST " + stopwatch.ElapsedMilliseconds + "ms status=" + (int)response.StatusCode + " " + url);
+
+					// a received response (even a 5xx) means the server saw the request; never retry a POST that may not be idempotent
+					return response;
+				}
+				catch (Exception ex)
+				{
+					lastError = ex;
+				}
+
+				if (attempt < s_maxHttpAttempts)
+				{
+					Thread.Sleep(s_httpRetryBaseMs * attempt);
+				}
 			}
+
+			stopwatch.Stop();
+			Log.Perf("#" + requestId + " fail POST " + stopwatch.ElapsedMilliseconds + "ms " + url);
+
+			// transport failure: request never reached the server. Log quietly (the caller raises the diagnostic) and vote the latch offline like the GET path
+			if (lastError != null)
+			{
+				Log.Exception(lastError, false);
+			}
+			if (m_bIsOnline)
+			{
+				SetOnlineStatus(false);
+			}
+			return new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
 		}
 	}
 }
