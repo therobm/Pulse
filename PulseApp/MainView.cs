@@ -182,6 +182,9 @@ namespace PulseApp
 		public void OnSignedIn()
 		{
 			m_navFooter.IsVisible = true;
+#if ANDROID
+			PulseAppMediaLibraryService.NotifyBrowseChanged();
+#endif
 			NavigateToHome();
 		}
 

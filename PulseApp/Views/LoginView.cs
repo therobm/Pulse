@@ -31,6 +31,8 @@ namespace PulseApp.Views
 		private Entry m_passwordEntry;
 		private Button m_signInButton;
 		private Label m_statusLabel;
+		private Grid m_busyOverlay;
+		private ActivityIndicator m_busyIndicator;
 
 		public LoginView(MainView mainView) : base(mainView)
 		{
@@ -96,7 +98,12 @@ namespace PulseApp.Views
 
 			ScrollView scroll = new ScrollView();
 			scroll.Content = form;
-			Content = scroll;
+
+			Grid root = new Grid();
+			root.Children.Add(scroll);
+			root.Children.Add(BuildBusyOverlay());
+
+			Content = root;
 		}
 
 		private Label BuildLabel(string text)
@@ -115,6 +122,43 @@ namespace PulseApp.Views
 			entry.BackgroundColor = PulseAppColors.Surface;
 			entry.FontSize = 15;
 			return entry;
+		}
+
+		private Grid BuildBusyOverlay()
+		{
+			m_busyOverlay = new Grid();
+			m_busyOverlay.BackgroundColor = PulseAppColors.Background;
+			m_busyOverlay.IsVisible = false;
+
+			VerticalStackLayout column = new VerticalStackLayout();
+			column.Spacing = 20;
+			column.HorizontalOptions = LayoutOptions.Center;
+			column.VerticalOptions = LayoutOptions.Center;
+
+			Image logo = new Image();
+			logo.Source = "pulse_logo.png";
+			logo.Aspect = Aspect.AspectFit;
+			logo.WidthRequest = 180;
+			logo.HeightRequest = 180;
+			logo.HorizontalOptions = LayoutOptions.Center;
+			column.Children.Add(logo);
+
+			m_busyIndicator = new ActivityIndicator();
+			m_busyIndicator.Color = PulseAppColors.Accent;
+			m_busyIndicator.WidthRequest = 36;
+			m_busyIndicator.HeightRequest = 36;
+			m_busyIndicator.HorizontalOptions = LayoutOptions.Center;
+			column.Children.Add(m_busyIndicator);
+
+			Label signingInLabel = new Label();
+			signingInLabel.Text = "Signing in...";
+			signingInLabel.FontSize = 15;
+			signingInLabel.TextColor = PulseAppColors.TextSecondary;
+			signingInLabel.HorizontalOptions = LayoutOptions.Center;
+			column.Children.Add(signingInLabel);
+
+			m_busyOverlay.Children.Add(column);
+			return m_busyOverlay;
 		}
 
 		private void PrefillFields()
@@ -199,6 +243,8 @@ namespace PulseApp.Views
 			bool serverChanged = ip != PulseAppSettings.GetServerIp()
 				|| port != PulseAppSettings.GetServerPort()
 				|| useHttps != PulseAppSettings.GetUseHttps();
+			bool credentialsChanged = username != PulseAppSettings.GetUsername()
+				|| password != PulseAppSettings.GetPassword();
 			if (serverChanged)
 			{
 				PulseAppSettings.SetUserID("");
@@ -217,13 +263,19 @@ namespace PulseApp.Views
 			PulseAppSettings.SetUseHttps(useHttps);
 
 			MediaClient pulse = MainView.MediaClient;
+
+			if (serverChanged || credentialsChanged)
+			{
+				pulse.SetServerParams(ip, port, username, password, useHttps);
+			}
+
 			Task.Run(() =>
 			{
 				pulse.Login(username, password, true, (loginResult) =>
 				{
 					bool ok = false;
 					string message = "";
-					pulse.SetServerParams(ip, port, username, password, useHttps);
+					
 					if (loginResult == null)
 					{
 						message = "Could not reach the server.";
@@ -270,6 +322,8 @@ namespace PulseApp.Views
 		private void SetBusy(bool busy)
 		{
 			m_signInButton.IsEnabled = !busy;
+			m_busyOverlay.IsVisible = busy;
+			m_busyIndicator.IsRunning = busy;
 		}
 	}
 }

@@ -54,6 +54,8 @@ namespace PulseApp.Playback.AndroidOS
 		/// </summary>
 		public static MediaClient s_mediaClient;
 
+		public static PulseAppMediaLibraryService s_instance;
+
 		/// <summary>
 		/// A callback identifier used to discard late arrivals
 		/// when the queue has been changed/reset.
@@ -78,6 +80,8 @@ namespace PulseApp.Playback.AndroidOS
 		public override void OnCreate()
 		{
 			base.OnCreate();
+
+			s_instance = this;
 
 			// Trust-all TLS for the native HTTP stack so Media3's DefaultHttpDataSource
 			// streams from the Pulse server without depending on a valid certificate.
@@ -246,21 +250,55 @@ namespace PulseApp.Playback.AndroidOS
 			AAutoHelper.LoadMediaSetFunc media = new AAutoHelper.LoadMediaSetFunc(this, mediaItems, startIndex, startPositionMs);
 			return (IListenableFuture)CallbackToFutureAdapter.GetFuture(media);
 		}
+		private bool IsSignedIn()
+		{
+			return !string.IsNullOrEmpty(PulseAppSettings.GetUserID());
+		}
+
+		private List<MediaItem> BuildRootCategories()
+		{
+			List<MediaItem> categories = new List<MediaItem>();
+			categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Home), "Home"));
+			categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Playlists), "Playlists"));
+			categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Library), "Library"));
+			categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Podcasts), "Podcasts"));
+			categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Audiobooks), "Audiobooks"));
+			return categories;
+		}
+
+		public static void NotifyBrowseChanged()
+		{
+			PulseAppMediaLibraryService instance = s_instance;
+			if (instance != null)
+			{
+				instance.NotifyRootChildrenChanged();
+			}
+		}
+
+		private void NotifyRootChildrenChanged()
+		{
+			if (m_session == null)
+			{
+				return;
+			}
+			List<MediaItem> categories = BuildRootCategories();
+			m_session.NotifyChildrenChanged(MediaItemBuilder.GetId(eAADirectory.Root), categories.Count, null);
+		}
+
 		public IListenableFuture OnGetChildren(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string parentId, int page, int pageSize, MediaLibraryService.LibraryParams libraryParams)
 		{
+			if (!IsSignedIn())
+			{
+				AAutoHelper.LoadJavaObjectFunc notReady = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfItemList(new List<MediaItem>(), MediaItemBuilder.BuildContentStyleParams()));
+				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(notReady);
+			}
+
 			eAADirectory dir = eAADirectory.Root;
 			bool isDir = MediaItemBuilder.TryGetDirectory(parentId, out dir);
 			
 			if (isDir && dir == eAADirectory.Root)
 			{
-				List<MediaItem> categories = new List<MediaItem>();
-				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Home), "Home"));
-				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Playlists), "Playlists"));
-				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Library), "Library"));
-				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Podcasts), "Podcasts"));
-				categories.Add(MediaItemBuilder.BuildBrowsableItem(MediaItemBuilder.GetId(eAADirectory.Audiobooks), "Audiobooks"));
-
-				AAutoHelper.LoadJavaObjectFunc loadHome = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfItemList(categories, MediaItemBuilder.BuildContentStyleParams()));
+				AAutoHelper.LoadJavaObjectFunc loadHome = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfItemList(BuildRootCategories(), MediaItemBuilder.BuildContentStyleParams()));
 				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(loadHome);
 			}
 			if (isDir)
@@ -295,6 +333,12 @@ namespace PulseApp.Playback.AndroidOS
 		// for the same string is a free hit.
 		public IListenableFuture OnSearch(MediaLibraryService.MediaLibrarySession session, MediaSession.ControllerInfo browser, string query, MediaLibraryService.LibraryParams libraryParams)
 		{
+			if (!IsSignedIn())
+			{
+				AAutoHelper.LoadJavaObjectFunc notReady = new AAutoHelper.LoadJavaObjectFunc(LibraryResult.OfVoid(libraryParams));
+				return (IListenableFuture)CallbackToFutureAdapter.GetFuture(notReady);
+			}
+
 			MediaLibraryService.MediaLibrarySession capturedSession = session;
 			MediaSession.ControllerInfo capturedBrowser = browser;
 			string capturedQuery = query;
@@ -975,6 +1019,10 @@ namespace PulseApp.Playback.AndroidOS
 
 		public override void OnDestroy()
 		{
+			if (s_instance == this)
+			{
+				s_instance = null;
+			}
 			if (m_carReceiver != null)
 			{
 				try

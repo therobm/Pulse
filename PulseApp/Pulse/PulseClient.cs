@@ -48,9 +48,13 @@ namespace PulseApp.Pulse
 			m_cache = cache;
 		}
 
-		private string BuildPulseUrl(string endpoint, string extraParams)
+		private string BuildPulseUrl(string endpoint, string extraParams, string overrideBaseUrl = "")
 		{
 			string url = m_baseUrl + "/pulse_v1/" + endpoint;
+			if (!string.IsNullOrEmpty(overrideBaseUrl))
+			{
+				url = overrideBaseUrl + "/pulse_v1/" + endpoint;
+			}
 			string separator = "?";
 
 			// Identity is the modern `uid=` once signed in. Before login there is
@@ -291,6 +295,7 @@ namespace PulseApp.Pulse
 
 		public override void GetArtists(Action<List<PulseArtist>> onComplete)
 		{
+			
 			m_workQueue.Enqueue(() =>
 			{
 				string url = BuildPulseUrl("artists", null);
