@@ -68,7 +68,7 @@ namespace PulseApp.Data
 
 		public static long GetCacheLimitBytes()
 		{
-			return Preferences.Get(s_keyCacheLimitBytes, 500L * 1024L * 1024L);
+			return Preferences.Get(s_keyCacheLimitBytes, 2500L * 1024L * 1024L);
 		}
 		public static void SetCacheLimitBytes(long value)
 		{
