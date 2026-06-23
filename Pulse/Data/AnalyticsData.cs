@@ -121,6 +121,18 @@ namespace Pulse.Data
 			}
 			return AggregateByItem(items);
 		}
+		public List<AnaliticUserItem> GetRankedItems(eAnalyticType type)
+		{
+			List<AnaliticUserItem> rankedItems = new List<AnaliticUserItem>();
+
+
+			foreach (KeyValuePair<string, AnalyticRecord> kvp in m_analytics)
+			{
+				rankedItems.AddRange(GetContainer(kvp.Value, type));
+			}
+
+			return AggregateByItem(rankedItems);
+		}
 		public List<AnaliticUserItem> GetRankedItems(List<eAnalyticType> types)
 		{
 			List<AnaliticUserItem> rankedItems = new List<AnaliticUserItem>();
