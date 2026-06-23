@@ -10,7 +10,7 @@ using System.Threading;
 
 namespace Pulse.Data
 {
-	
+
 	public class AnalyticsData
 	{
 		/// <summary>
@@ -50,7 +50,7 @@ namespace Pulse.Data
 				for (int i = 0; i < records.Count; i++)
 				{
 					AnaliticUserItem item = records[i];
-					
+
 					if (item == null)
 					{
 						continue;
@@ -64,7 +64,7 @@ namespace Pulse.Data
 					if (!m_analytics.ContainsKey(item.UserID))
 						m_analytics.Add(item.UserID, new AnalyticRecord());
 
-					
+
 					switch (item.AnalyticType)
 					{
 						case eAnalyticType.Track:
@@ -107,19 +107,30 @@ namespace Pulse.Data
 				m_data.Save<AnaliticUserItem>(eDataType.AnalyticRecordItem, dirtyRecords[i]);
 			}
 		}
+
+		public List<AnaliticUserItem> GetRankedItems(eAnalyticType type)
+		{
+			List<AnaliticUserItem> rankedItems = new List<AnaliticUserItem>();
+			foreach (KeyValuePair<string, AnalyticRecord> kvp in m_analytics)
+			{
+				rankedItems.AddRange(GetContainer(kvp.Value, type));
+			}
+			return rankedItems;
+		}
+
 		public List<AnaliticUserItem> GetRankedItems(List<string> itemIds, eAnalyticType type)
 		{
 			List<AnaliticUserItem> items = new List<AnaliticUserItem>();
 			foreach (KeyValuePair<string, AnalyticRecord> kvp in m_analytics)
 			{
 				IEnumerable<AnaliticUserItem> recordItems = GetContainer(kvp.Value, type);
-				foreach (AnaliticUserItem ritem in recordItems) 
+				foreach (AnaliticUserItem ritem in recordItems)
 				{
 					if (ritem != null && itemIds.Contains(ritem.ItemID))
 						items.Add(ritem);
 				}
 			}
-			return AggregateByItem(items);
+			return items;
 		}
 		public List<AnaliticUserItem> GetRankedItems(List<eAnalyticType> types)
 		{
@@ -142,44 +153,19 @@ namespace Pulse.Data
 					rankedItems.AddRange(GetContainer(kvp.Value, type));
 				}
 			}
-			
-			return AggregateByItem(rankedItems);
-		}
 
-		private List<AnaliticUserItem> AggregateByItem(List<AnaliticUserItem> rawItems)
+			return rankedItems;
+		}
+		public List<AnaliticUserItem> GetUserItems(string userId, eAnalyticType type)
 		{
-			Dictionary<string, AnaliticUserItem> byItem = new Dictionary<string, AnaliticUserItem>();
-			for (int index = 0; index < rawItems.Count; index++)
-			{
-				AnaliticUserItem source = rawItems[index];
-				if (source == null || string.IsNullOrEmpty(source.ItemID))
-				{
-					continue;
-				}
+			List<AnaliticUserItem> rankedItems = new List<AnaliticUserItem>();
+			AnalyticRecord userRecord = null;
+			if (!m_analytics.TryGetValue(userId, out userRecord))
+				return new List<AnaliticUserItem>();
 
-				AnaliticUserItem combined;
-				bool present = byItem.TryGetValue(source.ItemID, out combined);
-				if (!present)
-				{
-					combined = new AnaliticUserItem();
-					combined.ItemID = source.ItemID;
-					combined.AnalyticType = source.AnalyticType;
-					byItem[source.ItemID] = combined;
-				}
-				combined.PlayCount = combined.PlayCount + source.PlayCount;
-				combined.TotalPlayedSeconds = combined.TotalPlayedSeconds + source.TotalPlayedSeconds;
-				if (source.LastPlayed > combined.LastPlayed)
-				{
-					combined.LastPlayed = source.LastPlayed;
-				}
-				if (source.IsFavorite)
-				{
-					combined.IsFavorite = true;
-				}
-			}
-			return new List<AnaliticUserItem>(byItem.Values);
+			rankedItems.AddRange(GetContainer(userRecord, type));
+			return rankedItems;
 		}
-
 		public List<AnaliticUserItem> GetUserItems(string userId, List<eAnalyticType> types)
 		{
 			List<AnaliticUserItem> rankedItems = new List<AnaliticUserItem>();
@@ -195,12 +181,12 @@ namespace Pulse.Data
 				types.Add(eAnalyticType.Album);
 				types.Add(eAnalyticType.Playlist);
 			}
-			
+
 			foreach (eAnalyticType type in types)
 			{
 				rankedItems.AddRange(GetContainer(userRecord, type));
 			}
-			
+
 			return rankedItems;
 		}
 
@@ -230,36 +216,18 @@ namespace Pulse.Data
 		}
 
 		private void OnChildPlayed(string userId, ePulseWireType type, string itemId, MusicManager musicManager)
-		{  
+		{
 			//ensure this parents have been "ranked"
 			switch (type)
 			{
 				case ePulseWireType.Track:
-				{
-					TrackData track = musicManager.GetTrack(itemId);
-					if (track == null)
-						return;
-					AnaliticUserItem parent = GetItem(userId, ePulseWireType.Album, track.AlbumId);
-					if (parent != null)
 					{
-							//ensure parent has at least one play
-							if (parent.PlayCount <= 0)
-							{
-								parent.PlayCount = 1;
-								parent.MarkDirty();
-							}
-					}
-					OnChildPlayed(userId, ePulseWireType.Album, parent.ItemID, musicManager);
-					break;
-				}
-				case ePulseWireType.Album:
-				{
-					AlbumData album = musicManager.GetAlbum(itemId);
-					if (album == null)
-						return;
-					AnaliticUserItem parent = GetItem(userId, ePulseWireType.Artist, album.ArtistId);
-					if (parent != null)
-					{
+						TrackData track = musicManager.GetTrack(itemId);
+						if (track == null)
+							return;
+						AnaliticUserItem parent = GetItem(userId, ePulseWireType.Album, track.AlbumId);
+						if (parent != null)
+						{
 							//ensure parent has at least one play
 							if (parent.PlayCount <= 0)
 							{
@@ -267,14 +235,32 @@ namespace Pulse.Data
 								parent.MarkDirty();
 							}
 						}
-					OnChildPlayed(userId, ePulseWireType.Artist, parent.ItemID, musicManager);
-					break;
-				}
+						OnChildPlayed(userId, ePulseWireType.Album, parent.ItemID, musicManager);
+						break;
+					}
+				case ePulseWireType.Album:
+					{
+						AlbumData album = musicManager.GetAlbum(itemId);
+						if (album == null)
+							return;
+						AnaliticUserItem parent = GetItem(userId, ePulseWireType.Artist, album.ArtistId);
+						if (parent != null)
+						{
+							//ensure parent has at least one play
+							if (parent.PlayCount <= 0)
+							{
+								parent.PlayCount = 1;
+								parent.MarkDirty();
+							}
+						}
+						OnChildPlayed(userId, ePulseWireType.Artist, parent.ItemID, musicManager);
+						break;
+					}
 				case ePulseWireType.Playlist:
-				{
-					//no-op for now at least...
-					break;
-				}
+					{
+						//no-op for now at least...
+						break;
+					}
 			}
 		}
 		public void OnItemStopped(string userId, ePulseWireType type, string itemId, float totalSecondsPlayed)

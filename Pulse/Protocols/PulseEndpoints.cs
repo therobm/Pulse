@@ -35,13 +35,15 @@ namespace Pulse.Protocols
 		AnalyticsData m_analyticsData;
 		DiagnosticsData m_diagnosticsData;
 		PodcastManager m_podcastManager;
+		PulseData m_pulseData;
 		AudiobookManager m_audiobookManager;
 		private byte[] m_defaultCoverArt;
 		private ConcurrentDictionary<string, byte[]> m_coverArtCache = new ConcurrentDictionary<string, byte[]>();
 
-		public PulseEndpoints(PulseService pulse, MusicManager musicManager, AnalyticsData analyticsData, DiagnosticsData diagnosticsData, PodcastManager podcastManager, AudiobookManager audiobookManager)
+		public PulseEndpoints(PulseService pulse, PulseData pulseData, MusicManager musicManager, AnalyticsData analyticsData, DiagnosticsData diagnosticsData, PodcastManager podcastManager, AudiobookManager audiobookManager)
 		{
 			m_pulseService = pulse;
+			m_pulseData = pulseData;
 			m_musicManager = musicManager;
 			m_analyticsData = analyticsData;
 			m_diagnosticsData = diagnosticsData;
@@ -940,7 +942,7 @@ namespace Pulse.Protocols
 				return RespondStatus(context, "missing_mode");
 			}
 
-			SmartQueue smartQueue = new SmartQueue(m_musicManager, m_analyticsData);
+			SmartQueue smartQueue = new SmartQueue(m_pulseData, m_analyticsData);
 			List<TrackData> tracks = smartQueue.GetTracks(queueMode, userId);
 
 			PlaylistData info = new PlaylistData();
