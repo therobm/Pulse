@@ -376,11 +376,13 @@ namespace Pulse
 			{
 				items = m_analyticsData.GetUserItems(userId, types);
 			}
+
 			if (items == null)
 			{
 				items = m_analyticsData.GetRankedItems(types);
 				
 			}
+
 			if (items == null)
 			{
 				Log.Error("No analytics present");

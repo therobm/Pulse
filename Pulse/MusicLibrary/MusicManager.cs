@@ -1080,10 +1080,6 @@ namespace Pulse.MusicLibrary
 			return m_database.GetPlaylistTracks(playlistId);
 		}
 
-		public void SetRating(string trackId, int rating)
-		{
-			m_database.SetRating(trackId, rating);
-		}
 
 		public void UpdateStar(string userName, string trackId, string albumId, string artistId, bool isStarred)
 		{

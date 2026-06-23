@@ -105,16 +105,7 @@ namespace Pulse.Data
 			return m_tracks.ContainsKey(trackId);
 		}
 
-		public void SetRating(string trackId, int rating)
-		{
-			TrackData track;
-			if (m_tracks.TryGetValue(trackId, out track))
-			{
-				track.Rating = rating;
-				track.MarkDirty();
-			}
-		}
-
+		
 		public void UpdateStar(string userName, string trackId, string albumId, string artistId, bool starred)
 		{
 			if (!string.IsNullOrEmpty(trackId))

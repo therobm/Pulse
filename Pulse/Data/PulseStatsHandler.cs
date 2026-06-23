@@ -86,11 +86,11 @@ namespace Pulse.Data
 				{
 					stats.StarredTracks++;
 				}
-
+				/*
 				if (track.Rating > 0)
 				{
 					stats.RatedTracks++;
-				}
+				}*/
 
 				// Genre
 				string genre;

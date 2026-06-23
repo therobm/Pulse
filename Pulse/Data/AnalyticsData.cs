@@ -119,7 +119,7 @@ namespace Pulse.Data
 						items.Add(ritem);
 				}
 			}
-			return items;
+			return AggregateByItem(items);
 		}
 		public List<AnaliticUserItem> GetRankedItems(List<eAnalyticType> types)
 		{
@@ -143,7 +143,41 @@ namespace Pulse.Data
 				}
 			}
 			
-			return rankedItems;
+			return AggregateByItem(rankedItems);
+		}
+
+		private List<AnaliticUserItem> AggregateByItem(List<AnaliticUserItem> rawItems)
+		{
+			Dictionary<string, AnaliticUserItem> byItem = new Dictionary<string, AnaliticUserItem>();
+			for (int index = 0; index < rawItems.Count; index++)
+			{
+				AnaliticUserItem source = rawItems[index];
+				if (source == null || string.IsNullOrEmpty(source.ItemID))
+				{
+					continue;
+				}
+
+				AnaliticUserItem combined;
+				bool present = byItem.TryGetValue(source.ItemID, out combined);
+				if (!present)
+				{
+					combined = new AnaliticUserItem();
+					combined.ItemID = source.ItemID;
+					combined.AnalyticType = source.AnalyticType;
+					byItem[source.ItemID] = combined;
+				}
+				combined.PlayCount = combined.PlayCount + source.PlayCount;
+				combined.TotalPlayedSeconds = combined.TotalPlayedSeconds + source.TotalPlayedSeconds;
+				if (source.LastPlayed > combined.LastPlayed)
+				{
+					combined.LastPlayed = source.LastPlayed;
+				}
+				if (source.IsFavorite)
+				{
+					combined.IsFavorite = true;
+				}
+			}
+			return new List<AnaliticUserItem>(byItem.Values);
 		}
 
 		public List<AnaliticUserItem> GetUserItems(string userId, List<eAnalyticType> types)
