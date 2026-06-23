@@ -74,6 +74,7 @@ namespace Pulse.Protocols
 			RegisterRoute("createPlaylist", CreatePlaylist);
 			RegisterRoute("updatePlaylist", UpdatePlaylist);
 			RegisterRoute("deletePlaylist", DeletePlaylist);
+			RegisterRoute("generateQueue", GenerateQueue);
 
 			RegisterRoute("recentlyPlayed", GetRecentlyPlayed);
 			RegisterRoute("search", Search);
@@ -945,6 +946,47 @@ namespace Pulse.Protocols
 				return RespondStatus(context, "not_found");
 			}
 			return RespondObject(context, playlist.BuildPulsePlaylistDetails());
+		}
+
+		public IResult GenerateQueue(HttpContext context)
+		{
+			string userId = QueryParameters.GetUserId(context);
+			string mode = QueryParameters.GetString(context, "mode");
+
+			eQueueMode queueMode;
+			if (string.Equals(mode, "personalized", System.StringComparison.OrdinalIgnoreCase))
+			{
+				queueMode = eQueueMode.Personalized;
+			}
+			else if (string.Equals(mode, "popular", System.StringComparison.OrdinalIgnoreCase))
+			{
+				queueMode = eQueueMode.Popular;
+			}
+			else
+			{
+				return RespondStatus(context, "missing_mode");
+			}
+
+			SmartQueue smartQueue = new SmartQueue(m_musicManager, m_analyticsData);
+			List<TrackData> tracks = smartQueue.Build(queueMode, userId);
+
+			PlaylistData info = new PlaylistData();
+			info.Id = "smartqueue/" + queueMode.ToString();
+			if (queueMode == eQueueMode.Personalized)
+			{
+				info.Name = "Personalized";
+			}
+			else
+			{
+				info.Name = "Popular";
+			}
+			for (int index = 0; index < tracks.Count; index++)
+			{
+				info.TrackIds.Add(tracks[index].Id);
+			}
+
+			PlaylistAndTracks queuePlaylist = new PlaylistAndTracks(info, tracks);
+			return RespondObject(context, queuePlaylist.BuildPulsePlaylistDetails());
 		}
 
 		public IResult CreatePlaylist(HttpContext context)
