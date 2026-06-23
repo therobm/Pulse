@@ -163,7 +163,14 @@ namespace Pulse.MusicLibrary
 				
 			}
 
-
+			//shuffle before returning
+			for (int i = tracks.Count - 1; i > 0; i--)
+			{
+				int j = rand.Next(0, i + 1);
+				TrackData temp = tracks[i];
+				tracks[i] = tracks[j];
+				tracks[j] = temp;
+			}
 			return tracks;
 		}
 
