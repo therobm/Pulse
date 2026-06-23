@@ -201,6 +201,31 @@ namespace PulseApp.Pulse
 
 			return BuildRestUrl("getCoverArt", "id=" + Uri.EscapeDataString(coverArtId));
 		}
+
+		public byte[] GetCoverArtBytes(string coverArtId)
+		{
+			if (string.IsNullOrEmpty(coverArtId))
+			{
+				return null;
+			}
+
+			string url = BuildCoverArtUrl(coverArtId);
+
+			byte[] cached;
+			if (GetCachedResults(url, out cached))
+			{
+				return cached;
+			}
+
+			byte[] data = HttpGetBinary(url, CancellationToken.None);
+			if (data != null && data.Length > 0)
+			{
+				CacheQueryResults(url, data);
+				return data;
+			}
+			return null;
+		}
+
 		public virtual string GetTrackAudioURL(string trackId)
 		{
 			return BuildStreamUrl(trackId);
@@ -235,6 +260,7 @@ namespace PulseApp.Pulse
 		public abstract void ReorderPlaylist(string playlistId, int fromIndex, int toIndex, List<PulseTrack> newOrder, Action<bool> onComplete);
 		public abstract void GetPlaylists(Action<List<PulsePlaylist>> onComplete);
 		public abstract void GetPlaylist(string playlistId, Action<PulsePlaylistDetails> onComplete);
+		public abstract void GetSmartQueue(string mode, Action<PulsePlaylistDetails> onComplete);
 		public abstract void GetCoverArt(string coverArtId, int size, Action<ImageSource> onComplete);
 		public abstract byte[] GetCachedCoverArt(string coverArtId);
 		public abstract void GetTrackAudio(string trackId, Action<byte[]> onComplete);

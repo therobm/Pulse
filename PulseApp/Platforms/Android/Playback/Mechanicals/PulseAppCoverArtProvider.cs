@@ -59,7 +59,7 @@ namespace PulseApp.Playback.AndroidOS
 					return null;
 				}
 
-				byte[] result = data.GetCachedCoverArt(artId);
+				byte[] result = data.GetCoverArtBytes(artId);
 
 				if (result == null || result.Length == 0)
 				{

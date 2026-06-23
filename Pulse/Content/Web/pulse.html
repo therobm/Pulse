@@ -1194,6 +1194,39 @@
 				flex-shrink: 0;
 			}
 
+		#home-smart-queue {
+			display: flex;
+			gap: 10px;
+			margin-bottom: 20px;
+		}
+
+		.smart-queue-btn {
+			flex: 1;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			gap: 6px;
+			padding: 8px 10px;
+			font-size: 12px;
+			font-weight: 600;
+			color: var(--accent);
+			background: var(--accent-dim);
+			border: none;
+			border-radius: 8px;
+			cursor: pointer;
+			min-height: 38px;
+			transition: background 0.15s, color 0.15s;
+		}
+
+			.smart-queue-btn:hover, .smart-queue-btn:active {
+				background: var(--accent);
+				color: var(--bg);
+			}
+
+			.smart-queue-btn svg {
+				flex-shrink: 0;
+			}
+
 		#left-new-playlist-form, #left-new-podcast-form {
 			display: none;
 			padding: 6px 12px 10px 12px;
@@ -1756,6 +1789,10 @@
 		</div>
 		<div id="center-panel">
 			<div id="view-home" class="center-view active">
+				<div id="home-smart-queue">
+					<button class="smart-queue-btn" data-action="smart-queue-personalized" title="Personalized queue"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg><span>Personalized</span></button>
+					<button class="smart-queue-btn" data-action="smart-queue-popular" title="Popular queue"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15 9 22 9 16 14 18 21 12 17 6 21 8 14 2 9 9 9 12 2"/></svg><span>Popular</span></button>
+				</div>
 				<div id="home-quick-grid" class="quick-grid"></div>
 				<div class="carousel-section"><div class="carousel-header">Recently Played</div><div class="carousel-scroll" id="home-recent-scroll"></div></div>
 				<div class="carousel-section"><div class="carousel-header">Your Playlists</div><div class="carousel-scroll" id="home-playlists-scroll"></div></div>
@@ -3097,7 +3134,16 @@
 			else if (action === 'cancel-playlist-rename') { cancelPlaylistRename(); }
 			else if (action === 'commit-playlist-comment') { commitPlaylistComment(); }
 			else if (action === 'cancel-playlist-comment') { cancelPlaylistComment(); }
+			else if (action === 'smart-queue-personalized') { onSmartQueueClick('personalized'); }
+			else if (action === 'smart-queue-popular') { onSmartQueueClick('popular'); }
 			else if (action === 'confirm-cancel') { cancelConfirm(); }
+		}
+		function onSmartQueueClick(mode) {
+			pulse.getSmartQueue(mode).then(function (details) {
+				let songs = adaptTracks(details && details.Tracks);
+				if (songs.length === 0) { return; }
+				playTrackList(songs, 0);
+			}).catch(function (err) { logApiError('smartQueue', err); });
 		}
 		let currentPage = 'pulse';
 		function routeTo(pageName, userParam, replace) {

@@ -770,6 +770,21 @@ namespace PulseApp.Pulse
 		}
 
 
+		public override void GetSmartQueue(string mode, Action<PulsePlaylistDetails> onComplete)
+		{
+			m_workQueue.Enqueue(() =>
+			{
+				string url = BuildPulseUrl("smartQueue", "mode=" + Uri.EscapeDataString(mode));
+				FetchObject<PulsePlaylistDetails>(url, eMediaCacheStrategy.NetworkOnly, (details) =>
+				{
+					if (onComplete != null)
+					{
+						onComplete(details);
+					}
+				});
+			});
+		}
+
 		public override void GetCoverArt(string coverArtId, int size, Action<ImageSource> onComplete)
 		{
 			m_workQueue.Enqueue(()=>
