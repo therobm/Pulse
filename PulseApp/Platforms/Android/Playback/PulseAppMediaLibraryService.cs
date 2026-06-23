@@ -664,6 +664,17 @@ namespace PulseApp.Playback.AndroidOS
 						onDataComplete(BuildAudiobookChapterTracks(details));
 					});
 					break;
+				case eAAObject.SmartQueue:
+					s_mediaClient.GetSmartQueue(objectId, (details) =>
+					{
+						List<PulseTrack> queueTracks = new List<PulseTrack>();
+						if (details != null && details.Tracks != null)
+						{
+							queueTracks = details.Tracks;
+						}
+						onDataComplete(queueTracks);
+					});
+					break;
 				default:
 					onDataComplete(new List<PulseTrack>());
 					break;
@@ -809,6 +820,8 @@ namespace PulseApp.Playback.AndroidOS
 										artists.Add(D[i]);
 									}
 
+									combined.Add(MediaItemBuilder.BuildPlayableItem(MediaItemBuilder.BuildPlayMediaId(eAAObject.SmartQueue, "personalized"), "Personalized Tracks", ""));
+									combined.Add(MediaItemBuilder.BuildPlayableItem(MediaItemBuilder.BuildPlayMediaId(eAAObject.SmartQueue, "popular"), "Popular Tracks", ""));
 									combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(recentlyPlayed, "Recently Played"));
 									combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(topPlaylists, "Top Playlists"));
 									combined.AddRange(MediaItemBuilder.BuildMixedItemsGrouped(artists, "Popular Artists"));

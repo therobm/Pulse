@@ -74,7 +74,7 @@ namespace Pulse.Protocols
 			RegisterRoute("createPlaylist", CreatePlaylist);
 			RegisterRoute("updatePlaylist", UpdatePlaylist);
 			RegisterRoute("deletePlaylist", DeletePlaylist);
-			RegisterRoute("generateQueue", GenerateQueue);
+			RegisterRoute("smartQueue", GetSmartQueue);
 
 			RegisterRoute("recentlyPlayed", GetRecentlyPlayed);
 			RegisterRoute("search", Search);
@@ -948,7 +948,7 @@ namespace Pulse.Protocols
 			return RespondObject(context, playlist.BuildPulsePlaylistDetails());
 		}
 
-		public IResult GenerateQueue(HttpContext context)
+		public IResult GetSmartQueue(HttpContext context)
 		{
 			string userId = QueryParameters.GetUserId(context);
 			string mode = QueryParameters.GetString(context, "mode");
@@ -968,7 +968,7 @@ namespace Pulse.Protocols
 			}
 
 			SmartQueue smartQueue = new SmartQueue(m_musicManager, m_analyticsData);
-			List<TrackData> tracks = smartQueue.Build(queueMode, userId);
+			List<TrackData> tracks = smartQueue.GetTracks(queueMode, userId);
 
 			PlaylistData info = new PlaylistData();
 			info.Id = "smartqueue/" + queueMode.ToString();

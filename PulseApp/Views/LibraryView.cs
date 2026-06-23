@@ -54,8 +54,6 @@ namespace PulseApp.Views
 		private Button m_buttonAudiobooks;
 		private Button m_buttonGenres;
 		private Button m_addPodcastButton;
-		private Button m_personalizedButton;
-		private Button m_popularButton;
 
 		private Button m_sortAlphabetical;
 		private Button m_sortDateReleased;
@@ -69,7 +67,6 @@ namespace PulseApp.Views
 		private CollectionView m_podcastsList;
 		private CollectionView m_audiobooksList;
 		private CollectionView m_genresList;
-		private Grid m_playlistsContainer;
 		private Grid m_letterOverlay;
 
 		private QuietObservableCollection<PulseArtist> m_artists;
@@ -300,11 +297,9 @@ namespace PulseApp.Views
 			listContainer.Children.Add(m_albumsList);
 
 			m_playlistsList = new CollectionView();
-			m_playlistsList.IsVisible = true;
+			m_playlistsList.IsVisible = false;
 			m_playlistsList.BackgroundColor = PulseAppColors.Background;
-			m_playlistsContainer = BuildPlaylistsContainer();
-			m_playlistsContainer.IsVisible = false;
-			listContainer.Children.Add(m_playlistsContainer);
+			listContainer.Children.Add(m_playlistsList);
 
 			m_podcastsList = new CollectionView();
 			m_podcastsList.IsVisible = false;
@@ -322,86 +317,6 @@ namespace PulseApp.Views
 			listContainer.Children.Add(m_genresList);
 
 			return listContainer;
-		}
-
-		private Grid BuildPlaylistsContainer()
-		{
-			Grid container = new Grid();
-
-			RowDefinition barRow = new RowDefinition();
-			barRow.Height = GridLength.Auto;
-			RowDefinition listRow = new RowDefinition();
-			listRow.Height = GridLength.Star;
-			container.RowDefinitions.Add(barRow);
-			container.RowDefinitions.Add(listRow);
-
-			View smartQueueBar = BuildSmartQueueBar();
-			Grid.SetRow(smartQueueBar, 0);
-			container.Children.Add(smartQueueBar);
-
-			Grid.SetRow(m_playlistsList, 1);
-			container.Children.Add(m_playlistsList);
-
-			return container;
-		}
-
-		private View BuildSmartQueueBar()
-		{
-			Grid bar = new Grid();
-			bar.Padding = new Thickness(16, 0, 16, 12);
-			bar.ColumnSpacing = 8;
-
-			ColumnDefinition leftColumn = new ColumnDefinition();
-			leftColumn.Width = GridLength.Star;
-			ColumnDefinition rightColumn = new ColumnDefinition();
-			rightColumn.Width = GridLength.Star;
-			bar.ColumnDefinitions.Add(leftColumn);
-			bar.ColumnDefinitions.Add(rightColumn);
-
-			m_personalizedButton = BuildSmartQueueButton("✦  Personalized");
-			m_personalizedButton.Clicked += OnPersonalizedQueueClicked;
-			Grid.SetColumn(m_personalizedButton, 0);
-			bar.Children.Add(m_personalizedButton);
-
-			m_popularButton = BuildSmartQueueButton("★  Popular");
-			m_popularButton.Clicked += OnPopularQueueClicked;
-			Grid.SetColumn(m_popularButton, 1);
-			bar.Children.Add(m_popularButton);
-
-			return bar;
-		}
-
-		private Button BuildSmartQueueButton(string text)
-		{
-			Button button = new Button();
-			button.Text = text;
-			button.TextColor = s_buttonActiveText;
-			button.BackgroundColor = s_buttonActiveBackground;
-			button.CornerRadius = 16;
-			button.FontSize = 13;
-			button.FontAttributes = FontAttributes.Bold;
-			button.Padding = new Thickness(16, 4);
-			button.HeightRequest = 36;
-			return button;
-		}
-
-		private void OnPersonalizedQueueClicked(object sender, EventArgs eventArgs)
-		{
-			MainView.MediaClient.GenerateQueue("personalized", OnSmartQueueLoaded);
-		}
-
-		private void OnPopularQueueClicked(object sender, EventArgs eventArgs)
-		{
-			MainView.MediaClient.GenerateQueue("popular", OnSmartQueueLoaded);
-		}
-
-		private void OnSmartQueueLoaded(PulsePlaylistDetails details)
-		{
-			if (details == null || details.Tracks == null || details.Tracks.Count == 0)
-			{
-				return;
-			}
-			MainView.Self.OnPlayTracks(details.Tracks, 0, eQueueSource.Track, "");
 		}
 
 		private View BuildLetterOverlay()
@@ -704,7 +619,7 @@ namespace PulseApp.Views
 
 			m_artistsList.IsVisible = false;
 			m_albumsList.IsVisible = false;
-			m_playlistsContainer.IsVisible = false;
+			m_playlistsList.IsVisible = false;
 			m_podcastsList.IsVisible = false;
 			m_audiobooksList.IsVisible = false;
 			m_genresList.IsVisible = false;
@@ -728,7 +643,7 @@ namespace PulseApp.Views
 				MainView.MediaClient.GetPlaylists(OnPlaylistsLoaded);
 				m_buttonPlaylists.BackgroundColor = s_buttonActiveBackground;
 				m_buttonPlaylists.TextColor = s_buttonActiveText;
-				m_playlistsContainer.IsVisible = true;
+				m_playlistsList.IsVisible = true;
 			}
 			else if (button == eLibraryButton.Podcasts)
 			{

@@ -13,15 +13,7 @@ namespace Pulse.MusicLibrary
 
 	public class SmartQueue
 	{
-		private const int s_targetDurationSeconds = 5400;
-		private const double s_minUnratedFraction = 0.20;
-		private const double s_recencyDecayDays = 90.0;
-		private const double s_skipPenaltyThreshold = 0.7;
-		private const int s_cooldownHours = 72;
-		private const int s_artistSpreadWindow = 5;
-		private const double s_ratingWeight = 2.0;
-
-		private class QueueCandidate
+		private class QueueCandidate : IComparable<QueueCandidate>
 		{
 			public TrackData m_track;
 			public int m_playCount;
@@ -29,6 +21,11 @@ namespace Pulse.MusicLibrary
 			public DateTime m_lastPlayed = DateTime.MinValue;
 			public float m_score;
 			public bool m_isUnrated;
+
+			public int CompareTo(QueueCandidate other)
+			{
+				return other.m_score.CompareTo(m_score);
+			}
 		}
 
 		private class PoolStat
@@ -38,112 +35,206 @@ namespace Pulse.MusicLibrary
 			public DateTime m_lastPlayed = DateTime.MinValue;
 		}
 
+		private const int s_targetDurationSeconds = 5400;
+		private const double s_minUnratedFraction = 0.20;
+		private const double s_recencyDecayDays = 90.0;
+		private const double s_skipPenaltyThreshold = 0.7;
+		private const int s_cooldownHours = 72;
+		private const int s_artistSpreadWindow = 5;
+		private const double s_ratingWeight = 2.0;
+
 		private MusicManager m_musicManager;
 		private AnalyticsData m_analyticsData;
 		private DateTime m_now;
 
-		private static int CompareCandidateByScoreDescending(QueueCandidate left, QueueCandidate right)
+		public SmartQueue(MusicManager musicManager, AnalyticsData analyticsData)
 		{
-			return right.m_score.CompareTo(left.m_score);
+			m_musicManager = musicManager;
+			m_analyticsData = analyticsData;
+			m_now = DateTime.UtcNow;
 		}
 
-		private static int CompareCandidateByGenreThenScore(QueueCandidate left, QueueCandidate right)
+		public List<TrackData> GetTracks(eQueueMode mode, string userId)
 		{
-			string leftGenre = left.m_track.Genre;
-			string rightGenre = right.m_track.Genre;
-			if (leftGenre == null)
+			HashSet<string> playedIds = new HashSet<string>();
+			List<QueueCandidate> played = RankPlayedTracks(mode, userId, playedIds);
+			List<QueueCandidate> unrated = RankUnratedTracks(mode, userId, playedIds);
+			List<QueueCandidate> chosen = FillQueueToDuration(played, unrated);
+			List<QueueCandidate> ordered = SpaceOutArtists(chosen);
+
+			List<TrackData> tracks = new List<TrackData>();
+			for (int index = 0; index < ordered.Count; index++)
 			{
-				leftGenre = "";
+				tracks.Add(ordered[index].m_track);
 			}
-			if (rightGenre == null)
-			{
-				rightGenre = "";
-			}
-			int genreCompare = string.Compare(leftGenre, rightGenre, StringComparison.OrdinalIgnoreCase);
-			if (genreCompare != 0)
-			{
-				return genreCompare;
-			}
-			return right.m_score.CompareTo(left.m_score);
+			return tracks;
 		}
 
-		private List<eAnalyticType> TrackTypeList()
+		private List<QueueCandidate> RankPlayedTracks(eQueueMode mode, string userId, HashSet<string> playedIds)
 		{
-			List<eAnalyticType> types = new List<eAnalyticType>();
-			types.Add(eAnalyticType.Track);
-			return types;
-		}
+			List<QueueCandidate> played = new List<QueueCandidate>();
 
-		private double ComputeRecencyMultiplier(DateTime lastPlayed)
-		{
-			if (lastPlayed == DateTime.MinValue)
+			if (mode == eQueueMode.Popular)
 			{
-				return 0.0;
-			}
-			double days = (m_now - lastPlayed).TotalDays;
-			if (days < 0)
-			{
-				days = 0;
-			}
-			return 1.0 / (1.0 + days / s_recencyDecayDays);
-		}
-
-		private bool InCooldown(DateTime lastPlayed)
-		{
-			if (lastPlayed == DateTime.MinValue)
-			{
-				return false;
-			}
-			double hours = (m_now - lastPlayed).TotalHours;
-			return hours < s_cooldownHours;
-		}
-
-		private float ComputeScore(TrackData track, int playCount, double totalPlayedSeconds, DateTime lastPlayed)
-		{
-			double recencyMultiplier = ComputeRecencyMultiplier(lastPlayed);
-			double score = playCount * recencyMultiplier;
-			score = score + track.Rating * s_ratingWeight * recencyMultiplier;
-
-			if (playCount > 0)
-			{
-				double averagePlaySeconds = totalPlayedSeconds / playCount;
-				double fraction = averagePlaySeconds / track.DurationSeconds;
-				double clamped = Math.Clamp(fraction, 0.0, 1.0);
-				double skipRatio = 1.0 - clamped;
-				if (skipRatio > s_skipPenaltyThreshold)
+				Dictionary<string, PoolStat> globalPlays = AggregateGlobalPlays();
+				foreach (KeyValuePair<string, PoolStat> entry in globalPlays)
 				{
-					score = score * (1.0 - skipRatio);
+					PoolStat stat = entry.Value;
+					if (stat.m_playCount <= 0)
+					{
+						continue;
+					}
+					playedIds.Add(entry.Key);
+					bool inCooldown = stat.m_lastPlayed != DateTime.MinValue && (m_now - stat.m_lastPlayed).TotalHours < s_cooldownHours;
+					if (inCooldown)
+					{
+						continue;
+					}
+					QueueCandidate candidate = ScoredCandidate(entry.Key, stat.m_playCount, stat.m_totalPlayedSeconds, stat.m_lastPlayed);
+					if (candidate != null)
+					{
+						played.Add(candidate);
+					}
+				}
+				played.Sort();
+				return played;
+			}
+
+			List<eAnalyticType> trackType = new List<eAnalyticType>();
+			trackType.Add(eAnalyticType.Track);
+			List<AnaliticUserItem> userItems = m_analyticsData.GetUserItems(userId, trackType);
+			for (int index = 0; index < userItems.Count; index++)
+			{
+				AnaliticUserItem item = userItems[index];
+				if (item == null || item.PlayCount <= 0 || string.IsNullOrEmpty(item.ItemID))
+				{
+					continue;
+				}
+				playedIds.Add(item.ItemID);
+				bool inCooldown = item.LastPlayed != DateTime.MinValue && (m_now - item.LastPlayed).TotalHours < s_cooldownHours;
+				if (inCooldown)
+				{
+					continue;
+				}
+				QueueCandidate candidate = ScoredCandidate(item.ItemID, item.PlayCount, item.TotalPlayedSeconds, item.LastPlayed);
+				if (candidate != null)
+				{
+					played.Add(candidate);
+				}
+			}
+			played.Sort();
+
+			Dictionary<string, PoolStat> backfillPlays = AggregateGlobalPlays();
+			List<QueueCandidate> backfill = new List<QueueCandidate>();
+			foreach (KeyValuePair<string, PoolStat> entry in backfillPlays)
+			{
+				if (playedIds.Contains(entry.Key))
+				{
+					continue;
+				}
+				TrackData track = m_musicManager.GetTrack(entry.Key);
+				if (track == null || track.DurationSeconds <= 0 || track.Rating == 0)
+				{
+					continue;
+				}
+				QueueCandidate candidate = ScoredCandidate(entry.Key, entry.Value.m_playCount, entry.Value.m_totalPlayedSeconds, entry.Value.m_lastPlayed);
+				if (candidate != null)
+				{
+					backfill.Add(candidate);
+				}
+			}
+			backfill.Sort();
+			played.AddRange(backfill);
+			return played;
+		}
+
+		private List<QueueCandidate> RankUnratedTracks(eQueueMode mode, string userId, HashSet<string> playedIds)
+		{
+			Dictionary<string, int> playsByTrack = new Dictionary<string, int>();
+			if (mode == eQueueMode.Popular)
+			{
+				Dictionary<string, PoolStat> globalPlays = AggregateGlobalPlays();
+				foreach (KeyValuePair<string, PoolStat> entry in globalPlays)
+				{
+					playsByTrack[entry.Key] = entry.Value.m_playCount;
+				}
+			}
+			else
+			{
+				List<eAnalyticType> trackType = new List<eAnalyticType>();
+				trackType.Add(eAnalyticType.Track);
+				List<AnaliticUserItem> userItems = m_analyticsData.GetUserItems(userId, trackType);
+				for (int index = 0; index < userItems.Count; index++)
+				{
+					AnaliticUserItem item = userItems[index];
+					if (item == null || string.IsNullOrEmpty(item.ItemID))
+					{
+						continue;
+					}
+					playsByTrack[item.ItemID] = item.PlayCount;
 				}
 			}
 
-			return (float)score;
+			Dictionary<string, double> artistAffinity = new Dictionary<string, double>();
+			foreach (KeyValuePair<string, int> entry in playsByTrack)
+			{
+				if (entry.Value <= 0)
+				{
+					continue;
+				}
+				TrackData playedTrack = m_musicManager.GetTrack(entry.Key);
+				if (playedTrack == null || string.IsNullOrEmpty(playedTrack.ArtistId))
+				{
+					continue;
+				}
+				double existing;
+				bool present = artistAffinity.TryGetValue(playedTrack.ArtistId, out existing);
+				if (present)
+				{
+					artistAffinity[playedTrack.ArtistId] = existing + entry.Value;
+				}
+				else
+				{
+					artistAffinity[playedTrack.ArtistId] = entry.Value;
+				}
+			}
+
+			List<TrackData> allTracks = m_musicManager.GetAllTracks();
+			List<QueueCandidate> unrated = new List<QueueCandidate>();
+			for (int index = 0; index < allTracks.Count; index++)
+			{
+				TrackData track = allTracks[index];
+				if (track == null || track.DurationSeconds <= 0 || track.Rating != 0)
+				{
+					continue;
+				}
+				if (playedIds.Contains(track.Id))
+				{
+					continue;
+				}
+
+				double affinityScore = 0;
+				if (!string.IsNullOrEmpty(track.ArtistId))
+				{
+					artistAffinity.TryGetValue(track.ArtistId, out affinityScore);
+				}
+
+				QueueCandidate candidate = new QueueCandidate();
+				candidate.m_track = track;
+				candidate.m_isUnrated = true;
+				candidate.m_score = (float)affinityScore;
+				unrated.Add(candidate);
+			}
+			unrated.Sort();
+			return unrated;
 		}
 
-		private QueueCandidate BuildScoredCandidate(string trackId, int playCount, double totalPlayedSeconds, DateTime lastPlayed)
+		private Dictionary<string, PoolStat> AggregateGlobalPlays()
 		{
-			TrackData track = m_musicManager.GetTrack(trackId);
-			if (track == null)
-			{
-				return null;
-			}
-			if (track.DurationSeconds <= 0)
-			{
-				return null;
-			}
+			List<eAnalyticType> trackType = new List<eAnalyticType>();
+			trackType.Add(eAnalyticType.Track);
+			List<AnaliticUserItem> items = m_analyticsData.GetRankedItems(trackType);
 
-			QueueCandidate candidate = new QueueCandidate();
-			candidate.m_track = track;
-			candidate.m_playCount = playCount;
-			candidate.m_totalPlayedSeconds = totalPlayedSeconds;
-			candidate.m_lastPlayed = lastPlayed;
-			candidate.m_isUnrated = false;
-			candidate.m_score = ComputeScore(track, playCount, totalPlayedSeconds, lastPlayed);
-			return candidate;
-		}
-
-		private Dictionary<string, PoolStat> AggregateGlobalTrackStats()
-		{
-			List<AnaliticUserItem> items = m_analyticsData.GetRankedItems(TrackTypeList());
 			Dictionary<string, PoolStat> byTrack = new Dictionary<string, PoolStat>();
 			for (int index = 0; index < items.Count; index++)
 			{
@@ -154,7 +245,8 @@ namespace Pulse.MusicLibrary
 				}
 
 				PoolStat stat;
-				if (!byTrack.TryGetValue(item.ItemID, out stat))
+				bool present = byTrack.TryGetValue(item.ItemID, out stat);
+				if (!present)
 				{
 					stat = new PoolStat();
 					byTrack[item.ItemID] = stat;
@@ -169,415 +261,193 @@ namespace Pulse.MusicLibrary
 			return byTrack;
 		}
 
-		private Dictionary<string, double> BuildUserArtistAffinity(List<AnaliticUserItem> userItems)
+		private QueueCandidate ScoredCandidate(string trackId, int playCount, double totalPlayedSeconds, DateTime lastPlayed)
 		{
-			Dictionary<string, double> affinity = new Dictionary<string, double>();
-			for (int index = 0; index < userItems.Count; index++)
+			TrackData track = m_musicManager.GetTrack(trackId);
+			if (track == null || track.DurationSeconds <= 0)
 			{
-				AnaliticUserItem item = userItems[index];
-				if (item == null || item.PlayCount <= 0 || string.IsNullOrEmpty(item.ItemID))
-				{
-					continue;
-				}
-				TrackData track = m_musicManager.GetTrack(item.ItemID);
-				if (track == null || string.IsNullOrEmpty(track.ArtistId))
-				{
-					continue;
-				}
+				return null;
+			}
 
-				double existing;
-				if (affinity.TryGetValue(track.ArtistId, out existing))
+			double recencyMultiplier = 0;
+			if (lastPlayed != DateTime.MinValue)
+			{
+				double days = (m_now - lastPlayed).TotalDays;
+				if (days < 0)
 				{
-					affinity[track.ArtistId] = existing + item.PlayCount;
+					days = 0;
 				}
-				else
+				recencyMultiplier = 1.0 / (1.0 + days / s_recencyDecayDays);
+			}
+
+			double score = playCount * recencyMultiplier;
+			score = score + track.Rating * s_ratingWeight * recencyMultiplier;
+			if (playCount > 0)
+			{
+				double averagePlaySeconds = totalPlayedSeconds / playCount;
+				double clamped = Math.Clamp(averagePlaySeconds / track.DurationSeconds, 0.0, 1.0);
+				double skipRatio = 1.0 - clamped;
+				if (skipRatio > s_skipPenaltyThreshold)
 				{
-					affinity[track.ArtistId] = item.PlayCount;
+					score = score * (1.0 - skipRatio);
 				}
 			}
-			return affinity;
-		}
 
-		private Dictionary<string, double> BuildGlobalArtistPopularity(Dictionary<string, PoolStat> globalStats)
-		{
-			Dictionary<string, double> popularity = new Dictionary<string, double>();
-			foreach (KeyValuePair<string, PoolStat> entry in globalStats)
-			{
-				if (entry.Value.m_playCount <= 0)
-				{
-					continue;
-				}
-				TrackData track = m_musicManager.GetTrack(entry.Key);
-				if (track == null || string.IsNullOrEmpty(track.ArtistId))
-				{
-					continue;
-				}
-
-				double existing;
-				if (popularity.TryGetValue(track.ArtistId, out existing))
-				{
-					popularity[track.ArtistId] = existing + entry.Value.m_playCount;
-				}
-				else
-				{
-					popularity[track.ArtistId] = entry.Value.m_playCount;
-				}
-			}
-			return popularity;
-		}
-
-		private QueueCandidate BuildUnratedCandidate(TrackData track, Dictionary<string, double> artistAffinity)
-		{
 			QueueCandidate candidate = new QueueCandidate();
 			candidate.m_track = track;
-			candidate.m_playCount = 0;
-			candidate.m_totalPlayedSeconds = 0;
-			candidate.m_lastPlayed = DateTime.MinValue;
-			candidate.m_isUnrated = true;
-
-			double affinityScore = 0;
-			if (!string.IsNullOrEmpty(track.ArtistId))
-			{
-				artistAffinity.TryGetValue(track.ArtistId, out affinityScore);
-			}
-			candidate.m_score = (float)affinityScore;
+			candidate.m_playCount = playCount;
+			candidate.m_totalPlayedSeconds = totalPlayedSeconds;
+			candidate.m_lastPlayed = lastPlayed;
+			candidate.m_isUnrated = false;
+			candidate.m_score = (float)score;
 			return candidate;
 		}
 
-		private List<QueueCandidate> BuildPersonalizedRated(string userId, HashSet<string> userPlayedIds)
+		private List<QueueCandidate> FillQueueToDuration(List<QueueCandidate> played, List<QueueCandidate> unrated)
 		{
-			List<AnaliticUserItem> userItems = m_analyticsData.GetUserItems(userId, TrackTypeList());
-			List<QueueCandidate> rated = new List<QueueCandidate>();
-			for (int index = 0; index < userItems.Count; index++)
-			{
-				AnaliticUserItem item = userItems[index];
-				if (item == null || item.PlayCount <= 0 || string.IsNullOrEmpty(item.ItemID))
-				{
-					continue;
-				}
-				userPlayedIds.Add(item.ItemID);
-				if (InCooldown(item.LastPlayed))
-				{
-					continue;
-				}
-
-				QueueCandidate candidate = BuildScoredCandidate(item.ItemID, item.PlayCount, item.TotalPlayedSeconds, item.LastPlayed);
-				if (candidate != null)
-				{
-					rated.Add(candidate);
-				}
-			}
-			rated.Sort(CompareCandidateByScoreDescending);
-
-			Dictionary<string, PoolStat> globalStats = AggregateGlobalTrackStats();
-			List<QueueCandidate> backfill = new List<QueueCandidate>();
-			foreach (KeyValuePair<string, PoolStat> entry in globalStats)
-			{
-				if (userPlayedIds.Contains(entry.Key))
-				{
-					continue;
-				}
-				TrackData track = m_musicManager.GetTrack(entry.Key);
-				if (track == null || track.DurationSeconds <= 0)
-				{
-					continue;
-				}
-				if (track.Rating == 0)
-				{
-					continue;
-				}
-
-				QueueCandidate candidate = BuildScoredCandidate(entry.Key, entry.Value.m_playCount, entry.Value.m_totalPlayedSeconds, entry.Value.m_lastPlayed);
-				if (candidate != null)
-				{
-					backfill.Add(candidate);
-				}
-			}
-			backfill.Sort(CompareCandidateByScoreDescending);
-			rated.AddRange(backfill);
-			return rated;
-		}
-
-		private List<QueueCandidate> BuildPersonalizedUnrated(string userId, HashSet<string> userPlayedIds)
-		{
-			List<AnaliticUserItem> userItems = m_analyticsData.GetUserItems(userId, TrackTypeList());
-			Dictionary<string, double> artistAffinity = BuildUserArtistAffinity(userItems);
-
-			List<TrackData> allTracks = m_musicManager.GetAllTracks();
-			List<QueueCandidate> unrated = new List<QueueCandidate>();
-			for (int index = 0; index < allTracks.Count; index++)
-			{
-				TrackData track = allTracks[index];
-				if (track == null || track.DurationSeconds <= 0)
-				{
-					continue;
-				}
-				if (track.Rating != 0)
-				{
-					continue;
-				}
-				if (userPlayedIds.Contains(track.Id))
-				{
-					continue;
-				}
-
-				unrated.Add(BuildUnratedCandidate(track, artistAffinity));
-			}
-			unrated.Sort(CompareCandidateByScoreDescending);
-			return unrated;
-		}
-
-		private List<QueueCandidate> BuildPopularRated(HashSet<string> globalPlayedIds)
-		{
-			Dictionary<string, PoolStat> globalStats = AggregateGlobalTrackStats();
-			List<QueueCandidate> rated = new List<QueueCandidate>();
-			foreach (KeyValuePair<string, PoolStat> entry in globalStats)
-			{
-				if (entry.Value.m_playCount <= 0)
-				{
-					continue;
-				}
-				globalPlayedIds.Add(entry.Key);
-				if (InCooldown(entry.Value.m_lastPlayed))
-				{
-					continue;
-				}
-
-				QueueCandidate candidate = BuildScoredCandidate(entry.Key, entry.Value.m_playCount, entry.Value.m_totalPlayedSeconds, entry.Value.m_lastPlayed);
-				if (candidate != null)
-				{
-					rated.Add(candidate);
-				}
-			}
-			rated.Sort(CompareCandidateByScoreDescending);
-			return rated;
-		}
-
-		private List<QueueCandidate> BuildPopularUnrated(HashSet<string> globalPlayedIds)
-		{
-			Dictionary<string, PoolStat> globalStats = AggregateGlobalTrackStats();
-			Dictionary<string, double> artistPopularity = BuildGlobalArtistPopularity(globalStats);
-
-			List<TrackData> allTracks = m_musicManager.GetAllTracks();
-			List<QueueCandidate> unrated = new List<QueueCandidate>();
-			for (int index = 0; index < allTracks.Count; index++)
-			{
-				TrackData track = allTracks[index];
-				if (track == null || track.DurationSeconds <= 0)
-				{
-					continue;
-				}
-				if (track.Rating != 0)
-				{
-					continue;
-				}
-				if (globalPlayedIds.Contains(track.Id))
-				{
-					continue;
-				}
-
-				unrated.Add(BuildUnratedCandidate(track, artistPopularity));
-			}
-			unrated.Sort(CompareCandidateByScoreDescending);
-			return unrated;
-		}
-
-		private List<QueueCandidate> SelectToTarget(List<QueueCandidate> rated, List<QueueCandidate> unrated)
-		{
-			List<QueueCandidate> selected = new List<QueueCandidate>();
+			List<QueueCandidate> chosen = new List<QueueCandidate>();
 			HashSet<string> usedIds = new HashSet<string>();
-			int ratedIndex = 0;
+			int playedIndex = 0;
 			int unratedIndex = 0;
-			int unratedSelected = 0;
-			double cumulativeSeconds = 0;
+			int unratedChosen = 0;
+			double seconds = 0;
 
-			int maxIterations = rated.Count + unrated.Count;
-			for (int iteration = 0; iteration < maxIterations; iteration++)
+			int maxPicks = played.Count + unrated.Count;
+			for (int pick = 0; pick < maxPicks; pick++)
 			{
-				if (cumulativeSeconds >= s_targetDurationSeconds)
+				if (seconds >= s_targetDurationSeconds)
+				{
+					break;
+				}
+				bool playedLeft = playedIndex < played.Count;
+				bool unratedLeft = unratedIndex < unrated.Count;
+				if (!playedLeft && !unratedLeft)
 				{
 					break;
 				}
 
-				bool ratedAvailable = ratedIndex < rated.Count;
-				bool unratedAvailable = unratedIndex < unrated.Count;
-				if (!ratedAvailable && !unratedAvailable)
-				{
-					break;
-				}
+				double requiredUnrated = Math.Ceiling(s_minUnratedFraction * (chosen.Count + 1));
+				bool takeUnrated = unratedChosen < requiredUnrated;
 
-				double requiredUnrated = Math.Ceiling(s_minUnratedFraction * (selected.Count + 1));
-				bool wantUnrated = unratedSelected < requiredUnrated;
-
-				QueueCandidate pick = null;
-				if (wantUnrated && unratedAvailable)
+				QueueCandidate candidate;
+				if (takeUnrated && unratedLeft)
 				{
-					pick = unrated[unratedIndex];
+					candidate = unrated[unratedIndex];
 					unratedIndex++;
 				}
-				else if (ratedAvailable)
+				else if (playedLeft)
 				{
-					pick = rated[ratedIndex];
-					ratedIndex++;
+					candidate = played[playedIndex];
+					playedIndex++;
 				}
 				else
 				{
-					pick = unrated[unratedIndex];
+					candidate = unrated[unratedIndex];
 					unratedIndex++;
 				}
 
-				if (pick == null)
+				if (usedIds.Contains(candidate.m_track.Id))
 				{
 					continue;
 				}
-				if (usedIds.Contains(pick.m_track.Id))
+				usedIds.Add(candidate.m_track.Id);
+				chosen.Add(candidate);
+				seconds = seconds + candidate.m_track.DurationSeconds;
+				if (candidate.m_isUnrated)
 				{
-					continue;
-				}
-
-				usedIds.Add(pick.m_track.Id);
-				selected.Add(pick);
-				cumulativeSeconds = cumulativeSeconds + pick.m_track.DurationSeconds;
-				if (pick.m_isUnrated)
-				{
-					unratedSelected++;
+					unratedChosen++;
 				}
 			}
 
-			return selected;
+			return chosen;
 		}
 
-		private QueueCandidate RemoveWithArtistSpread(List<QueueCandidate> pool, List<QueueCandidate> placed)
+		private List<QueueCandidate> SpaceOutArtists(List<QueueCandidate> chosen)
 		{
-			int windowStart = placed.Count - (s_artistSpreadWindow - 1);
-			if (windowStart < 0)
+			List<QueueCandidate> familiar = new List<QueueCandidate>();
+			List<QueueCandidate> discovery = new List<QueueCandidate>();
+			for (int index = 0; index < chosen.Count; index++)
 			{
-				windowStart = 0;
+				if (chosen[index].m_isUnrated)
+				{
+					discovery.Add(chosen[index]);
+				}
+				else
+				{
+					familiar.Add(chosen[index]);
+				}
 			}
 
-			for (int index = 0; index < pool.Count; index++)
+			int total = familiar.Count + discovery.Count;
+			double spacing = total + 1;
+			if (discovery.Count > 0)
 			{
-				string artistId = pool[index].m_track.ArtistId;
-				bool collides = false;
-				for (int back = windowStart; back < placed.Count; back++)
+				spacing = (double)total / discovery.Count;
+			}
+
+			List<QueueCandidate> ordered = new List<QueueCandidate>();
+			int placedDiscovery = 0;
+			for (int position = 0; position < total; position++)
+			{
+				bool takeDiscovery = false;
+				if (discovery.Count > 0)
 				{
-					if (placed[back].m_track.ArtistId == artistId)
+					double discoveryDue = (placedDiscovery + 0.5) * spacing;
+					if (position >= discoveryDue)
 					{
-						collides = true;
+						takeDiscovery = true;
+					}
+				}
+				if (familiar.Count == 0)
+				{
+					takeDiscovery = discovery.Count > 0;
+				}
+				if (discovery.Count == 0)
+				{
+					takeDiscovery = false;
+				}
+
+				List<QueueCandidate> pool = familiar;
+				if (takeDiscovery)
+				{
+					pool = discovery;
+				}
+
+				int windowStart = ordered.Count - (s_artistSpreadWindow - 1);
+				if (windowStart < 0)
+				{
+					windowStart = 0;
+				}
+
+				int nextIndex = 0;
+				for (int candidateIndex = 0; candidateIndex < pool.Count; candidateIndex++)
+				{
+					string artistId = pool[candidateIndex].m_track.ArtistId;
+					bool repeatsArtist = false;
+					for (int back = windowStart; back < ordered.Count; back++)
+					{
+						if (ordered[back].m_track.ArtistId == artistId)
+						{
+							repeatsArtist = true;
+							break;
+						}
+					}
+					if (!repeatsArtist)
+					{
+						nextIndex = candidateIndex;
 						break;
 					}
 				}
-				if (!collides)
+
+				ordered.Add(pool[nextIndex]);
+				pool.RemoveAt(nextIndex);
+				if (takeDiscovery)
 				{
-					QueueCandidate chosen = pool[index];
-					pool.RemoveAt(index);
-					return chosen;
+					placedDiscovery++;
 				}
 			}
 
-			QueueCandidate fallback = pool[0];
-			pool.RemoveAt(0);
-			return fallback;
-		}
-
-		private List<QueueCandidate> Sequence(List<QueueCandidate> selected)
-		{
-			List<QueueCandidate> ratedPool = new List<QueueCandidate>();
-			List<QueueCandidate> unratedPool = new List<QueueCandidate>();
-			for (int index = 0; index < selected.Count; index++)
-			{
-				if (selected[index].m_isUnrated)
-				{
-					unratedPool.Add(selected[index]);
-				}
-				else
-				{
-					ratedPool.Add(selected[index]);
-				}
-			}
-			ratedPool.Sort(CompareCandidateByGenreThenScore);
-			unratedPool.Sort(CompareCandidateByScoreDescending);
-
-			int total = ratedPool.Count + unratedPool.Count;
-			int unratedTotal = unratedPool.Count;
-			double step = total + 1;
-			if (unratedTotal > 0)
-			{
-				step = (double)total / unratedTotal;
-			}
-
-			List<QueueCandidate> result = new List<QueueCandidate>();
-			int placedUnrated = 0;
-			for (int position = 0; position < total; position++)
-			{
-				bool wantUnrated = false;
-				if (unratedPool.Count > 0)
-				{
-					double threshold = (placedUnrated + 0.5) * step;
-					if (position >= threshold)
-					{
-						wantUnrated = true;
-					}
-				}
-				if (ratedPool.Count == 0)
-				{
-					wantUnrated = unratedPool.Count > 0;
-				}
-				if (unratedPool.Count == 0)
-				{
-					wantUnrated = false;
-				}
-
-				QueueCandidate chosen;
-				if (wantUnrated)
-				{
-					chosen = RemoveWithArtistSpread(unratedPool, result);
-					placedUnrated++;
-				}
-				else
-				{
-					chosen = RemoveWithArtistSpread(ratedPool, result);
-				}
-				result.Add(chosen);
-			}
-
-			return result;
-		}
-
-		public SmartQueue(MusicManager musicManager, AnalyticsData analyticsData)
-		{
-			m_musicManager = musicManager;
-			m_analyticsData = analyticsData;
-			m_now = DateTime.UtcNow;
-		}
-
-		public List<TrackData> Build(eQueueMode mode, string userId)
-		{
-			List<QueueCandidate> rated;
-			List<QueueCandidate> unrated;
-
-			if (mode == eQueueMode.Popular)
-			{
-				HashSet<string> globalPlayedIds = new HashSet<string>();
-				rated = BuildPopularRated(globalPlayedIds);
-				unrated = BuildPopularUnrated(globalPlayedIds);
-			}
-			else
-			{
-				HashSet<string> userPlayedIds = new HashSet<string>();
-				rated = BuildPersonalizedRated(userId, userPlayedIds);
-				unrated = BuildPersonalizedUnrated(userId, userPlayedIds);
-			}
-
-			List<QueueCandidate> selected = SelectToTarget(rated, unrated);
-			List<QueueCandidate> ordered = Sequence(selected);
-
-			List<TrackData> result = new List<TrackData>();
-			for (int index = 0; index < ordered.Count; index++)
-			{
-				result.Add(ordered[index].m_track);
-			}
-			return result;
+			return ordered;
 		}
 	}
 }

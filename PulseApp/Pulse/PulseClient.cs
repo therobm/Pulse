@@ -770,11 +770,11 @@ namespace PulseApp.Pulse
 		}
 
 
-		public override void GenerateQueue(string mode, Action<PulsePlaylistDetails> onComplete)
+		public override void GetSmartQueue(string mode, Action<PulsePlaylistDetails> onComplete)
 		{
 			m_workQueue.Enqueue(() =>
 			{
-				string url = BuildPulseUrl("generateQueue", "mode=" + Uri.EscapeDataString(mode));
+				string url = BuildPulseUrl("smartQueue", "mode=" + Uri.EscapeDataString(mode));
 				FetchObject<PulsePlaylistDetails>(url, eMediaCacheStrategy.NetworkOnly, (details) =>
 				{
 					if (onComplete != null)
