@@ -17,7 +17,6 @@ namespace Pulse.Data
 		private ConcurrentDictionary<string, AlbumData> m_albums = new ConcurrentDictionary<string, AlbumData>();
 		private ConcurrentDictionary<string, ArtistData> m_artists = new ConcurrentDictionary<string, ArtistData>();
 		private ConcurrentDictionary<string, PlaylistData> m_playlists = new ConcurrentDictionary<string, PlaylistData>();
-		private ConcurrentDictionary<string, PlaylistData> m_autoPlaylists = new ConcurrentDictionary<string, PlaylistData>();
 		private PulseAnalyticsData m_analytics = new PulseAnalyticsData();
 
 		[Obsolete]
@@ -156,16 +155,12 @@ namespace Pulse.Data
 			{
 				return playlist;
 			}
-			m_autoPlaylists.TryGetValue(id, out playlist);
-			return playlist;
+			return null;
 		}
 
 		public List<PlaylistData> GetAllPlaylists(string userName)
 		{
-			RebuildSmartPlaylists(userName);
-			List<PlaylistData> list = new List<PlaylistData>(m_playlists.Values);
-			list.AddRange(m_autoPlaylists.Values);
-			return list;
+			return new List<PlaylistData>(m_playlists.Values);
 		}
 		public List<PlaylistData> GetGenericPlaylists()
 		{
@@ -176,10 +171,7 @@ namespace Pulse.Data
 			PlaylistData playlist;
 			if (!m_playlists.TryGetValue(playlistId, out playlist))
 			{
-				if (!m_autoPlaylists.TryGetValue(playlistId, out playlist))
-				{
-					return new List<TrackData>();
-				}
+				return new List<TrackData>();
 			}
 
 			List<TrackData> tracks = new List<TrackData>();
@@ -931,38 +923,6 @@ namespace Pulse.Data
 			{
 				if (playlist.UserLastPlayed.Remove(userId)) { playlist.MarkDirty(); }
 			}
-		}
-
-		private void RebuildSmartPlaylists(string userName)
-		{
-			RebuildSmartPlaylist("Shared", null);
-			if (!string.IsNullOrEmpty(userName))
-			{
-				RebuildSmartPlaylist(userName, userName);
-			}
-		}
-
-		private void RebuildSmartPlaylist(string playlistName, string userName)
-		{
-			string playlistId = MusicManager.GenerateID("smart/" + playlistName);
-
-			List<TrackData> scoredTracks = new List<TrackData>();
-			List<ArtistData> scoredArtists = new List<ArtistData>();
-			List<TrackData> unplayedTracks = new List<TrackData>();
-
-			foreach (ArtistData ArtistData in m_artists.Values)
-			{
-				if (ArtistData.WeightedScore > 0)
-				{
-					scoredArtists.Add(ArtistData);
-				}
-			}
-
-			SmartPlaylist.CategorizeTracks(m_tracks.Values, userName, scoredTracks, unplayedTracks);
-
-			Random rng = new Random();
-			PlaylistData playlist = SmartPlaylist.BuildSmartPlaylist(playlistId, "Top Rated (" + userName + ")", scoredTracks, scoredArtists, unplayedTracks, userName, rng);
-			m_autoPlaylists[playlistId] = playlist;
 		}
 	}
 }

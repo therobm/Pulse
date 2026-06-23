@@ -19,6 +19,8 @@ namespace PulseApp.Views
 		private CollectionView m_yourPlaylists;
 		private CollectionView m_popularArtists;
 		private CollectionView m_favorites;
+		private Button m_personalizedButton;
+		private Button m_popularButton;
 
 		private QuietObservableCollection<PulseObject> m_recentlyPlayedItems = new QuietObservableCollection<PulseObject>();
 		private QuietObservableCollection<PulsePlaylist> m_yourPlaylistsItems = new QuietObservableCollection<PulsePlaylist>();
@@ -38,6 +40,7 @@ namespace PulseApp.Views
 			stack.Spacing = 20;
 			stack.Padding = new Thickness(0, 12, 0, 12);
 
+			stack.Children.Add(BuildSmartQueueBar());
 			stack.Children.Add(BuildTopPanel());
 			m_recentlyPlayed = BuildShelf(stack, "Recently Played");
 			m_recentlyPlayed.ItemsSource = m_recentlyPlayedItems;
@@ -99,6 +102,65 @@ namespace PulseApp.Views
 
 			section.Children.Add(panelGrid);
 			return section;
+		}
+
+		private View BuildSmartQueueBar()
+		{
+			Grid bar = new Grid();
+			bar.Padding = new Thickness(16, 0);
+			bar.ColumnSpacing = 8;
+
+			ColumnDefinition leftColumn = new ColumnDefinition();
+			leftColumn.Width = GridLength.Star;
+			ColumnDefinition rightColumn = new ColumnDefinition();
+			rightColumn.Width = GridLength.Star;
+			bar.ColumnDefinitions.Add(leftColumn);
+			bar.ColumnDefinitions.Add(rightColumn);
+
+			m_personalizedButton = BuildSmartQueueButton("✦  Personalized");
+			m_personalizedButton.Clicked += OnPersonalizedQueueClicked;
+			Grid.SetColumn(m_personalizedButton, 0);
+			bar.Children.Add(m_personalizedButton);
+
+			m_popularButton = BuildSmartQueueButton("★  Popular");
+			m_popularButton.Clicked += OnPopularQueueClicked;
+			Grid.SetColumn(m_popularButton, 1);
+			bar.Children.Add(m_popularButton);
+
+			return bar;
+		}
+
+		private Button BuildSmartQueueButton(string text)
+		{
+			Button button = new Button();
+			button.Text = text;
+			button.TextColor = PulseAppColors.Background;
+			button.BackgroundColor = PulseAppColors.Accent;
+			button.CornerRadius = 16;
+			button.FontSize = 14;
+			button.FontAttributes = FontAttributes.Bold;
+			button.Padding = new Thickness(16, 4);
+			button.HeightRequest = 40;
+			return button;
+		}
+
+		private void OnPersonalizedQueueClicked(object sender, System.EventArgs eventArgs)
+		{
+			MainView.MediaClient.GetSmartQueue("personalized", OnSmartQueueLoaded);
+		}
+
+		private void OnPopularQueueClicked(object sender, System.EventArgs eventArgs)
+		{
+			MainView.MediaClient.GetSmartQueue("popular", OnSmartQueueLoaded);
+		}
+
+		private void OnSmartQueueLoaded(PulsePlaylistDetails details)
+		{
+			if (details == null || details.Tracks == null || details.Tracks.Count == 0)
+			{
+				return;
+			}
+			MainView.Self.OnPlayTracks(details.Tracks, 0, eQueueSource.Track, "");
 		}
 
 		private CollectionView BuildShelf(StackLayout parent, string title)

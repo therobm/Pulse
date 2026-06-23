@@ -30,7 +30,8 @@ namespace PulseApp.Playback.AndroidOS
 		Genre,
 		Track,
 		Podcast,
-		Audiobook
+		Audiobook,
+		SmartQueue
 	}
 
 	public class MediaItemBuilder
@@ -58,6 +59,7 @@ namespace PulseApp.Playback.AndroidOS
 			{ eAAObject.Genre, "genre" },
 			{ eAAObject.Podcast, "podcast" },
 			{ eAAObject.Audiobook, "audiobook" },
+			{ eAAObject.SmartQueue, "smartqueue" },
 		};
 
 		// Audiobook chapter ids carry the owning book id so a tapped chapter
