@@ -706,34 +706,7 @@ namespace Pulse.Protocols
 			}
 			else if (type == "highest")
 			{
-				// Pulse has per-track Rating only; average over the album. Unrated
-				// albums drop off.
-				List<KeyValuePair<AlbumData, float>> scored = new List<KeyValuePair<AlbumData, float>>();
-				for (int index = 0; index < allAlbums.Count; index++)
-				{
-					AlbumData album = allAlbums[index];
-					float total = 0f;
-					int rated = 0;
-					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
-					{
-						int trackRating = album.Tracks[trackIndex].Rating;
-						if (trackRating > 0)
-						{
-							total = total + trackRating;
-							rated++;
-						}
-					}
-					if (rated > 0)
-					{
-						scored.Add(new KeyValuePair<AlbumData, float>(album, total / rated));
-					}
-				}
-				scored.Sort(MusicComparers.CompareAlbumFloatDescending);
-				allAlbums = new List<AlbumData>();
-				for (int index = 0; index < scored.Count; index++)
-				{
-					allAlbums.Add(scored[index].Key);
-				}
+				Log.Error("Unsupported highest rated albums");
 			}
 
 			List<PulseAlbum> pulseAlbums = new List<PulseAlbum>();

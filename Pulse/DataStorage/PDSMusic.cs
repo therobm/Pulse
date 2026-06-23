@@ -73,7 +73,6 @@ namespace Pulse.DataStorage
 		public string ContentType;
 		public string Suffix;
 
-		public int Rating;
 		public Dictionary<string, bool> Starred = new Dictionary<string, bool>();
 
 		public DateTime LastPlayed;

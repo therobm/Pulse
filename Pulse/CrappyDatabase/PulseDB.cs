@@ -137,7 +137,7 @@ namespace Pulse.Database
 					track.FileSizeBytes = reader.GetInt64(13);
 					track.ContentType = reader.GetString(14);
 					track.Suffix = reader.GetString(15);
-					track.Rating = reader.GetInt32(16);
+					/*track.Rating =*/ reader.GetInt32(16);
 					string lastPlayedStr = reader.GetString(17);
 					DateTime lastPlayed;
 					if (DateTime.TryParse(lastPlayedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out lastPlayed))
@@ -537,7 +537,7 @@ namespace Pulse.Database
 			command.Parameters.AddWithValue("$file_size_bytes", track.FileSizeBytes);
 			command.Parameters.AddWithValue("$content_type", track.ContentType ?? "");
 			command.Parameters.AddWithValue("$suffix", track.Suffix ?? "");
-			command.Parameters.AddWithValue("$rating", track.Rating);
+			command.Parameters.AddWithValue("$rating", 0);// track.Rating);
 			command.Parameters.AddWithValue("$last_played", track.LastPlayed.ToString("o"));
 			command.Parameters.AddWithValue("$play_count", track.Score.PlayCount);
 			command.Parameters.AddWithValue("$skip_count", track.Score.SkipCount);
