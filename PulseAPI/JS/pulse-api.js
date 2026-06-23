@@ -293,6 +293,10 @@
 		return this._contents('playlist', { id: id });
 	};
 
+	PulseClient.prototype.generateQueue = function (mode) {
+		return this._contents('generateQueue', { mode: mode });
+	};
+
 	// options: { name, songIds (array), playlistId (to overwrite existing) }
 	PulseClient.prototype.createPlaylist = function (options) {
 		options = options || {};

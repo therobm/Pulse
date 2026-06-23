@@ -1194,6 +1194,41 @@
 				flex-shrink: 0;
 			}
 
+		#left-smart-queue {
+			display: flex;
+			gap: 6px;
+			padding: 4px 12px 10px 12px;
+			margin-bottom: 4px;
+			border-bottom: 1px solid var(--border);
+		}
+
+		.smart-queue-btn {
+			flex: 1;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			gap: 6px;
+			padding: 8px 10px;
+			font-size: 12px;
+			font-weight: 600;
+			color: var(--accent);
+			background: var(--accent-dim);
+			border: none;
+			border-radius: 8px;
+			cursor: pointer;
+			min-height: 38px;
+			transition: background 0.15s, color 0.15s;
+		}
+
+			.smart-queue-btn:hover, .smart-queue-btn:active {
+				background: var(--accent);
+				color: var(--bg);
+			}
+
+			.smart-queue-btn svg {
+				flex-shrink: 0;
+			}
+
 		#left-new-playlist-form, #left-new-podcast-form {
 			display: none;
 			padding: 6px 12px 10px 12px;
@@ -1730,6 +1765,10 @@
 				<button class="sort-btn" data-sort="recent">Recent</button>
 				<button class="sort-btn" data-sort="popular">Popular</button>
 			</div>
+			<div id="left-smart-queue">
+				<button class="smart-queue-btn" data-action="smart-queue-personalized" title="Personalized queue"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg><span>Personalized</span></button>
+				<button class="smart-queue-btn" data-action="smart-queue-popular" title="Popular queue"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15 9 22 9 16 14 18 21 12 17 6 21 8 14 2 9 9 9 12 2"/></svg><span>Popular</span></button>
+			</div>
 			<div id="left-new-playlist-bar">
 				<button class="left-icon-btn" data-action="show-new-playlist-form" title="New playlist"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New playlist</span></button>
 			</div>
@@ -2091,7 +2130,7 @@
 			return card;
 		}
 		/* Left Panel */
-		function switchLeftTab(tab) { leftTab = tab; let tabs = document.querySelectorAll('.left-tab'); for (let idx = 0; idx < tabs.length; idx++) { if (tabs[idx].getAttribute('data-left-tab') === tab) { tabs[idx].classList.add('active'); } else { tabs[idx].classList.remove('active'); } } document.getElementById('left-new-playlist-bar').style.display = (tab === 'playlists') ? 'flex' : 'none'; document.getElementById('left-new-podcast-bar').style.display = (tab === 'podcasts') ? 'flex' : 'none'; if (tab !== 'playlists') { hideNewPlaylistForm(); } if (tab !== 'podcasts') { hideNewPodcastForm(); } renderLeftList(); }
+		function switchLeftTab(tab) { leftTab = tab; let tabs = document.querySelectorAll('.left-tab'); for (let idx = 0; idx < tabs.length; idx++) { if (tabs[idx].getAttribute('data-left-tab') === tab) { tabs[idx].classList.add('active'); } else { tabs[idx].classList.remove('active'); } } document.getElementById('left-new-playlist-bar').style.display = (tab === 'playlists') ? 'flex' : 'none'; document.getElementById('left-smart-queue').style.display = (tab === 'playlists') ? 'flex' : 'none'; document.getElementById('left-new-podcast-bar').style.display = (tab === 'podcasts') ? 'flex' : 'none'; if (tab !== 'playlists') { hideNewPlaylistForm(); } if (tab !== 'podcasts') { hideNewPodcastForm(); } renderLeftList(); }
 		function setLeftSort(sort) { leftSort = sort; let btns = document.querySelectorAll('.sort-btn'); for (let idx = 0; idx < btns.length; idx++) { btns[idx].classList.remove('active'); if (btns[idx].getAttribute('data-sort') === sort) { btns[idx].classList.add('active'); } } renderLeftList(); }
 		function renderLeftList() { let container = document.getElementById('left-list'); container.innerHTML = ''; if (leftTab === 'playlists') { renderLeftPlaylists(container); } else if (leftTab === 'podcasts') { renderLeftPodcasts(container); } else if (leftTab === 'audiobooks') { renderLeftAudiobooks(container); } else { renderLeftArtists(container); } }
 		function renderLeftPodcasts(container) {
@@ -3063,6 +3102,7 @@
 				button.addEventListener('click', function () { switchLeftTab(button.getAttribute('data-left-tab')); });
 			}
 			document.getElementById('left-new-playlist-bar').style.display = (leftTab === 'playlists') ? 'flex' : 'none';
+			document.getElementById('left-smart-queue').style.display = (leftTab === 'playlists') ? 'flex' : 'none';
 			let sortButtons = document.querySelectorAll('.sort-btn');
 			for (let idx = 0; idx < sortButtons.length; idx++) {
 				let button = sortButtons[idx];
@@ -3097,7 +3137,16 @@
 			else if (action === 'cancel-playlist-rename') { cancelPlaylistRename(); }
 			else if (action === 'commit-playlist-comment') { commitPlaylistComment(); }
 			else if (action === 'cancel-playlist-comment') { cancelPlaylistComment(); }
+			else if (action === 'smart-queue-personalized') { onSmartQueueClick('personalized'); }
+			else if (action === 'smart-queue-popular') { onSmartQueueClick('popular'); }
 			else if (action === 'confirm-cancel') { cancelConfirm(); }
+		}
+		function onSmartQueueClick(mode) {
+			pulse.generateQueue(mode).then(function (details) {
+				let songs = adaptTracks(details && details.Tracks);
+				if (songs.length === 0) { return; }
+				playTrackList(songs, 0);
+			}).catch(function (err) { logApiError('generateQueue', err); });
 		}
 		let currentPage = 'pulse';
 		function routeTo(pageName, userParam, replace) {
