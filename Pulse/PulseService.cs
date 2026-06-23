@@ -155,7 +155,7 @@ namespace Pulse
 			m_audiobookManager = new AudiobookManager(config);
 			m_audiobookManager.Run();
 
-			m_pulseEndpoints = new PulseEndpoints(this, m_musicManager, m_analyticsData, m_diagnosticsData, m_podcastManager, m_audiobookManager);
+			m_pulseEndpoints = new PulseEndpoints(this, m_pulseData, m_musicManager, m_analyticsData, m_diagnosticsData, m_podcastManager, m_audiobookManager);
 			
 			m_authEndpoints = new AuthEndpoints(m_pulseData);
 

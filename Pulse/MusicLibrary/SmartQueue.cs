@@ -2,7 +2,8 @@ using Pulse.Data;
 using Pulse.DataStorage;
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices.Marshalling;
+using System.Linq;
+using TagLib.Flac;
 
 namespace Pulse.MusicLibrary
 {
@@ -18,6 +19,7 @@ namespace Pulse.MusicLibrary
 		{
 			public AnaliticUserItem m_object;
 			public float m_score;
+			public float m_randWeight;
 
 			public int CompareTo(ScoredItem other)
 			{
@@ -32,9 +34,7 @@ namespace Pulse.MusicLibrary
 			public DateTime m_lastPlayed = DateTime.MinValue;
 		}
 
-		static Random rand = new Random();
-		const int s_artistSpreadWindow = 5;
-		const int s_maxTracksPerArtist = 3;
+		static Random rand = Random.Shared;
 
 		PulseData m_pulseData;
 		AnalyticsData m_analyticsData;
@@ -50,81 +50,160 @@ namespace Pulse.MusicLibrary
 		public List<TrackData> GetTracks(eQueueMode mode, string userId)
 		{
 			int targetTrackCount = 50;
+			int unplayedTarget = 10;
 			List<TrackData> tracks = new List<TrackData>();
 
-			List<AnaliticUserItem> rankedTracks = m_analyticsData.GetRankedItems(eAnalyticType.Track);
-			List<ScoredItem> scoredTracks = new List<ScoredItem>();
-			HashSet<string> playedTrackIds = new HashSet<string>();
+			int playedTarget = targetTrackCount - unplayedTarget;
+			HashSet<string> rankedTrackIds = new HashSet<string>();
+			HashSet<string> addedTracks = new HashSet<string>();
 
-			for (int i = 0; i < rankedTracks.Count; i++) 
+			List<AnaliticUserItem> rankedTracks = GetRankedItems(userId, mode, eAnalyticType.Track);
+			List<ScoredItem> scoredTracks = CreateScoredItems(rankedTracks);
+			for (int i = 0; i < scoredTracks.Count; i++)
 			{
-				playedTrackIds.Add(rankedTracks[i].ItemID);
-
-				ScoredItem item = new ScoredItem();
-				item.m_object = rankedTracks[i];
-				item.m_score = rankedTracks[i].GetScore(m_pulseData, m_analyticsData);
-				scoredTracks.Add(item);
+				rankedTrackIds.Add(scoredTracks[i].m_object.ItemID);
 			}
 
-			//shuffle scoredTracks by weight
-			//pull 40 tracks
-			for (int i = 0; i < 40; i++)
+			scoredTracks.Sort((a, b) =>
 			{
-				if (i >= scoredTracks.Count)
+				return b.m_randWeight.CompareTo(a.m_randWeight);
+			});
+
+			for (int i = 0; i < playedTarget; i++)
+			{
+				if (i >= scoredTracks.Count || i >= playedTarget)
 					break;
-				tracks.Add(m_pulseData.GetTrack(scoredTracks[i].m_object.ItemID));
+
+				TrackData track = m_pulseData.GetTrack(scoredTracks[i].m_object.ItemID);
+				if (track != null)
+				{
+					tracks.Add(track);
+					addedTracks.Add(track.Id);
+				}
 			}
 
-			if (tracks.Count < 50)
+			//now fill with unranked tracks starting with album, then artist, then random
+			List<AnaliticUserItem> rankedAlbums = GetRankedItems(userId, mode, eAnalyticType.Album);
+			List<ScoredItem> scoredAlbums = CreateScoredItems(rankedAlbums);
+			scoredAlbums.Sort((a, b) =>
 			{
-				//Continue to fill using shuffled weight distribution
-				List<AnaliticUserItem> rankedAlbums = m_analyticsData.GetRankedItems(eAnalyticType.Album);
-				List<ScoredItem> scoredAlbums = new List<ScoredItem>();
-				for (int i = 0; i < rankedAlbums.Count; i++)
+				return b.m_randWeight.CompareTo(a.m_randWeight);
+			});
+			for (int i = 0; i < scoredAlbums.Count; i++)
+			{
+				if (tracks.Count >= targetTrackCount)
+					break;
+				AlbumData album = m_pulseData.GetAlbum(scoredAlbums[i].m_object.ItemID);
+				if (album == null) 
+					continue;
+				for (int j = 0; j < album.Tracks.Count; j++)
 				{
-					ScoredItem item = new ScoredItem();
-					item.m_object = rankedAlbums[i];
-					item.m_score = rankedAlbums[i].GetScore(m_pulseData, m_analyticsData);
-					scoredAlbums.Add(item);
-				}
+					if (rankedTrackIds.Contains(album.Tracks[j].Id))
+						continue;
+					if (addedTracks.Contains(album.Tracks[j].Id))
+						continue;
 
-				//shuffle scoredAlbums by weight
-				//try to fill up the track list
-				for (int i = 0; i < scoredAlbums.Count; i++)
+					tracks.Add(album.Tracks[j]);
+					addedTracks.Add(album.Tracks[j].Id);
+					break;
+				}
+			}
+
+			List<AnaliticUserItem> rankedArtists = GetRankedItems(userId, mode, eAnalyticType.Artist);
+			List<ScoredItem> scoredArtists = CreateScoredItems(rankedArtists);
+			scoredArtists.Sort((a, b) =>
+			{
+				return b.m_randWeight.CompareTo(a.m_randWeight);
+			});
+			for (int i = 0; i < scoredArtists.Count; i++)
+			{
+				if (tracks.Count >= targetTrackCount)
+					break;
+				ArtistData artist = m_pulseData.GetArtist(scoredArtists[i].m_object.ItemID);
+				if (artist == null)
+					continue;
+				for (int j = 0; j < artist.Albums.Count; j++)
 				{
-					//grab an unplayed track from each album 
-					AlbumData album = m_pulseData.GetAlbum(scoredAlbums[i].m_object.ItemID);
-					for (int j = 0; j < album.Tracks.Count; j++) 
+					if (tracks.Count >= targetTrackCount)
+						break;
+					for (int k = 0; k < artist.Albums[j].Tracks.Count; k++)
 					{
-						string trackId = album.Tracks[i].Id;
-						if (!playedTrackIds.Contains(trackId))
-						{
-							//add this track
-							tracks.Add(m_pulseData.GetTrack(trackId));
-							break;
-						}
+						if (rankedTrackIds.Contains(artist.Albums[j].Tracks[k].Id))
+							continue;
+						if (addedTracks.Contains(artist.Albums[j].Tracks[k].Id))
+							continue;
+						tracks.Add(artist.Albums[j].Tracks[k]);
+						addedTracks.Add(artist.Albums[j].Tracks[k].Id);
+						break;
 					}
 				}
+			}
 
-				//if we still have open slots, pull random unplayed tracks
-				if (tracks.Count < 50)
+			if (tracks.Count < targetTrackCount)
+			{
+				List<TrackData> allTracks = m_pulseData.GetAllTracks();
+				if (allTracks.Count > 0)
 				{
-					//Fill in the remaining 10+ slots with random picks from the database that do not appear in rankedTracks
-					List<TrackData> allTracks = m_pulseData.GetAllTracks();
-					int tracksRemaining = targetTrackCount - tracks.Count;
+					//fill with random unplayed tracks
 					for (int i = 0; i < 1000; i++)
 					{
-						if (tracks.Count >= 50)
+						if (tracks.Count >= targetTrackCount)
 							break;
 
-						int index = rand.Next(allTracks.Count);
-						TrackData randTrack = allTracks[index];
-						if (!playedTrackIds.Contains(randTrack.Id))
-							tracks.Add(randTrack);
+						int index = rand.Next(0, allTracks.Count);
+						if (rankedTrackIds.Contains(allTracks[index].Id))
+							continue;
+						if (addedTracks.Contains(allTracks[index].Id))
+							continue;
+
+						tracks.Add(allTracks[index]);
+						addedTracks.Add(allTracks[index].Id);
 					}
 				}
+				
 			}
+
+
 			return tracks;
+		}
+
+		private List<AnaliticUserItem> GetRankedItems(string userId, eQueueMode mode, eAnalyticType type)
+		{
+			List<AnaliticUserItem> rankedTracks;
+			if (mode == eQueueMode.Popular)
+			{
+				rankedTracks = m_analyticsData.GetRankedItems(type);
+			}
+			else
+			{
+				rankedTracks = m_analyticsData.GetUserItems(userId, type);
+			}
+			return rankedTracks;
+		}
+
+		private List<ScoredItem> CreateScoredItems(List<AnaliticUserItem> items)
+		{
+			List<ScoredItem> scoredTracks = new List<ScoredItem>();
+			for (int index = 0; index < items.Count; index++)
+			{
+				AnaliticUserItem item = items[index];
+				if (item == null || string.IsNullOrEmpty(item.ItemID))
+				{
+					continue;
+				}
+
+				float score = item.GetScore(m_pulseData, m_analyticsData);
+				if (score > 0)
+				{
+					ScoredItem scored = new ScoredItem();
+					scored.m_object = item;
+					scored.m_score = score;
+					scored.m_randWeight = (float)Math.Pow(rand.NextDouble(), 1.0 / score);
+					scoredTracks.Add(scored);
+				}
+
+			}
+			return scoredTracks;
 		}
 	}
 }
