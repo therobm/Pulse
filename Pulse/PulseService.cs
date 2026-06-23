@@ -143,7 +143,7 @@ namespace Pulse
 			s_musicManager = m_musicManager;
 			m_musicManager.Run(config.MusicPath);
 
-			m_analyticsData = new AnalyticsData(config);
+			m_analyticsData = new AnalyticsData(config, m_pulseData);
 			m_analyticsData.Load();
 
 			m_diagnosticsData = new DiagnosticsData(config);

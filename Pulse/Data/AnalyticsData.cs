@@ -21,9 +21,11 @@ namespace Pulse.Data
 		private PulseDataStore m_data;
 
 		private Timer m_saveTimer;
-
-		public AnalyticsData(PulseConfig config)
+		private PulseData m_pulseData;
+		public AnalyticsData(PulseConfig config, PulseData pulseData)
 		{
+			m_pulseData = pulseData;
+
 			string analyticsDB = "analytics.db";
 #if DEBUG
 			analyticsDB = "analytics_staging.db";
@@ -47,18 +49,30 @@ namespace Pulse.Data
 			List<AnaliticUserItem> records = m_data.LoadList<AnaliticUserItem>(eDataType.AnalyticRecordItem);
 			lock (m_lock)
 			{
+				List<AnaliticUserItem> orphans = new List<AnaliticUserItem>();
 				for (int i = 0; i < records.Count; i++)
 				{
 					AnaliticUserItem item = records[i];
-
+					
 					if (item == null)
 					{
 						continue;
 					}
 					if (string.IsNullOrEmpty(item.ItemID) || string.IsNullOrEmpty(item.UserID))
 					{
-						//todo: delete these they're orphaned
+						orphans.Add(item);
 						continue;
+					}
+
+					if (item.AnalyticType == eAnalyticType.Track)
+					{
+						//ensure this track still exists
+						TrackData track = m_pulseData.GetTrack(item.ItemID);
+						if (track == null)
+						{
+							orphans.Add(item);
+							continue;
+						}
 					}
 
 					if (!m_analytics.ContainsKey(item.UserID))
@@ -83,6 +97,12 @@ namespace Pulse.Data
 							//noop
 							break;
 					}
+				}
+
+				//delete any orphans
+				for (int i = 0; i < orphans.Count; i++)
+				{
+					m_data.Delete(eDataType.AnalyticRecordItem, orphans[i].Id);
 				}
 			}
 		}
