@@ -6,7 +6,7 @@ namespace PulseApp.Playback
 {
 	public class StubPulseAppPlayer : IMediaPlayer
 	{
-		public void Play(List<PulseTrack> tracks, int startIndex)
+		public void Play(List<PulseTrack> tracks, int startIndex, bool startFromBeginning)
 		{
 			Log.Warn("StubPulseAppPlayer.Play: playback is only implemented on Android.");
 		}

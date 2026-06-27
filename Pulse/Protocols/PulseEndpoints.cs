@@ -107,6 +107,7 @@ namespace Pulse.Protocols
 
 			RegisterRoute("audiobooks", GetAudiobooks);
 			RegisterRoute("audiobook", GetAudiobook);
+			RegisterRoute("chapterProgress", ChapterProgress);
 
 
 
@@ -1659,6 +1660,17 @@ namespace Pulse.Protocols
 			int positionSeconds = 0;
 			int.TryParse(positionRaw, out positionSeconds);
 			m_podcastManager.SaveProgress(id, userId, positionSeconds);
+			return RespondStatus(context, "ok");
+		}
+
+		public IResult ChapterProgress(HttpContext context)
+		{
+			string id = QueryParameters.GetString(context, "id");
+			string userId = QueryParameters.GetUserId(context);
+			string positionRaw = QueryParameters.GetString(context, "positionSeconds");
+			int positionSeconds = 0;
+			int.TryParse(positionRaw, out positionSeconds);
+			m_audiobookManager.SaveProgress(id, userId, positionSeconds);
 			return RespondStatus(context, "ok");
 		}
 

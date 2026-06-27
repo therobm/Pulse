@@ -16,6 +16,8 @@ namespace PulseApp.Views
 		private ArtImage m_art;
 		private Label m_titleLabel;
 		private Label m_metaLabel;
+		private Button m_resumeButton;
+		private Button m_playButton;
 		private Button m_subscribeButton;
 		private Picker m_retentionPicker;
 		private Entry m_retentionValueEntry;
@@ -137,15 +139,29 @@ namespace PulseApp.Views
 			buttonStack.Spacing = 12;
 			buttonStack.Padding = new Thickness(16, 0, 16, 12);
 
-			Button playButton = new Button();
-			playButton.Text = "▶  Play";
-			playButton.TextColor = PulseAppColors.Background;
-			playButton.BackgroundColor = PulseAppColors.Accent;
-			playButton.CornerRadius = 8;
-			playButton.FontSize = 14;
-			playButton.Padding = new Thickness(20, 8);
-			playButton.Clicked += OnPlayClicked;
-			buttonStack.Children.Add(playButton);
+			// "Resume" (shown only when an episode was left part-played) jumps to
+			// that episode at its saved position; "Play" starts the newest episode
+			// from the beginning.
+			m_resumeButton = new Button();
+			m_resumeButton.Text = "▶  Resume";
+			m_resumeButton.TextColor = PulseAppColors.Background;
+			m_resumeButton.BackgroundColor = PulseAppColors.Accent;
+			m_resumeButton.CornerRadius = 8;
+			m_resumeButton.FontSize = 14;
+			m_resumeButton.Padding = new Thickness(20, 8);
+			m_resumeButton.IsVisible = false;
+			m_resumeButton.Clicked += OnResumeClicked;
+			buttonStack.Children.Add(m_resumeButton);
+
+			m_playButton = new Button();
+			m_playButton.Text = "▶  Play";
+			m_playButton.TextColor = PulseAppColors.Background;
+			m_playButton.BackgroundColor = PulseAppColors.Accent;
+			m_playButton.CornerRadius = 8;
+			m_playButton.FontSize = 14;
+			m_playButton.Padding = new Thickness(20, 8);
+			m_playButton.Clicked += OnPlayClicked;
+			buttonStack.Children.Add(m_playButton);
 
 			m_subscribeButton = new Button();
 			m_subscribeButton.TextColor = PulseAppColors.OnBackground;
@@ -295,6 +311,7 @@ namespace PulseApp.Views
 			Sort<PulsePodcastEpisode>(m_episodes, CompareEpisodeByPublishedDescending);
 			// Keep the parallel playback list aligned with the displayed order.
 			m_episodeTracks = BuildEpisodeTracks(new List<PulsePodcastEpisode>(m_episodes));
+			UpdatePlayButtons();
 		}
 
 		private static int CompareEpisodeByPublishedDescending(PulsePodcastEpisode first, PulsePodcastEpisode second)
@@ -423,6 +440,8 @@ namespace PulseApp.Views
 			}
 			track.Duration = episode.Duration;
 			track.IsSeries = true;
+			track.SeriesKind = ePulseSeriesKind.Podcast;
+			track.ResumePositionSeconds = episode.PositionSeconds;
 			return track;
 		}
 
@@ -441,7 +460,21 @@ namespace PulseApp.Views
 			}
 			if (index >= 0 && m_episodeTracks != null && m_episodeTracks.Count > 0)
 			{
-				m_mainView.OnPlayTracks(m_episodeTracks, index, eQueueSource.Podcast, m_podcast.Id);
+				int startIndex = index;
+				// A part-played episode offers resume vs. start over; otherwise just
+				// play it from the beginning.
+				if (episode.PositionSeconds > 0 && !episode.Completed)
+				{
+					m_mainView.PromptResumeOrRestart(
+						episode.Title,
+						episode.PositionSeconds,
+						() => m_mainView.OnPlayTracks(m_episodeTracks, startIndex, eQueueSource.Podcast, m_podcast.Id),
+						() => m_mainView.OnPlayTracks(m_episodeTracks, startIndex, eQueueSource.Podcast, m_podcast.Id, true));
+				}
+				else
+				{
+					m_mainView.OnPlayTracks(m_episodeTracks, startIndex, eQueueSource.Podcast, m_podcast.Id, true);
+				}
 			}
 			m_episodeList.SelectedItem = null;
 		}
@@ -451,13 +484,75 @@ namespace PulseApp.Views
 			m_mainView.OnBackPressed();
 		}
 
+		// Play the newest episode from the beginning.
 		private void OnPlayClicked(object sender, EventArgs e)
 		{
 			if (m_episodeTracks == null || m_episodeTracks.Count == 0)
 			{
 				return;
 			}
-			m_mainView.OnPlayTracks(m_episodeTracks, 0, eQueueSource.Podcast, m_podcast.Id);
+			m_mainView.OnPlayTracks(m_episodeTracks, 0, eQueueSource.Podcast, m_podcast.Id, true);
+		}
+
+		// Continue the last-played episode at its saved position.
+		private void OnResumeClicked(object sender, EventArgs e)
+		{
+			if (m_episodeTracks == null || m_episodeTracks.Count == 0)
+			{
+				return;
+			}
+			int index = ResolveResumeIndex();
+			if (index < 0)
+			{
+				return;
+			}
+			m_mainView.OnPlayTracks(m_episodeTracks, index, eQueueSource.Podcast, m_podcast.Id);
+		}
+
+		// Index of the last-played episode (by the podcast's LastItemId), or -1.
+		private int ResolveResumeIndex()
+		{
+			string lastItemId = m_podcast.LastItemId;
+			if (string.IsNullOrEmpty(lastItemId))
+			{
+				return -1;
+			}
+			for (int index = 0; index < m_episodes.Count; index++)
+			{
+				if (m_episodes[index].Id == lastItemId)
+				{
+					return index;
+				}
+			}
+			return -1;
+		}
+
+		// True when the last-played episode is still part-played (worth resuming).
+		private bool HasResumePoint()
+		{
+			int index = ResolveResumeIndex();
+			if (index < 0)
+			{
+				return false;
+			}
+			return m_episodes[index].PositionSeconds > 0 && !m_episodes[index].Completed;
+		}
+
+		// Show the Resume button (and de-emphasise Play) when a resume point exists.
+		private void UpdatePlayButtons()
+		{
+			bool hasResume = HasResumePoint();
+			m_resumeButton.IsVisible = hasResume;
+			if (hasResume)
+			{
+				m_playButton.BackgroundColor = PulseAppColors.Surface;
+				m_playButton.TextColor = PulseAppColors.OnBackground;
+			}
+			else
+			{
+				m_playButton.BackgroundColor = PulseAppColors.Accent;
+				m_playButton.TextColor = PulseAppColors.Background;
+			}
 		}
 
 		private void OnSubscribeClicked(object sender, EventArgs e)

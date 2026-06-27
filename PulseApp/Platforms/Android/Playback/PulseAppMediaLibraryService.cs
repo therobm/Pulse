@@ -717,6 +717,8 @@ namespace PulseApp.Playback.AndroidOS
 				}
 				track.Duration = episode.Duration;
 				track.IsSeries = true;
+				track.SeriesKind = ePulseSeriesKind.Podcast;
+				track.ResumePositionSeconds = episode.PositionSeconds;
 				tracks.Add(track);
 			}
 			return tracks;
@@ -766,6 +768,8 @@ namespace PulseApp.Playback.AndroidOS
 				}
 				track.Duration = chapter.Duration;
 				track.IsSeries = true;
+				track.SeriesKind = ePulseSeriesKind.Audiobook;
+				track.ResumePositionSeconds = chapter.PositionSeconds;
 				track.StartMs = chapter.StartMs;
 				track.EndMs = chapter.EndMs;
 				track.StreamId = chapter.StreamId;

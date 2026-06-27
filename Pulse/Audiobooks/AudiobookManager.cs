@@ -345,6 +345,61 @@ namespace Pulse.Series
 		}
 
 		/// <summary>
+		/// Persist a user's playback position within a chapter so the clients can
+		/// resume where they left off. Mirrors PodcastManager.SaveProgress: the
+		/// position is per-user, the chapter is flagged Completed once playback
+		/// passes 95% (and stays Completed once set), and the parent book records
+		/// this as the last chapter the user touched. The mutated chapter/book are
+		/// the live in-memory instances, so MarkDirty hands them to the save timer.
+		/// </summary>
+		public void SaveProgress(string chapterId, string userName, int positionSeconds)
+		{
+			Chapter chapter = m_data.LoadChapter(chapterId);
+			if (chapter == null)
+			{
+				return;
+			}
+
+			bool wasCompleted = false;
+			if (chapter.Users.ContainsKey(userName))
+			{
+				wasCompleted = chapter.Users[userName].Completed;
+			}
+
+			bool passedThreshold = false;
+			if (chapter.DurationSeconds > 0)
+			{
+				int threshold = chapter.DurationSeconds * 95 / 100;
+				if (positionSeconds > threshold)
+				{
+					passedThreshold = true;
+				}
+			}
+
+			Chapter.UserData userData = new Chapter.UserData();
+			userData.PositionSeconds = positionSeconds;
+			userData.LastPlayed = DateTime.UtcNow;
+			if (wasCompleted || passedThreshold)
+			{
+				userData.Completed = true;
+			}
+			chapter.Users[userName] = userData;
+			chapter.MarkDirty();
+
+			Audiobook parent = m_data.LoadBook(chapter.AudiobookId);
+			if (parent != null)
+			{
+				if (!parent.Users.ContainsKey(userName))
+				{
+					parent.Users[userName] = new Audiobook.UserData();
+				}
+				parent.Users[userName].LastChapterId = chapterId;
+				parent.Users[userName].LastPlayed = DateTime.UtcNow;
+				parent.MarkDirty();
+			}
+		}
+
+		/// <summary>
 		/// Resolves the cover art file for an audiobook. Checks the extracted
 		/// art cache first (survives library moves), then falls back to the
 		/// ArtworkPath stored at scan time.

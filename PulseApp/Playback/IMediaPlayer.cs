@@ -22,7 +22,10 @@ namespace PulseApp.Playback
 
 	public interface IMediaPlayer
 	{
-		void Play(List<PulseTrack> tracks, int startIndex);
+		// startFromBeginning forces the start item to ignore any saved resume
+		// position (used by the "Play from start" controls); false resumes series
+		// items at their saved position.
+		void Play(List<PulseTrack> tracks, int startIndex, bool startFromBeginning);
 		void Pause();
 		void Resume();
 		void SeekTo(long positionMilliseconds);

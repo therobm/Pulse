@@ -531,6 +531,12 @@ namespace PulseApp.Pulse
 			RunCommand(BuildPulseUrl("episodeProgress", param));
 		}
 
+		public override void SaveChapterProgress(string chapterId, int positionSeconds)
+		{
+			string param = "id=" + Uri.EscapeDataString(chapterId) + "&positionSeconds=" + positionSeconds;
+			RunCommand(BuildPulseUrl("chapterProgress", param));
+		}
+
 		public override void Search(string query, Action<PulseSearchData> onComplete)
 		{
 			m_workQueue.Enqueue(() =>

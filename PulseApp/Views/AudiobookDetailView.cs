@@ -16,6 +16,8 @@ namespace PulseApp.Views
 		private ArtImage m_art;
 		private Label m_titleLabel;
 		private Label m_metaLabel;
+		private Button m_resumeButton;
+		private Button m_playButton;
 		private CollectionView m_chapterList;
 		private PulseAudiobook m_audiobook;
 		// Bound to m_chapterList once; OnAudiobookLoaded reconciles in place.
@@ -125,18 +127,68 @@ namespace PulseApp.Views
 			buttonStack.Padding = new Thickness(16, 0, 16, 12);
 			buttonStack.HorizontalOptions = LayoutOptions.Center;
 
-			Button playButton = new Button();
-			playButton.Text = "▶  Play";
-			playButton.TextColor = PulseAppColors.Background;
-			playButton.BackgroundColor = PulseAppColors.Accent;
-			playButton.CornerRadius = 8;
-			playButton.FontSize = 14;
-			playButton.Padding = new Thickness(24, 8);
-			playButton.Clicked += OnPlayClicked;
-			buttonStack.Children.Add(playButton);
+			// "Resume" is shown only when the book has a saved resume point; it
+			// continues the last chapter at its saved position. "Play" starts from
+			// the first chapter; UpdatePlayButtons relabels it "Play from start" when
+			// the resume button is present.
+			m_resumeButton = new Button();
+			m_resumeButton.Text = "▶  Resume";
+			m_resumeButton.TextColor = PulseAppColors.Background;
+			m_resumeButton.BackgroundColor = PulseAppColors.Accent;
+			m_resumeButton.CornerRadius = 8;
+			m_resumeButton.FontSize = 14;
+			m_resumeButton.Padding = new Thickness(24, 8);
+			m_resumeButton.IsVisible = false;
+			m_resumeButton.Clicked += OnResumeClicked;
+			buttonStack.Children.Add(m_resumeButton);
+
+			m_playButton = new Button();
+			m_playButton.Text = "▶  Play";
+			m_playButton.TextColor = PulseAppColors.Background;
+			m_playButton.BackgroundColor = PulseAppColors.Accent;
+			m_playButton.CornerRadius = 8;
+			m_playButton.FontSize = 14;
+			m_playButton.Padding = new Thickness(24, 8);
+			m_playButton.Clicked += OnPlayFromStartClicked;
+			buttonStack.Children.Add(m_playButton);
 
 			Grid.SetRow(buttonStack, 3);
 			return buttonStack;
+		}
+
+		// Show/relabel the play controls based on whether a resume point exists.
+		private void UpdatePlayButtons()
+		{
+			bool hasResume = HasResumePoint();
+			m_resumeButton.IsVisible = hasResume;
+			if (hasResume)
+			{
+				m_playButton.Text = "↺  Play from start";
+				m_playButton.BackgroundColor = PulseAppColors.Surface;
+				m_playButton.TextColor = PulseAppColors.OnBackground;
+			}
+			else
+			{
+				m_playButton.Text = "▶  Play";
+				m_playButton.BackgroundColor = PulseAppColors.Accent;
+				m_playButton.TextColor = PulseAppColors.Background;
+			}
+		}
+
+		// True when the book has somewhere to resume to: either the last-played
+		// chapter isn't the first, or the resolved chapter has a saved position.
+		private bool HasResumePoint()
+		{
+			int index = ResolveResumeIndex();
+			if (index > 0)
+			{
+				return true;
+			}
+			if (index >= 0 && index < m_chapters.Count && m_chapters[index].PositionSeconds > 0)
+			{
+				return true;
+			}
+			return false;
 		}
 
 		private View BuildChapterList()
@@ -189,6 +241,7 @@ namespace PulseApp.Views
 			SyncFrom<PulseChapter>(m_chapters, incoming);
 			Sort<PulseChapter>(m_chapters, CompareChapterByOrder);
 			m_chapterTracks = BuildChapterTracks(new List<PulseChapter>(m_chapters));
+			UpdatePlayButtons();
 		}
 
 		private static int CompareChapterByOrder(PulseChapter first, PulseChapter second)
@@ -258,6 +311,8 @@ namespace PulseApp.Views
 			}
 			track.Duration = chapter.Duration;
 			track.IsSeries = true;
+			track.SeriesKind = ePulseSeriesKind.Audiobook;
+			track.ResumePositionSeconds = chapter.PositionSeconds;
 			track.StartMs = chapter.StartMs;
 			track.EndMs = chapter.EndMs;
 			track.StreamId = chapter.StreamId;
@@ -279,18 +334,43 @@ namespace PulseApp.Views
 			}
 			if (index >= 0 && m_chapterTracks != null && m_chapterTracks.Count > 0)
 			{
-				m_mainView.OnPlayTracks(m_chapterTracks, index, eQueueSource.Audiobook, m_audiobook.Id);
+				int startIndex = index;
+				// A part-played chapter offers resume vs. start over; otherwise just
+				// play it from the beginning.
+				if (chapter.PositionSeconds > 0 && !chapter.Completed)
+				{
+					m_mainView.PromptResumeOrRestart(
+						chapter.Title,
+						chapter.PositionSeconds,
+						() => m_mainView.OnPlayTracks(m_chapterTracks, startIndex, eQueueSource.Audiobook, m_audiobook.Id),
+						() => m_mainView.OnPlayTracks(m_chapterTracks, startIndex, eQueueSource.Audiobook, m_audiobook.Id, true));
+				}
+				else
+				{
+					m_mainView.OnPlayTracks(m_chapterTracks, startIndex, eQueueSource.Audiobook, m_audiobook.Id, true);
+				}
 			}
 			m_chapterList.SelectedItem = null;
 		}
 
-		private void OnPlayClicked(object sender, EventArgs e)
+		// Continue the book from its last-played chapter at the saved position.
+		private void OnResumeClicked(object sender, EventArgs e)
 		{
 			if (m_chapterTracks == null || m_chapterTracks.Count == 0)
 			{
 				return;
 			}
 			m_mainView.OnPlayTracks(m_chapterTracks, ResolveResumeIndex(), eQueueSource.Audiobook, m_audiobook.Id);
+		}
+
+		// Play the book from the first chapter, ignoring any saved position.
+		private void OnPlayFromStartClicked(object sender, EventArgs e)
+		{
+			if (m_chapterTracks == null || m_chapterTracks.Count == 0)
+			{
+				return;
+			}
+			m_mainView.OnPlayTracks(m_chapterTracks, 0, eQueueSource.Audiobook, m_audiobook.Id, true);
 		}
 
 		// Resume from the chapter the book last left off on, else the first.
