@@ -31,6 +31,7 @@ namespace Pulse.DataStorage
 		private bool m_bIsDirty;
 		public void ClearDirty()
 		{
+			m_bIsDirty = false;
 		}
 		public bool IsDirty()
 		{

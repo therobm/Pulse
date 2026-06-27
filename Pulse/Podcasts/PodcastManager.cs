@@ -304,6 +304,7 @@ namespace Pulse.Podcasts
 			if (alreadyOnDisk)
 			{
 				episode.DownloadState = eDownloadState.Downloaded;
+				episode.MarkDirty();
 				return;
 			}
 
@@ -323,7 +324,20 @@ namespace Pulse.Podcasts
 
 			if (File.Exists(targetPath))
 			{
+				// The file is already on disk (downloaded in a previous run whose
+				// in-memory state never persisted). Adopt it as the downloaded copy
+				// instead of leaving the episode stuck in Downloading -- otherwise it
+				// would never become visible again and would decay to Failed on the
+				// next load.
+				FileInfo existingInfo = new FileInfo(targetPath);
 				episode.LocalPath = targetPath;
+				episode.FileSizeBytes = existingInfo.Length;
+				if (episode.DurationSeconds == 0)
+				{
+					episode.DurationSeconds = ProbeDurationSeconds(targetPath);
+				}
+				episode.DownloadState = eDownloadState.Downloaded;
+				episode.MarkDirty();
 				return;
 			}
 
@@ -364,11 +378,13 @@ namespace Pulse.Podcasts
 					episode.DurationSeconds = ProbeDurationSeconds(targetPath);
 				}
 				episode.DownloadState = eDownloadState.Downloaded;
+				episode.MarkDirty();
 				Log.Info("Podcast downloaded: " + episode.Title);
 			}
 			catch (Exception ex)
 			{
 				episode.DownloadState = eDownloadState.Failed;
+				episode.MarkDirty();
 				Log.Warning("Podcast download failed: " + episode.Title + " -- " + ex.Message);
 				if (File.Exists(targetPath))
 				{
@@ -464,6 +480,7 @@ namespace Pulse.Podcasts
 			}
 			episode.LocalPath = "";
 			episode.DownloadState = eDownloadState.Discovered;
+			episode.MarkDirty();
 		}
 
 

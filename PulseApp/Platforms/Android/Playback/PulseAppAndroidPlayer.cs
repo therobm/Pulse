@@ -43,6 +43,9 @@ namespace PulseApp.Playback.AndroidOS
 		private bool m_pendingPlay;
 		private bool m_endHandled;
 		private bool m_shuffleEnabled;
+		// When true, the next StartQueue ignores the start item's saved resume
+		// position and begins at 0 ("Play from start"). Set per Play() call.
+		private bool m_startFromBeginning;
 		private MediaClient m_data;
 
 		private Queue<PulseTrack> m_cacheQueue = new Queue<PulseTrack>();
@@ -87,7 +90,7 @@ namespace PulseApp.Playback.AndroidOS
 			}
 		}
 
-		public void Play(List<PulseTrack> tracks, int startIndex)
+		public void Play(List<PulseTrack> tracks, int startIndex, bool startFromBeginning)
 		{
 			if (tracks == null || tracks.Count == 0)
 			{
@@ -97,6 +100,7 @@ namespace PulseApp.Playback.AndroidOS
 			m_currentQueueID = m_currentQueueID + 1;
 			m_endHandled = false;
 			m_lastMediaId = null;
+			m_startFromBeginning = startFromBeginning;
 
 			if (m_controller == null)
 			{
@@ -158,12 +162,42 @@ namespace PulseApp.Playback.AndroidOS
 
 			m_lastMediaId = startTrack.Id;
 			m_mainView.OnCurrentTrackChanged(startTrack);
-			
-			m_controller.SeekTo(startItemIndex, 0);
+
+			long startPositionMs = ResolveStartPositionMs(startTrack);
+			m_controller.SeekTo(startItemIndex, startPositionMs);
 
 			//kick of cache requests for the rest
 			Task.Delay(5000).ContinueWith((_) => CacheQueued(taskQueueID));
 			
+		}
+
+		// Resume position for the item we're starting on. Series items (podcast
+		// episodes / audiobook chapters) carry a saved ResumePositionSeconds; we
+		// honour it unless the item was effectively finished, in which case we
+		// start over rather than dropping the user at the very end. The position is
+		// relative to the item's own start, which is exactly what
+		// SeekTo(index, position) and the chapter clip window expect.
+		private long ResolveStartPositionMs(PulseTrack track)
+		{
+			if (m_startFromBeginning)
+			{
+				return 0;
+			}
+			if (track == null || !track.IsSeries)
+			{
+				return 0;
+			}
+			int resumeSeconds = track.ResumePositionSeconds;
+			if (resumeSeconds <= 0)
+			{
+				return 0;
+			}
+			int durationSeconds = track.Duration;
+			if (durationSeconds > 0 && resumeSeconds >= durationSeconds - 5)
+			{
+				return 0;
+			}
+			return (long)resumeSeconds * 1000L;
 		}
 
 		private void CacheQueued(int queueID)

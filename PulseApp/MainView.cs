@@ -68,6 +68,18 @@ namespace PulseApp
 		private IMediaPlayer m_player;
 		private ePlaybackState m_playbackState = ePlaybackState.Idle;
 		private long m_currentDurationMs;
+
+		// Resume-position tracking. The player reports position continuously; we
+		// persist it for series content (podcasts/audiobooks) on a throttle while
+		// playing, and flush on pause / track change / end so the server always has
+		// a recent resume point. m_progressTrack is the item the last sample
+		// belongs to, so a flush on track change saves the OUTGOING item.
+		private PulseTrack m_progressTrack;
+		private long m_progressPositionMs;
+		private int m_lastSavedProgressSeconds = -1;
+		private DateTime m_lastProgressSaveUtc = DateTime.MinValue;
+		private const int c_progressSaveIntervalSeconds = 5;
+
 		private NowPlayingView m_nowPlayingView;
 		private bool m_shuffleEnabled;
 		private eRepeatMode m_repeatMode = eRepeatMode.Off;
@@ -458,7 +470,7 @@ namespace PulseApp
 			OnPlayTracks(oneShotQueue, 0, eQueueSource.Track, track.Id);
 		}
 
-		public void OnPlayTracks(List<PulseTrack> tracks, int startIndex, eQueueSource source, string sourceId = "")
+		public void OnPlayTracks(List<PulseTrack> tracks, int startIndex, eQueueSource source, string sourceId = "", bool startFromBeginning = false)
 		{
 			if (tracks == null || tracks.Count == 0)
 			{
@@ -474,7 +486,7 @@ namespace PulseApp
 			m_currentTrack = m_currentQueue[clampedIndex];
 			m_miniPlayer.SetTrack(m_currentTrack);
 			ShowMiniPlayer();
-			m_player.Play(m_currentQueue, clampedIndex);
+			m_player.Play(m_currentQueue, clampedIndex, startFromBeginning);
 
 
 
@@ -819,6 +831,41 @@ namespace PulseApp
 			}
 		}
 
+		// Offer "Resume from <time>" vs "Play from start" for a series item that has
+		// saved progress. Routed through MainView because the detail views are
+		// ContentViews and can't present an action sheet themselves.
+		public async void PromptResumeOrRestart(string title, int resumeSeconds, Action onResume, Action onPlayFromStart)
+		{
+			string resumeLabel = "Resume from " + FormatClock(resumeSeconds);
+			string fromStartLabel = "Play from start";
+			string choice = await DisplayActionSheet(title, "Cancel", null, resumeLabel, fromStartLabel);
+			if (choice == resumeLabel)
+			{
+				if (onResume != null) { onResume(); }
+			}
+			else if (choice == fromStartLabel)
+			{
+				if (onPlayFromStart != null) { onPlayFromStart(); }
+			}
+		}
+
+		// Seconds -> "h:mm:ss" (or "m:ss" under an hour) for resume labels.
+		private static string FormatClock(int totalSeconds)
+		{
+			if (totalSeconds < 0)
+			{
+				totalSeconds = 0;
+			}
+			int hours = totalSeconds / 3600;
+			int minutes = (totalSeconds % 3600) / 60;
+			int seconds = totalSeconds % 60;
+			if (hours > 0)
+			{
+				return hours + ":" + minutes.ToString("D2") + ":" + seconds.ToString("D2");
+			}
+			return minutes + ":" + seconds.ToString("D2");
+		}
+
 		public async void OnAddPodcast()
 		{
 			string url = await DisplayPromptAsync("Add Podcast", "Enter the podcast's RSS feed URL", "Add", "Cancel", "https://...", -1, Microsoft.Maui.Keyboard.Url, "");
@@ -839,12 +886,19 @@ namespace PulseApp
 
 		public void OnPlaybackStateChanged(ePlaybackState state)
 		{
+			ePlaybackState previous = m_playbackState;
 			m_playbackState = state;
 			bool playing = state == ePlaybackState.Playing;
 			m_miniPlayer.SetPlaying(playing);
 			if (m_nowPlayingView != null)
 			{
 				m_nowPlayingView.SetPlaying(playing);
+			}
+			// Persist the resume point as soon as playback pauses so closing the app
+			// from a paused state doesn't lose the last few seconds.
+			if (state == ePlaybackState.Paused && previous != ePlaybackState.Paused)
+			{
+				FlushPlaybackProgress();
 			}
 		}
 
@@ -861,6 +915,7 @@ namespace PulseApp
 			{
 				m_nowPlayingView.UpdatePosition(positionMilliseconds, durationMilliseconds);
 			}
+			TrackPlaybackProgress(positionMilliseconds);
 		}
 
 		public void OnCurrentTrackChanged(PulseTrack track)
@@ -868,6 +923,16 @@ namespace PulseApp
 			if (track == null)
 			{
 				return;
+			}
+			// The queue advanced (or a new queue started); persist the outgoing
+			// item's resume point before we begin sampling the new one, and reset
+			// the throttle so the new item's position saves promptly.
+			if (m_progressTrack != null && m_progressTrack.Id != track.Id)
+			{
+				FlushPlaybackProgress();
+				m_progressTrack = null;
+				m_lastSavedProgressSeconds = -1;
+				m_lastProgressSaveUtc = DateTime.MinValue;
 			}
 			m_currentTrack = track;
 			int foundIndex = m_currentQueue.IndexOf(track);
@@ -885,11 +950,83 @@ namespace PulseApp
 
 		public void OnTrackEnded()
 		{
+			// The item finished near its duration; persist that so the server can
+			// mark it completed and so a resume starts the next item cleanly.
+			FlushPlaybackProgress();
+			m_progressTrack = null;
+			m_lastSavedProgressSeconds = -1;
+			m_lastProgressSaveUtc = DateTime.MinValue;
+
 			m_playbackState = ePlaybackState.Ended;
 			m_miniPlayer.SetPlaying(false);
 			if (m_nowPlayingView != null)
 			{
 				m_nowPlayingView.SetPlaying(false);
+			}
+		}
+
+		// Record the latest playback position for the current series item and
+		// persist it on a throttle. Music tracks are ignored -- only podcasts and
+		// audiobooks have a resume point.
+		private void TrackPlaybackProgress(long positionMilliseconds)
+		{
+			PulseTrack track = m_currentTrack;
+			if (track == null || !track.IsSeries)
+			{
+				m_progressTrack = null;
+				return;
+			}
+			if (positionMilliseconds < 0)
+			{
+				return;
+			}
+			m_progressTrack = track;
+			m_progressPositionMs = positionMilliseconds;
+
+			int positionSeconds = (int)(positionMilliseconds / 1000);
+			DateTime now = DateTime.UtcNow;
+			double sinceLastSave = (now - m_lastProgressSaveUtc).TotalSeconds;
+			if (sinceLastSave < c_progressSaveIntervalSeconds)
+			{
+				return;
+			}
+			if (positionSeconds == m_lastSavedProgressSeconds)
+			{
+				return;
+			}
+			SaveProgressFor(track, positionSeconds);
+			m_lastProgressSaveUtc = now;
+			m_lastSavedProgressSeconds = positionSeconds;
+		}
+
+		// Persist the last sampled position immediately (pause, track change, end).
+		private void FlushPlaybackProgress()
+		{
+			if (m_progressTrack == null)
+			{
+				return;
+			}
+			int positionSeconds = (int)(m_progressPositionMs / 1000);
+			SaveProgressFor(m_progressTrack, positionSeconds);
+			m_lastSavedProgressSeconds = positionSeconds;
+			m_lastProgressSaveUtc = DateTime.UtcNow;
+		}
+
+		// Route a saved resume position to the endpoint for the track's series kind.
+		private void SaveProgressFor(PulseTrack track, int positionSeconds)
+		{
+			if (track == null || positionSeconds < 0)
+			{
+				return;
+			}
+			switch (track.SeriesKind)
+			{
+				case ePulseSeriesKind.Podcast:
+					m_mediaClient.SaveEpisodeProgress(track.Id, positionSeconds);
+					break;
+				case ePulseSeriesKind.Audiobook:
+					m_mediaClient.SaveChapterProgress(track.Id, positionSeconds);
+					break;
 			}
 		}
 

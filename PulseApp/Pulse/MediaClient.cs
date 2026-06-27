@@ -245,6 +245,7 @@ namespace PulseApp.Pulse
 		public abstract void UnsubscribePodcast(string podcastId, Action<bool> onComplete);
 		public abstract void UpdatePodcast(string podcastId, string retentionPolicy, int retentionValue, bool autoDownload, Action<PulsePodcast> onComplete);
 		public abstract void SaveEpisodeProgress(string episodeId, int positionSeconds);
+		public abstract void SaveChapterProgress(string chapterId, int positionSeconds);
 		public abstract void Search(string query, Action<PulseSearchData> onComplete);
 		public abstract void GetArtistAlbums(string artistId, Action<List<PulseAlbum>> onComplete);
 		public abstract void GetArtistTracks(string artistId, Action<List<PulseTrack>> onComplete);
