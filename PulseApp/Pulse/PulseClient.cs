@@ -529,12 +529,25 @@ namespace PulseApp.Pulse
 		{
 			string param = "id=" + Uri.EscapeDataString(episodeId) + "&positionSeconds=" + positionSeconds;
 			RunCommand(BuildPulseUrl("episodeProgress", param));
+			// The saved position changes what the podcast detail/list reads return;
+			// drop their cached copies so re-opening the series shows it fresh.
+			InvalidateMetadataReads("/pulse_v1/podcast");
 		}
 
 		public override void SaveChapterProgress(string chapterId, int positionSeconds)
 		{
 			string param = "id=" + Uri.EscapeDataString(chapterId) + "&positionSeconds=" + positionSeconds;
 			RunCommand(BuildPulseUrl("chapterProgress", param));
+			InvalidateMetadataReads("/pulse_v1/audiobook");
+		}
+
+		// Bust cached metadata reads for an endpoint family after a write to it.
+		private void InvalidateMetadataReads(string urlFragment)
+		{
+			if (m_cache != null)
+			{
+				m_cache.InvalidateMetadataUrlsContaining(urlFragment);
+			}
 		}
 
 		public override void Search(string query, Action<PulseSearchData> onComplete)

@@ -355,6 +355,30 @@ namespace PulseApp.Data
 			}
 		}
 
+		/// <summary>
+		/// Drop cached metadata (JSON) responses whose URL contains the given
+		/// fragment, so the next read of those endpoints goes to the network.
+		/// Used to bust stale reads after a write (e.g. saving playback progress,
+		/// then re-opening the series). Binary entries (audio, cover art) are left
+		/// alone — they don't go stale and are expensive to refetch.
+		/// </summary>
+		public void InvalidateMetadataUrlsContaining(string urlFragment)
+		{
+			if (string.IsNullOrEmpty(urlFragment))
+			{
+				return;
+			}
+			ExecuteAsync(() =>
+			{
+				using (SqliteCommand cmd = m_connection.CreateCommand())
+				{
+					cmd.CommandText = "DELETE FROM http_cache WHERE is_binary = 0 AND instr(url, $frag) > 0";
+					cmd.Parameters.AddWithValue("$frag", urlFragment);
+					cmd.ExecuteNonQuery();
+				}
+			});
+		}
+
 		public void SetSizeLimitBytes(long limitBytes)
 		{
 			m_sizeLimitBytes = limitBytes;
