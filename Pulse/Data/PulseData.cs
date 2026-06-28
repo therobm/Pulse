@@ -206,7 +206,7 @@ namespace Pulse.Data
 
 			if (artist != null)
 			{
-				artist.Albums.Add(album);
+				artist.AddAlbum(album);
 				artist.MarkDirty();
 			}
 
@@ -221,7 +221,7 @@ namespace Pulse.Data
 			AlbumData album;
 			if (m_albums.TryGetValue(albumId, out album))
 			{
-				album.Tracks.Add(track);
+				album.AddTrack(track);
 				album.MarkDirty();
 			}
 		}
@@ -271,30 +271,18 @@ namespace Pulse.Data
 			AlbumData album;
 			if (m_albums.TryGetValue(track.AlbumId, out album))
 			{
-				for (int trackIndex = album.Tracks.Count - 1; trackIndex >= 0; trackIndex--)
-				{
-					if (album.Tracks[trackIndex].Id == trackId)
-					{
-						album.Tracks.RemoveAt(trackIndex);
-					}
-				}
+				album.RemoveTrackById(trackId);
 
-				if (album.Tracks.Count == 0)
+				if (album.TrackCount == 0)
 				{
 					m_albums.TryRemove(track.AlbumId, out _);
 
 					ArtistData artist;
 					if (m_artists.TryGetValue(track.ArtistId, out artist))
 					{
-						for (int albumIndex = artist.Albums.Count - 1; albumIndex >= 0; albumIndex--)
-						{
-							if (artist.Albums[albumIndex].Id == track.AlbumId)
-							{
-								artist.Albums.RemoveAt(albumIndex);
-							}
-						}
+						artist.RemoveAlbumById(track.AlbumId);
 
-						if (artist.Albums.Count == 0)
+						if (artist.AlbumCount == 0)
 						{
 							m_artists.TryRemove(track.ArtistId, out _);
 						}
@@ -556,7 +544,7 @@ namespace Pulse.Data
 				AlbumData album;
 				if (m_albums.TryGetValue(track.AlbumId, out album))
 				{
-					album.Tracks.Add(track);
+					album.AddTrack(track);
 				}
 				ArtistData artist;
 				if (m_artists.TryGetValue(track.ArtistId, out artist))
@@ -570,7 +558,7 @@ namespace Pulse.Data
 				ArtistData artist;
 				if (m_artists.TryGetValue(album.ArtistId, out artist))
 				{
-					artist.Albums.Add(album);
+					artist.AddAlbum(album);
 				}
 			}
 		}
@@ -628,7 +616,6 @@ namespace Pulse.Data
 			if (string.IsNullOrEmpty(userId)) { return; }
 
 			m_userData.DeleteUser(userId);
-			DeleteUserFromMusicData(userId);
 			Save();
 		}
 
@@ -652,14 +639,6 @@ namespace Pulse.Data
 			return m_userData.CreateToken(userId, label);	
 		}
 	
-		// Removes every in-memory trace of `userName` and flags the touched
-		// entities dirty so the next Save rewrites their per-user rows.
-		private void DeleteUserFromMusicData(string userId)
-		{
-			foreach (PlaylistData playlist in m_playlists.Values)
-			{
-				if (playlist.UserLastPlayed.Remove(userId)) { playlist.MarkDirty(); }
-			}
-		}
+		
 	}
 }

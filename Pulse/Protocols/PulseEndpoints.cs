@@ -186,11 +186,12 @@ namespace Pulse.Protocols
 			pulseAlbum.ArtistId = album.ArtistId;
 			pulseAlbum.CoverArt = album.CoverArtId;
 			pulseAlbum.Year = album.Year;
-			pulseAlbum.TrackCount = album.Tracks.Count;
+			List<TrackData> albumTracks = album.GetTracks();
+			pulseAlbum.TrackCount = albumTracks.Count;
 			int duration = 0;
-			for (int index = 0; index < album.Tracks.Count; index++)
+			for (int index = 0; index < albumTracks.Count; index++)
 			{
-				duration = duration + album.Tracks[index].DurationSeconds;
+				duration = duration + albumTracks[index].DurationSeconds;
 			}
 			pulseAlbum.Duration = duration;
 			return pulseAlbum;
@@ -504,9 +505,10 @@ namespace Pulse.Protocols
 			PulseArtistDetails details = new PulseArtistDetails();
 			details.Id = artist.Id;
 			details.Artist = artist.BuildPulse();
-			for (int index = 0; index < artist.Albums.Count; index++)
+			List<AlbumData> artistAlbums = artist.GetAlbums();
+			for (int index = 0; index < artistAlbums.Count; index++)
 			{
-				details.Albums.Add(BuildAlbum(artist.Albums[index]));
+				details.Albums.Add(BuildAlbum(artistAlbums[index]));
 			}
 			return RespondObject(context, details);
 		}
@@ -525,14 +527,15 @@ namespace Pulse.Protocols
 			PulseArtistFullDetails details = new PulseArtistFullDetails();
 			details.Id = artist.Id;
 			details.Artist = artist.BuildPulse();
-			for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
+			List<AlbumData> artistAlbums = artist.GetAlbums();
+			for (int albumIndex = 0; albumIndex < artistAlbums.Count; albumIndex++)
 			{
-				AlbumData album = artist.Albums[albumIndex];
+				AlbumData album = artistAlbums[albumIndex];
 				PulseAlbumDetails albumDetails = new PulseAlbumDetails();
 				albumDetails.Id = album.Id;
 				albumDetails.Album = BuildAlbum(album);
 
-				List<TrackData> ordered = new List<TrackData>(album.Tracks);
+				List<TrackData> ordered = album.GetTracks();
 				ordered.Sort(CompareTrackByDiscThenNumber);
 				for (int trackIndex = 0; trackIndex < ordered.Count; trackIndex++)
 				{
@@ -596,9 +599,10 @@ namespace Pulse.Protocols
 				{
 					AlbumData album = allAlbums[index];
 					DateTime mostRecent = default;
-					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+					List<TrackData> albumTracks = album.GetTracks();
+					for (int trackIndex = 0; trackIndex < albumTracks.Count; trackIndex++)
 					{
-						DateTime trackPlayed = album.Tracks[trackIndex].LastPlayed;
+						DateTime trackPlayed = albumTracks[trackIndex].LastPlayed;
 						if (trackPlayed > mostRecent)
 						{
 							mostRecent = trackPlayed;
@@ -713,7 +717,7 @@ namespace Pulse.Protocols
 				return RespondStatus(context, "not_found");
 			}
 
-			List<TrackData> ordered = new List<TrackData>(album.Tracks);
+			List<TrackData> ordered = album.GetTracks();
 			ordered.Sort(CompareTrackByDiscThenNumber);
 
 			PulseAlbumDetails details = new PulseAlbumDetails();
@@ -782,7 +786,7 @@ namespace Pulse.Protocols
 					genreMap[album.Genre] = entry;
 				}
 				entry.AlbumCount = entry.AlbumCount + 1;
-				entry.TrackCount = entry.TrackCount + album.Tracks.Count;
+				entry.TrackCount = entry.TrackCount + album.TrackCount;
 			}
 
 			List<GenreInfo> genres = new List<GenreInfo>(genreMap.Values);
@@ -1147,7 +1151,7 @@ namespace Pulse.Protocols
 			int trackHits = 0;
 			for (int i = 0; i < allAlbums.Count && trackHits < trackCount; i++)
 			{
-				List<TrackData> tracks = allAlbums[i].Tracks;
+				List<TrackData> tracks = allAlbums[i].GetTracks();
 				for (int j = 0; j < tracks.Count && trackHits < trackCount; j++)
 				{
 					TrackData track = tracks[j];

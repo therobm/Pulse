@@ -189,23 +189,8 @@ namespace Pulse.Data
 
 			// Top 200 artists by per-user WeightedScore (falls back to global), scaled to 0..100
 			int artistLimit = 200;
-			List<KeyValuePair<ArtistData, float>> artistScored = new List<KeyValuePair<ArtistData, float>>();
-			for (int idx = 0; idx < allArtists.Count; idx++)
-			{
-				ArtistData artist = allArtists[idx];
-				artistScored.Add(new KeyValuePair<ArtistData, float>(artist, artist.GetScore(userName)));
-			}
-			artistScored.Sort(CompareArtistScoredDescending);
-			for (int artistIndex = 0; artistIndex < artistScored.Count; artistIndex++)
-			{
-				KeyValuePair<ArtistData, float> pair = artistScored[artistIndex];
-				if (artistIndex >= artistLimit || pair.Value <= 0)
-				{
-					break;
-				}
-				stats.TopArtistsByScore.Add(new ArtistStat { Name = pair.Key.Name, Value = (int)Math.Round(pair.Value * 100f) });
-			}
-
+			
+			
 			// Top artists by track count
 			List<KeyValuePair<string, int>> sortedArtistTracks = new List<KeyValuePair<string, int>>(artistTrackCounts);
 			sortedArtistTracks.Sort(CompareCountDescending);

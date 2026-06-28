@@ -96,15 +96,16 @@ namespace Pulse.MusicLibrary
 				AlbumData album = m_pulseData.GetAlbum(scoredAlbums[i].m_object.ItemID);
 				if (album == null) 
 					continue;
-				for (int j = 0; j < album.Tracks.Count; j++)
+				List<TrackData> albumTracks = album.GetTracks();
+				for (int j = 0; j < albumTracks.Count; j++)
 				{
-					if (rankedTrackIds.Contains(album.Tracks[j].Id))
+					if (rankedTrackIds.Contains(albumTracks[j].Id))
 						continue;
-					if (addedTracks.Contains(album.Tracks[j].Id))
+					if (addedTracks.Contains(albumTracks[j].Id))
 						continue;
 
-					tracks.Add(album.Tracks[j]);
-					addedTracks.Add(album.Tracks[j].Id);
+					tracks.Add(albumTracks[j]);
+					addedTracks.Add(albumTracks[j].Id);
 					break;
 				}
 			}
@@ -122,18 +123,20 @@ namespace Pulse.MusicLibrary
 				ArtistData artist = m_pulseData.GetArtist(scoredArtists[i].m_object.ItemID);
 				if (artist == null)
 					continue;
-				for (int j = 0; j < artist.Albums.Count; j++)
+				List<AlbumData> artistAlbums = artist.GetAlbums();
+				for (int j = 0; j < artistAlbums.Count; j++)
 				{
 					if (tracks.Count >= targetTrackCount)
 						break;
-					for (int k = 0; k < artist.Albums[j].Tracks.Count; k++)
+					List<TrackData> albumTracks = artistAlbums[j].GetTracks();
+					for (int k = 0; k < albumTracks.Count; k++)
 					{
-						if (rankedTrackIds.Contains(artist.Albums[j].Tracks[k].Id))
+						if (rankedTrackIds.Contains(albumTracks[k].Id))
 							continue;
-						if (addedTracks.Contains(artist.Albums[j].Tracks[k].Id))
+						if (addedTracks.Contains(albumTracks[k].Id))
 							continue;
-						tracks.Add(artist.Albums[j].Tracks[k]);
-						addedTracks.Add(artist.Albums[j].Tracks[k].Id);
+						tracks.Add(albumTracks[k]);
+						addedTracks.Add(albumTracks[k].Id);
 						break;
 					}
 				}

@@ -44,8 +44,6 @@ namespace Pulse.MusicLibrary
 			Comment = info.Comment;
 			TrackIds =info.TrackIds;
 			DurationSeconds = info.DurationSeconds;
-			LastPlayed = info.LastPlayed;
-			UserLastPlayed = info.UserLastPlayed;
 		}
 		public PulsePlaylistDetails BuildPulsePlaylistDetails()
 		{
