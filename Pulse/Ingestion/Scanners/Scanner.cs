@@ -49,10 +49,11 @@ namespace PulseIngestion.Scanners
 		}
 		protected void ReportProgress()
 		{
-			Console.Write(".");
+			//Console.Write(".");
 		}
 		protected void RecordInfo(string message)
 		{
+			Console.WriteLine(message);
 			if (m_section != null)
 			{
 				m_section.Add(eReportLevel.Info, message);
@@ -60,6 +61,7 @@ namespace PulseIngestion.Scanners
 		}
 		protected void RecordWarning(string message)
 		{
+			Console.WriteLine(message);
 			if (m_section != null)
 			{
 				m_section.Add(eReportLevel.Warning, message);
@@ -67,6 +69,7 @@ namespace PulseIngestion.Scanners
 		}
 		protected void RecordError(string message)
 		{
+			Console.WriteLine(message);
 			if (m_section != null)
 			{
 				m_section.Add(eReportLevel.Error, message);

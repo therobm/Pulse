@@ -344,7 +344,6 @@ namespace Pulse.MusicLibrary
 			{
 				return;
 			}
-			artist.LastPlayed = DateTime.UtcNow;
 			artist.MarkDirty();
 		}
 
@@ -360,12 +359,6 @@ namespace Pulse.MusicLibrary
 			if (playlist == null)
 			{
 				return;
-			}
-			DateTime now = DateTime.UtcNow;
-			playlist.LastPlayed = now;
-			if (!string.IsNullOrEmpty(userName))
-			{
-				playlist.UserLastPlayed[userName] = now;
 			}
 			playlist.MarkDirty();
 		}
@@ -740,19 +733,9 @@ namespace Pulse.MusicLibrary
 				m_database.GetOrCreateArtist(track.ArtistId, track.Artist);
 				AlbumData album = m_database.GetOrCreateAlbum(track.AlbumId, track.Album, track.ArtistId, track.Artist, track.Year, track.Genre);
 
-				bool linked = false;
-				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
+				if (!album.ContainsTrack(track.Id))
 				{
-					if (album.Tracks[trackIndex].Id == track.Id)
-					{
-						linked = true;
-						break;
-					}
-				}
-
-				if (!linked)
-				{
-					album.Tracks.Add(track);
+					album.AddTrack(track);
 					album.MarkDirty();
 					relinked++;
 				}
@@ -777,9 +760,10 @@ namespace Pulse.MusicLibrary
 			{
 				HashSet<string> seenTrackIds = new HashSet<string>();
 				Dictionary<string, TrackDeduplicator> trackDuplicates = new Dictionary<string, TrackDeduplicator>();
-				for (int i = 0; i < album.Tracks.Count; i++)
+				List<TrackData> albumTracks = album.GetTracks();
+				for (int i = 0; i < albumTracks.Count; i++)
 				{
-					TrackData track = album.Tracks[i];
+					TrackData track = albumTracks[i];
 					// Group by the canonical, tag-derived id: two rows with the same
 					// artist/album/disc/track/title ARE the same track under the new scheme.
 					// Grouping by the stored track.Id can never collide (it's the dictionary key).
@@ -847,11 +831,12 @@ namespace Pulse.MusicLibrary
 			foreach (ArtistData artist in artists)
 			{
 				HashSet<string> seenAlbumIds = new HashSet<string>();
-				for (int index = 0; index < artist.Albums.Count; index++)
+				List<AlbumData> artistAlbums = artist.GetAlbums();
+				for (int index = 0; index < artistAlbums.Count; index++)
 				{
-					if (!seenAlbumIds.Add(artist.Albums[index].Id))
+					if (!seenAlbumIds.Add(artistAlbums[index].Id))
 					{
-						Log.Warning("Duplicate album in artist \"" + artist.Name + "\": " + artist.Albums[index].Name + " (" + artist.Albums[index].Id + ")");
+						Log.Warning("Duplicate album in artist \"" + artist.Name + "\": " + artistAlbums[index].Name + " (" + artistAlbums[index].Id + ")");
 						duplicateArtistAlbums++;
 					}
 				}
@@ -860,7 +845,7 @@ namespace Pulse.MusicLibrary
 			int totalTracksInAlbums = 0;
 			foreach (AlbumData album in albums)
 			{
-				totalTracksInAlbums = totalTracksInAlbums + album.Tracks.Count;
+				totalTracksInAlbums = totalTracksInAlbums + album.TrackCount;
 			}
 
 			Log.Info("Pulse: Tracks in dictionary: " + m_database.GetTrackCount() + ", tracks across albums: " + totalTracksInAlbums + ", duplicate tracks: " + duplicateAlbumTracks + ", duplicate albums: " + duplicateArtistAlbums);
@@ -1039,14 +1024,19 @@ namespace Pulse.MusicLibrary
 		{
 			bytes = null;
 			contentType = "image/jpeg";
-			if (album == null || album.Tracks.Count == 0)
+			if (album == null)
+			{
+				return false;
+			}
+			List<TrackData> albumTracks = album.GetTracks();
+			if (albumTracks.Count == 0)
 			{
 				return false;
 			}
 
-			for (int index = 0; index < album.Tracks.Count; index++)
+			for (int index = 0; index < albumTracks.Count; index++)
 			{
-				string trackPath = GetTrackFilePath(album.Tracks[index]);
+				string trackPath = GetTrackFilePath(albumTracks[index]);
 				if (string.IsNullOrEmpty(trackPath))
 				{
 					continue;
@@ -1069,7 +1059,7 @@ namespace Pulse.MusicLibrary
 				}
 			}
 
-			string firstTrackPath = GetTrackFilePath(album.Tracks[0]);
+			string firstTrackPath = GetTrackFilePath(albumTracks[0]);
 			if (string.IsNullOrEmpty(firstTrackPath))
 			{
 				return false;
@@ -1100,9 +1090,10 @@ namespace Pulse.MusicLibrary
 			if (artist == null)
 				return false;
 
-			for (int index = 0; index < artist.Albums.Count; index++)
+			List<AlbumData> artistAlbums = artist.GetAlbums();
+			for (int index = 0; index < artistAlbums.Count; index++)
 			{
-				if (GetAlbumCover(artist.Albums[index], out bytes, out contentType))
+				if (GetAlbumCover(artistAlbums[index], out bytes, out contentType))
 				{
 					return true;
 				}

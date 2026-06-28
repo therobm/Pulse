@@ -99,7 +99,77 @@ namespace Pulse.DataStorage
 		public int Year;
 
 		[JsonIgnore]
-		public List<TrackData> Tracks = new List<TrackData>();
+		private List<TrackData> Tracks = new List<TrackData>();
+		private object m_lock = new object();
+		public int TrackCount { get { lock (m_lock) { return Tracks.Count; } } }
+		public string GetTrackId(int index)
+		{
+			lock (m_lock)
+			{
+				return Tracks[index].Id;
+			}
+		}
+		public TrackData GetTrack(int index)
+		{
+			lock (m_lock)
+			{
+				if (index >= 0 && index < Tracks.Count)
+					return Tracks[index];
+			}
+			return null;
+		}
+		public List<TrackData> GetTracks()
+		{
+			lock (m_lock)
+			{
+				return new List<TrackData>(Tracks);
+			}
+		}
+		public bool ContainsTrack(string id)
+		{
+			lock (m_lock)
+			{
+				for (int index = 0; index < Tracks.Count; index++)
+				{
+					if (Tracks[index].Id == id)
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+		}
+		public void AddTrack(TrackData track)
+		{
+			lock (m_lock)
+			{
+				Tracks.Add(track);
+			}
+		}
+		public void RemoveTrack(int index)
+		{
+			lock (m_lock)
+			{
+				if (index >= 0 && index < Tracks.Count)
+				{
+					Tracks.RemoveAt(index);
+				}
+			}
+		}
+		public void RemoveTrackById(string id)
+		{
+			lock (m_lock)
+			{
+				for (int index = Tracks.Count - 1; index >= 0; index--)
+				{
+					if (Tracks[index].Id == id)
+					{
+						Tracks.RemoveAt(index);
+					}
+				}
+			}
+		}
+
 
 		public PulseAlbum BuildPulse()
 		{
@@ -110,12 +180,13 @@ namespace Pulse.DataStorage
 			pulse.Artist = ArtistName;
 			pulse.ArtistId = ArtistId;
 			pulse.CoverArt = CoverArtId;
-			pulse.Year = Year; ;
-			pulse.TrackCount = Tracks.Count;
+			pulse.Year = Year;
+			List<TrackData> snapshot = GetTracks();
+			pulse.TrackCount = snapshot.Count;
 			pulse.Duration = 0;
-			foreach (TrackData track in Tracks)
+			for (int index = 0; index < snapshot.Count; index++)
 			{
-				pulse.Duration += track.DurationSeconds;
+				pulse.Duration += snapshot[index].DurationSeconds;
 			}
 
 			return pulse;
@@ -127,42 +198,75 @@ namespace Pulse.DataStorage
 		public string Name;
 
 		[JsonIgnore]
-		public List<AlbumData> Albums = new List<AlbumData>();
-
-		public DateTime LastPlayed;
-
-		public float WeightedScore;
-		public Dictionary<string, float> UserWeightedScore = new Dictionary<string, float>();
-
-		public float GetScore(string userName)
+		private List<AlbumData> Albums = new List<AlbumData>();
+		private object m_lock = new object();
+		public int AlbumCount { get { lock (m_lock) { return Albums.Count; } } }
+		public AlbumData GetAlbum(int index)
 		{
-			if (!string.IsNullOrEmpty(userName))
+			lock (m_lock)
 			{
-				float userScore;
-				if (UserWeightedScore.TryGetValue(userName, out userScore))
+				if (index >= 0 && index < Albums.Count)
+					return Albums[index];
+			}
+			return null;
+		}
+		public List<AlbumData> GetAlbums()
+		{
+			lock (m_lock)
+			{
+				return new List<AlbumData>(Albums);
+			}
+		}
+		public void AddAlbum(AlbumData album)
+		{
+			lock (m_lock)
+			{
+				Albums.Add(album);
+			}
+		}
+		public void RemoveAlbumById(string id)
+		{
+			lock (m_lock)
+			{
+				for (int index = Albums.Count - 1; index >= 0; index--)
 				{
-					return userScore;
+					if (Albums[index].Id == id)
+					{
+						Albums.RemoveAt(index);
+					}
 				}
 			}
-			return WeightedScore;
+		}
+		public List<TrackData> GetTracks()
+		{
+			List<TrackData> tracks = new List<TrackData>();
+			List<AlbumData> albums = GetAlbums();
+			for (int albumIndex = 0; albumIndex < albums.Count; albumIndex++)
+			{
+				List<TrackData> albumTracks = albums[albumIndex].GetTracks();
+				for (int trackIndex = 0; trackIndex < albumTracks.Count; trackIndex++)
+				{
+					tracks.Add(albumTracks[trackIndex]);
+				}
+			}
+			return tracks;
 		}
 
 		public PulseArtist BuildPulse()
 		{
 			PulseArtist pulse = new PulseArtist();
 			pulse.Id = Id;
-			pulse.AlbumCount = Albums.Count;
 			pulse.Name = Name;
-			if (Albums.Count != 0)
+			List<AlbumData> albums = GetAlbums();
+			pulse.AlbumCount = albums.Count;
+			if (albums.Count != 0)
 			{
-				pulse.CoverArt = Albums[0].CoverArtId;
+				pulse.CoverArt = albums[0].CoverArtId;
 			}
-			pulse.AlbumCount = Albums.Count;
 			pulse.TrackCount = 0;
-
-			foreach (AlbumData album in Albums)
+			for (int index = 0; index < albums.Count; index++)
 			{
-				pulse.TrackCount += album.Tracks.Count;
+				pulse.TrackCount += albums[index].TrackCount;
 			}
 			return pulse;
 		}
@@ -179,22 +283,6 @@ namespace Pulse.DataStorage
 			return TrackIds.Count;
 		}
 		public long DurationSeconds;
-		public DateTime LastPlayed;
-		public Dictionary<string, DateTime> UserLastPlayed = new Dictionary<string, DateTime>();
-
-		public DateTime GetLastPlayed(string userName)
-		{
-			if (!string.IsNullOrEmpty(userName))
-			{
-				DateTime userValue;
-				if (UserLastPlayed.TryGetValue(userName, out userValue))
-				{
-					return userValue;
-				}
-				return default;
-			}
-			return LastPlayed;
-		}
 
 		public PulsePlaylist BuildPulsePlaylist()
 		{

@@ -79,9 +79,9 @@ namespace Pulse.DataStorage
 						return 0;
 					}
 					List<string> trackIds = new List<string>();
-					for (int i = 0; i < album.Tracks.Count; i++)
+					for (int i = 0; i < album.TrackCount; i++)
 					{
-						trackIds.Add(album.Tracks[i].Id);
+						trackIds.Add(album.GetTrackId(i));
 					}
 					List<AnaliticUserItem> tracks = analyticsData.GetRankedItems(trackIds, eAnalyticType.Track);
 					score = 0;
@@ -107,12 +107,14 @@ namespace Pulse.DataStorage
 						return 0;
 					}
 					List<string> artistTrackIds = new List<string>();
-					for (int i = 0; i < artist.Albums.Count; i++)
+					List<AlbumData> artistAlbums = artist.GetAlbums();
+					for (int i = 0; i < artistAlbums.Count; i++)
 					{
-						AlbumData artistAlbum = artist.Albums[i];
-						for (int j = 0; j < artistAlbum.Tracks.Count; j++)
+						AlbumData artistAlbum = artistAlbums[i];
+						List<TrackData> albumTracks = artistAlbum.GetTracks();
+						for (int j = 0; j < albumTracks.Count; j++)
 						{
-							artistTrackIds.Add(artistAlbum.Tracks[j].Id);
+							artistTrackIds.Add(albumTracks[j].Id);
 						}
 					}
 					List<AnaliticUserItem> artistTracks = analyticsData.GetRankedItems(artistTrackIds, eAnalyticType.Track);
