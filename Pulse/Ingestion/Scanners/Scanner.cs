@@ -49,7 +49,7 @@ namespace PulseIngestion.Scanners
 		}
 		protected void ReportProgress()
 		{
-			Console.Write(".");
+			//Console.Write(".");
 		}
 		protected void RecordInfo(string message)
 		{
