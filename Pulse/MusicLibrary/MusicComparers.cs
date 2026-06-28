@@ -6,16 +6,7 @@ namespace Pulse.MusicLibrary
 {
 	public static class MusicComparers
 	{
-		public static int CompareTrackByTopRank(TrackData left, TrackData right)
-		{
-			int byScore = right.Score.WeightedScore.CompareTo(left.Score.WeightedScore);
-			if (byScore != 0)
-			{
-				return byScore;
-			}
-			return right.Score.PlayCount.CompareTo(left.Score.PlayCount);
-		}
-
+		
 		public static int CompareAlbumByName(AlbumData left, AlbumData right)
 		{
 			string leftName = left.Name;

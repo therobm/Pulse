@@ -8,7 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Pulse.Data;
-using Pulse.Database;
+
 using Pulse.DataStorage;
 using Pulse.MusicLibrary;
 using Pulse.Services;

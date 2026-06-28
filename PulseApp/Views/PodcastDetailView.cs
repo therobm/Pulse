@@ -19,6 +19,10 @@ namespace PulseApp.Views
 		private Button m_resumeButton;
 		private Button m_playButton;
 		private Button m_subscribeButton;
+		private Button m_optionsButton;
+		// Backlog settings live in this panel, collapsed by default and toggled by
+		// the header gear so they don't crowd the main detail view.
+		private StackLayout m_settingsPanel;
 		private Picker m_retentionPicker;
 		private Entry m_retentionValueEntry;
 		private Label m_settingsStatusLabel;
@@ -80,8 +84,14 @@ namespace PulseApp.Views
 
 		private View BuildHeader()
 		{
-			HorizontalStackLayout headerStack = new HorizontalStackLayout();
-			headerStack.Padding = new Thickness(8, 8, 8, 0);
+			Grid headerGrid = new Grid();
+			headerGrid.Padding = new Thickness(8, 8, 8, 0);
+			ColumnDefinition backColumn = new ColumnDefinition();
+			backColumn.Width = GridLength.Star;
+			ColumnDefinition optionsColumn = new ColumnDefinition();
+			optionsColumn.Width = GridLength.Auto;
+			headerGrid.ColumnDefinitions.Add(backColumn);
+			headerGrid.ColumnDefinitions.Add(optionsColumn);
 
 			Button backButton = new Button();
 			backButton.Text = "‹";
@@ -90,11 +100,26 @@ namespace PulseApp.Views
 			backButton.BackgroundColor = Colors.Transparent;
 			backButton.WidthRequest = 44;
 			backButton.HeightRequest = 44;
+			backButton.HorizontalOptions = LayoutOptions.Start;
 			backButton.Clicked += OnBackClicked;
-			headerStack.Children.Add(backButton);
+			Grid.SetColumn(backButton, 0);
+			headerGrid.Children.Add(backButton);
 
-			Grid.SetRow(headerStack, 0);
-			return headerStack;
+			// Gear toggles the backlog settings panel, keeping it out of the main view.
+			m_optionsButton = new Button();
+			m_optionsButton.Text = "⚙";
+			m_optionsButton.FontSize = 20;
+			m_optionsButton.TextColor = PulseAppColors.OnBackground;
+			m_optionsButton.BackgroundColor = Colors.Transparent;
+			m_optionsButton.WidthRequest = 44;
+			m_optionsButton.HeightRequest = 44;
+			m_optionsButton.HorizontalOptions = LayoutOptions.End;
+			m_optionsButton.Clicked += OnOptionsClicked;
+			Grid.SetColumn(m_optionsButton, 1);
+			headerGrid.Children.Add(m_optionsButton);
+
+			Grid.SetRow(headerGrid, 0);
+			return headerGrid;
 		}
 
 		private View BuildArt()
@@ -201,6 +226,9 @@ namespace PulseApp.Views
 			StackLayout settingsStack = new StackLayout();
 			settingsStack.Spacing = 8;
 			settingsStack.Padding = new Thickness(16, 0, 16, 12);
+			// Hidden until the user taps the header gear (OnOptionsClicked).
+			settingsStack.IsVisible = false;
+			m_settingsPanel = settingsStack;
 
 			Label heading = new Label();
 			heading.Text = "Backlog";
@@ -482,6 +510,16 @@ namespace PulseApp.Views
 		private void OnBackClicked(object sender, EventArgs e)
 		{
 			m_mainView.OnBackPressed();
+		}
+
+		// Show/hide the backlog settings panel.
+		private void OnOptionsClicked(object sender, EventArgs e)
+		{
+			if (m_settingsPanel == null)
+			{
+				return;
+			}
+			m_settingsPanel.IsVisible = !m_settingsPanel.IsVisible;
 		}
 
 		// Play the newest episode from the beginning.

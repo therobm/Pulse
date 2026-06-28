@@ -161,11 +161,11 @@ namespace Assistant.Services
 			{
 				string path = context.Request.Path.Value.TrimStart('/');
 
-				if (!PulseService.IsReady())
+				/*if (!PulseService.IsReady())
 				{
 					ServeLoadingPage(context);
 					return Task.CompletedTask;
-				}
+				}*/
 
 				if (path.Length == 0)
 				{

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pulse.Data;
+using Pulse.Ingestion;
 using Pulse.MusicLibrary;
 using Pulse.Protocols;
 using Pulse.Spotify;
@@ -17,7 +18,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Threading;
-using Pulse.Database;
+
 using Pulse.Series;
 using PulseAPI.CSharp;
 using Pulse.DataStorage;
@@ -101,6 +102,7 @@ namespace Pulse
 		private DiagnosticsData m_diagnosticsData;
 		private PodcastManager m_podcastManager;
 		private AudiobookManager m_audiobookManager;
+		private IngestionManager m_ingestionManager;
 		private AuthEndpoints m_authEndpoints;
 		private Dictionary<string, SpotifySync> m_spotifySyncs = new Dictionary<string, SpotifySync>();
 		private object m_spotifySyncsLock = new object();
@@ -139,9 +141,10 @@ namespace Pulse
 			m_pulseData = new PulseData(m_config);
 			m_pulseData.Load();
 
-			m_musicManager = new MusicManager(config, m_pulseData);
+			m_ingestionManager = new IngestionManager(config);
+			m_musicManager = new MusicManager(config, m_pulseData, m_ingestionManager);
 			s_musicManager = m_musicManager;
-			m_musicManager.Run(config.MusicPath);
+			
 
 			m_analyticsData = new AnalyticsData(config, m_pulseData);
 			m_analyticsData.Load();
@@ -150,17 +153,19 @@ namespace Pulse
 			m_diagnosticsData.Load();
 
 			m_podcastManager = new PodcastManager(config);
-			m_podcastManager.Run();
-
 			m_audiobookManager = new AudiobookManager(config);
-			m_audiobookManager.Run();
-
 			m_pulseEndpoints = new PulseEndpoints(this, m_pulseData, m_musicManager, m_analyticsData, m_diagnosticsData, m_podcastManager, m_audiobookManager);
-			
 			m_authEndpoints = new AuthEndpoints(m_pulseData);
 
 			RegisterRoutes(webServer);
-			SyncSpotify();
+
+			//SyncSpotify();
+
+			m_ingestionManager.Run();
+			m_musicManager.Run(config.MusicPath);
+			m_podcastManager.Run();
+			m_audiobookManager.Run();
+
 
 
 			IsRunning = true;

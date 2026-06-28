@@ -52,40 +52,6 @@ namespace Pulse.Data
 			{
 				TrackData track = allTracks[i];
 
-				int playCount = track.Score.PlayCount;
-				int skipCount = track.Score.SkipCount;
-
-				if (playCount == 0 && skipCount == 0)
-				{
-					stats.UnplayedTracks++;
-				}
-				else if (playCount == 1)
-				{
-					stats.PlayedOnce++;
-				}
-				else
-				{
-					stats.PlayedMultiple++;
-				}
-
-				stats.TotalPlaySessions += playCount;
-				stats.TotalSkipSessions += skipCount;
-				stats.TotalFileSizeBytes += track.FileSizeBytes;
-				stats.TotalDurationSeconds += track.DurationSeconds;
-
-				bool anyStarred = false;
-				foreach (bool isStarred in track.Starred.Values)
-				{
-					if (isStarred)
-					{
-						anyStarred = true;
-						break;
-					}
-				}
-				if (anyStarred)
-				{
-					stats.StarredTracks++;
-				}
 				/*
 				if (track.Rating > 0)
 				{
@@ -256,12 +222,7 @@ namespace Pulse.Data
 			// Highest scored tracks (per-user score if available, falls back to global), scaled to 0..100
 			int trackLimit = 200;
 			List<KeyValuePair<TrackData, float>> trackScored = new List<KeyValuePair<TrackData, float>>();
-			for (int idx = 0; idx < allTracks.Count; idx++)
-			{
-				TrackData track = allTracks[idx];
-				trackScored.Add(new KeyValuePair<TrackData, float>(track, track.GetScore(userName)));
-			}
-			trackScored.Sort(CompareTrackScoredDescending);
+		
 			for (int trackIndex = 0; trackIndex < trackScored.Count; trackIndex++)
 			{
 				KeyValuePair<TrackData, float> pair = trackScored[trackIndex];
@@ -277,23 +238,6 @@ namespace Pulse.Data
 				});
 			}
 
-			// Most skipped tracks
-			List<TrackData> sortedBySkipCount = new List<TrackData>(allTracks);
-			sortedBySkipCount.Sort(CompareTrackBySkipCountDescending);
-			for (int trackIndex = 0; trackIndex < sortedBySkipCount.Count; trackIndex++)
-			{
-				TrackData track = sortedBySkipCount[trackIndex];
-				if (trackIndex >= trackLimit || track.Score.SkipCount == 0)
-				{
-					break;
-				}
-				stats.MostSkipped.Add(new TrackStat
-				{
-					Title = track.Title,
-					Artist = track.Artist,
-					Value = track.Score.SkipCount
-				});
-			}
 
 			return stats;
 		}
@@ -328,10 +272,6 @@ namespace Pulse.Data
 			return right.Value.CompareTo(left.Value);
 		}
 
-		private static int CompareTrackBySkipCountDescending(TrackData left, TrackData right)
-		{
-			return right.Score.SkipCount.CompareTo(left.Score.SkipCount);
-		}
 
 	}
 }
