@@ -1,3 +1,4 @@
+using PulseIngestion;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -41,6 +42,10 @@ namespace Pulse
 		// (HttpServer rejects such requests with 401). Default false keeps the
 		// legacy-tolerant behaviour. Flip on at boot once every client sends uid=.
 		public bool EnforceModernApi = false;
+
+
+		public IngestionConfig IngestionConfiguration = new IngestionConfig();
+
 
 
 		public static string GetConfigPath()

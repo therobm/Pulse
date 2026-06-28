@@ -5,8 +5,6 @@ VisualStudioVersion = 17.14.36717.8
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pulse", "Pulse\Pulse.csproj", "{611BA233-A692-41DF-8D37-1E95B4AAFA9D}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PulseAPI", "PulseAPI", "{5C7F4A92-2A2C-7528-2CAA-CE74D1649DB3}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PulseAPI", "PulseAPI\PulseAPI.csproj", "{28DB0677-8297-471F-8607-C4DAD731755F}"
 EndProject
 Global
@@ -46,9 +44,6 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(NestedProjects) = preSolution
-		{28DB0677-8297-471F-8607-C4DAD731755F} = {5C7F4A92-2A2C-7528-2CAA-CE74D1649DB3}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {17B65AD1-FD63-4D66-BCB7-A4632FEC017A}

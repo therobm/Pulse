@@ -160,7 +160,6 @@ namespace Pulse.MusicLibrary
 						addedTracks.Add(allTracks[index].Id);
 					}
 				}
-				
 			}
 
 			//shuffle before returning
