@@ -10,9 +10,12 @@ namespace Pulse
 		public int HttpPort { get; set; } = 32457;
 		public int HttpsPort { get; set; } = 32458;
 
+		public string AudiobooksPath { get; set; } = "";
 		public string PodcastPath = "";
-		public string PulseDataPath = "";
 		public string MusicPath { get; set; } = "";
+
+
+		public string PulseDataPath = "";
 		public string SpotifyClient = "";
 		public string SpotifySecret = "";
 		public string SpotifyRedirectURI = "";
@@ -21,26 +24,10 @@ namespace Pulse
 		public string LidarrApiKey { get; set; } = "";
 
 		public string HttpsCertPath { get; set; } = "";
-
-		// "Production" (default) or "Staging". Picks which sqlite DB file under
-		// PulseData/ is used. Replaces the old Debugger.IsAttached coupling.
 		public string DatabaseEnvironment { get; set; } = "Production";
-
-		// Podcast discovery service. The server owns podcast search and proxies
-		// to whatever service this URL points at; swapping providers is a config
-		// change, not a code change. "{query}" is replaced with the URL-encoded
-		// search term. Default is Apple's keyless iTunes Search API.
+	
 		public string PodcastSearchUrl { get; set; } = "https://itunes.apple.com/search?term={query}&entity=podcast";
 
-		// Root folder scanned for audiobooks. Each folder that directly contains
-		// audio files is one audiobook; each file is one chapter (a single file is
-		// a one-chapter book). Empty disables audiobook scanning.
-		public string AudiobooksPath { get; set; } = "";
-
-		// When true, the data API enforces the modern request contract: identity
-		// must arrive as `uid=` and the legacy `u=` username param is refused
-		// (HttpServer rejects such requests with 401). Default false keeps the
-		// legacy-tolerant behaviour. Flip on at boot once every client sends uid=.
 		public bool EnforceModernApi = false;
 
 

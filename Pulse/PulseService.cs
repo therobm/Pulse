@@ -160,7 +160,7 @@ namespace Pulse
 			m_authEndpoints = new AuthEndpoints(m_pulseData);
 
 			RegisterRoutes(webServer);
-			SyncSpotify();
+			//SyncSpotify();
 
 
 			IsRunning = true;
