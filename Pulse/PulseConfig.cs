@@ -30,6 +30,7 @@ namespace Pulse
 
 		public bool EnforceModernApi = false;
 
+		public int LibraryScanInterval = 30; //30 min default
 
 		public IngestionConfig IngestionConfiguration = new IngestionConfig();
 

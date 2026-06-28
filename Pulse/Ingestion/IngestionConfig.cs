@@ -9,7 +9,7 @@ namespace PulseIngestion
 		public string FFMpegLocation = "C:\\ffmpeg\\bin\\ffmpeg.exe";
 		public string MusicImportDir = "Z:\\MusicTest";
 		public string ReportDirectory = ""; // empty => <MusicSource>\PulseIngestion
-		public int ThreadCount = 32;
+		public int ThreadCount = 1;
 		public int ScanningIntervalMinutes = 1440; //24h default
 		public eMusicFormat DestinationMusicFormat = eMusicFormat.MP3;
 		public eMusicFormat[] SourceFormats = { eMusicFormat.FLAC, eMusicFormat.AAC };
@@ -26,9 +26,15 @@ namespace PulseIngestion
 		{
 
 			if (!Directory.Exists(MusicImportDir))
+			{
+				Log.Warning("Ingestion: disabled, configuration invalid (MusicImportDir missing).");
 				return false;
+			}
 			if (!File.Exists(FFMpegLocation))
+			{
+				Log.Warning("Ingestion: disabled, configuration invalid (FFMpegLocation missing).");
 				return false;
+			}
 
 
 			return true;

@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Http;
-using Pulse.Database;
+
 using Pulse.Data;
 using Pulse.DataStorage;
 using Pulse.MusicLibrary;
@@ -80,9 +80,9 @@ namespace Pulse.Protocols
 
 			RegisterRoute("recentlyPlayed", GetRecentlyPlayed);
 			RegisterRoute("search", Search);
-			RegisterRoute("favorites", GetFavorites);
-			RegisterRoute("favorite", Favorite);
-			RegisterRoute("unfavorite", Unfavorite);
+			//RegisterRoute("favorites", GetFavorites);
+			//RegisterRoute("favorite", Favorite);
+			//RegisterRoute("unfavorite", Unfavorite);
 			RegisterRoute("reportAnalytics", ReportAnalytics);
 
 			RegisterRoute("ingestAnalytics", IngestAnalytics);
@@ -589,30 +589,7 @@ namespace Pulse.Protocols
 			{
 				allAlbums.Sort(MusicComparers.CompareAlbumByArtistThenName);
 			}
-			else if (type == "frequent")
-			{
-				List<KeyValuePair<AlbumData, int>> scored = new List<KeyValuePair<AlbumData, int>>();
-				for (int index = 0; index < allAlbums.Count; index++)
-				{
-					AlbumData album = allAlbums[index];
-					int total = 0;
-					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
-					{
-						total = total + album.Tracks[trackIndex].Score.PlayCount;
-					}
-					if (total > 0)
-					{
-						scored.Add(new KeyValuePair<AlbumData, int>(album, total));
-					}
-				}
-				scored.Sort(MusicComparers.CompareAlbumPlayCountDescending);
-				allAlbums = new List<AlbumData>();
-				for (int index = 0; index < scored.Count; index++)
-				{
-					allAlbums.Add(scored[index].Key);
-				}
-			}
-			else if (type == "recent")
+			else if (type == "recent" || type == "frequent")
 			{
 				List<KeyValuePair<AlbumData, DateTime>> scored = new List<KeyValuePair<AlbumData, DateTime>>();
 				for (int index = 0; index < allAlbums.Count; index++)
@@ -688,21 +665,6 @@ namespace Pulse.Protocols
 						{
 							filtered.Add(album);
 						}
-					}
-				}
-				allAlbums = filtered;
-			}
-			else if (type == "starred")
-			{
-				List<AlbumData> filtered = new List<AlbumData>();
-				for (int index = 0; index < allAlbums.Count; index++)
-				{
-					AlbumData album = allAlbums[index];
-					bool isStarred = false;
-					album.Starred.TryGetValue(userId, out isStarred);
-					if (isStarred)
-					{
-						filtered.Add(album);
 					}
 				}
 				allAlbums = filtered;
@@ -1204,98 +1166,7 @@ namespace Pulse.Protocols
 			return RespondObject(context, result);
 		}
 
-		public IResult GetFavorites(HttpContext context)
-		{
-			string userId = QueryParameters.GetUserId(context);
-
-			PulseSearchData result = new PulseSearchData();
-
-			List<ArtistData> allArtists = m_musicManager.GetAllArtists();
-			for (int index = 0; index < allArtists.Count; index++)
-			{
-				ArtistData artist = allArtists[index];
-				bool artistStarred = false;
-				artist.Starred.TryGetValue(userId, out artistStarred);
-				if (artistStarred)
-				{
-					result.Artists.Add(artist.BuildPulse());
-				}
-			}
-
-			List<AlbumData> allAlbums = m_musicManager.GetAllAlbums();
-			for (int albumIndex = 0; albumIndex < allAlbums.Count; albumIndex++)
-			{
-				AlbumData album = allAlbums[albumIndex];
-				bool albumStarred = false;
-				album.Starred.TryGetValue(userId, out albumStarred);
-				if (albumStarred)
-				{
-					result.Albums.Add(BuildAlbum(album));
-				}
-
-				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
-				{
-					TrackData track = album.Tracks[trackIndex];
-					bool trackStarred = false;
-					track.Starred.TryGetValue(userId, out trackStarred);
-					if (trackStarred)
-					{
-						result.Tracks.Add(track.BuildPulse());
-					}
-				}
-			}
-
-			return RespondObject(context, result);
-		}
-
-		public IResult Favorite(HttpContext context)
-		{
-			return SetStar(context, true);
-		}
-
-		public IResult Unfavorite(HttpContext context)
-		{
-			return SetStar(context, false);
-		}
-
-		private IResult SetStar(HttpContext context, bool starred)
-		{
-			string id = QueryParameters.GetString(context, "id");
-			string type = QueryParameters.GetString(context, "type");
-			string userId = QueryParameters.GetUserId(context);
-
-			if (string.IsNullOrEmpty(id))
-			{
-				return RespondStatus(context, "missing_id");
-			}
-
-			string typeLower = "track";
-			if (!string.IsNullOrEmpty(type))
-			{
-				typeLower = type.ToLowerInvariant();
-			}
-
-			string trackId = null;
-			string albumId = null;
-			string artistId = null;
-			if (typeLower == "album")
-			{
-				albumId = id;
-			}
-			else if (typeLower == "artist")
-			{
-				artistId = id;
-			}
-			else
-			{
-				trackId = id;
-			}
-
-			m_musicManager.UpdateStar(userId, trackId, albumId, artistId, starred);
-			return Respond(context, new PulseResponse());
-		}
-
-
+		
 
 		/// <summary>
 		/// The pulse_v1 analytics feed: clients POST a serialized PulseAnalytics

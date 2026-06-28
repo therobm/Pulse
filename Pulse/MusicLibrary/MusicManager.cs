@@ -1,7 +1,7 @@
 ﻿using Pulse;
 using Pulse.Data;
-using Pulse.Database;
 using Pulse.DataStorage;
+using Pulse.Ingestion;
 using Pulse.Lidarr;
 using PulseAPI.CSharp;
 using System;
@@ -16,6 +16,8 @@ using System.Threading.Tasks;
 
 namespace Pulse.MusicLibrary
 {
+	
+
 	public class TrackDeduplicator
 	{
 		public string FilePath;
@@ -42,6 +44,17 @@ namespace Pulse.MusicLibrary
 
 	public class MusicManager
 	{
+		private class ScannedTrack
+		{
+			public string ArtistId;
+			public string ArtistName;
+			public string AlbumId;
+			public string AlbumName;
+			public int Year;
+			public string Genre;
+			public TrackData Track;
+		}
+
 		public Dictionary<string, ArtistData> m_scanningArtistCache = new Dictionary<string, ArtistData>();
 		public Dictionary<string, AlbumData> m_scanningAlbumCache = new Dictionary<string, AlbumData>();
 
@@ -64,44 +77,168 @@ namespace Pulse.MusicLibrary
 		private object m_missingLock = new object();
 		private LidarrSync m_lidarrSync;
 		private Thread m_scanThread;
-		private bool m_scanning;
+		private bool m_bIsRunning;
 		private object m_scanLock = new object();
 		private string m_nowPlayingTrackId;
 		private DateTime m_nowPlayingStartTime = DateTime.MinValue;
 		private HashSet<string> m_missingTracks = new HashSet<string>();
 		private PulseConfig m_config;
+		private IngestionManager m_ingestionManager;
+		private string m_pendingScanPath;
 
-		public MusicManager(PulseConfig config, PulseData pulseData)
+		public MusicManager(PulseConfig config, PulseData pulseData, IngestionManager ingestionManager)
 		{
 			m_config = config;
 			m_database = pulseData;
 			m_lidarrSync = new LidarrSync(config.LidarrURL, config.LidarrApiKey);
+			m_ingestionManager = ingestionManager; 
 		}
 
 	
 
 		public void Run(string musicPath)
 		{
-			if (m_scanning)
-			{
-				return;
-			}
-
 			CleanupDuplicates();
 			m_pendingScanPath = musicPath;
 			m_scanThread = new Thread(RunScanThread);
 			m_scanThread.IsBackground = true;
 			m_scanThread.Name = "Pulse.MusicScan";
-			m_scanning = true;
+			m_bIsRunning = true;
 			m_scanThread.Start();
 		}
 
-		private string m_pendingScanPath;
-
 		private void RunScanThread()
 		{
-			RunScan(m_pendingScanPath);
+			while (m_bIsRunning)
+			{
+				if (m_ingestionManager.IsIngesting())
+				{
+					//retry until ingestion is complete
+					Thread.Sleep(TimeSpan.FromMinutes(1));
+				}
+				else 
+				{
+
+					RunScan(m_pendingScanPath);
+					Thread.Sleep(TimeSpan.FromMinutes(m_config.LibraryScanInterval));
+				}
+			}
 		}
+
+
+		private void RunScan(string musicPath)
+		{
+
+
+			RepairLibrary();
+
+			int fileCount = 0;
+			int processedCount = 0;
+			int skippedCount = 0;
+
+			string[] extensions = new string[] { ".mp3", ".flac", ".ogg", ".m4a", ".wma", ".wav" };
+
+			List<TrackData> allTracks = m_database.GetAllTracks();
+
+			HashSet<string> knownFiles = new HashSet<string>();
+			for (int i = 0; i < allTracks.Count; i++)
+				knownFiles.Add(allTracks[i].RelativeFilePath);
+
+			m_scanningAlbumCache.Clear();
+			m_scanningArtistCache.Clear();
+
+			// Tag parsing (TagLib.File.Create) is the slow, disk-bound part of a scan
+			// and touches no shared state, so it runs in parallel. The cheap part --
+			// seeding the scan caches, GetOrCreate and AddTrack -- mutates shared model
+			// state (and the plain-Dictionary caches), so it is funneled through a
+			// single commit lock. The critical section is microseconds, so the parse
+			// parallelism is preserved while the commit stays single-threaded and safe.
+			object commitLock = new object();
+
+			Parallel.ForEach(Directory.EnumerateFiles(musicPath, "*.*", SearchOption.AllDirectories), filePath =>
+			{
+				Interlocked.Increment(ref fileCount);
+
+
+
+				string extension = Path.GetExtension(filePath).ToLowerInvariant();
+				bool supported = false;
+				for (int extIndex = 0; extIndex < extensions.Length; extIndex++)
+				{
+					if (extension == extensions[extIndex])
+					{
+						supported = true;
+						break;
+					}
+				}
+
+				if (!supported)
+				{
+					return;
+				}
+
+				//use a relative path in case the user relocates their library
+				string relativePath = Path.GetRelativePath(musicPath, filePath);
+				if (knownFiles.Contains(relativePath))
+				{
+					Interlocked.Increment(ref skippedCount);
+					return;
+				}
+
+				try
+				{
+					ScannedTrack scanned = ParseFile(filePath, musicPath);
+					if (scanned == null)
+					{
+						return;
+					}
+
+					lock (commitLock)
+					{
+						CommitScannedTrack(scanned);
+						processedCount++;
+						if (processedCount % 500 == 0)
+						{
+							Console.WriteLine("Scan progress: " + processedCount + " imported...");
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					//Low priority here, a bad mp3 is not an emergency
+					Log.Warning(filePath + ": " + ex.Message);
+				}
+			});
+
+
+			//remove missing files
+			Log.Info("Scanning for deleted tracks...");
+			for (int index = 0; index < allTracks.Count; index++)
+			{
+				string trackPath = GetTrackFilePath(allTracks[index]);
+				// Only treat a track as dead when we can resolve its path AND the file
+				// is genuinely gone -- never remove a track whose path can't be
+				// resolved (e.g. no RelativeFilePath), or a false negative deletes it.
+				if (!string.IsNullOrEmpty(trackPath) && !File.Exists(trackPath))
+				{
+					string artistId = allTracks[index].ArtistId;
+					m_database.RemoveTrack(allTracks[index].Id);
+					ArtistData artist = m_database.GetArtist(artistId);
+					if (artist != null)
+					{
+						artist.MarkDirty();
+					}
+					Log.Info("Pulse: Removed dead track: " + trackPath);
+				}
+			}
+
+
+
+			Log.Info("Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_database.GetTrackCount());
+			m_bIsRunning = false;
+			SaveDB();
+		}
+
 
 		public void OnPlaylistSyncComplete()
 		{
@@ -125,41 +262,6 @@ namespace Pulse.MusicLibrary
 				TrackData previousTrack = m_database.GetTrack(m_nowPlayingTrackId);
 				if (previousTrack != null)
 				{
-					double elapsedSeconds = (DateTime.UtcNow - m_nowPlayingStartTime).TotalSeconds;
-					double listenSeconds = Math.Min(elapsedSeconds, previousTrack.DurationSeconds);
-					previousTrack.Score.TotalListenSeconds += listenSeconds;
-					if (userName != null)
-					{
-						if (!previousTrack.UserScore.ContainsKey(userName))
-						{
-							previousTrack.UserScore.Add(userName, new TrackData.ScoreData());
-						}
-						previousTrack.UserScore[userName].TotalListenSeconds += listenSeconds;
-					}
-
-					float threshold = previousTrack.DurationSeconds * 0.5f;
-
-					previousTrack.Score.PlayCount = previousTrack.Score.PlayCount + 1;
-					previousTrack.LastPlayed = DateTime.UtcNow;
-					if (previousTrack.ParentArtist != null)
-					{
-						previousTrack.ParentArtist.LastPlayed = DateTime.UtcNow;
-						previousTrack.ParentArtist.MarkDirty();
-					}
-
-					if (userName != null)
-					{
-						previousTrack.UserScore[userName].PlayCount = previousTrack.UserScore[userName].PlayCount + 1;
-					}
-					if (elapsedSeconds < threshold)
-					{
-						previousTrack.Score.SkipCount = previousTrack.Score.SkipCount + 1;
-						if (userName != null)
-						{
-							previousTrack.UserScore[userName].SkipCount = previousTrack.UserScore[userName].SkipCount + 1;
-						}
-					}
-
 					PulseAnalyticsData analytics = m_database.GetAnalytics();
 					analytics.RecentlyPlayed.Remove(m_nowPlayingTrackId);
 					analytics.RecentlyPlayed.Insert(0, m_nowPlayingTrackId);
@@ -169,22 +271,6 @@ namespace Pulse.MusicLibrary
 					}
 					analytics.MarkDirty();
 
-					RecalculateScore(previousTrack);
-
-					bool skipped = elapsedSeconds < threshold;
-					string skipSuffix = "";
-					if (skipped)
-					{
-						skipSuffix = " SKIPPED";
-					}
-					Log.Info("Finalized: " + previousTrack.Artist + ":" + previousTrack.Title
-						+ " elapsed=" + elapsedSeconds.ToString("F1") + "s"
-						+ " duration=" + previousTrack.DurationSeconds + "s"
-						+ " listen=" + listenSeconds.ToString("F1") + "s"
-						+ " plays=" + previousTrack.Score.PlayCount
-						+ " skips=" + previousTrack.Score.SkipCount
-						+ " score=" + previousTrack.Score.WeightedScore.ToString("F3")
-						+ skipSuffix);
 
 				}
 			}
@@ -225,8 +311,7 @@ namespace Pulse.MusicLibrary
 				return;
 			}
 
-			m_database.RecordPlaybackEvent(userName, analytics, DateTime.UtcNow);
-
+			
 			if (analytics.Action != PulseAnalytics.eAction.Started)
 			{
 				return;
@@ -346,13 +431,7 @@ namespace Pulse.MusicLibrary
 						durationsById[bestMatch.Id] = bestMatch.DurationSeconds;
 					}
 					matched++;
-					if (bestMatch.Score.PlayCount == 0)
-					{
-						float playTime = 0.8f;
-						bestMatch.Score.PlayCount++;
-						bestMatch.Score.TotalListenSeconds += bestMatch.DurationSeconds * playTime;
-						RecalculateScore(bestMatch);
-					}
+					
 				}
 				else
 				{
@@ -520,132 +599,7 @@ namespace Pulse.MusicLibrary
 			}
 		}
 
-		private void RunScan(string musicPath)
-		{
-			RepairLibrary();
 
-			int fileCount = 0;
-			int processedCount = 0;
-			int skippedCount = 0;
-
-			string[] extensions = new string[] { ".mp3", ".flac", ".ogg", ".m4a", ".wma", ".wav" };
-
-			List<TrackData> allTracks = m_database.GetAllTracks();
-
-			HashSet<string> knownFiles = new HashSet<string>();
-			for (int i = 0; i < allTracks.Count; i++)
-				knownFiles.Add(allTracks[i].RelativeFilePath);
-
-			m_scanningAlbumCache.Clear();
-			m_scanningArtistCache.Clear();
-
-			// Tag parsing (TagLib.File.Create) is the slow, disk-bound part of a scan
-			// and touches no shared state, so it runs in parallel. The cheap part --
-			// seeding the scan caches, GetOrCreate and AddTrack -- mutates shared model
-			// state (and the plain-Dictionary caches), so it is funneled through a
-			// single commit lock. The critical section is microseconds, so the parse
-			// parallelism is preserved while the commit stays single-threaded and safe.
-			object commitLock = new object();
-
-			Parallel.ForEach(Directory.EnumerateFiles(musicPath, "*.*", SearchOption.AllDirectories), filePath =>
-			{
-				Interlocked.Increment(ref fileCount);
-
-			
-
-				string extension = Path.GetExtension(filePath).ToLowerInvariant();
-				bool supported = false;
-				for (int extIndex = 0; extIndex < extensions.Length; extIndex++)
-				{
-					if (extension == extensions[extIndex])
-					{
-						supported = true;
-						break;
-					}
-				}
-
-				if (!supported)
-				{
-					return;
-				}
-
-				//use a relative path in case the user relocates their library
-				string relativePath = Path.GetRelativePath(musicPath, filePath);
-				if (knownFiles.Contains(relativePath))
-				{
-					Interlocked.Increment(ref skippedCount);
-					return;
-				}
-
-				try
-				{
-					ScannedTrack scanned = ParseFile(filePath, musicPath);
-					if (scanned == null)
-					{
-						return;
-					}
-
-					lock (commitLock)
-					{
-						CommitScannedTrack(scanned);
-						processedCount++;
-						if (processedCount % 500 == 0)
-						{
-							Console.WriteLine("Scan progress: " + processedCount + " imported...");
-						}
-					}
-				}
-				catch (Exception ex)
-				{
-					//Low priority here, a bad mp3 is not an emergency
-					Log.Warning(filePath + ": " + ex.Message);
-				}
-			});
-
-
-			//remove missing files
-			Log.Info("Scanning for deleted tracks...");
-			for (int index = 0; index < allTracks.Count; index++)
-			{
-				string trackPath = GetTrackFilePath(allTracks[index]);
-				// Only treat a track as dead when we can resolve its path AND the file
-				// is genuinely gone -- never remove a track whose path can't be
-				// resolved (e.g. no RelativeFilePath), or a false negative deletes it.
-				if (!string.IsNullOrEmpty(trackPath) && !File.Exists(trackPath))
-				{
-					string artistId = allTracks[index].ArtistId;
-					m_database.RemoveTrack(allTracks[index].Id);
-					ArtistData artist = m_database.GetArtist(artistId);
-					if (artist != null)
-					{
-						artist.MarkDirty();
-					}
-					Log.Info("Pulse: Removed dead track: " + trackPath);
-				}
-			}
-
-
-
-			Log.Info("Pulse: Enumerated " + fileCount + " files, processed " + processedCount + ", skipped " + skippedCount + ", tracks in library " + m_database.GetTrackCount());
-			m_scanning = false;
-			SaveDB();
-		}
-
-		/// <summary>
-		/// A single file's tags parsed into the fields the library needs. Produced by
-		/// <see cref="ParseFile"/> (parallel) and consumed by <see cref="CommitScannedTrack"/>
-		/// (serial), so it deliberately holds no references to shared model state.
-		/// </summary>
-		private sealed class ScannedTrack
-		{
-			public string ArtistId;
-			public string ArtistName;
-			public string AlbumId;
-			public string AlbumName;
-			public int Year;
-			public string Genre;
-			public TrackData Track;
-		}
 
 		/// <summary>
 		/// Reads and parses one file's tags into a <see cref="ScannedTrack"/>. This is the
@@ -888,11 +842,6 @@ namespace Pulse.MusicLibrary
 					}
 				}
 			}
-			
-			
-
-
-
 
 			List<ArtistData> artists = m_database.GetAllArtists();
 			foreach (ArtistData artist in artists)
@@ -917,41 +866,7 @@ namespace Pulse.MusicLibrary
 			Log.Info("Pulse: Tracks in dictionary: " + m_database.GetTrackCount() + ", tracks across albums: " + totalTracksInAlbums + ", duplicate tracks: " + duplicateAlbumTracks + ", duplicate albums: " + duplicateArtistAlbums);
 		}
 
-		public void RecalculateScore(TrackData track)
-		{
-			float trackDuration = track.DurationSeconds;
-			if (trackDuration == 0)
-			{
-				trackDuration = 5 * 60; ///use a 5 minute track as a best guess
-			}
-			if (track.Score.PlayCount > 0 && track.DurationSeconds > 0)
-			{
-				float averageListenRatio = (float)(track.Score.TotalListenSeconds / (track.Score.PlayCount * trackDuration));
-				float confidence = (float)track.Score.PlayCount / (track.Score.PlayCount + 5);
-				track.Score.WeightedScore = (averageListenRatio * confidence) + (0.5f * (1f - confidence));
-				if (track.Score.WeightedScore > 1)
-				{
-					track.Score.WeightedScore = 1;
-				}
-			}
-
-			foreach (string user in track.UserScore.Keys)
-			{
-				if (track.UserScore[user].PlayCount == 0)
-				{
-					track.UserScore[user].WeightedScore = 0f;
-					continue;
-				}
-				float userListenRatio = (float)(track.UserScore[user].TotalListenSeconds / (track.UserScore[user].PlayCount * trackDuration));
-				float userConfidence = (float)track.UserScore[user].PlayCount / (track.UserScore[user].PlayCount + 5);
-				track.UserScore[user].WeightedScore = (userListenRatio * userConfidence) + (0.5f * (1f - userConfidence));
-				if (track.UserScore[user].WeightedScore > 1)
-				{
-					track.UserScore[user].WeightedScore = 1;
-				}
-			}
-			track.MarkDirty();
-		}
+		
 
 		private string GetContentType(string extension)
 		{
@@ -1040,7 +955,7 @@ namespace Pulse.MusicLibrary
 
 		public bool GetIsScanning()
 		{
-			return m_scanning;
+			return m_bIsRunning;
 		}
 
 		public List<ArtistData> GetAllArtists()
@@ -1081,24 +996,13 @@ namespace Pulse.MusicLibrary
 		}
 
 
-		public void UpdateStar(string userName, string trackId, string albumId, string artistId, bool isStarred)
-		{
-			m_database.UpdateStar(userName, trackId, albumId, artistId, isStarred);
-		}
-
+	
 		public PulseAnalyticsData GetAnalytics()
 		{
 			return m_database.GetAnalytics();
 		}
 
-		/// <summary>
-		/// Pass-through to the item_stats counter used by the topItems /
-		/// recentlyPlayed routes to rank one media type by play count or recency.
-		/// </summary>
-		public Dictionary<string, ItemStats> GetItemStats(string userName, ePulseWireType mediaType)
-		{
-			return m_database.GetItemStats(userName, mediaType);
-		}
+
 
 		public TrackData GetTrack(string id)
 		{
@@ -1160,7 +1064,8 @@ namespace Pulse.MusicLibrary
 				}
 				catch (Exception ex)
 				{
-					Log.Exception(ex);
+					//Intentionaly suppressed
+					//Log.Exception(ex);
 				}
 			}
 
@@ -1195,39 +1100,8 @@ namespace Pulse.MusicLibrary
 			if (artist == null)
 				return false;
 
-			// Score each album by its total play count across tracks and pick the
-			// busiest. Ties go to the order the artist has albums in. New albums
-			// (zero plays) still get a chance through the fallback loop below.
-			AlbumData bestAlbum = null;
-			int bestPlays = -1;
 			for (int index = 0; index < artist.Albums.Count; index++)
 			{
-				AlbumData album = artist.Albums[index];
-				int plays = 0;
-				for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
-				{
-					plays = plays + album.Tracks[trackIndex].Score.PlayCount;
-				}
-				if (plays > bestPlays)
-				{
-					bestPlays = plays;
-					bestAlbum = album;
-				}
-			}
-
-			if (bestAlbum != null)
-			{
-				return GetAlbumCover(bestAlbum, out bytes, out contentType);
-			}
-
-			// Fallback: walk every album until we find one with art.
-			for (int index = 0; index < artist.Albums.Count; index++)
-			{
-				if (artist.Albums[index] == bestAlbum)
-				{
-					continue;
-				}
-
 				if (GetAlbumCover(artist.Albums[index], out bytes, out contentType))
 				{
 					return true;

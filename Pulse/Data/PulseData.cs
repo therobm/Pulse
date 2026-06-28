@@ -1,4 +1,4 @@
-using Pulse.Database;
+
 using Pulse.DataStorage;
 using Pulse.MusicLibrary;
 using PulseAPI.CSharp;
@@ -19,8 +19,7 @@ namespace Pulse.Data
 		private ConcurrentDictionary<string, PlaylistData> m_playlists = new ConcurrentDictionary<string, PlaylistData>();
 		private PulseAnalyticsData m_analytics = new PulseAnalyticsData();
 
-		[Obsolete]
-		private PulseDB m_db = new PulseDB();
+
 		private PulseDataStore m_musicData;
 		private UserData m_userData;
 		private Timer m_saveTimer;
@@ -105,39 +104,6 @@ namespace Pulse.Data
 			return m_tracks.ContainsKey(trackId);
 		}
 
-		
-		public void UpdateStar(string userName, string trackId, string albumId, string artistId, bool starred)
-		{
-			if (!string.IsNullOrEmpty(trackId))
-			{
-				TrackData track;
-				if (m_tracks.TryGetValue(trackId, out track))
-				{
-					track.Starred[userName] = starred;
-					track.MarkDirty();
-				}
-			}
-
-			if (!string.IsNullOrEmpty(albumId))
-			{
-				AlbumData album;
-				if (m_albums.TryGetValue(albumId, out album))
-				{
-					album.Starred[userName] = starred;
-					album.MarkDirty();
-				}
-			}
-
-			if (!string.IsNullOrEmpty(artistId))
-			{
-				ArtistData artist;
-				if (m_artists.TryGetValue(artistId, out artist))
-				{
-					artist.Starred[userName] = starred;
-					artist.MarkDirty();
-				}
-			}
-		}
 
 		public PlaylistData GetPlaylist(string id)
 		{
@@ -365,15 +331,8 @@ namespace Pulse.Data
 				Directory.CreateDirectory(m_config.PulseDataPath);
 			}
 
-			// Separate sqlite file per environment. Production -> pulse_production.db,
-			// Staging -> pulse_staging.db. Keeps the existing concept while letting
-			// the two run side-by-side without cross-contamination.
-			string sqliteFileName = "pulse_" + environmentName.ToLowerInvariant() + ".db";
-			string sqlitePath = Path.Combine(m_config.PulseDataPath, sqliteFileName);
-			PulseDBConnector.SetDatabaseFilePath(sqlitePath);
-			PulseDBMigrations.RunMigrations();
+
 			m_userData.Load();
-			Log.Info("Pulse DB: env=" + environmentName + " path=" + sqlitePath);
 
 
 			Stopwatch sw = Stopwatch.StartNew();
@@ -416,14 +375,9 @@ namespace Pulse.Data
 					m_analytics = analytics;
 				}
 			}
-			else
-			{
-				MigrateFromLegacyDB();
-			}
 
 			MigrateFields();
 			WireUpReferences();
-			CalculateArtistScores();
 
 			sw.Stop();
 			Log.Info("PulseData loaded in " + sw.ElapsedMilliseconds + "ms: "
@@ -433,123 +387,7 @@ namespace Pulse.Data
 			m_saveTimer = new Timer(OnSaveTimer, null, 10000, 10000);
 		}
 
-		/// <summary>
-		/// One-time migration from PulseDB normalized tables into PulseDataStore.
-		/// Runs only when the PulseDataStore has no tracks (first boot after cutover).
-		/// </summary>
-		private void MigrateFromLegacyDB()
-		{
-			Log.Info("PulseDataStore empty — migrating from PulseDB");
-
-			List<ArtistData> artists = m_db.LoadArtists();
-			for (int i = 0; i < artists.Count; i++)
-			{
-				m_artists[artists[i].Id] = artists[i];
-			}
-
-			List<AlbumData> albums = m_db.LoadAlbums();
-			for (int i = 0; i < albums.Count; i++)
-			{
-				m_albums[albums[i].Id] = albums[i];
-			}
-
-			List<TrackData> tracks = m_db.LoadTracks();
-			for (int i = 0; i < tracks.Count; i++)
-			{
-				m_tracks[tracks[i].Id] = tracks[i];
-			}
-
-			List<TrackUserScoreRow> userScoreRows = m_db.LoadTrackUserScores();
-			for (int i = 0; i < userScoreRows.Count; i++)
-			{
-				TrackUserScoreRow row = userScoreRows[i];
-				TrackData track;
-				if (m_tracks.TryGetValue(row.TrackId, out track))
-				{
-					track.UserScore[row.UserName] = row.Score;
-				}
-			}
-
-			List<StarredRow> starredRows = m_db.LoadStarred();
-			for (int i = 0; i < starredRows.Count; i++)
-			{
-				StarredRow row = starredRows[i];
-				if (row.EntityKind == "track")
-				{
-					TrackData track;
-					if (m_tracks.TryGetValue(row.EntityId, out track))
-					{
-						track.Starred[row.UserName] = row.Starred;
-					}
-				}
-				else if (row.EntityKind == "album")
-				{
-					AlbumData album;
-					if (m_albums.TryGetValue(row.EntityId, out album))
-					{
-						album.Starred[row.UserName] = row.Starred;
-					}
-				}
-				else if (row.EntityKind == "artist")
-				{
-					ArtistData artist;
-					if (m_artists.TryGetValue(row.EntityId, out artist))
-					{
-						artist.Starred[row.UserName] = row.Starred;
-					}
-				}
-			}
-
-			Dictionary<string, string> legacyToCurrentId = new Dictionary<string, string>();
-			foreach (TrackData track in m_tracks.Values)
-			{
-				if (!string.IsNullOrEmpty(track.LegacyId) && track.LegacyId != track.Id)
-				{
-					legacyToCurrentId[track.LegacyId] = track.Id;
-				}
-			}
-
-			List<PlaylistData> playlists = m_db.LoadPlaylists();
-			for (int i = 0; i < playlists.Count; i++)
-			{
-				PlaylistData playlist = playlists[i];
-				if (legacyToCurrentId.Count > 0)
-				{
-					for (int j = 0; j < playlist.TrackIds.Count; j++)
-					{
-						string currentId;
-						if (legacyToCurrentId.TryGetValue(playlist.TrackIds[j], out currentId))
-						{
-							playlist.TrackIds[j] = currentId;
-						}
-					}
-				}
-				m_playlists[playlist.Id] = playlist;
-			}
-
-			List<string> recentlyPlayed = m_db.LoadRecentlyPlayed();
-			for (int i = 0; i < recentlyPlayed.Count; i++)
-			{
-				m_analytics.RecentlyPlayed.Add(recentlyPlayed[i]);
-			}
-
-			// Bulk-write to PulseDataStore
-			m_musicData.SaveList(eDataType.Track, new List<TrackData>(m_tracks.Values));
-			m_musicData.SaveList(eDataType.Album, new List<AlbumData>(m_albums.Values));
-			m_musicData.SaveList(eDataType.Artist, new List<ArtistData>(m_artists.Values));
-			m_musicData.SaveList(eDataType.Playlist, new List<PlaylistData>(m_playlists.Values));
-			m_musicData.Save(eDataType.PulseAnalytics, m_analytics);
-
-			// Clear dirty flags — everything was just persisted
-			foreach (TrackData track in m_tracks.Values) { track.ClearDirty(); }
-			foreach (AlbumData album in m_albums.Values) { album.ClearDirty(); }
-			foreach (ArtistData artist in m_artists.Values) { artist.ClearDirty(); }
-			foreach (PlaylistData playlist in m_playlists.Values) { playlist.ClearDirty(); }
-			m_analytics.ClearDirty();
-
-			Log.Info("PulseDataStore migration complete");
-		}
-
+	
 		/// <summary>
 		/// Write all dirty domain objects to PulseDataStore and clear their flags.
 		/// Called periodically by the save timer and on explicit flush.
@@ -737,83 +575,6 @@ namespace Pulse.Data
 			}
 		}
 
-		/// <summary>
-		/// Roll the per-track WeightedScore up into per-artist WeightedScore and
-		/// per-user UserWeightedScore -- ArtistData's score fields are runtime
-		/// derived state, not persisted, so they need to be recomputed at load.
-		/// Without this the popular-artists sort and the popular carousel see all
-		/// zeros.
-		/// </summary>
-		private void CalculateArtistScores()
-		{
-			foreach (ArtistData artist in m_artists.Values)
-			{
-				float totalScore = 0f;
-				int scoredCount = 0;
-				Dictionary<string, float> userTotals = new Dictionary<string, float>();
-				Dictionary<string, int> userCounts = new Dictionary<string, int>();
-
-				for (int albumIndex = 0; albumIndex < artist.Albums.Count; albumIndex++)
-				{
-					AlbumData album = artist.Albums[albumIndex];
-					for (int trackIndex = 0; trackIndex < album.Tracks.Count; trackIndex++)
-					{
-						TrackData track = album.Tracks[trackIndex];
-
-						if (track.Score.PlayCount > 0)
-						{
-							if (track.Score.WeightedScore > 1)
-							{
-								track.Score.WeightedScore = 1;
-							}
-							totalScore += track.Score.WeightedScore;
-							scoredCount++;
-						}
-
-						foreach (string userName in track.UserScore.Keys)
-						{
-							TrackData.ScoreData userData = track.UserScore[userName];
-							if (userData.PlayCount > 0)
-							{
-								if (!userTotals.ContainsKey(userName))
-								{
-									userTotals[userName] = 0f;
-									userCounts[userName] = 0;
-								}
-								if (userData.WeightedScore > 1)
-								{
-									userData.WeightedScore = 1;
-								}
-								userTotals[userName] += userData.WeightedScore;
-								userCounts[userName]++;
-							}
-						}
-					}
-				}
-
-				if (scoredCount > 0)
-				{
-					artist.WeightedScore = totalScore / scoredCount;
-				}
-				foreach (string userName in userTotals.Keys)
-				{
-					artist.UserWeightedScore[userName] = userTotals[userName] / userCounts[userName];
-				}
-			}
-		}
-
-
-		public void RecordPlaybackEvent(string userName, PulseAnalytics analytics, DateTime occurredAt)
-		{
-			m_db.RecordPlaybackEvent(userName, analytics, occurredAt);
-		}
-
-		public Dictionary<string, ItemStats> GetItemStats(string userName, ePulseWireType mediaType)
-		{
-			return m_db.GetItemStats(userName, mediaType);
-		}
-
-
 		public List<User> GetAllUsers()
 		{
 			List<User> users = m_userData.GetAllUsers();
@@ -895,21 +656,6 @@ namespace Pulse.Data
 		// entities dirty so the next Save rewrites their per-user rows.
 		private void DeleteUserFromMusicData(string userId)
 		{
-			foreach (TrackData track in m_tracks.Values)
-			{
-				bool touched = false;
-				if (track.UserScore.Remove(userId)) { touched = true; }
-				if (track.Starred.Remove(userId)) { touched = true; }
-				if (touched) { track.MarkDirty(); }
-			}
-			foreach (AlbumData album in m_albums.Values)
-			{
-				if (album.Starred.Remove(userId)) { album.MarkDirty(); }
-			}
-			foreach (ArtistData artist in m_artists.Values)
-			{
-				if (artist.Starred.Remove(userId)) { artist.MarkDirty(); }
-			}
 			foreach (PlaylistData playlist in m_playlists.Values)
 			{
 				if (playlist.UserLastPlayed.Remove(userId)) { playlist.MarkDirty(); }

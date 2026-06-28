@@ -47,14 +47,6 @@ namespace Pulse.DataStorage
 
 	public class TrackData : PulseDataObject
 	{
-		public class ScoreData
-		{
-			public int PlayCount;
-			public int SkipCount;
-			public double TotalListenSeconds;
-			public float WeightedScore;
-		}
-
 		public string LegacyId;
 		public string Title;
 		public string Artist;
@@ -74,74 +66,13 @@ namespace Pulse.DataStorage
 		public string ContentType;
 		public string Suffix;
 
-		public Dictionary<string, bool> Starred = new Dictionary<string, bool>();
-
+	
 		public DateTime LastPlayed;
-
-		public ScoreData Score = new ScoreData();
-		public Dictionary<string, ScoreData> UserScore = new Dictionary<string, ScoreData>();
 
 		[JsonIgnore]
 		public ArtistData ParentArtist;
 
-		public float GetScore(string userName)
-		{
-			float score = 0;
-
-			if (!string.IsNullOrEmpty(userName) && UserScore.TryGetValue(userName, out ScoreData userData))
-			{
-				score = userData.WeightedScore;
-			}
-			else
-			{
-				score = Score.WeightedScore;
-			}
-
-			if (ParentArtist != null)
-			{
-				if (!string.IsNullOrEmpty(userName) && ParentArtist.UserWeightedScore.TryGetValue(userName, out float artistScore))
-				{
-					if (artistScore > 0)
-					{
-						score = score * 0.75f + artistScore * 0.25f;
-					}
-				}
-				else
-				{
-					if (ParentArtist.WeightedScore > 0)
-					{
-						score = score * 0.75f + ParentArtist.WeightedScore * 0.25f;
-					}
-				}
-			}
-			return score;
-		}
-
-		public bool IsStarredBy(string userName)
-		{
-			if (string.IsNullOrEmpty(userName))
-			{
-				return false;
-			}
-			bool starred = false;
-			Starred.TryGetValue(userName, out starred);
-			return starred;
-		}
-
-		public int GetTotalSessions(string userName)
-		{
-			if (string.IsNullOrEmpty(userName))
-			{
-				return Score.PlayCount + Score.SkipCount;
-			}
-			ScoreData data;
-			if (UserScore.TryGetValue(userName, out data))
-			{
-				return data.PlayCount + data.SkipCount;
-			}
-			return 0;
-		}
-
+		
 		public PulseTrack BuildPulse()
 		{
 			PulseTrack pulseTrack = new PulseTrack();
@@ -166,8 +97,6 @@ namespace Pulse.DataStorage
 		public string Genre;
 		public string CoverArtId;
 		public int Year;
-
-		public Dictionary<string, bool> Starred = new Dictionary<string, bool>();
 
 		[JsonIgnore]
 		public List<TrackData> Tracks = new List<TrackData>();
@@ -196,7 +125,6 @@ namespace Pulse.DataStorage
 	public class ArtistData : PulseDataObject
 	{
 		public string Name;
-		public Dictionary<string, bool> Starred = new Dictionary<string, bool>();
 
 		[JsonIgnore]
 		public List<AlbumData> Albums = new List<AlbumData>();

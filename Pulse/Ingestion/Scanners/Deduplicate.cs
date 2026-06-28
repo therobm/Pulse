@@ -8,8 +8,10 @@ namespace PulseIngestion.Scanners
 	public class Deduplicate : Scanner
 	{
 		string m_wildcardToken;
-		public Deduplicate(IngestionConfig config) : base(config)
+		string m_musicRoot;
+		public Deduplicate(IngestionConfig config, string musicRoot) : base(config)
 		{
+			m_musicRoot = musicRoot;
 			m_bIsActive = m_config.CleanupDuplicatesByWildcard;
 			m_wildcardToken = m_config.DuplicateFileWildcardToken;
 		}
@@ -24,12 +26,14 @@ namespace PulseIngestion.Scanners
 		}
 		protected void DeduplicateFiles()
 		{
-			foreach (string f in Directory.EnumerateFiles(m_config.MusicImportDir, "*.*", SearchOption.AllDirectories))
+			foreach (string f in Directory.EnumerateFiles(m_musicRoot, "*.*", SearchOption.AllDirectories))
 			{
 				ReportProgress();
-				if (m_config.CleanupDuplicatesByWildcard && f.Contains(m_config.DuplicateFileWildcardToken))
+				if (m_config.CleanupDuplicatesByWildcard && f.Contains(m_wildcardToken))
 				{
-					string goodName = f.Replace(m_config.DuplicateFileWildcardToken, "");
+					string dir = Path.GetDirectoryName(f);
+					string fileName = Path.GetFileName(f);
+					string goodName = Path.Combine(dir, fileName.Replace(m_config.DuplicateFileWildcardToken, ""));
 					if (File.Exists(goodName))
 					{
 						File.Delete(f);

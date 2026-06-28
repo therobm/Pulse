@@ -20,23 +20,51 @@ namespace PulseIngestion.Scanners
 		}
 		protected override void DoWork()
 		{
-			CleanEmptyFolders();
+			Log.Info("Cleaning up empty folders...");
+			CleanEmptyFolders(m_workingDirectory);
+			OnComplete();
 			base.DoWork();
 		}
-		public void CleanEmptyFolders()
+
+		public bool CleanEmptyFolders(string currentDir)
 		{
-			Log.Info("Cleaning up empty folders...");
-			foreach (string folder in Directory.EnumerateDirectories(m_workingDirectory, "*.*", SearchOption.AllDirectories))
+			ReportProgress();
+			bool deleteMe = false;
+			string[] files = Directory.GetFiles(currentDir);
+			string[] subdirs = Directory.GetDirectories(currentDir);
+
+			if (files.Length == 0 && subdirs.Length == 0)
 			{
-				ReportProgress();
-				if (Directory.EnumerateFileSystemEntries(folder).Any())
-				{
-					continue;
-				}
-				Directory.Delete(folder);
-				RecordInfo("Removed empty folder: " + folder);
+				deleteMe = true;
 			}
-			OnComplete();
+			else if (files.Length == 0)
+			{
+				bool allChildrenDeleted = true;
+				for (int i = 0; i < subdirs.Length; i++)
+				{
+					if (!CleanEmptyFolders(subdirs[i]))
+					{
+						allChildrenDeleted = false;
+					}
+				}
+				deleteMe = allChildrenDeleted;
+			}
+			else
+			{
+				for (int i = 0; i < subdirs.Length; i++)
+				{
+					CleanEmptyFolders(subdirs[i]);
+				}
+			}
+
+			if (deleteMe)
+			{
+				File.SetAttributes(currentDir, FileAttributes.Normal);
+				Directory.Delete(currentDir);
+				RecordInfo("Removed empty folder: " + currentDir);
+				return true;
+			}
+			return false;
 		}
 	}
 }
