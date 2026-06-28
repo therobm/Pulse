@@ -79,6 +79,22 @@ namespace Pulse.Protocols
 			return true;
 		}
 
+		private bool IsAdminCaller(HttpContext context)
+		{
+			string callerUserId;
+			bool callerValid = GetAuthenticatedUserId(context, out callerUserId);
+			if (!callerValid)
+			{
+				return false;
+			}
+			User callerUser = m_pulseData.GetUser(callerUserId);
+			if (callerUser == null)
+			{
+				return false;
+			}
+			return callerUser.IsAdmin;
+		}
+
 		private IResult Login(HttpContext context)
 		{
 			string clientIp = GetClientIp(context);
@@ -282,6 +298,11 @@ namespace Pulse.Protocols
 
 		public IResult ListUsers(HttpContext context)
 		{
+			if (!IsAdminCaller(context))
+			{
+				return Respond("forbidden", HttpStatusCode.Forbidden);
+			}
+
 			List<User> users = m_pulseData.GetAllUsers();
 			List<PulseUser> userList = new List<PulseUser>();
 			for (int index = 0; index < users.Count; index++)
@@ -303,6 +324,11 @@ namespace Pulse.Protocols
 
 		public IResult CreateUser(HttpContext context)
 		{
+			if (!IsAdminCaller(context))
+			{
+				return Respond("forbidden", HttpStatusCode.Forbidden);
+			}
+
 			string name = QueryParameters.GetString(context, "name");
 			string displayName = QueryParameters.GetString(context, "displayName");
 			bool isAdmin = QueryParameters.GetBool(context, "isAdmin");
@@ -318,6 +344,11 @@ namespace Pulse.Protocols
 
 		public IResult UpdateUser(HttpContext context)
 		{
+			if (!IsAdminCaller(context))
+			{
+				return Respond("forbidden", HttpStatusCode.Forbidden);
+			}
+
 			string userId = QueryParameters.GetString(context, "userId");
 			string newName = QueryParameters.GetString(context, "newName");
 			string displayName = QueryParameters.GetString(context, "displayName");
@@ -339,6 +370,11 @@ namespace Pulse.Protocols
 
 		public IResult DeleteUser(HttpContext context)
 		{
+			if (!IsAdminCaller(context))
+			{
+				return Respond("forbidden", HttpStatusCode.Forbidden);
+			}
+
 			string userId = QueryParameters.GetString(context, "userId");
 			if (string.IsNullOrEmpty(userId))
 			{
