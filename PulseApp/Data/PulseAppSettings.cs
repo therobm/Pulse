@@ -143,31 +143,18 @@ namespace PulseApp.Data
 			Preferences.Set(s_keyUseHttps, value);
 		}
 
-		static string s_token_memo = null;
-		/// <summary>
-		/// Device token for Pulse API authentication. Stored in SecureStorage
-		/// so it stays encrypted at rest. Returns "" if no token is configured.
-		/// </summary>
 		public static string GetToken()
 		{
-			if (s_token_memo != null)
-				return s_token_memo;
-			string value = SecureStorage.Default.GetAsync(s_keyToken).GetAwaiter().GetResult();
-			if (!string.IsNullOrEmpty(value))
-			{
-				s_token_memo = value;
-				return value;
-			}
-			return "";
+			return Preferences.Get(s_keyToken, "");
 		}
 		public static void SetToken(string value)
 		{
 			if (string.IsNullOrEmpty(value))
 			{
-				SecureStorage.Default.Remove(s_keyToken);
+				Preferences.Remove(s_keyToken);
 				return;
 			}
-			SecureStorage.Default.SetAsync(s_keyToken, value).GetAwaiter().GetResult();
+			Preferences.Set(s_keyToken, value);
 		}
 
 		/// <summary>
