@@ -516,6 +516,7 @@ namespace PulseApp
 			m_sleepTimerRemainingSeconds = m_sleepTimerRemainingSeconds - 1;
 			if (m_sleepTimerRemainingSeconds <= 0)
 			{
+				FlushPlaybackProgress();
 				m_player.Pause();
 				m_sleepTimerTick.Stop();
 				m_sleepTimerActive = false;
@@ -558,6 +559,7 @@ namespace PulseApp
 		{
 			if (m_playbackState == ePlaybackState.Playing || m_playbackState == ePlaybackState.Buffering)
 			{
+				FlushPlaybackProgress();
 				m_player.Pause();
 			}
 			else
